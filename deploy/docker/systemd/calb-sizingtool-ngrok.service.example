@@ -1,0 +1,17 @@
+[Unit]
+Description=CALB Sizing Tool optional ngrok tunnel
+Requires=docker.service calb-sizingtool-compose.service
+After=docker.service network-online.target calb-sizingtool-compose.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/calb-sizingtool/app
+ExecStart=/usr/bin/env bash deploy/docker/calb-serverctl.sh ngrok-start
+ExecReload=/usr/bin/env bash deploy/docker/calb-serverctl.sh ngrok-start
+ExecStop=/usr/bin/env bash deploy/docker/calb-serverctl.sh ngrok-stop
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

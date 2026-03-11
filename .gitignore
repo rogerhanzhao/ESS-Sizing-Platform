@@ -46,6 +46,7 @@ outputs/
 # Systemd env files
 deploy/systemd/*.env
 !deploy/systemd/*.env.example
+deploy/docker/.env
 
 # Ngrok configuration (keep only example configs tracked)
 ngrok.yml

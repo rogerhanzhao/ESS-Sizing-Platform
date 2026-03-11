@@ -28,6 +28,7 @@ from calb_diagrams.layout_block_renderer import render_layout_block_svg
 from calb_diagrams.specs import build_layout_block_spec
 from calb_sizing_tool.common.dependencies import check_dependencies
 from calb_sizing_tool.common.preferences import load_preferences, save_preferences
+from calb_sizing_tool.runtime_paths import ensure_outputs_dir
 from calb_sizing_tool.state.project_state import get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state
 
@@ -401,9 +402,8 @@ def show():
                             if isinstance(layout_results[style_id].get("meta"), dict):
                                 layout_results[style_id]["meta"]["hash"] = __import__("hashlib").sha256(png_bytes).hexdigest()[:12]
                         artifacts["layout_meta"] = meta
-                        outputs_dir = Path("outputs")
                         try:
-                            outputs_dir.mkdir(exist_ok=True)
+                            outputs_dir = ensure_outputs_dir()
                         except Exception as exc:
                             st.warning(f"Could not create outputs directory: {exc}")
                         else:

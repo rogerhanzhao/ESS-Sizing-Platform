@@ -24,6 +24,7 @@ from calb_sizing_tool.reporting.export_docx import (
 )
 from calb_sizing_tool.reporting.report_context import build_report_context
 from calb_sizing_tool.reporting.report_v2 import export_report_v2_1
+from calb_sizing_tool.runtime_paths import get_outputs_dir
 from calb_sizing_tool.state.project_state import init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state
 
@@ -60,7 +61,7 @@ def show():
                     break
     sld_png = artifacts.get("sld_png_bytes") or (sld_entry.get("png") if sld_entry else None)
     sld_svg = artifacts.get("sld_svg_bytes") or (sld_entry.get("svg") if sld_entry else None)
-    outputs_dir = Path("outputs")
+    outputs_dir = get_outputs_dir()
     if sld_png is None:
         candidate = outputs_dir / "sld_latest.png"
         if candidate.exists():

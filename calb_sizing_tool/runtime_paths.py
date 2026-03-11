@@ -16,26 +16,25 @@
 # of any company or organization.
 # -----------------------------------------------------------------------------
 
-import json
-from typing import Any, Dict
+import os
+from pathlib import Path
 
-from calb_sizing_tool.runtime_paths import ensure_preferences_parent, get_preferences_file
 
-def load_preferences() -> Dict[str, Any]:
-    prefs_file = get_preferences_file()
-    if not prefs_file.exists():
-        return {}
-    try:
-        return json.loads(prefs_file.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+def get_outputs_dir() -> Path:
+    return Path(os.environ.get("CALB_OUTPUTS_DIR", "outputs"))
 
-def save_preferences(prefs: Dict[str, Any]) -> None:
-    current = load_preferences()
-    current.update(prefs)
-    prefs_file = ensure_preferences_parent()
-    prefs_file.write_text(json.dumps(current, indent=2, sort_keys=True), encoding="utf-8")
 
-def get_preference(key: str, default: Any = None) -> Any:
-    prefs = load_preferences()
-    return prefs.get(key, default)
+def ensure_outputs_dir() -> Path:
+    outputs_dir = get_outputs_dir()
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    return outputs_dir
+
+
+def get_preferences_file() -> Path:
+    return Path(os.environ.get("CALB_PREFERENCES_FILE", "user_preferences.json"))
+
+
+def ensure_preferences_parent() -> Path:
+    preferences_file = get_preferences_file()
+    preferences_file.parent.mkdir(parents=True, exist_ok=True)
+    return preferences_file

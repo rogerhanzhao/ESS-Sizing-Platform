@@ -31,6 +31,7 @@ from calb_sizing_tool.common.allocation import allocate_dc_blocks, evenly_distri
 from calb_sizing_tool.common.nameplate import get_standard_container_mwh
 from calb_sizing_tool.common.dependencies import check_dependencies
 from calb_sizing_tool.common.preferences import load_preferences
+from calb_sizing_tool.runtime_paths import ensure_outputs_dir
 from calb_sizing_tool.sld.snapshot_single_unit import (
     build_single_unit_snapshot,
     validate_single_unit_snapshot,
@@ -563,9 +564,8 @@ def show():
                     artifacts["sld_png_bytes"] = png_bytes
                     diagram_outputs.sld_png = png_bytes
                 artifacts["sld_meta"] = meta
-                outputs_dir = Path("outputs")
                 try:
-                    outputs_dir.mkdir(exist_ok=True)
+                    outputs_dir = ensure_outputs_dir()
                 except Exception as exc:
                     st.warning(f"Could not create outputs directory: {exc}")
                 else:

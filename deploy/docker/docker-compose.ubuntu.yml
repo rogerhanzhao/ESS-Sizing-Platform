@@ -1,0 +1,24 @@
+services:
+  app:
+    image: ${CALB_IMAGE_NAME:-calb-sizingtool}:${CALB_IMAGE_TAG:-ubuntu}
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${CALB_HOST_PORT:-18511}:${STREAMLIT_INTERNAL_PORT:-8501}"
+    environment:
+      TZ: ${TZ:-UTC}
+      CALB_OUTPUTS_DIR: /app/runtime/outputs
+      CALB_PREFERENCES_FILE: /app/runtime/state/user_preferences.json
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+      STREAMLIT_SERVER_ADDRESS: 0.0.0.0
+      STREAMLIT_SERVER_HEADLESS: "true"
+      STREAMLIT_SERVER_PORT: ${STREAMLIT_INTERNAL_PORT:-8501}
+    volumes:
+      - type: bind
+        source: ${CALB_RUNTIME_ROOT:-/opt/calb-sizingtool/runtime}/outputs
+        target: /app/runtime/outputs
+      - type: bind
+        source: ${CALB_RUNTIME_ROOT:-/opt/calb-sizingtool/runtime}/state
+        target: /app/runtime/state

@@ -1,0 +1,17 @@
+[Unit]
+Description=CALB Sizing Tool Docker Compose stack
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/calb-sizingtool/app
+ExecStart=/usr/bin/env bash deploy/docker/calb-serverctl.sh start
+ExecReload=/usr/bin/env bash deploy/docker/calb-serverctl.sh restart
+ExecStop=/usr/bin/env bash deploy/docker/calb-serverctl.sh stop
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

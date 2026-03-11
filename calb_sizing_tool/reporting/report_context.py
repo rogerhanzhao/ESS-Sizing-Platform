@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Optional
 
 from calb_sizing_tool.common.ac_block import derive_ac_template_fields
 from calb_sizing_tool.config import AC_DATA_PATH, DC_DATA_PATH
+from calb_sizing_tool.runtime_paths import get_outputs_dir
 
 
 @dataclass
@@ -432,7 +433,7 @@ def build_report_context(
         layout_png_bytes = layout_png_bytes or state.get("layout_png_bytes")
         layout_svg_bytes = layout_svg_bytes or state.get("layout_svg_bytes")
 
-    outputs_dir = Path("outputs")
+    outputs_dir = get_outputs_dir()
     if sld_pro_png_bytes is None:
         candidate = outputs_dir / "sld_latest.png"
         if candidate.exists():
