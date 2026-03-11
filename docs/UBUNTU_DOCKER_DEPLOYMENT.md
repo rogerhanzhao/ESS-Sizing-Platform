@@ -62,8 +62,11 @@ The Excel dictionaries remain inside the image because they are part of the repo
 - `deploy/docker/docker-compose.ubuntu.yml`
 - `deploy/docker/.env.example`
 - `deploy/docker/calb-serverctl.sh`
+- `deploy/docker/calb-maintenance.sh`
 - `deploy/docker/systemd/calb-sizingtool-compose.service.example`
 - `deploy/docker/systemd/calb-sizingtool-ngrok.service.example`
+- `deploy/docker/systemd/calb-sizingtool-maintenance.service.example`
+- `deploy/docker/systemd/calb-sizingtool-maintenance.timer.example`
 
 ## 6. Server prep
 
@@ -108,6 +111,9 @@ Clone the repo into the new root, not into `/opt/energain`.
    CALB_HOST_PORT=18511
    CALB_RUNTIME_ROOT=/opt/calb-sizingtool/runtime
    TZ=UTC
+   CALB_DOCKER_LOG_MAX_SIZE=20m
+   CALB_DOCKER_LOG_MAX_FILE=5
+   CALB_OUTPUT_RETENTION_DAYS=30
    ```
 
 4. Start the stack:
@@ -152,18 +158,40 @@ The update command is conservative:
 - It uses `git pull --ff-only`.
 - It rebuilds and restarts the Docker stack after pulling.
 
-## 9. Optional systemd integration
+## 9. Systemd auto-start and weekly maintenance
 
-If you want Docker Compose to auto-start on boot:
+If you want Docker Compose to auto-start on boot and run weekly cleanup:
 
 1. Copy `deploy/docker/systemd/calb-sizingtool-compose.service.example` to `/etc/systemd/system/calb-sizingtool-compose.service`.
-2. Adjust `WorkingDirectory=` if your repo path is different.
-3. Reload and enable:
+2. Copy `deploy/docker/systemd/calb-sizingtool-maintenance.service.example` to `/etc/systemd/system/calb-sizingtool-maintenance.service`.
+3. Copy `deploy/docker/systemd/calb-sizingtool-maintenance.timer.example` to `/etc/systemd/system/calb-sizingtool-maintenance.timer`.
+4. Adjust `WorkingDirectory=` if your repo path is different.
+5. Reload and enable:
 
    ```bash
+   sudo cp deploy/docker/systemd/calb-sizingtool-compose.service.example /etc/systemd/system/calb-sizingtool-compose.service
+   sudo cp deploy/docker/systemd/calb-sizingtool-maintenance.service.example /etc/systemd/system/calb-sizingtool-maintenance.service
+   sudo cp deploy/docker/systemd/calb-sizingtool-maintenance.timer.example /etc/systemd/system/calb-sizingtool-maintenance.timer
    sudo systemctl daemon-reload
    sudo systemctl enable --now calb-sizingtool-compose.service
+   sudo systemctl enable --now calb-sizingtool-maintenance.timer
    ```
+
+6. Optional checks:
+
+   ```bash
+   sudo systemctl status calb-sizingtool-compose.service --no-pager
+   sudo systemctl status calb-sizingtool-maintenance.timer --no-pager
+   systemctl list-timers --all | grep calb-sizingtool-maintenance
+   ```
+
+The maintenance timer is intentionally scoped:
+
+- It rotates CALB container logs through Docker logging options.
+- It deletes CALB output files older than `CALB_OUTPUT_RETENTION_DAYS`.
+- It removes stopped CALB containers and unused old CALB images.
+- It does not run global Docker prune.
+- It skips global journal cleanup unless `CALB_ENABLE_GLOBAL_JOURNAL_VACUUM=true`.
 
 If you also want an always-on ngrok tunnel, install `calb-sizingtool-ngrok.service` separately. Keep it optional.
 
@@ -215,3 +243,29 @@ bash deploy/docker/calb-serverctl.sh restart
 5. Only enable ngrok if external sharing is still needed.
 
 This keeps the migration low-risk and avoids coupling CALB to EnerGain's existing stack.
+
+## 13. Daily operations
+
+Direct maintenance commands:
+
+```bash
+cd /opt/calb-sizingtool/app
+bash deploy/docker/calb-serverctl.sh start
+bash deploy/docker/calb-serverctl.sh stop
+bash deploy/docker/calb-serverctl.sh restart
+bash deploy/docker/calb-serverctl.sh status
+bash deploy/docker/calb-serverctl.sh logs
+bash deploy/docker/calb-serverctl.sh cleanup
+bash deploy/docker/calb-serverctl.sh update <branch>
+```
+
+If you installed systemd:
+
+```bash
+sudo systemctl start calb-sizingtool-compose.service
+sudo systemctl stop calb-sizingtool-compose.service
+sudo systemctl restart calb-sizingtool-compose.service
+sudo systemctl status calb-sizingtool-compose.service --no-pager
+sudo systemctl start calb-sizingtool-maintenance.service
+sudo systemctl status calb-sizingtool-maintenance.timer --no-pager
+```

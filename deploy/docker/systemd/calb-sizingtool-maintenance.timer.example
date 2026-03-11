@@ -1,0 +1,10 @@
+[Unit]
+Description=Run CALB Sizing Tool weekly maintenance
+
+[Timer]
+OnCalendar=Sun 03:30
+Persistent=true
+Unit=calb-sizingtool-maintenance.service
+
+[Install]
+WantedBy=timers.target

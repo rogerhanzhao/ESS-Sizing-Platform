@@ -1,0 +1,9 @@
+[Unit]
+Description=CALB Sizing Tool scoped maintenance
+Wants=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/calb-sizingtool/app
+ExecStart=/usr/bin/env bash deploy/docker/calb-maintenance.sh

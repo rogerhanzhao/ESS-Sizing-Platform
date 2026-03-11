@@ -21,6 +21,7 @@ Commands:
   restart       Rebuild and restart the CALB stack
   status        Show docker compose status
   logs          Follow CALB app logs
+  cleanup       Run scoped CALB maintenance cleanup
   config        Render docker compose config
   url           Print the internal access URLs
   update        Git pull the target branch (or current branch) and restart
@@ -176,6 +177,9 @@ case "$ACTION" in
     ;;
   logs)
     compose logs -f --tail 200 app
+    ;;
+  cleanup)
+    bash "${REPO_ROOT}/deploy/docker/calb-maintenance.sh"
     ;;
   config)
     compose config
