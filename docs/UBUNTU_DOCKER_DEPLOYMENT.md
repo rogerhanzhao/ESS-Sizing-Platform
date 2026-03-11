@@ -96,6 +96,11 @@ Clone the repo into the new root, not into `/opt/energain`.
    cp deploy/docker/.env.example deploy/docker/.env
    ```
 
+   Important:
+   Do not paste `vi deploy/docker/.env` and `bash deploy/docker/calb-serverctl.sh start`
+   in the same multi-line block. `vi` is interactive, and any later pasted lines may end
+   up inside the editor instead of being executed by the shell.
+
 3. Edit `deploy/docker/.env` and confirm at least:
 
    ```dotenv
@@ -110,6 +115,9 @@ Clone the repo into the new root, not into `/opt/energain`.
    ```bash
    bash deploy/docker/calb-serverctl.sh start
    ```
+
+   If you just want the default port `18511`, you can skip editing and start directly after
+   copying `.env.example`.
 
 5. Verify:
 
