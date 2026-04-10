@@ -54,7 +54,7 @@ def _persist_dc_run_with_session(
         source_ref=source_ref,
     )
     session.flush()
-    sizing_case = case_repo.create_case(
+    sizing_case = case_repo.create_case_if_needed(
         project_id=project.project_id,
         case_code=case_code,
         case_name=case_name,

@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from calb_sizing_tool.infra.db.models import ArtifactRegistry, AuditLog, RunInputSnapshot, RunOutputSnapshot, SizingRun
+from calb_sizing_tool.infra.db.models import (
+    ArtifactRegistry,
+    AuditLog,
+    Project,
+    RunInputSnapshot,
+    RunOutputSnapshot,
+    SizingCase,
+    SizingRun,
+)
 from calb_sizing_tool.schemas.run_snapshot import RunInputSnapshotSchema, RunOutputSnapshotSchema
 
 
@@ -129,3 +137,49 @@ class RunRepository:
             .order_by(RunOutputSnapshot.created_at.asc())
             .all()
         )
+
+    def get_run_bundle(self, sizing_run_id: str) -> dict[str, object] | None:
+        run = self.get_run(sizing_run_id)
+        if run is None:
+            return None
+        sizing_case = (
+            self.session.query(SizingCase)
+            .filter_by(sizing_case_id=run.sizing_case_id)
+            .one_or_none()
+        )
+        project = (
+            self.session.query(Project)
+            .filter_by(project_id=run.project_id)
+            .one_or_none()
+        )
+        inputs = self.get_input_snapshots(sizing_run_id)
+        outputs = self.get_output_snapshots(sizing_run_id)
+        input_snapshot = inputs[-1] if inputs else None
+        output_snapshot = outputs[-1] if outputs else None
+        return {
+            "run": run,
+            "case": sizing_case,
+            "project": project,
+            "input_snapshot": input_snapshot,
+            "output_snapshot": output_snapshot,
+        }
+
+    def list_runs_by_project(self, project_id: str, *, limit: int | None = None) -> list[SizingRun]:
+        query = (
+            self.session.query(SizingRun)
+            .filter_by(project_id=project_id)
+            .order_by(SizingRun.created_at.desc())
+        )
+        if limit:
+            query = query.limit(int(limit))
+        return query.all()
+
+    def list_runs_by_case(self, sizing_case_id: str, *, limit: int | None = None) -> list[SizingRun]:
+        query = (
+            self.session.query(SizingRun)
+            .filter_by(sizing_case_id=sizing_case_id)
+            .order_by(SizingRun.created_at.desc())
+        )
+        if limit:
+            query = query.limit(int(limit))
+        return query.all()

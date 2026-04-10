@@ -56,3 +56,36 @@ class CaseRepository:
         )
         self.session.add(row)
         return row
+
+    def create_case_if_needed(
+        self,
+        *,
+        project_id: str,
+        case_code: str,
+        case_name: str,
+        stage_scope: str,
+        scenario_mode: str,
+        input_json: dict,
+        notes: str | None = None,
+        version_tag: str | None = None,
+        source_ref: str | None = None,
+    ) -> SizingCase:
+        row = (
+            self.session.query(SizingCase)
+            .filter_by(project_id=project_id, case_code=case_code, scenario_mode=scenario_mode)
+            .order_by(SizingCase.created_at.desc())
+            .first()
+        )
+        if row is not None:
+            return row
+        return self.create_case(
+            project_id=project_id,
+            case_code=case_code,
+            case_name=case_name,
+            stage_scope=stage_scope,
+            scenario_mode=scenario_mode,
+            input_json=input_json,
+            notes=notes,
+            version_tag=version_tag,
+            source_ref=source_ref,
+        )

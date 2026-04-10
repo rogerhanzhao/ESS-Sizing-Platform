@@ -36,7 +36,8 @@ from calb_sizing_tool.schemas.stage1 import Stage1Result
 from calb_sizing_tool.schemas.stage2 import Stage2Result
 from calb_sizing_tool.schemas.stage3 import Stage3Result
 from calb_sizing_tool.services.dc_pipeline_service import size_with_guarantee as service_size_with_guarantee
-from calb_sizing_tool.services.run_persistence_service import load_dc_run, persist_dc_run
+from calb_sizing_tool.services.run_persistence_service import persist_dc_run
+from calb_sizing_tool.services.run_restore_service import load_dc_run_bundle
 from calb_sizing_tool.services.stage1_service import run_stage1 as service_run_stage1
 from calb_sizing_tool.services.stage2_service import (
     K_MAX_FIXED,
@@ -830,34 +831,24 @@ def show():
                 st.warning("Please enter a run id.")
             else:
                 try:
-                    payload = load_dc_run(run_id)
-                    if not payload:
+                    bundle = load_dc_run_bundle(run_id)
+                    if not bundle:
                         st.error(f"Run id {run_id} not found.")
                     else:
-                        input_snapshot = payload.get("input_snapshot") or {}
-                        output_snapshot = payload.get("output_snapshot") or {}
-                        case_input = (input_snapshot.get("case_input") if isinstance(input_snapshot, dict) else {}) or {}
-                        stage1_payload = output_snapshot.get("stage1") if isinstance(output_snapshot, dict) else None
-                        stage2_payload = output_snapshot.get("stage2") if isinstance(output_snapshot, dict) else None
-                        stage3_payload = output_snapshot.get("stage3") if isinstance(output_snapshot, dict) else None
-                        stage1 = Stage1Result.model_validate(stage1_payload or {})
-                        stage2 = Stage2Result.model_validate(stage2_payload or {})
-                        stage3 = Stage3Result.model_validate(stage3_payload or {})
-                        snapshot = DcPipelineRunSnapshot(
-                            stage1=stage1,
-                            stage2=stage2,
-                            stage3=stage3,
-                            iteration_count=int(output_snapshot.get("iteration_count", 0) or 0) if isinstance(output_snapshot, dict) else 0,
-                            poi_usable_energy_mwh_at_guarantee_year=(
-                                output_snapshot.get("poi_usable_energy_mwh_at_guarantee_year") if isinstance(output_snapshot, dict) else None
-                            ),
-                            converged=bool(output_snapshot.get("converged", True)) if isinstance(output_snapshot, dict) else True,
-                            summary=(output_snapshot.get("summary") if isinstance(output_snapshot, dict) else {}) or {},
+                        snapshot = bundle.snapshot
+                        scenario_id = bundle.scenario_mode or snapshot.stage2.mode or "container_only"
+                        case_input = (
+                            bundle.input_snapshot.payload.get("case_input")
+                            if bundle.input_snapshot and isinstance(bundle.input_snapshot.payload, dict)
+                            else {}
                         )
-                        scenario_id = case_input.get("scenario_id") or stage2.mode or "container_only"
-                        poi_nominal_voltage_kv = case_input.get("poi_nominal_voltage_kv") or st.session_state.get("poi_nominal_voltage_kv", 33.0)
-                        poi_frequency_hz = case_input.get("poi_frequency_hz") or st.session_state.get("poi_frequency_hz")
-                        dc_block_total_qty = int(stage2.container_count + stage2.cabinet_count)
+                        poi_nominal_voltage_kv = case_input.get("poi_nominal_voltage_kv") or st.session_state.get(
+                            "poi_nominal_voltage_kv", 33.0
+                        )
+                        poi_frequency_hz = case_input.get("poi_frequency_hz") or st.session_state.get(
+                            "poi_frequency_hz"
+                        )
+                        dc_block_total_qty = int(snapshot.stage2.container_count + snapshot.stage2.cabinet_count)
 
                         st.session_state["dc_last_run_id"] = run_id
                         dc_results["last_run_id"] = run_id
@@ -1245,11 +1236,33 @@ def show():
                     defaults=defaults,
                     source_ref="dc_view",
                 )
-                st.session_state["dc_last_run_id"] = persist_result.get("run_id")
-                dc_results["last_run_id"] = persist_result.get("run_id")
-                project_state = st.session_state.get("project_state")
-                if isinstance(project_state, dict):
-                    project_state.setdefault("dc", {})["run_id"] = persist_result.get("run_id")
+                run_id = persist_result.get("run_id")
+                if run_id:
+                    bundle = load_dc_run_bundle(run_id)
+                    if not bundle:
+                        st.error("Run persisted but could not be reloaded from DB.")
+                    else:
+                        st.session_state["dc_last_run_id"] = run_id
+                        dc_results["last_run_id"] = run_id
+                        st.session_state["dc_result_summary"] = build_dc_result_summary(bundle.snapshot)
+                        st.session_state["stage13_output"] = build_stage13_output(
+                            bundle.snapshot,
+                            dc_block_total_qty=int(
+                                bundle.snapshot.stage2.container_count + bundle.snapshot.stage2.cabinet_count
+                            ),
+                            selected_scenario=str(bundle.scenario_mode or bundle.snapshot.stage2.mode or "container_only"),
+                            poi_nominal_voltage_kv=float(poi_nominal_voltage_kv),
+                            poi_frequency_hz=poi_frequency_hz,
+                        )
+                        dc_results.update(
+                            {
+                                "stage13_output": st.session_state.get("stage13_output"),
+                                "dc_result_summary": st.session_state.get("dc_result_summary"),
+                            }
+                        )
+                        project_state = st.session_state.get("project_state")
+                        if isinstance(project_state, dict):
+                            project_state.setdefault("dc", {})["run_id"] = run_id
             except Exception as exc:
                 st.error(f"Failed to persist DC run: {exc}")
 
