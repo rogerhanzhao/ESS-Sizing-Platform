@@ -36,6 +36,8 @@ def _persist_dc_run_with_session(
     scenario_id: str,
     case_code: str,
     case_name: str,
+    project_id: str | None,
+    sizing_case_id: str | None,
     version_tag: str | None,
     source_ref: str,
     actor: str | None,
@@ -47,23 +49,47 @@ def _persist_dc_run_with_session(
     case_repo = CaseRepository(session)
     run_repo = RunRepository(session)
 
-    project = case_repo.get_or_create_project(
-        project_code=project_code,
-        project_name=project_name,
-        version_tag=version_tag,
-        source_ref=source_ref,
-    )
+    if project_id:
+        project = case_repo.get_project_by_id(project_id)
+        if project is None:
+            project = case_repo.get_or_create_project(
+                project_code=project_code,
+                project_name=project_name,
+                version_tag=version_tag,
+                source_ref=source_ref,
+            )
+    else:
+        project = case_repo.get_or_create_project(
+            project_code=project_code,
+            project_name=project_name,
+            version_tag=version_tag,
+            source_ref=source_ref,
+        )
     session.flush()
-    sizing_case = case_repo.create_case_if_needed(
-        project_id=project.project_id,
-        case_code=case_code,
-        case_name=case_name,
-        stage_scope="dc",
-        scenario_mode=scenario_id,
-        input_json=case_model.model_dump(mode="python"),
-        version_tag=version_tag,
-        source_ref=source_ref,
-    )
+    if sizing_case_id:
+        sizing_case = case_repo.get_case_by_id(sizing_case_id)
+        if sizing_case is None:
+            sizing_case = case_repo.create_case_if_needed(
+                project_id=project.project_id,
+                case_code=case_code,
+                case_name=case_name,
+                stage_scope="dc",
+                scenario_mode=scenario_id,
+                input_json=case_model.model_dump(mode="python"),
+                version_tag=version_tag,
+                source_ref=source_ref,
+            )
+    else:
+        sizing_case = case_repo.create_case_if_needed(
+            project_id=project.project_id,
+            case_code=case_code,
+            case_name=case_name,
+            stage_scope="dc",
+            scenario_mode=scenario_id,
+            input_json=case_model.model_dump(mode="python"),
+            version_tag=version_tag,
+            source_ref=source_ref,
+        )
     session.flush()
     run = run_repo.create_run(
         project_id=project.project_id,
@@ -71,7 +97,8 @@ def _persist_dc_run_with_session(
         run_type="dc_pipeline",
         status="succeeded",
         input_summary_json={
-            "project_name": project_name,
+            "project_name": project.project_name,
+            "case_name": sizing_case.case_name,
             "scenario_id": scenario_id,
             "poi_power_req_mw": snapshot.stage1.poi_power_req_mw,
             "poi_energy_req_mwh": snapshot.stage1.poi_energy_req_mwh,
@@ -80,7 +107,10 @@ def _persist_dc_run_with_session(
             "dc_power_required_mw": snapshot.stage1.dc_power_required_mw,
             "dc_energy_capacity_required_mwh": snapshot.stage1.dc_energy_capacity_required_mwh,
             "effective_c_rate": snapshot.stage3.meta.effective_c_rate,
+            "soh_profile_id": snapshot.stage3.meta.soh_profile_id,
+            "rte_profile_id": snapshot.stage3.meta.rte_profile_id,
             "guarantee_year_poi_usable_mwh": snapshot.poi_usable_energy_mwh_at_guarantee_year,
+            "margin_mwh": (snapshot.summary or {}).get("margin_mwh"),
             "iterations": snapshot.iteration_count,
             "converged": snapshot.converged,
         },
@@ -135,6 +165,10 @@ def persist_dc_run(
     *,
     db_url: str | None = None,
     run_id: str | None = None,
+    project_id: str | None = None,
+    sizing_case_id: str | None = None,
+    case_code: str | None = None,
+    case_name: str | None = None,
     version_tag: str | None = None,
     source_ref: str = "dc_run",
     actor: str | None = None,
@@ -149,8 +183,8 @@ def persist_dc_run(
     scenario_id = str(case_model.scenario_id)
     project_code = _slug(project_name)
     run_id = run_id or f"dc-{uuid.uuid4().hex[:12]}"
-    case_code = f"{project_code}-{scenario_id}"
-    case_name = f"{project_name} {scenario_id}".strip()
+    resolved_case_code = case_code or f"{project_code}-{scenario_id}"
+    resolved_case_name = case_name or f"{project_name} {scenario_id}".strip()
 
     case_payload = case_model.model_dump(mode="python")
     input_payload = {
@@ -178,8 +212,10 @@ def persist_dc_run(
                 project_code=project_code,
                 project_name=project_name,
                 scenario_id=scenario_id,
-                case_code=case_code,
-                case_name=case_name,
+                case_code=resolved_case_code,
+                case_name=resolved_case_name,
+                project_id=project_id,
+                sizing_case_id=sizing_case_id,
                 version_tag=version_tag,
                 source_ref=source_ref,
                 actor=actor,
@@ -201,8 +237,10 @@ def persist_dc_run(
                 project_code=project_code,
                 project_name=project_name,
                 scenario_id=scenario_id,
-                case_code=case_code,
-                case_name=case_name,
+                case_code=resolved_case_code,
+                case_name=resolved_case_name,
+                project_id=project_id,
+                sizing_case_id=sizing_case_id,
                 version_tag=version_tag,
                 source_ref=source_ref,
                 actor=actor,

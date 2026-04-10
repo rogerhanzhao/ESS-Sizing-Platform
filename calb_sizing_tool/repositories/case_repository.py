@@ -30,6 +30,16 @@ class CaseRepository:
             self.session.add(row)
         return row
 
+    def get_project_by_id(self, project_id: str) -> Project | None:
+        return self.session.query(Project).filter_by(project_id=project_id).one_or_none()
+
+    def list_projects(self) -> list[Project]:
+        return (
+            self.session.query(Project)
+            .order_by(Project.created_at.desc())
+            .all()
+        )
+
     def create_case(
         self,
         *,
@@ -56,6 +66,17 @@ class CaseRepository:
         )
         self.session.add(row)
         return row
+
+    def get_case_by_id(self, sizing_case_id: str) -> SizingCase | None:
+        return self.session.query(SizingCase).filter_by(sizing_case_id=sizing_case_id).one_or_none()
+
+    def list_cases_by_project(self, project_id: str) -> list[SizingCase]:
+        return (
+            self.session.query(SizingCase)
+            .filter_by(project_id=project_id)
+            .order_by(SizingCase.created_at.desc())
+            .all()
+        )
 
     def create_case_if_needed(
         self,

@@ -729,6 +729,20 @@ def show():
     dc_results = state.dc_results
     ac_inputs = state.ac_inputs
 
+    active_project_id = st.session_state.get("active_project_id")
+    active_project_name = st.session_state.get("active_project_name")
+    active_project_code = st.session_state.get("active_project_code")
+    active_case_id = st.session_state.get("active_case_id")
+    active_case_name = st.session_state.get("active_case_name")
+    active_case_code = st.session_state.get("active_case_code")
+
+    if not active_project_id or not active_case_id:
+        st.warning("Select a project and case before running DC sizing.")
+        return
+
+    st.caption(f"Active Project: {active_project_name} ({active_project_code})")
+    st.caption(f"Active Case: {active_case_name} ({active_case_code})")
+
     # One-time default migration for UI fields (no impact on sizing logic)
     def _migrate_dc_defaults() -> None:
         version_key = "dc_defaults_version"
@@ -871,6 +885,14 @@ def show():
                         project_state = st.session_state.get("project_state")
                         if isinstance(project_state, dict):
                             project_state.setdefault("dc", {})["run_id"] = run_id
+                        if bundle.project_id:
+                            st.session_state["active_project_id"] = bundle.project_id
+                            st.session_state["active_project_code"] = bundle.project_code
+                            st.session_state["active_project_name"] = bundle.project_name
+                        if bundle.sizing_case_id:
+                            st.session_state["active_case_id"] = bundle.sizing_case_id
+                            st.session_state["active_case_code"] = bundle.case_code
+                            st.session_state["active_case_name"] = bundle.case_name
                         set_run_time("dc_results")
                         st.success(f"Loaded DC run {run_id}.")
                 except Exception as exc:
@@ -908,14 +930,12 @@ def show():
         st.subheader("1. Project Inputs")
 
         with st.form("main_form"):
-            project_name_default = (
-                dc_inputs.get("project_name")
-                or st.session_state.get("project_name")
-                or get_default_str("project_name", "CALB ESS Project")
-            )
+            project_name_default = active_project_name or get_default_str("project_name", "CALB ESS Project")
             project_name = st.text_input(
                 "Project Name",
                 key=_init_input("project_name", project_name_default),
+                disabled=True,
+                help="Project name is controlled by the active Project selection.",
             )
             dc_inputs["project_name"] = project_name
             st.session_state["project_name"] = project_name
@@ -1233,6 +1253,10 @@ def show():
                 persist_result = persist_dc_run(
                     SizingCaseInput.model_validate(case_input),
                     active_snapshot,
+                    project_id=active_project_id,
+                    sizing_case_id=active_case_id,
+                    case_code=active_case_code,
+                    case_name=active_case_name,
                     defaults=defaults,
                     source_ref="dc_view",
                 )
@@ -1263,6 +1287,7 @@ def show():
                         project_state = st.session_state.get("project_state")
                         if isinstance(project_state, dict):
                             project_state.setdefault("dc", {})["run_id"] = run_id
+                        st.info(f"Run saved: {run_id}")
             except Exception as exc:
                 st.error(f"Failed to persist DC run: {exc}")
 
