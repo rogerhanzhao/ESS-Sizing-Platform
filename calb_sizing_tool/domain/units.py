@@ -1,0 +1,22 @@
+from __future__ import annotations
+
+
+UNIT_NONE = "-"
+UNIT_MW = "MW"
+UNIT_MWH = "MWh"
+UNIT_KWH = "kWh"
+UNIT_KW = "kW"
+UNIT_KVA = "kVA"
+UNIT_V = "V"
+UNIT_KV = "kV"
+UNIT_AH = "Ah"
+UNIT_WH = "Wh"
+UNIT_C = "C"
+UNIT_CYCLES_PER_YEAR = "cycles/year"
+UNIT_YEAR = "year"
+UNIT_MONTH = "month"
+UNIT_PERCENT = "%"
+UNIT_FRACTION = "fraction"
+UNIT_HZ = "Hz"
+UNIT_FT = "ft"
+UNIT_COUNT = "count"

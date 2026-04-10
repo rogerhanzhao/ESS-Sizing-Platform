@@ -1,0 +1,20 @@
+{
+  "block_config_items": [
+    {
+      "block_code": "CALB_5MWh_20FT_12R",
+      "block_name": "CALB 5MWh 20ft Container - 12 Racks",
+      "count": 93,
+      "form": "container",
+      "subtotal_mwh": 466.488,
+      "total_dc_nameplate_bol_mwh": 466.488,
+      "unit_capacity_mwh": 5.016
+    }
+  ],
+  "busbars_needed": 0,
+  "cabinet_count": 0,
+  "config_adjustment_frac": 0.0063923051,
+  "container_count": 93,
+  "dc_nameplate_bol_mwh": 466.488,
+  "mode": "container_only",
+  "oversize_mwh": 2.9629932811
+}

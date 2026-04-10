@@ -1,4 +1,4 @@
-# -----------------------------------------------------------------------------
+﻿# -----------------------------------------------------------------------------
 # Personal Open-Source Notice
 #
 # Copyright (c) 2026 Alex.Zhao. All rights reserved.
@@ -496,7 +496,7 @@ def _append_dc_report_sections(doc: Document, dc_output: dict, ctx: dict, chapte
     p.add_run(
         f"S&C time from FAT to COD: {int(round(stage1.get('sc_time_months', 0)))} months\n"
     )
-    p.add_run(f"RTE Curve Adjustment (Δpp): {float(stage1.get('rte_curve_adjust_pp', 0.0)):.1f}\n")
+    p.add_run(f"RTE Curve Adjustment (pp): {float(stage1.get('rte_curve_adjust_pp', 0.0)):.1f}\n")
     p.add_run(
         f"DC\u2192POI efficiency chain (one-way): {stage1.get('eff_dc_to_poi_frac', 0.0)*100:.2f}%\n"
     )
@@ -855,3 +855,5 @@ def create_combined_report(dc_output: dict, ac_output: dict, ctx: dict) -> bytes
 
     _add_appendix(doc, ctx or {})
     return _doc_to_bytes(doc)
+
+

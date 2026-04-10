@@ -1,4 +1,4 @@
-# -----------------------------------------------------------------------------
+﻿# -----------------------------------------------------------------------------
 # Personal Open-Source Notice
 #
 # Copyright (c) 2026 Alex.Zhao. All rights reserved.
@@ -539,8 +539,9 @@ def validate_report_context(ctx: ReportContext) -> list[str]:
         expected_pcs = ctx.ac_blocks_total * ctx.pcs_per_block
         if ctx.pcs_modules_total and ctx.pcs_modules_total != expected_pcs:
             warnings.append(
-                f"PCS module count mismatch: expected {expected_pcs} (blocks × per_block), got {ctx.pcs_modules_total}."
+                f"PCS module count mismatch: expected {expected_pcs} (blocks x per_block), got {ctx.pcs_modules_total}."
             )
     
     return warnings
+
 

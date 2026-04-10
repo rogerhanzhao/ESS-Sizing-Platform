@@ -1,4 +1,4 @@
-# -----------------------------------------------------------------------------
+﻿# -----------------------------------------------------------------------------
 # Personal Open-Source Notice
 #
 # Copyright (c) 2026 Alex.Zhao. All rights reserved.
@@ -321,7 +321,7 @@ def _validate_report_consistency(ctx: ReportContext) -> list[str]:
     if ctx.pcs_modules_total > 0 and ctx.pcs_modules_total != expected_pcs:
         warnings.append(
             f"PCS module count mismatch: expected {expected_pcs} "
-            f"(AC blocks={ctx.ac_blocks_total} × PCS/block={ctx.pcs_per_block}), "
+            f"(AC blocks={ctx.ac_blocks_total} x PCS/block={ctx.pcs_per_block}), "
             f"got {ctx.pcs_modules_total}."
         )
     
@@ -461,7 +461,7 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
         f"DC RTE = {_format_percent_with_fraction(ctx.stage1.get('dc_round_trip_efficiency_frac') or 0.0, input_is_fraction=True)}"
     )
     doc.add_paragraph(
-        f"RTE Curve Adjustment (Δpp): {float(ctx.stage1.get('rte_curve_adjust_pp') or 0.0):.1f}"
+        f"RTE Curve Adjustment (pp): {float(ctx.stage1.get('rte_curve_adjust_pp') or 0.0):.1f}"
     )
     s1_rows = [
         ("DC Energy Capacity Required (MWh)", format_value(ctx.stage1.get("dc_energy_capacity_required_mwh") or 0.0, "MWh")),
@@ -811,3 +811,5 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
 
 
 export_report_v2 = export_report_v2_1
+
+

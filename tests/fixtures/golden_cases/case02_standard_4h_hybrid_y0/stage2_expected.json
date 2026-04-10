@@ -1,0 +1,29 @@
+{
+  "block_config_items": [
+    {
+      "block_code": "CALB_5MWh_20FT_12R",
+      "block_name": "CALB 5MWh 20ft Container - 12 Racks",
+      "count": 92,
+      "form": "container",
+      "subtotal_mwh": 461.472,
+      "total_dc_nameplate_bol_mwh": 463.562,
+      "unit_capacity_mwh": 5.016
+    },
+    {
+      "block_code": "CALB_0.418MWh_CAB_8P",
+      "block_name": "CALB 418kWh Cabinet - 8 Packs of 1P52S",
+      "count": 5,
+      "form": "cabinet",
+      "subtotal_mwh": 2.09,
+      "total_dc_nameplate_bol_mwh": 463.562,
+      "unit_capacity_mwh": 0.418
+    }
+  ],
+  "busbars_needed": 1,
+  "cabinet_count": 5,
+  "config_adjustment_frac": 7.98086e-05,
+  "container_count": 92,
+  "dc_nameplate_bol_mwh": 463.562,
+  "mode": "hybrid",
+  "oversize_mwh": 0.0369932811
+}

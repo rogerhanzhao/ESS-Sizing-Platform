@@ -1,0 +1,8 @@
+{
+  "fixture_id": "case04_two_hour_container_y0",
+  "poi_energy_req_mwh": 200.0,
+  "poi_guarantee_year": 0,
+  "poi_power_req_mw": 100.0,
+  "project_name": "Baseline 2H Container Y0",
+  "scenario_id": "container_only"
+}

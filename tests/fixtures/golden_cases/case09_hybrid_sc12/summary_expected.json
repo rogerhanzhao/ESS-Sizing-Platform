@@ -1,0 +1,18 @@
+{
+  "cabinet_count": 10,
+  "container_count": 103,
+  "converged": true,
+  "dc_energy_capacity_required_mwh": 470.8055042067,
+  "dc_nameplate_bol_mwh": 520.828,
+  "dc_power_required_mw": 103.531485133,
+  "eff_chain": 0.9658897472,
+  "effective_c_rate": 0.198782487,
+  "fixture_id": "case09_hybrid_sc12",
+  "guarantee_year": 5,
+  "guarantee_year_poi_usable_mwh": 403.1170440962,
+  "iterations": 20,
+  "margin_mwh": 3.1170440962,
+  "rte_profile_id": 1,
+  "scenario_id": "hybrid",
+  "soh_profile_id": 1
+}

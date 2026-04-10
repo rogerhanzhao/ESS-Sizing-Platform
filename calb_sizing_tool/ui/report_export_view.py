@@ -1,4 +1,4 @@
-# -----------------------------------------------------------------------------
+﻿# -----------------------------------------------------------------------------
 # Personal Open-Source Notice
 #
 # Copyright (c) 2026 Alex.Zhao. All rights reserved.
@@ -218,7 +218,7 @@ def show():
                     "Confidential Sizing Report (V2.1 Guoxia)",
                 ],
                 "footer_lines": [
-                    "© 2026 Guoxia Technology Co., Ltd. All rights reserved.",
+                    "(c) 2026 Guoxia Technology Co., Ltd. All rights reserved.",
                     "HKEX: 02655 (GUOXIA TECH) | Document Classification: Confidential",
                 ],
                 "cover_title": "Guoxia Technology Utility-Scale ESS Sizing Report (V2.1)",
@@ -244,3 +244,5 @@ def show():
         st.info("SLD image not found. Generate it in Single Line Diagram.")
     if not layout_png and not layout_svg:
         st.info("Layout image not found. Generate it in Site Layout.")
+
+

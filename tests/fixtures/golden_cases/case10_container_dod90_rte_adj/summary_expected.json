@@ -1,0 +1,18 @@
+{
+  "cabinet_count": 0,
+  "container_count": 107,
+  "converged": true,
+  "dc_energy_capacity_required_mwh": 487.9802972911,
+  "dc_nameplate_bol_mwh": 536.712,
+  "dc_power_required_mw": 103.531485133,
+  "eff_chain": 0.9658897472,
+  "effective_c_rate": 0.1928995162,
+  "fixture_id": "case10_container_dod90_rte_adj",
+  "guarantee_year": 5,
+  "guarantee_year_poi_usable_mwh": 402.905474175,
+  "iterations": 10,
+  "margin_mwh": 2.905474175,
+  "rte_profile_id": 1,
+  "scenario_id": "container_only",
+  "soh_profile_id": 1
+}

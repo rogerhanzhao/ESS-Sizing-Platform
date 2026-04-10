@@ -1,4 +1,4 @@
-# -----------------------------------------------------------------------------
+﻿# -----------------------------------------------------------------------------
 # Personal Open-Source Notice
 #
 # Copyright (c) 2026 Alex.Zhao. All rights reserved.
@@ -24,7 +24,7 @@ def render_sld(graph: nx.DiGraph) -> graphviz.Digraph:
     dot.attr(rankdir='TB', splines='ortho')
     dot.attr(nodesep='0.6', ranksep='0.8')
     
-    # 样式定义
+    # Style definitions
     styles = {
         "POI":     {"shape": "doublecircle", "style": "filled", "fillcolor": "#FFD700", "fontname": "Helvetica"},
         "TRAFO":   {"shape": "trapezium",    "style": "filled", "fillcolor": "#87CEEB", "fontname": "Helvetica"},
@@ -32,14 +32,14 @@ def render_sld(graph: nx.DiGraph) -> graphviz.Digraph:
         "BATTERY": {"shape": "cylinder",     "style": "filled", "fillcolor": "#FFA07A", "fontname": "Helvetica"},
     }
 
-    # 添加节点
+    # Add nodes
     for n, attrs in graph.nodes(data=True):
         ntype = attrs.get("type", "DEFAULT")
         s = styles.get(ntype, {})
         label = attrs.get("label", str(n))
         dot.node(n, label=label, **s)
 
-    # 添加边
+    # Add edges
     for u, v, attrs in graph.edges(data=True):
         etype = attrs.get("type", "AC")
         color = "red" if etype == "DC" else "black"
@@ -47,3 +47,4 @@ def render_sld(graph: nx.DiGraph) -> graphviz.Digraph:
         dot.edge(u, v, color=color, penwidth=width)
 
     return dot
+

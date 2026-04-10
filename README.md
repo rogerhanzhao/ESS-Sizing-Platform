@@ -1,85 +1,77 @@
-
 # ESS Sizing Tool
 
-V1.01: 314Ah RTE curve 0.5C fix (dictionary), added RTE curve adjustment (Δpp) input, added RTE monotonicity validation.
+Streamlit application for utility-scale ESS sizing, AC block configuration, reporting, and diagram generation.
 
-This repository contains a Streamlit application for sizing energy storage systems across Stage 1–4 and lightweight unit tests for the Stage 4 interface helpers.
+## Project Layout
+
+- `app.py`: Streamlit entry point
+- `calb_sizing_tool/`: core sizing, reporting, runtime, and UI modules
+- `calb_diagrams/`: SLD and layout renderers
+- `data/`: input workbooks and sizing dictionaries
+- `tests/`: automated tests
+- `docs/`: active documentation
 
 ## Setup
 
-1. Create and activate a virtual environment (recommended).
+1. Create and activate a virtual environment.
 2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-   - `svgwrite` is required for Pro SVG rendering; if missing, the app falls back to raw renderers.
 
-## Run the app
+```bash
+pip install -r requirements.txt
+```
 
-Launch the Streamlit application from the repository root:
+Optional diagram export dependencies:
+
+```bash
+pip install svgwrite cairosvg
+```
+
+## Run
 
 ```bash
 streamlit run app.py
 ```
 
-Ensure the Excel data files (for example, `ess_sizing_data_dictionary_v13_dc_autofit_rte314_fix05_025C94_v2.xlsx`) are present in the same directory before running.
+The required Excel dictionaries should remain under `data/`.
 
-## Report V2.1 (Beta) usage
-
-1. Run DC sizing and AC sizing as usual.
-2. In the AC Sizing downloads area, select `Report Template: V2.1 (Beta)`.
-3. Download the Combined report. V1 remains the default and unchanged.
-
-## Single Line Diagram usage
-
-1. Install dependencies: `pip install svgwrite cairosvg` (PNG export uses `cairosvg`).
-2. Run DC sizing and AC sizing.
-3. Open the `Single Line Diagram` page and select the AC block group.
-4. Click **Generate SLD**.
-5. Download the SVG (and PNG if available).
-
-## Site Layout usage (template view)
-
-1. Run DC sizing and AC sizing.
-2. Open the `Site Layout` page and choose the AC block group.
-3. Click **Generate Layout** (Raw V0.5 Stable).
-4. Download `layout_block.svg` and `layout_block.png`.
-
-## Run tests
-
-Execute the test suite with:
+## Test
 
 ```bash
 pytest -q
 ```
 
-## Smoke tests (manual)
+Focused Phase 1 regression and DB checks:
 
-1. Install deps from `requirements.txt` and open SLD/Layout pages (no svgwrite crash; raw fallback works).
-2. Run AC sizing with LV=690 V, switch to SLD/Layout/Report, confirm 690 V is shown everywhere.
-3. Verify SLD PCS count matches AC sizing output (2/4/etc).
-4. Verify Layout shows 20 ft footprints and has clearance dimension annotations.
-5. Export DOCX: header logo appears on each section and DC sizing bar chart matches UI.
+```bash
+python scripts/generate_phase1_golden_cases.py
+pytest tests/unit tests/integration -q
+```
 
+## Database And Migration
 
+Set `CALB_DATABASE_URL` before running Alembic. Example:
 
-感谢您使用和关注本项目！
-本项目基于开源生态构建，参考并使用了社区中多种优秀技术与工具。我们尊重开源许可证并在此明确致谢：
+```powershell
+$env:CALB_DATABASE_URL = "sqlite:///D:/CALB_SizingTool/var/calb_sizing.sqlite"
+alembic upgrade head
+```
 
-This project is built upon and inspired by the open source community. We acknowledge and appreciate the many frameworks, libraries, tools, and resources that make this work possible. Users are encouraged to review and comply with the respective licenses of third‑party components used herein.
+See `docs/DB_SCHEMA_OVERVIEW_V1.md` for table groups and migration notes.
 
-如您在使用本项目过程中引用或修改了本仓库的代码，请保留本说明及相关开源许可证信息，并在发布成果时注明来源。
-If you redistribute or build upon this project, please retain this notice, and clearly credit the original source.
+## Documentation
 
-📬 联系方式 / Contact
+Use the active docs under `docs/`:
 
-如需技术沟通、反馈建议，请通过以下方式联系我：
-For technical questions, feedback, or business inquiries, feel free to reach out via:
+- `docs/README.md`: documentation index
+- `docs/QUICK_START.md`: operator quick start
+- `docs/REFACTOR_PHASE1_PLAN.md`: current Phase 1 refactor scope
+- `docs/BASELINE_FREEZE_PLAN_V1.md`: DC baseline freeze plan
+- `docs/DATA_MODEL_MAP_V1.md`: canonical field and entity mapping
+- `docs/DB_SCHEMA_OVERVIEW_V1.md`: database schema overview
+- `docs/COMPATIBILITY_NOTES_V1.md`: compatibility rules for the refactor
+- `docs/REPORTING_AND_DIAGRAMS.md`: report, SLD, and layout usage
+- `docs/PCS_RATING_GUIDE.md`: PCS selection guidance
+- `docs/UBUNTU_DOCKER_DEPLOYMENT.md`: Ubuntu Docker deployment
+- `docs/ROOT_DOC_AUDIT.md`: root markdown cleanup and archive map
 
-微信 WeChat: +14015927928 
-
-
-WhatsApp: +14015927928 
-
-
-https://www.linkedin.com/in/alex-zhaoyutao
+Legacy implementation notes, repair proposals, test execution writeups, and PR or push artifacts were removed from the repository root and archived under `docs/archive/root-legacy/`.

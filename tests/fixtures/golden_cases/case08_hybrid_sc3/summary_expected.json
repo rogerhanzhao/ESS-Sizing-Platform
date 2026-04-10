@@ -1,0 +1,18 @@
+{
+  "cabinet_count": 10,
+  "container_count": 100,
+  "converged": true,
+  "dc_energy_capacity_required_mwh": 458.7951597116,
+  "dc_nameplate_bol_mwh": 505.78,
+  "dc_power_required_mw": 103.531485133,
+  "eff_chain": 0.9658897472,
+  "effective_c_rate": 0.2046966767,
+  "fixture_id": "case08_hybrid_sc3",
+  "guarantee_year": 5,
+  "guarantee_year_poi_usable_mwh": 401.7179085234,
+  "iterations": 14,
+  "margin_mwh": 1.7179085234,
+  "rte_profile_id": 1,
+  "scenario_id": "hybrid",
+  "soh_profile_id": 1
+}

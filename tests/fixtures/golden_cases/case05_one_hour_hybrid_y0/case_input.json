@@ -1,0 +1,8 @@
+{
+  "fixture_id": "case05_one_hour_hybrid_y0",
+  "poi_energy_req_mwh": 100.0,
+  "poi_guarantee_year": 0,
+  "poi_power_req_mw": 100.0,
+  "project_name": "Baseline 1H Hybrid Y0",
+  "scenario_id": "hybrid"
+}

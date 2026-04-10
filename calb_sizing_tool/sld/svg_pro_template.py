@@ -1,4 +1,4 @@
-# -----------------------------------------------------------------------------
+﻿# -----------------------------------------------------------------------------
 # Personal Open-Source Notice
 #
 # Copyright (c) 2026 Alex.Zhao. All rights reserved.
@@ -447,7 +447,7 @@ def apply_pro_template(svg_in: Path, metadata_in, snapshot: dict, svg_out: Path)
         rect_x = base_x - dc_box_width / 2
         rect_y = base_y + dc_offset_y
 
-        label = f"DC Block ×{dc_count}"
+        label = f"DC Block x{dc_count}"
         if dc_energy is not None:
             try:
                 label += f" / {float(dc_energy):.2f} MWh"
@@ -640,3 +640,5 @@ def apply_pro_template(svg_in: Path, metadata_in, snapshot: dict, svg_out: Path)
 
     svg_out.parent.mkdir(parents=True, exist_ok=True)
     tree.write(svg_out, encoding="utf-8", xml_declaration=True)
+
+

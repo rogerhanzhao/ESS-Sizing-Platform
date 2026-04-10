@@ -1,0 +1,11 @@
+{
+  "dc_round_trip_efficiency_pct": 93.0,
+  "dod_pct": 90.0,
+  "fixture_id": "case10_container_dod90_rte_adj",
+  "poi_energy_req_mwh": 400.0,
+  "poi_guarantee_year": 5,
+  "poi_power_req_mw": 100.0,
+  "project_name": "Baseline Container DoD90 RTEAdj",
+  "rte_curve_adjust_pp": 1.5,
+  "scenario_id": "container_only"
+}

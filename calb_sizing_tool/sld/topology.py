@@ -1,4 +1,4 @@
-# -----------------------------------------------------------------------------
+﻿# -----------------------------------------------------------------------------
 # Personal Open-Source Notice
 #
 # Copyright (c) 2026 Alex.Zhao. All rights reserved.
@@ -26,7 +26,7 @@ class ElectricalTopology:
         self._build_network()
 
     def _build_network(self):
-        # 1. 根节点 (POI)
+        # 1. Root node (POI)
         poi_id = "POI"
         self.graph.add_node(
             poi_id, 
@@ -34,7 +34,7 @@ class ElectricalTopology:
             label=f"POI\n{self.data.total_power_mw:.1f} MW"
         )
 
-        # 2. 遍历 AC Blocks
+        # 2. Traverse AC blocks
         for i, ac in enumerate(self.data.ac_blocks):
             # Transformer
             trafo_id = f"Trafo_{i+1}"
@@ -50,7 +50,7 @@ class ElectricalTopology:
                 self.graph.add_edge(trafo_id, pcs_id, type="AC_LV", label="AC Bus")
 
                 # Battery (DC)
-                # 简单逻辑：假设每个PCS挂一组/多组电池簇
+                # Simplified logic: assume each PCS connects to one or more battery clusters
                 dc_block = self.data.dc_blocks[i] if i < len(self.data.dc_blocks) else None
                 if dc_block:
                     bat_id = f"{pcs_id}_BAT"
@@ -60,3 +60,4 @@ class ElectricalTopology:
 
     def get_graph(self):
         return self.graph
+

@@ -1,0 +1,18 @@
+{
+  "cabinet_count": 1109,
+  "container_count": 0,
+  "converged": true,
+  "dc_energy_capacity_required_mwh": 463.5250067189,
+  "dc_nameplate_bol_mwh": 463.562,
+  "dc_power_required_mw": 103.531485133,
+  "eff_chain": 0.9658897472,
+  "effective_c_rate": 0.2233390251,
+  "fixture_id": "case03_standard_4h_cabinet_y0",
+  "guarantee_year": 0,
+  "guarantee_year_poi_usable_mwh": 400.0319234393,
+  "iterations": 1,
+  "margin_mwh": 0.0319234393,
+  "rte_profile_id": 1,
+  "scenario_id": "cabinet_only",
+  "soh_profile_id": 1
+}

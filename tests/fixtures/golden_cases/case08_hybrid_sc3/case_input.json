@@ -1,0 +1,9 @@
+{
+  "fixture_id": "case08_hybrid_sc3",
+  "poi_energy_req_mwh": 400.0,
+  "poi_guarantee_year": 5,
+  "poi_power_req_mw": 100.0,
+  "project_name": "Baseline Hybrid SC3",
+  "sc_time_months": 3,
+  "scenario_id": "hybrid"
+}

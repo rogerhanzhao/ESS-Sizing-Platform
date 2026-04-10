@@ -1,4 +1,4 @@
-# -----------------------------------------------------------------------------
+﻿# -----------------------------------------------------------------------------
 # Personal Open-Source Notice
 #
 # Copyright (c) 2026 Alex.Zhao. All rights reserved.
@@ -19,17 +19,39 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import math
 import altair as alt
 import os
 import io
 from pathlib import Path
 
-# --- 适配新架构的引用 ---
+# --- Adapted imports for refactor ---
+from calb_sizing_tool.adapters.excel_loader_adapter import bundle_to_legacy_tuple, load_dc_excel_bundle_from_path
+from calb_sizing_tool.adapters.session_state_adapter import build_dc_result_summary, build_stage13_output
 from calb_sizing_tool.config import DC_DATA_PATH, DC_DATA_IS_LEGACY, PROJECT_ROOT
 from calb_sizing_tool.common.nameplate import apply_block_nameplate_recalc, get_standard_container_mwh
+from calb_sizing_tool.schemas.case import SizingCaseInput
+from calb_sizing_tool.schemas.master_data import DcExcelMasterDataBundle
+from calb_sizing_tool.schemas.run_snapshot import DcPipelineRunSnapshot
+from calb_sizing_tool.schemas.stage1 import Stage1Result
+from calb_sizing_tool.schemas.stage2 import Stage2Result
+from calb_sizing_tool.schemas.stage3 import Stage3Result
+from calb_sizing_tool.services.dc_pipeline_service import size_with_guarantee as service_size_with_guarantee
+from calb_sizing_tool.services.run_persistence_service import load_dc_run, persist_dc_run
+from calb_sizing_tool.services.stage1_service import run_stage1 as service_run_stage1
+from calb_sizing_tool.services.stage2_service import (
+    K_MAX_FIXED,
+    build_config_cabinet_only as service_build_config_cabinet_only,
+    build_config_container_only as service_build_config_container_only,
+    build_config_hybrid as service_build_config_hybrid,
+    pick_dc_block as service_pick_dc_block,
+)
+from calb_sizing_tool.services.stage3_service import (
+    run_stage3 as service_run_stage3,
+    select_rte_profile as service_select_rte_profile,
+    select_soh_profile as service_select_soh_profile,
+)
 from calb_sizing_tool.ui.stage4_interface import pack_stage13_output
-# 引入数据模型用于传递给 AC/SLD
+# Model import for AC/SLD handoff
 from calb_sizing_tool.models import DCBlockResult
 from calb_sizing_tool.state.project_state import bump_run_id_dc, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
@@ -51,9 +73,6 @@ try:
     MATPLOTLIB_AVAILABLE = True
 except Exception:
     MATPLOTLIB_AVAILABLE = False
-
-# Design rule: max 418kWh cabinets per DC busbar
-K_MAX_FIXED = 10
 
 # ==========================================
 # CALB VI COLORS
@@ -216,33 +235,8 @@ def first_success_key(results: dict, preferred_order: list):
 # ==========================================
 @st.cache_data
 def load_data(path: Path):
-    if not path.is_file():
-         raise FileNotFoundError(f"Data file not found at {path}")
-         
-    xls = pd.ExcelFile(path)
-
-    df_case = pd.read_excel(xls, "ess_sizing_case")
-    defaults = {}
-    for _, row in df_case.iterrows():
-        field_name = row.get("Field Name")
-        if isinstance(field_name, str) and field_name.strip():
-            defaults[field_name.strip()] = row.get("Default Value")
-
-    df_blocks = pd.read_excel(xls, "dc_block_template_314_data")
-    try:
-        df_cell = pd.read_excel(xls, "battery_cell_type_314_data")
-        df_pack = pd.read_excel(xls, "pack_type_314_data")
-        df_rack = pd.read_excel(xls, "rack_type_314_data")
-        df_blocks = apply_block_nameplate_recalc(df_blocks, df_rack, df_pack, df_cell)
-    except Exception:
-        # If auxiliary tables are missing, fall back to the template values.
-        pass
-    df_soh_profile = pd.read_excel(xls, "soh_profile_314_data")
-    df_soh_curve = pd.read_excel(xls, "soh_curve_314_template")
-    df_rte_profile = pd.read_excel(xls, "rte_profile_314_data")
-    df_rte_curve = pd.read_excel(xls, "rte_curve_314_template")
-
-    return defaults, df_blocks, df_soh_profile, df_soh_curve, df_rte_profile, df_rte_curve
+    bundle = load_dc_excel_bundle_from_path(path)
+    return bundle_to_legacy_tuple(bundle)
 
 def validate_rte_monotonicity_314(
     df_rte_profile: pd.DataFrame,
@@ -300,217 +294,37 @@ def validate_rte_monotonicity_314(
 # 4. CORE CALC LOGIC
 # ==========================================
 def run_stage1(inputs: dict, defaults: dict) -> dict:
-    def get(name, fallback=None):
-        if name in inputs and inputs[name] is not None:
-            return inputs[name]
-        if name in defaults:
-            return defaults[name]
-        return fallback
-
-    project_name = str(get("project_name", "CALB ESS Project"))
-
-    poi_mw = to_float(get("poi_power_req_mw", 100.0))
-    poi_mwh = to_float(get("poi_energy_req_mwh", 400.0))
-    project_life_years = to_int(get("project_life_years", 20), 20)
-    cycles_per_year = to_int(get("cycles_per_year", 365), 365)
-    poi_guarantee_year = to_int(get("poi_guarantee_year", 0), 0)
-
-    eff_dc_cables = to_frac(get("eff_dc_cables", 0.995))
-    eff_pcs       = to_frac(get("eff_pcs", 0.985))
-    eff_mvt       = to_frac(get("eff_mvt", 0.995))
-    eff_ac_sw     = to_frac(get("eff_ac_cables_sw_rmu", 0.992))
-    eff_hvt       = to_frac(get("eff_hvt_others", 1.0))
-    eff_chain = eff_dc_cables * eff_pcs * eff_mvt * eff_ac_sw * eff_hvt
-
-    sc_val = to_int(get("sc_time_months", 3), 3)
-    if sc_val < 3:
-        sc_val = 3
-    sc_time_months = sc_val
-    sc_loss_pct = calc_sc_loss_pct(sc_time_months)
-    sc_loss_frac = sc_loss_pct / 100.0
-
-    dod_frac    = to_frac(get("dod_pct", 95.0))
-    dc_rte_base_frac = to_frac(get("dc_round_trip_efficiency_pct", 94.0))
-    rte_adjust_pp = to_float(get("rte_curve_adjust_pp", 0.0), 0.0)
-    rte_adjust_frac = rte_adjust_pp / 100.0
-    rte_monotonic_enforce = bool(get("rte_monotonic_enforce", True))
-    dc_rte_effective_frac = clamp01(dc_rte_base_frac + rte_adjust_frac)
-    dc_one_way_eff = math.sqrt(dc_rte_effective_frac) if dc_rte_effective_frac >= 0 else 0.0
-    dc_usable_bol_frac = dod_frac * dc_one_way_eff
-
-    denom = (1.0 - sc_loss_frac) * dc_usable_bol_frac * eff_chain
-    dc_energy_required = safe_div(poi_mwh, denom, default=0.0)
-
-    dc_power_required_mw = safe_div(poi_mw, eff_chain, default=0.0) if eff_chain > 0 else 0.0
-
-    return {
-        "project_name": project_name,
-        "poi_power_req_mw": poi_mw,
-        "poi_energy_req_mwh": poi_mwh,
-        "project_life_years": project_life_years,
-        "cycles_per_year": cycles_per_year,
-        "poi_guarantee_year": poi_guarantee_year,
-        "eff_dc_cables_frac": eff_dc_cables,
-        "eff_pcs_frac": eff_pcs,
-        "eff_mvt_frac": eff_mvt,
-        "eff_ac_cables_sw_rmu_frac": eff_ac_sw,
-        "eff_hvt_others_frac": eff_hvt,
-        "eff_dc_to_poi_frac": eff_chain,
-        "sc_time_months": sc_time_months,
-        "sc_loss_pct": sc_loss_pct,
-        "sc_loss_frac": sc_loss_frac,
-        "dod_frac": dod_frac,
-        "dc_round_trip_efficiency_frac": dc_rte_effective_frac,
-        "dc_rte_base_frac": dc_rte_base_frac,
-        "dc_rte_effective_frac": dc_rte_effective_frac,
-        "rte_curve_adjust_pp": rte_adjust_pp,
-        "rte_adjust_frac": rte_adjust_frac,
-        "rte_monotonic_enforce": rte_monotonic_enforce,
-        "dc_one_way_efficiency_frac": dc_one_way_eff,
-        "dc_usable_bol_frac": dc_usable_bol_frac,
-        "dc_energy_capacity_required_mwh": dc_energy_required,
-        "dc_power_required_mw": dc_power_required_mw,
-    }
+    return service_run_stage1(inputs, defaults).to_legacy_dict()
 
 def _pick_dc_block(df_blocks: pd.DataFrame, form: str):
-    df = df_blocks.copy()
-    df["Block_Form_L"] = df["Block_Form"].astype(str).str.lower()
-    cand = df[(df["Block_Form_L"] == form.lower()) & (df["Is_Active"] == 1)]
-    if cand.empty:
-        return None
-
-    pref = cand[cand["Is_Default_Option"] == 1]
-    if pref.empty:
-        pref = cand
-
-    pref = pref.sort_values("Block_Nameplate_Capacity_Mwh", ascending=False)
-    row = pref.iloc[0]
-    return str(row["Dc_Block_Code"]), str(row["Dc_Block_Name"]), float(row["Block_Nameplate_Capacity_Mwh"])
-
-def _make_config_table(rows: list):
-    df = pd.DataFrame(rows)
-    if df.empty:
-        return df
-
-    # Keep DC block nameplate values at 3-decimal precision (MWh).
-    df["Unit Capacity (MWh)"] = pd.to_numeric(df["Unit Capacity (MWh)"], errors="coerce").round(3)
-    df["Subtotal (MWh)"] = (df["Unit Capacity (MWh)"] * df["Count"]).round(3)
-    total = round(float(df["Subtotal (MWh)"].sum()), 3)
-    df["Total DC Nameplate @BOL (MWh)"] = total
-    return df
+    return service_pick_dc_block(df_blocks, form)
 
 def build_config_container_only(required_dc_mwh: float, container_unit: float, container_code: str, container_name: str):
-    cnt = int(math.ceil(required_dc_mwh / container_unit)) if required_dc_mwh > 0 else 0
-    rows = [{
-        "Block Code": container_code,
-        "Block Name": container_name,
-        "Form": "container",
-        "Unit Capacity (MWh)": float(container_unit),
-        "Count": int(cnt),
-    }]
-    df = _make_config_table(rows)
-    total = float(df["Subtotal (MWh)"].sum()) if not df.empty else 0.0
-    oversize = total - required_dc_mwh
-    return {
-        "mode": "container_only",
-        "dc_nameplate_bol_mwh": total,
-        "oversize_mwh": oversize,
-        "config_adjustment_frac": (total / required_dc_mwh - 1.0) if required_dc_mwh > 0 else 0.0,
-        "block_config_table": df,
-        "container_count": cnt,
-        "cabinet_count": 0,
-        "busbars_needed": 0,
-    }
+    return service_build_config_container_only(required_dc_mwh, container_unit, container_code, container_name).to_legacy_dict()
 
 def build_config_cabinet_only(required_dc_mwh: float, cab_unit: float, cab_code: str, cab_name: str, k_max: int = K_MAX_FIXED):
-    cab = int(math.ceil(required_dc_mwh / cab_unit)) if required_dc_mwh > 0 else 0
-    busbars = int(math.ceil(cab / k_max)) if cab > 0 else 0
-    rows = [{
-        "Block Code": cab_code,
-        "Block Name": cab_name,
-        "Form": "cabinet",
-        "Unit Capacity (MWh)": float(cab_unit),
-        "Count": int(cab),
-    }]
-    df = _make_config_table(rows)
-    total = float(df["Subtotal (MWh)"].sum()) if not df.empty else 0.0
-    oversize = total - required_dc_mwh
-    return {
-        "mode": "cabinet_only",
-        "dc_nameplate_bol_mwh": total,
-        "oversize_mwh": oversize,
-        "config_adjustment_frac": (total / required_dc_mwh - 1.0) if required_dc_mwh > 0 else 0.0,
-        "block_config_table": df,
-        "container_count": 0,
-        "cabinet_count": cab,
-        "busbars_needed": busbars,
-    }
+    return service_build_config_cabinet_only(required_dc_mwh, cab_unit, cab_code, cab_name, k_max=k_max).to_legacy_dict()
 
 def build_config_hybrid(required_dc_mwh: float,
                         container_unit: float, container_code: str, container_name: str,
                         cab_unit: float, cab_code: str, cab_name: str,
                         k_max: int = K_MAX_FIXED):
-    if required_dc_mwh <= 0:
-        cont = 0
-        cab = 0
-    else:
-        cont = int(math.floor(required_dc_mwh / container_unit))
-        remainder = required_dc_mwh - cont * container_unit
-        if remainder <= 1e-9:
-            cab = 0
-        else:
-            cab = int(math.ceil(remainder / cab_unit))
-            if cab > k_max:
-                cont += 1
-                cab = 0
-
-    rows = []
-    if cont > 0:
-        rows.append({
-            "Block Code": container_code,
-            "Block Name": container_name,
-            "Form": "container",
-            "Unit Capacity (MWh)": float(container_unit),
-            "Count": int(cont),
-        })
-    if cab > 0:
-        rows.append({
-            "Block Code": cab_code,
-            "Block Name": cab_name,
-            "Form": "cabinet",
-            "Unit Capacity (MWh)": float(cab_unit),
-            "Count": int(cab),
-        })
-
-    df = _make_config_table(rows)
-    total = float(df["Subtotal (MWh)"].sum()) if not df.empty else 0.0
-    oversize = total - required_dc_mwh
-    busbars = 1 if cab > 0 else 0
-
-    return {
-        "mode": "hybrid",
-        "dc_nameplate_bol_mwh": total,
-        "oversize_mwh": oversize,
-        "config_adjustment_frac": (total / required_dc_mwh - 1.0) if required_dc_mwh > 0 else 0.0,
-        "block_config_table": df,
-        "container_count": cont,
-        "cabinet_count": cab,
-        "busbars_needed": busbars,
-    }
+    return service_build_config_hybrid(
+        required_dc_mwh,
+        container_unit,
+        container_code,
+        container_name,
+        cab_unit,
+        cab_code,
+        cab_name,
+        k_max=k_max,
+    ).to_legacy_dict()
 
 def select_soh_profile(effective_c_rate: float, cycles_per_year: int, df_soh_profile: pd.DataFrame):
-    df = df_soh_profile.copy()
-    df["c_rate_diff"] = (df["C_Rate"] - effective_c_rate).abs()
-    df["cycles_diff"] = (df["Cycles_Per_Year"] - cycles_per_year).abs()
-    df["score"] = df["c_rate_diff"] * 10.0 + df["cycles_diff"] / 365.0
-    best = df.sort_values("score").iloc[0]
-    return int(best["Profile_Id"]), float(best["C_Rate"]), int(best["Cycles_Per_Year"])
+    return service_select_soh_profile(effective_c_rate, cycles_per_year, df_soh_profile)
 
 def select_rte_profile(effective_c_rate: float, df_rte_profile: pd.DataFrame):
-    df = df_rte_profile.copy()
-    df["c_rate_diff"] = (df["C_Rate"] - effective_c_rate).abs()
-    best = df.sort_values("c_rate_diff").iloc[0]
-    return int(best["Profile_Id"]), float(best["C_Rate"])
+    return service_select_rte_profile(effective_c_rate, df_rte_profile)
 
 def run_stage3(stage1: dict,
                stage2: dict,
@@ -518,118 +332,44 @@ def run_stage3(stage1: dict,
                df_soh_curve: pd.DataFrame,
                df_rte_profile: pd.DataFrame,
                df_rte_curve: pd.DataFrame):
-
-    dc_nameplate_bol_mwh = stage2["dc_nameplate_bol_mwh"]
-    if dc_nameplate_bol_mwh <= 0:
-        raise ValueError("DC nameplate @BOL must be > 0 for Stage 3.")
-
-    poi_mw = stage1["poi_power_req_mw"]
-    poi_energy_mwh = stage1["poi_energy_req_mwh"]
-    project_life_years = int(stage1["project_life_years"])
-    cycles_per_year = int(stage1["cycles_per_year"])
-    sc_loss_frac = stage1["sc_loss_frac"]
-    dod_frac = stage1["dod_frac"]
-    eff_chain = stage1["eff_dc_to_poi_frac"]
-    guarantee_year = int(stage1.get("poi_guarantee_year", 0))
-    rte_adjust_frac = to_float(stage1.get("rte_adjust_frac", 0.0), 0.0)
-    rte_monotonic_enforce = bool(stage1.get("rte_monotonic_enforce", True))
-
-    dc_power_mw = safe_div(poi_mw, eff_chain, default=0.0) if eff_chain > 0 else 0.0
-    effective_c_rate = safe_div(dc_power_mw, dc_nameplate_bol_mwh, default=0.0)
-
-    soh_profile_id, chosen_soh_c_rate, chosen_cycles_per_year = select_soh_profile(
-        effective_c_rate, cycles_per_year, df_soh_profile
+    bundle = DcExcelMasterDataBundle(
+        workbook_path=Path(DC_DATA_PATH),
+        defaults={},
+        df_blocks=pd.DataFrame(),
+        df_soh_profile=df_soh_profile.copy(),
+        df_soh_curve=df_soh_curve.copy(),
+        df_rte_profile=df_rte_profile.copy(),
+        df_rte_curve=df_rte_curve.copy(),
+        raw_sheets={},
     )
-    rte_profile_id, chosen_rte_c_rate = select_rte_profile(effective_c_rate, df_rte_profile)
-
-    soh_curve_sel = df_soh_curve[df_soh_curve["Profile_Id"] == soh_profile_id].copy()
-    if "Soh_Dc_Pct" in soh_curve_sel.columns:
-        soh_curve_sel["Soh_Dc_Pct"] = soh_curve_sel["Soh_Dc_Pct"].apply(lambda x: to_frac(x))
-    soh_curve_sel = soh_curve_sel.sort_values("Life_Year_Index")
-
-    rte_curve_sel = df_rte_curve[df_rte_curve["Profile_Id"] == rte_profile_id].copy()
-    if "Soh_Band_Min_Pct" in rte_curve_sel.columns:
-        rte_curve_sel["Soh_Band_Min_Pct"] = rte_curve_sel["Soh_Band_Min_Pct"].apply(lambda x: to_frac(x))
-    if "Rte_Dc_Pct" in rte_curve_sel.columns:
-        rte_curve_sel["Rte_Dc_Pct"] = rte_curve_sel["Rte_Dc_Pct"].apply(lambda x: to_frac(x))
-    rte_curve_sel = rte_curve_sel.sort_values("Soh_Band_Min_Pct", ascending=False)
-    if rte_monotonic_enforce:
-        rte_curve_sel["Rte_Dc_Pct"] = pd.to_numeric(rte_curve_sel["Rte_Dc_Pct"], errors="coerce")
-        rte_curve_sel["Rte_Dc_Pct"] = rte_curve_sel["Rte_Dc_Pct"].ffill().bfill()
-        rte_curve_sel["Rte_Dc_Pct"] = rte_curve_sel["Rte_Dc_Pct"].cummin()
-
-    records = []
-    dc_usable_bol_mwh = None
-    dc_usable_cod_mwh = None
-
-    for y in range(0, project_life_years + 1):
-        row = soh_curve_sel[soh_curve_sel["Life_Year_Index"] == y]
-        if not row.empty:
-            soh_rel = float(row["Soh_Dc_Pct"].iloc[0])
-        else:
-            soh_rel = float(soh_curve_sel["Soh_Dc_Pct"].iloc[-1])
-
-        # SOH vs FAT is for display only; post-COD degradation uses SOH@COD baseline
-        soh_rel_calc = round(soh_rel * 100.0, 1) / 100.0
-        soh_abs = soh_rel * (1.0 - sc_loss_frac)
-
-        rte_row = rte_curve_sel[rte_curve_sel["Soh_Band_Min_Pct"] <= soh_rel].head(1)
-        if rte_row.empty:
-            rte_row = rte_curve_sel.tail(1)
-
-        raw_rte = float(rte_row["Rte_Dc_Pct"].iloc[0])
-        dc_rte_frac_year = clamp01(raw_rte + rte_adjust_frac)
-
-        if y == 0:
-            dc_usable_bol_mwh = dc_nameplate_bol_mwh * dod_frac * math.sqrt(dc_rte_frac_year)
-            dc_usable_cod_mwh = dc_usable_bol_mwh * (1.0 - sc_loss_frac)
-        if dc_usable_bol_mwh is None:
-            dc_usable_bol_mwh = dc_nameplate_bol_mwh * dod_frac
-        if dc_usable_cod_mwh is None:
-            dc_usable_cod_mwh = dc_usable_bol_mwh * (1.0 - sc_loss_frac)
-
-        dc_gross_capacity_mwh_year = dc_nameplate_bol_mwh * (1.0 - sc_loss_frac) * soh_rel_calc
-        dc_usable_mwh_year = dc_usable_cod_mwh * soh_rel_calc
-        poi_usable_mwh_year = max(dc_usable_mwh_year * eff_chain, 0.0)
-
-        system_rte_frac_year = min(1.0, max(0.0, dc_rte_frac_year * (eff_chain ** 2)))
-        meets_poi_energy = poi_usable_mwh_year >= poi_energy_mwh
-
-        records.append(
+    stage1_model = Stage1Result.model_validate(stage1)
+    records = stage2.get("block_config_table_records")
+    if records is None and isinstance(stage2.get("block_config_table"), pd.DataFrame):
+        records = stage2["block_config_table"].to_dict("records")
+    stage2_payload = {
+        "mode": stage2.get("mode"),
+        "dc_nameplate_bol_mwh": stage2.get("dc_nameplate_bol_mwh"),
+        "oversize_mwh": stage2.get("oversize_mwh"),
+        "config_adjustment_frac": stage2.get("config_adjustment_frac"),
+        "container_count": stage2.get("container_count"),
+        "cabinet_count": stage2.get("cabinet_count"),
+        "busbars_needed": stage2.get("busbars_needed"),
+        "block_config_items": [
             {
-                "Year_Index": int(y),
-                "SOH_Relative": soh_rel_calc,
-                "SOH_Absolute": soh_abs,
-                "DC_Nameplate_BOL_MWh": dc_nameplate_bol_mwh,
-                "DC_Gross_Capacity_MWh": dc_gross_capacity_mwh_year,
-                "DC_Usable_MWh": dc_usable_mwh_year,
-                "DC_RTE_Frac": dc_rte_frac_year,
-                "System_RTE_Frac": system_rte_frac_year,
-                "POI_Usable_Energy_MWh": poi_usable_mwh_year,
-                "Meets_POI_Req": meets_poi_energy,
-                "Is_Guarantee_Year": (y == guarantee_year),
+                "block_code": record.get("Block Code"),
+                "block_name": record.get("Block Name"),
+                "form": record.get("Form"),
+                "unit_capacity_mwh": record.get("Unit Capacity (MWh)"),
+                "count": record.get("Count"),
+                "subtotal_mwh": record.get("Subtotal (MWh)", 0.0),
+                "total_dc_nameplate_bol_mwh": record.get("Total DC Nameplate @BOL (MWh)", stage2.get("dc_nameplate_bol_mwh", 0.0)),
             }
-        )
-
-    df_years = pd.DataFrame(records)
-    df_years["SOH_Display_Pct"] = df_years["SOH_Relative"] * 100.0
-    df_years["SOH_Absolute_Pct"] = df_years["SOH_Absolute"] * 100.0
-    df_years["DC_RTE_Pct"] = df_years["DC_RTE_Frac"] * 100.0
-    df_years["System_RTE_Pct"] = df_years["System_RTE_Frac"] * 100.0
-
-    meta = {
-        "poi_power_mw": poi_mw,
-        "dc_power_mw": dc_power_mw,
-        "effective_c_rate": effective_c_rate,
-        "soh_profile_id": soh_profile_id,
-        "rte_profile_id": rte_profile_id,
-        "chosen_soh_c_rate": chosen_soh_c_rate,
-        "chosen_soh_cycles_per_year": chosen_cycles_per_year,
-        "chosen_rte_c_rate": chosen_rte_c_rate,
-        "rte_adjust_pp": stage1.get("rte_curve_adjust_pp", 0.0),
-        "rte_monotonic_enforce": rte_monotonic_enforce,
+            for record in (records or [])
+        ],
     }
-    return df_years, meta
+    stage2_model = Stage2Result.model_validate(stage2_payload)
+    stage3_result = service_run_stage3(stage1_model, stage2_model, bundle)
+    return stage3_result.dataframe(), stage3_result.meta.to_legacy_dict()
 
 def size_with_guarantee(stage1: dict,
                         mode: str,
@@ -640,105 +380,34 @@ def size_with_guarantee(stage1: dict,
                         df_rte_curve: pd.DataFrame,
                         k_max: int = K_MAX_FIXED,
                         max_iter: int = 60):
-
-    required_dc = float(stage1["dc_energy_capacity_required_mwh"])
-    poi_energy_req = float(stage1["poi_energy_req_mwh"])
-    guarantee_year = int(stage1.get("poi_guarantee_year", 0))
-    project_life_years = int(stage1["project_life_years"])
-    guarantee_year = max(0, min(guarantee_year, project_life_years))
-
-    picked_container = _pick_dc_block(df_blocks, "container")
-    picked_cabinet   = _pick_dc_block(df_blocks, "cabinet")
-
-    if picked_container is None:
-        raise ValueError("No active 'container' DC block template found in Excel.")
-    if picked_cabinet is None:
-        if mode != "container_only":
-            raise ValueError("No active 'cabinet' DC block template found in Excel (needed for hybrid/cabinet-only).")
-
-    cont_code, cont_name, cont_unit = picked_container
-    if picked_cabinet:
-        cab_code, cab_name, cab_unit = picked_cabinet
-    else:
-        cab_code, cab_name, cab_unit = "", "", 0.0
-
-    if mode == "container_only":
-        s2 = build_config_container_only(required_dc, cont_unit, cont_code, cont_name)
-    elif mode == "hybrid":
-        s2 = build_config_hybrid(required_dc, cont_unit, cont_code, cont_name, cab_unit, cab_code, cab_name, k_max=k_max)
-    elif mode == "cabinet_only":
-        s2 = build_config_cabinet_only(required_dc, cab_unit, cab_code, cab_name, k_max=k_max)
-    else:
-        raise ValueError(f"Unknown mode: {mode}")
-
-    s3_df, s3_meta = run_stage3(stage1, s2, df_soh_profile, df_soh_curve, df_rte_profile, df_rte_curve)
-
-    def poi_at_year(df, year):
-        row = df[df["Year_Index"] == int(year)]
-        if row.empty:
-            return None
-        return float(row["POI_Usable_Energy_MWh"].iloc[0])
-
-    poi_g = poi_at_year(s3_df, guarantee_year)
-    if poi_g is None:
-        return s2, s3_df, s3_meta, 1, None, False
-
-    iter_count = 1
-    converged = (poi_g + 1e-6 >= poi_energy_req)
-
-    while not converged and iter_count < max_iter:
-        if mode == "container_only":
-            s2["container_count"] += 1
-        elif mode == "cabinet_only":
-            s2["cabinet_count"] += 1
-        elif mode == "hybrid":
-            if s2["cabinet_count"] < k_max and s2["cabinet_count"] > 0:
-                s2["cabinet_count"] += 1
-            elif s2["cabinet_count"] == 0:
-                s2["cabinet_count"] = 1
-            else:
-                s2["container_count"] += 1
-
-        rows = []
-        if s2["container_count"] > 0:
-            rows.append({
-                "Block Code": cont_code,
-                "Block Name": cont_name,
-                "Form": "container",
-                "Unit Capacity (MWh)": float(cont_unit),
-                "Count": int(s2["container_count"]),
-            })
-        if mode in ("hybrid", "cabinet_only") and s2["cabinet_count"] > 0:
-            rows.append({
-                "Block Code": cab_code,
-                "Block Name": cab_name,
-                "Form": "cabinet",
-                "Unit Capacity (MWh)": float(cab_unit),
-                "Count": int(s2["cabinet_count"]),
-            })
-
-        df_cfg = _make_config_table(rows)
-        s2["block_config_table"] = df_cfg
-        total = float(df_cfg["Subtotal (MWh)"].sum()) if not df_cfg.empty else 0.0
-        s2["dc_nameplate_bol_mwh"] = total
-        s2["oversize_mwh"] = total - required_dc
-        s2["config_adjustment_frac"] = (total / required_dc - 1.0) if required_dc > 0 else 0.0
-
-        if mode == "cabinet_only":
-            s2["busbars_needed"] = int(math.ceil(s2["cabinet_count"] / k_max)) if s2["cabinet_count"] > 0 else 0
-        elif mode == "hybrid":
-            s2["busbars_needed"] = 1 if s2["cabinet_count"] > 0 else 0
-        else:
-            s2["busbars_needed"] = 0
-
-        s3_df, s3_meta = run_stage3(stage1, s2, df_soh_profile, df_soh_curve, df_rte_profile, df_rte_curve)
-        poi_g = poi_at_year(s3_df, guarantee_year)
-
-        iter_count += 1
-        if poi_g is not None and (poi_g + 1e-6 >= poi_energy_req):
-            converged = True
-
-    return s2, s3_df, s3_meta, iter_count, poi_g, converged
+    bundle = DcExcelMasterDataBundle(
+        workbook_path=Path(DC_DATA_PATH),
+        defaults={},
+        df_blocks=df_blocks.copy(),
+        df_soh_profile=df_soh_profile.copy(),
+        df_soh_curve=df_soh_curve.copy(),
+        df_rte_profile=df_rte_profile.copy(),
+        df_rte_curve=df_rte_curve.copy(),
+        raw_sheets={},
+    )
+    snapshot = service_size_with_guarantee(
+        Stage1Result.model_validate(stage1),
+        mode,
+        bundle,
+        k_max=k_max,
+        max_iter=max_iter,
+    )
+    s2 = snapshot.stage2.to_legacy_dict()
+    s3_df = snapshot.stage3.dataframe()
+    s3_meta = snapshot.stage3.meta.to_legacy_dict()
+    return (
+        s2,
+        s3_df,
+        s3_meta,
+        snapshot.iteration_count,
+        snapshot.poi_usable_energy_mwh_at_guarantee_year,
+        snapshot.converged,
+    )
 
 # ==========================================
 # 5. REPORT EXPORT HELPERS
@@ -975,8 +644,8 @@ def build_report_bytes(stage1: dict, results_dict: dict, report_order: list):
     p.add_run(f"POI guarantee year: {int(stage1.get('poi_guarantee_year', 0))}\n")
     p.add_run(f"Cycles per year (assumed): {int(stage1['cycles_per_year'])}\n")
     p.add_run(f"S&C time from FAT to COD: {int(round(stage1.get('sc_time_months', 0)))} months\n")
-    p.add_run(f"DC→POI efficiency chain (one-way): {stage1.get('eff_dc_to_poi_frac', 0.0)*100:.2f}%\n")
-    p.add_run(f"POI→DC equivalent power: {stage1.get('dc_power_required_mw', 0.0):.2f} MW")
+    p.add_run(f"DC->POI efficiency chain (one-way): {stage1.get('eff_dc_to_poi_frac', 0.0)*100:.2f}%\n")
+    p.add_run(f"POI->DC equivalent power: {stage1.get('dc_power_required_mw', 0.0):.2f} MW")
 
     doc.add_paragraph(
         "This sizing report is based on the 314 Ah cell database and the internal "
@@ -1014,8 +683,8 @@ def build_report_bytes(stage1: dict, results_dict: dict, report_order: list):
         )
         doc.add_paragraph(
             f"SOH profile ID = {s3_meta.get('soh_profile_id')} "
-            f"(C-rate ≈ {s3_meta.get('chosen_soh_c_rate')}, cycles/year = {s3_meta.get('chosen_soh_cycles_per_year')}); "
-            f"RTE profile ID = {s3_meta.get('rte_profile_id')} (C-rate ≈ {s3_meta.get('chosen_rte_c_rate')})."
+            f"(C-rate <= {s3_meta.get('chosen_soh_c_rate')}, cycles/year = {s3_meta.get('chosen_soh_cycles_per_year')}); "
+            f"RTE profile ID = {s3_meta.get('rte_profile_id')} (C-rate <= {s3_meta.get('chosen_rte_c_rate')})."
         )
         doc.add_paragraph(f"Guarantee Year (from COD) = {guarantee_year} | POI Energy Target = {poi_target:.2f} MWh")
 
@@ -1024,7 +693,7 @@ def build_report_bytes(stage1: dict, results_dict: dict, report_order: list):
                 png = _plot_poi_usable_png(
                     s3_df=s3_df,
                     poi_target=poi_target,
-                    title=f"POI Usable Energy vs Year – {key}"
+                    title=f"POI Usable Energy vs Year - {key}"
                 )
                 doc.add_picture(png, width=Inches(6.7))
             except Exception:
@@ -1138,7 +807,7 @@ def show():
     try:
         defaults, df_blocks, df_soh_profile, df_soh_curve, df_rte_profile, df_rte_curve = load_data(DC_DATA_PATH)
     except Exception as exc:
-        st.error(f"❌ Failed to load data file: {exc}")
+        st.error(f"Failed to load data file: {exc}")
         return
 
     if DC_DATA_IS_LEGACY:
@@ -1149,6 +818,72 @@ def show():
         st.warning(f"RTE curve monotonicity check found {len(rte_issues)} issues.")
         with st.expander("Show RTE monotonicity issues", expanded=False):
             st.dataframe(rte_issues, use_container_width=True)
+
+    st.markdown("<div class='calb-card'>", unsafe_allow_html=True)
+    st.subheader("Load DC Run")
+    with st.expander("Load DC Run by ID", expanded=False):
+        load_run_id = st.text_input("Run ID", key="dc_load_run_id")
+        if st.button("Load Run", key="dc_load_run_btn"):
+            run_id = (load_run_id or "").strip()
+            if not run_id:
+                st.warning("Please enter a run id.")
+            else:
+                try:
+                    payload = load_dc_run(run_id)
+                    if not payload:
+                        st.error(f"Run id {run_id} not found.")
+                    else:
+                        input_snapshot = payload.get("input_snapshot") or {}
+                        output_snapshot = payload.get("output_snapshot") or {}
+                        case_input = (input_snapshot.get("case_input") if isinstance(input_snapshot, dict) else {}) or {}
+                        stage1_payload = output_snapshot.get("stage1") if isinstance(output_snapshot, dict) else None
+                        stage2_payload = output_snapshot.get("stage2") if isinstance(output_snapshot, dict) else None
+                        stage3_payload = output_snapshot.get("stage3") if isinstance(output_snapshot, dict) else None
+                        stage1 = Stage1Result.model_validate(stage1_payload or {})
+                        stage2 = Stage2Result.model_validate(stage2_payload or {})
+                        stage3 = Stage3Result.model_validate(stage3_payload or {})
+                        snapshot = DcPipelineRunSnapshot(
+                            stage1=stage1,
+                            stage2=stage2,
+                            stage3=stage3,
+                            iteration_count=int(output_snapshot.get("iteration_count", 0) or 0) if isinstance(output_snapshot, dict) else 0,
+                            poi_usable_energy_mwh_at_guarantee_year=(
+                                output_snapshot.get("poi_usable_energy_mwh_at_guarantee_year") if isinstance(output_snapshot, dict) else None
+                            ),
+                            converged=bool(output_snapshot.get("converged", True)) if isinstance(output_snapshot, dict) else True,
+                            summary=(output_snapshot.get("summary") if isinstance(output_snapshot, dict) else {}) or {},
+                        )
+                        scenario_id = case_input.get("scenario_id") or stage2.mode or "container_only"
+                        poi_nominal_voltage_kv = case_input.get("poi_nominal_voltage_kv") or st.session_state.get("poi_nominal_voltage_kv", 33.0)
+                        poi_frequency_hz = case_input.get("poi_frequency_hz") or st.session_state.get("poi_frequency_hz")
+                        dc_block_total_qty = int(stage2.container_count + stage2.cabinet_count)
+
+                        st.session_state["dc_last_run_id"] = run_id
+                        dc_results["last_run_id"] = run_id
+                        st.session_state["poi_nominal_voltage_kv"] = poi_nominal_voltage_kv
+                        st.session_state["poi_frequency_hz"] = poi_frequency_hz
+                        st.session_state["dc_result_summary"] = build_dc_result_summary(snapshot)
+                        st.session_state["stage13_output"] = build_stage13_output(
+                            snapshot,
+                            dc_block_total_qty=dc_block_total_qty,
+                            selected_scenario=str(scenario_id),
+                            poi_nominal_voltage_kv=float(poi_nominal_voltage_kv),
+                            poi_frequency_hz=poi_frequency_hz,
+                        )
+                        dc_results.update(
+                            {
+                                "dc_result_summary": st.session_state.get("dc_result_summary"),
+                                "stage13_output": st.session_state.get("stage13_output"),
+                            }
+                        )
+                        project_state = st.session_state.get("project_state")
+                        if isinstance(project_state, dict):
+                            project_state.setdefault("dc", {})["run_id"] = run_id
+                        set_run_time("dc_results")
+                        st.success(f"Loaded DC run {run_id}.")
+                except Exception as exc:
+                    st.error(f"Failed to load run: {exc}")
+    st.markdown("</div>", unsafe_allow_html=True)
 
     def get_default_numeric(key, fallback):
         return to_float(defaults.get(key, fallback), fallback)
@@ -1178,7 +913,7 @@ def show():
     # --- UI Form ---
     with st.container():
         st.markdown("<div class='calb-card'>", unsafe_allow_html=True)
-        st.subheader("1 · Project Inputs")
+        st.subheader("1. Project Inputs")
 
         with st.form("main_form"):
             project_name_default = (
@@ -1296,7 +1031,7 @@ def show():
             )
             dc_inputs["dc_round_trip_efficiency_pct"] = dc_rte_pct
             rte_adjust_pp = c9.number_input(
-                "RTE Curve Adjustment (Δpp)",
+                "RTE Curve Adjustment (pp)",
                 key=_init_input("rte_curve_adjust_pp", get_default_numeric("rte_curve_adjust_pp", 0.0)),
                 min_value=-5.0,
                 max_value=2.0,
@@ -1313,7 +1048,7 @@ def show():
             
             st.info(f"Design Rule: Max 418kWh Cabinets per DC Busbar (K) = {K_MAX_FIXED} (fixed)")
 
-            st.markdown("**3 · Configuration Options**")
+            st.markdown("**3. Configuration Options**")
             threshold_key = _init_input("hybrid_disable_threshold_mwh", 20.0)
             threshold_val = to_float(st.session_state.get(threshold_key, 20.0), 20.0)
             auto_enable_hybrid = not (threshold_val > 0 and poi_energy >= threshold_val)
@@ -1368,7 +1103,7 @@ def show():
                 dc_inputs["eff_hvt_others"] = eff_hvt
 
             st.markdown("---")
-            run_btn = st.form_submit_button("🔄 Run Sizing")
+            run_btn = st.form_submit_button("Run Sizing")
         
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -1390,6 +1125,28 @@ def show():
         
         if poi_is_dc_side:
             eff_dc_cables = eff_pcs = eff_mvt = eff_ac_sw = eff_hvt = 100.0
+
+        case_frequency_hz = 50.0 if poi_frequency_hz is None else float(poi_frequency_hz)
+        case_input_base = {
+            "project_name": project_name,
+            "poi_power_req_mw": poi_power,
+            "poi_energy_req_mwh": poi_energy,
+            "poi_nominal_voltage_kv": poi_mv_kv,
+            "poi_frequency_hz": case_frequency_hz,
+            "project_life_years": project_life,
+            "cycles_per_year": cycles_year,
+            "poi_guarantee_year": guarantee_year,
+            "eff_dc_cables": eff_dc_cables,
+            "eff_pcs": eff_pcs,
+            "eff_mvt": eff_mvt,
+            "eff_ac_cables_sw_rmu": eff_ac_sw,
+            "eff_hvt_others": eff_hvt,
+            "sc_time_months": sc_time_months,
+            "dod_pct": dod_pct,
+            "dc_round_trip_efficiency_pct": dc_rte_pct,
+            "rte_curve_adjust_pp": rte_adjust_pp,
+            "rte_monotonic_enforce": rte_monotonic_enforce,
+        }
 
         sc_loss_pct = calc_sc_loss_pct(sc_time_months)
         inputs = {
@@ -1416,7 +1173,7 @@ def show():
 
         # Stage 1 Display
         st.markdown("<div class='calb-card'>", unsafe_allow_html=True)
-        st.subheader("3 · Stage 1 – DC Requirement")
+        st.subheader("3. Stage 1 - DC Requirement")
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Theoretical DC Required", f"{s1['dc_energy_capacity_required_mwh']:.2f} MWh")
         m2.metric("Efficiency Chain", f"{s1['eff_dc_to_poi_frac']*100:.2f} %")
@@ -1427,7 +1184,7 @@ def show():
         rte_effective_pct = float(s1.get("dc_rte_effective_frac", s1.get("dc_round_trip_efficiency_frac", 0.0))) * 100.0
         r1, r2, r3 = st.columns(3)
         r1.metric("DC RTE base (%)", f"{rte_base_pct:.2f} %")
-        r2.metric("RTE adjustment (Δpp)", f"{rte_adjust_pp_used:+.2f} pp")
+        r2.metric("RTE adjustment (pp)", f"{rte_adjust_pp_used:+.2f} pp")
         r3.metric("DC RTE effective (%)", f"{rte_effective_pct:.2f} %")
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -1460,10 +1217,44 @@ def show():
         dc_results["results_dict"] = ok_results
         dc_results["report_order"] = report_order
         active_mode = first_success_key(ok_results, modes_to_run)
+        active_snapshot = None
+        if active_mode:
+            try:
+                bundle = DcExcelMasterDataBundle(
+                    workbook_path=Path(DC_DATA_PATH),
+                    defaults=defaults,
+                    df_blocks=df_blocks.copy(),
+                    df_soh_profile=df_soh_profile.copy(),
+                    df_soh_curve=df_soh_curve.copy(),
+                    df_rte_profile=df_rte_profile.copy(),
+                    df_rte_curve=df_rte_curve.copy(),
+                    raw_sheets={},
+                )
+                active_snapshot = service_size_with_guarantee(
+                    Stage1Result.model_validate(s1),
+                    active_mode,
+                    bundle,
+                    k_max=K_MAX_FIXED,
+                )
+                case_input = dict(case_input_base)
+                case_input["scenario_id"] = active_mode
+                persist_result = persist_dc_run(
+                    SizingCaseInput.model_validate(case_input),
+                    active_snapshot,
+                    defaults=defaults,
+                    source_ref="dc_view",
+                )
+                st.session_state["dc_last_run_id"] = persist_result.get("run_id")
+                dc_results["last_run_id"] = persist_result.get("run_id")
+                project_state = st.session_state.get("project_state")
+                if isinstance(project_state, dict):
+                    project_state.setdefault("dc", {})["run_id"] = persist_result.get("run_id")
+            except Exception as exc:
+                st.error(f"Failed to persist DC run: {exc}")
 
         # Tabs Display
         st.markdown("<div class='calb-card'>", unsafe_allow_html=True)
-        st.subheader("4 · Configuration Comparison")
+        st.subheader("4. Configuration Comparison")
         
         tabs = st.tabs([m.replace("_", " ").title() for m in modes_to_run])
         for i, mode in enumerate(modes_to_run):
@@ -1617,10 +1408,20 @@ div[data-testid="stDataFrame"] div[role="rowheader"] {
             
             if report_bytes:
                 st.download_button(
-                    "📄 Export Technical Sizing Report",
+                    "Export Technical Sizing Report",
                     data=report_bytes,
                     file_name=make_report_filename(project_name),
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 )
         
-        st.info("✅ Sizing Complete. Please proceed to AC Sizing or SLD generation via sidebar.")
+        st.info("Sizing Complete. Please proceed to AC Sizing or SLD generation via sidebar.")
+
+
+
+
+
+
+
+
+
+

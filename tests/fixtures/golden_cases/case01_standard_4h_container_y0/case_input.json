@@ -1,0 +1,8 @@
+{
+  "fixture_id": "case01_standard_4h_container_y0",
+  "poi_energy_req_mwh": 400.0,
+  "poi_guarantee_year": 0,
+  "poi_power_req_mw": 100.0,
+  "project_name": "Baseline Standard 4H Container Y0",
+  "scenario_id": "container_only"
+}

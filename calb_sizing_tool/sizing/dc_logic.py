@@ -1,4 +1,4 @@
-# -----------------------------------------------------------------------------
+﻿# -----------------------------------------------------------------------------
 # Personal Open-Source Notice
 #
 # Copyright (c) 2026 Alex.Zhao. All rights reserved.
@@ -28,7 +28,7 @@ def calculate_dc_energy(dc_params: dict, profile: list):
     """
     Compute DC energy deliverable based on profile and DC Block params.
     """
-    # 只是示例，按真实逻辑替换
+    # Example placeholder; replace with actual logic.
     total_energy = dc_params.get("capacity_nominal", 0)
     delivered = sum(profile) / len(profile) * total_energy
     return delivered
@@ -37,5 +37,6 @@ def dc_rte_calculation(dc_params: dict):
     """
     Compute DC round-trip efficiency.
     """
-    # 用简单公式作为示例
+    # Placeholder formula for illustration.
     return dc_params.get("rte_dc", 0.94)
+

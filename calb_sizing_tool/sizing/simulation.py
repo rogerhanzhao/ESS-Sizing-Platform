@@ -1,4 +1,4 @@
-# -----------------------------------------------------------------------------
+﻿# -----------------------------------------------------------------------------
 # Personal Open-Source Notice
 #
 # Copyright (c) 2026 Alex.Zhao. All rights reserved.
@@ -19,7 +19,7 @@
 """Simulation utilities for simple DC/AC dispatch profiles.
 
 The `simulate_dispatch` function provides a lightweight, deterministic
-time‑series simulation that can be shared across notebooks, scripts, or
+time-eries simulation that can be shared across notebooks, scripts, or
 Streamlit pages. The goal is not to capture every electrical nuance but to
 offer a stable, validated utility that guards against invalid inputs and
 returns a pandas ``DataFrame`` suitable for downstream plotting or export.
@@ -102,7 +102,7 @@ def simulate_dispatch(dc_dict, ac_dict, profile, params):
             - ``capacity_mwh`` (float): Usable energy capacity.
             - ``max_charge_mw`` (float): Charge power limit on the DC side.
             - ``max_discharge_mw`` (float): Discharge power limit on the DC side.
-            - ``initial_soc`` (float): Initial state of charge (0–1).
+            - ``initial_soc`` (float): Initial state of charge (0-?).
         ac_dict: Mapping describing AC constraints. Required keys:
             - ``ac_power_limit_mw`` (float): Maximum AC import/export power.
         profile: Iterable of numeric power requests in MW. Positive values
@@ -110,14 +110,14 @@ def simulate_dispatch(dc_dict, ac_dict, profile, params):
         params: Mapping of simulation parameters. Required keys:
             - ``timestep_hours`` (float): Duration of each profile step in hours.
           Optional keys:
-            - ``roundtrip_efficiency`` (float): >0–1, defaults to 1.0.
+            - ``roundtrip_efficiency`` (float): >0-?, defaults to 1.0.
             - ``charge_efficiency`` / ``discharge_efficiency`` (float):
               Overrides derived efficiencies if provided. Each efficiency must
               be greater than 0 and no more than 1.
             - ``expected_steps`` (int): If provided, the profile length must match.
 
     Returns:
-        pandas.DataFrame with per‑step fields: ``step``, ``requested_mw``,
+        pandas.DataFrame with per-tep fields: ``step``, ``requested_mw``,
         ``delivered_mw``, ``unserved_mw``, ``state_of_charge_mwh``, and
         ``state_of_charge_frac``.
 
@@ -196,3 +196,5 @@ def simulate_dispatch(dc_dict, ac_dict, profile, params):
         )
 
     return pd.DataFrame(rows)
+
+
