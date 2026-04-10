@@ -5,9 +5,10 @@ import streamlit as st
 from calb_sizing_tool.adapters.session_state_adapter import build_dc_result_summary, build_stage13_output
 from calb_sizing_tool.infra.db.base import Base
 from calb_sizing_tool.infra.db.session import session_scope
-from calb_sizing_tool.repositories.run_repository import RunRepository
-from calb_sizing_tool.services.run_restore_service import load_dc_run_bundle
+from calb_sizing_tool.services.access_control_service import AccessControlService
+from calb_sizing_tool.services.auth_service import AuthUser
 from calb_sizing_tool.state.project_state import init_project_state
+from calb_sizing_tool.state.auth_state import get_auth_context
 
 
 def _ensure_schema() -> None:
@@ -26,6 +27,17 @@ def show() -> None:
     init_project_state()
     _ensure_schema()
 
+    auth_context = get_auth_context()
+    if auth_context is None:
+        st.error("Login required.")
+        return
+    auth_user = AuthUser(
+        user_id=auth_context.user_id,
+        username=auth_context.username,
+        display_name=auth_context.display_name,
+        roles=auth_context.roles,
+    )
+
     project_id = st.session_state.get("active_project_id")
     project_name = st.session_state.get("active_project_name")
     case_id = st.session_state.get("active_case_id")
@@ -41,8 +53,20 @@ def show() -> None:
     st.caption(f"Active Case: {case_name}")
 
     with session_scope() as session:
-        repo = RunRepository(session)
-        runs = repo.list_runs_by_case(case_id)
+        access = AccessControlService(session, auth_user)
+        try:
+            runs = [
+                {
+                    "sizing_run_id": run.sizing_run_id,
+                    "created_at": run.created_at,
+                    "input_summary_json": run.input_summary_json or {},
+                    "output_summary_json": run.output_summary_json or {},
+                }
+                for run in access.list_runs_by_case(case_id)
+            ]
+        except PermissionError:
+            st.error("You do not have access to this case.")
+            return
 
     if not runs:
         st.info("No runs found for this case.")
@@ -63,13 +87,13 @@ def show() -> None:
     header_cols[10].write("Converged")
 
     for run in runs:
-        summary = run.output_summary_json or {}
-        input_summary = run.input_summary_json or {}
+        summary = run["output_summary_json"]
+        input_summary = run["input_summary_json"]
         cols = st.columns([2.6, 2.0, 2.0, 1.6, 1.4, 1.2, 1.2, 1.4, 1.4, 1.2, 1.2])
-        cols[0].write(run.sizing_run_id)
+        cols[0].write(run["sizing_run_id"])
         cols[1].write(input_summary.get("project_name"))
         cols[2].write(input_summary.get("case_name"))
-        cols[3].write(_format_dt(run.created_at))
+        cols[3].write(_format_dt(run["created_at"]))
         cols[4].write(input_summary.get("scenario_id"))
         cols[5].write(input_summary.get("poi_power_req_mw"))
         cols[6].write(input_summary.get("poi_energy_req_mwh"))
@@ -78,7 +102,7 @@ def show() -> None:
         cols[9].write(summary.get("margin_mwh"))
         cols[10].write("Yes" if summary.get("converged") else "No")
 
-        with st.expander(f"Run {run.sizing_run_id} details", expanded=False):
+        with st.expander(f"Run {run['sizing_run_id']} details", expanded=False):
             st.write(
                 {
                     "project_name": input_summary.get("project_name"),
@@ -94,11 +118,17 @@ def show() -> None:
                     "rte_profile_id": summary.get("rte_profile_id"),
                     "iterations": summary.get("iterations"),
                     "converged": summary.get("converged"),
-                    "created_at": _format_dt(run.created_at),
+                    "created_at": _format_dt(run["created_at"]),
                 }
             )
-            if st.button("Restore Run", key=f"restore_{run.sizing_run_id}"):
-                bundle = load_dc_run_bundle(run.sizing_run_id)
+            if st.button("Restore Run", key=f"restore_{run['sizing_run_id']}"):
+                with session_scope() as session:
+                    access = AccessControlService(session, auth_user)
+                    try:
+                        bundle = access.load_dc_run_bundle(run["sizing_run_id"])
+                    except PermissionError:
+                        st.error("You do not have access to this run.")
+                        return
                 if not bundle:
                     st.error("Run not found.")
                     return

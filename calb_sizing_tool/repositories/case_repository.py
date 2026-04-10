@@ -40,6 +40,16 @@ class CaseRepository:
             .all()
         )
 
+    def list_projects_by_ids(self, project_ids: list[str]) -> list[Project]:
+        if not project_ids:
+            return []
+        return (
+            self.session.query(Project)
+            .filter(Project.project_id.in_(project_ids))
+            .order_by(Project.created_at.desc())
+            .all()
+        )
+
     def create_case(
         self,
         *,

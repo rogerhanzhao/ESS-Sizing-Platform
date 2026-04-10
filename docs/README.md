@@ -30,6 +30,9 @@ This folder contains the active project documentation. Temporary implementation 
 - `master_data_maintenance_api_prep.md`: master data maintenance API preparation
 - `dc_master_import_runbook.md`: DC master data import workflow
 - `planning_handoff_2026-04-10.md`: planning handoff snapshot
+- `ARCHITECTURE_CURRENT_STATE.md`: current architecture snapshot
+- `PHASE_FINAL_ACCEPTANCE_CHECKLIST.md`: Phase F acceptance checklist
+- `NEXT_PHASE_BACKLOG.md`: next-phase backlog and priorities
 
 ## Release And Audit Records
 

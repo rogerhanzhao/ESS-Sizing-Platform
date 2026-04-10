@@ -34,6 +34,45 @@ streamlit run app.py
 
 The required Excel dictionaries should remain under `data/`.
 
+## Initialize Database
+
+Default SQLite DB path: `var/calb_sizing.sqlite`. Override with `CALB_DATABASE_URL` or `CALB_DB_URL`.
+
+```powershell
+$env:CALB_DATABASE_URL = "sqlite:///D:/CALB_SizingTool/var/calb_sizing.sqlite"
+alembic upgrade head
+```
+
+## Import Excel Dictionary
+
+```powershell
+python scripts/import_excel_dictionary.py --mode dry_run
+python scripts/import_excel_dictionary.py --mode apply_import
+```
+
+Use `--workbook` to point to a custom Excel dictionary if needed.
+
+## Login
+
+On first run, the login page prompts to create the initial admin account. After that, sign in with the created credentials.
+
+## DC Sizing And Run History
+
+1. Create a Project.
+2. Create a Case under the Project.
+3. Run DC Sizing. The system persists a run and returns a `run_id`.
+4. Use Run History to list runs and restore results by `run_id`.
+
+## Diagrams (SLD / Layout)
+
+Both SLD and Layout are generated from `run_id` via the plugin system. Use the Single Line Diagram or Site Layout pages to select a run and generate artifacts. Artifacts are registered in the database.
+
+## External AI Layout Workflow
+
+1. In Site Layout, generate and download the prompt payload or prompt text.
+2. Run the external AI tool and upload the returned image.
+3. Admin reviews and approves/rejects the submission. Approved artifacts are stored alongside deterministic layouts.
+
 ## Test
 
 ```bash
@@ -73,5 +112,8 @@ Use the active docs under `docs/`:
 - `docs/PCS_RATING_GUIDE.md`: PCS selection guidance
 - `docs/UBUNTU_DOCKER_DEPLOYMENT.md`: Ubuntu Docker deployment
 - `docs/ROOT_DOC_AUDIT.md`: root markdown cleanup and archive map
+- `docs/ARCHITECTURE_CURRENT_STATE.md`: current system architecture snapshot
+- `docs/PHASE_FINAL_ACCEPTANCE_CHECKLIST.md`: Phase F acceptance checklist
+- `docs/NEXT_PHASE_BACKLOG.md`: next-phase backlog and priorities
 
 Legacy implementation notes, repair proposals, test execution writeups, and PR or push artifacts were removed from the repository root and archived under `docs/archive/root-legacy/`.

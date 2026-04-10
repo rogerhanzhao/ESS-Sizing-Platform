@@ -19,6 +19,7 @@ def test_db_migration_roundtrip(tmp_path: Path, monkeypatch):
     tables = sorted(inspect(engine).get_table_names())
     assert "parameter_definition" in tables
     assert "sizing_run" in tables
+    assert "user_account" in tables
 
     command.downgrade(cfg, "base")
     engine = create_engine(db_url)

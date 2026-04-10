@@ -29,13 +29,16 @@ from calb_sizing_tool.adapters.excel_loader_adapter import bundle_to_legacy_tupl
 from calb_sizing_tool.adapters.session_state_adapter import build_dc_result_summary, build_stage13_output
 from calb_sizing_tool.config import DC_DATA_PATH, DC_DATA_IS_LEGACY, PROJECT_ROOT
 from calb_sizing_tool.common.nameplate import apply_block_nameplate_recalc, get_standard_container_mwh
+from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.schemas.case import SizingCaseInput
 from calb_sizing_tool.schemas.master_data import DcExcelMasterDataBundle
 from calb_sizing_tool.schemas.run_snapshot import DcPipelineRunSnapshot
 from calb_sizing_tool.schemas.stage1 import Stage1Result
 from calb_sizing_tool.schemas.stage2 import Stage2Result
 from calb_sizing_tool.schemas.stage3 import Stage3Result
+from calb_sizing_tool.services.access_control_service import AccessControlService
 from calb_sizing_tool.services.dc_pipeline_service import size_with_guarantee as service_size_with_guarantee
+from calb_sizing_tool.services.auth_service import AuthUser
 from calb_sizing_tool.services.run_persistence_service import persist_dc_run
 from calb_sizing_tool.services.run_restore_service import load_dc_run_bundle
 from calb_sizing_tool.services.stage1_service import run_stage1 as service_run_stage1
@@ -55,6 +58,7 @@ from calb_sizing_tool.ui.stage4_interface import pack_stage13_output
 # Model import for AC/SLD handoff
 from calb_sizing_tool.models import DCBlockResult
 from calb_sizing_tool.state.project_state import bump_run_id_dc, init_project_state
+from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
 
 # ==========================================
@@ -729,12 +733,32 @@ def show():
     dc_results = state.dc_results
     ac_inputs = state.ac_inputs
 
+    auth_context = get_auth_context()
+    if auth_context is None:
+        st.error("Login required.")
+        return
+    auth_user = AuthUser(
+        user_id=auth_context.user_id,
+        username=auth_context.username,
+        display_name=auth_context.display_name,
+        roles=auth_context.roles,
+    )
+
     active_project_id = st.session_state.get("active_project_id")
     active_project_name = st.session_state.get("active_project_name")
     active_project_code = st.session_state.get("active_project_code")
     active_case_id = st.session_state.get("active_case_id")
     active_case_name = st.session_state.get("active_case_name")
     active_case_code = st.session_state.get("active_case_code")
+
+    if active_project_id:
+        with session_scope() as session:
+            access = AccessControlService(session, auth_user)
+            try:
+                access.ensure_project_access(active_project_id)
+            except PermissionError:
+                st.error("You do not have access to the active project.")
+                return
 
     if not active_project_id or not active_case_id:
         st.warning("Select a project and case before running DC sizing.")
@@ -845,7 +869,9 @@ def show():
                 st.warning("Please enter a run id.")
             else:
                 try:
-                    bundle = load_dc_run_bundle(run_id)
+                    with session_scope() as session:
+                        access = AccessControlService(session, auth_user)
+                        bundle = access.load_dc_run_bundle(run_id)
                     if not bundle:
                         st.error(f"Run id {run_id} not found.")
                     else:
@@ -895,6 +921,8 @@ def show():
                             st.session_state["active_case_name"] = bundle.case_name
                         set_run_time("dc_results")
                         st.success(f"Loaded DC run {run_id}.")
+                except PermissionError:
+                    st.error("You do not have access to this run.")
                 except Exception as exc:
                     st.error(f"Failed to load run: {exc}")
     st.markdown("</div>", unsafe_allow_html=True)
@@ -1259,10 +1287,13 @@ def show():
                     case_name=active_case_name,
                     defaults=defaults,
                     source_ref="dc_view",
+                    actor=auth_user.username,
                 )
                 run_id = persist_result.get("run_id")
                 if run_id:
-                    bundle = load_dc_run_bundle(run_id)
+                    with session_scope() as session:
+                        access = AccessControlService(session, auth_user)
+                        bundle = access.load_dc_run_bundle(run_id)
                     if not bundle:
                         st.error("Run persisted but could not be reloaded from DB.")
                     else:

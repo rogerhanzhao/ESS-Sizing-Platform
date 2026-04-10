@@ -7,6 +7,9 @@ import streamlit as st
 from calb_sizing_tool.infra.db.base import Base
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.repositories.case_repository import CaseRepository
+from calb_sizing_tool.services.access_control_service import AccessControlService
+from calb_sizing_tool.services.auth_service import AuthUser
+from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.state.project_state import init_project_state
 
 
@@ -24,6 +27,17 @@ def show() -> None:
     init_project_state()
     _ensure_schema()
 
+    auth_context = get_auth_context()
+    if auth_context is None:
+        st.error("Login required.")
+        return
+    auth_user = AuthUser(
+        user_id=auth_context.user_id,
+        username=auth_context.username,
+        display_name=auth_context.display_name,
+        roles=auth_context.roles,
+    )
+
     project_id = st.session_state.get("active_project_id")
     project_name = st.session_state.get("active_project_name")
     project_code = st.session_state.get("active_project_code")
@@ -32,6 +46,14 @@ def show() -> None:
     if not project_id:
         st.warning("Select a project first.")
         return
+
+    with session_scope() as session:
+        access = AccessControlService(session, auth_user)
+        try:
+            access.ensure_project_access(project_id)
+        except PermissionError:
+            st.error("You do not have access to this project.")
+            return
 
     st.caption(f"Active Project: {project_name} ({project_code})")
 
@@ -50,6 +72,12 @@ def show() -> None:
                 case_code = f"{project_code}-{_slug(name)}"
                 with session_scope() as session:
                     repo = CaseRepository(session)
+                    access = AccessControlService(session, auth_user)
+                    try:
+                        access.ensure_project_access(project_id)
+                    except PermissionError:
+                        st.error("You do not have access to this project.")
+                        return
                     case = repo.create_case(
                         project_id=project_id,
                         case_code=case_code,
@@ -66,8 +94,16 @@ def show() -> None:
                 st.success(f"Case created: {name.strip()}")
 
     with session_scope() as session:
-        repo = CaseRepository(session)
-        cases = repo.list_cases_by_project(project_id)
+        access = AccessControlService(session, auth_user)
+        cases = [
+            {
+                "sizing_case_id": case.sizing_case_id,
+                "case_name": case.case_name,
+                "case_code": case.case_code,
+                "created_at": case.created_at,
+            }
+            for case in access.list_cases_by_project(project_id)
+        ]
 
     st.subheader("Case List")
     if not cases:
@@ -76,11 +112,11 @@ def show() -> None:
 
     for case in cases:
         cols = st.columns([3, 3, 2, 1.5])
-        cols[0].write(case.case_name)
-        cols[1].write(case.case_code)
-        cols[2].write(case.created_at.strftime("%Y-%m-%d %H:%M"))
-        if cols[3].button("Open", key=f"case_open_{case.sizing_case_id}"):
-            st.session_state["active_case_id"] = case.sizing_case_id
-            st.session_state["active_case_code"] = case.case_code
-            st.session_state["active_case_name"] = case.case_name
-            st.success(f"Active case set: {case.case_name}")
+        cols[0].write(case["case_name"])
+        cols[1].write(case["case_code"])
+        cols[2].write(case["created_at"].strftime("%Y-%m-%d %H:%M"))
+        if cols[3].button("Open", key=f"case_open_{case['sizing_case_id']}"):
+            st.session_state["active_case_id"] = case["sizing_case_id"]
+            st.session_state["active_case_code"] = case["case_code"]
+            st.session_state["active_case_name"] = case["case_name"]
+            st.success(f"Active case set: {case['case_name']}")

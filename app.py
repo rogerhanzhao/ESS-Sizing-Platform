@@ -21,6 +21,8 @@ from pathlib import Path
 import streamlit as st
 
 import calb_sizing_tool.config as config  # noqa: F401
+from calb_sizing_tool.state.auth_state import clear_auth_context, get_auth_context
+from calb_sizing_tool.ui.login_view import show as show_login
 
 
 st.set_page_config(
@@ -29,12 +31,24 @@ st.set_page_config(
     page_icon="CALB",
 )
 
+auth_context = get_auth_context()
+if auth_context is None:
+    show_login()
+    st.stop()
+
 with st.sidebar:
     logo_path = Path("calb_logo.png")
     if logo_path.exists():
         st.image(str(logo_path), width=200)
     else:
         st.markdown("## CALB ESS")
+
+    display_name = auth_context.display_name or auth_context.username
+    st.caption(f"Signed in as {display_name}")
+    st.caption("Role: Admin" if auth_context.is_admin else "Role: Normal User")
+    if st.button("Logout", use_container_width=True):
+        clear_auth_context()
+        st.rerun()
 
     st.title("Navigation")
     st.markdown("---")

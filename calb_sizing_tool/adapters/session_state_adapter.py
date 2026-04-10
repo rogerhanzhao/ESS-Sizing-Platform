@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+"""Legacy adapter only.
+
+This module bridges DB snapshots into legacy `stage13_output` shapes for
+downstream pages that still depend on session_state. It must not be treated
+as a runtime source of truth.
+"""
+
 from typing import Any
 
 from calb_sizing_tool.schemas.run_snapshot import DcPipelineRunSnapshot
