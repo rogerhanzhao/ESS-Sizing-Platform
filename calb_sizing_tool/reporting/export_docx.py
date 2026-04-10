@@ -498,9 +498,9 @@ def _append_dc_report_sections(doc: Document, dc_output: dict, ctx: dict, chapte
     )
     p.add_run(f"RTE Curve Adjustment (pp): {float(stage1.get('rte_curve_adjust_pp', 0.0)):.1f}\n")
     p.add_run(
-        f"DC\u2192POI efficiency chain (one-way): {stage1.get('eff_dc_to_poi_frac', 0.0)*100:.2f}%\n"
+        f"DC->POI efficiency chain (one-way): {stage1.get('eff_dc_to_poi_frac', 0.0)*100:.2f}%\n"
     )
-    p.add_run(f"POI\u2192DC equivalent power: {stage1.get('dc_power_required_mw', 0.0):.2f} MW")
+    p.add_run(f"POI->DC equivalent power: {stage1.get('dc_power_required_mw', 0.0):.2f} MW")
 
     doc.add_paragraph(
         "This sizing report is based on the 314 Ah cell database and the internal "
@@ -548,8 +548,8 @@ def _append_dc_report_sections(doc: Document, dc_output: dict, ctx: dict, chapte
         )
         doc.add_paragraph(
             f"SOH profile ID = {s3_meta.get('soh_profile_id')} "
-            f"(C-rate \u2248 {s3_meta.get('chosen_soh_c_rate')}, cycles/year = {s3_meta.get('chosen_soh_cycles_per_year')}); "
-            f"RTE profile ID = {s3_meta.get('rte_profile_id')} (C-rate \u2248 {s3_meta.get('chosen_rte_c_rate')})."
+            f"(C-rate <= {s3_meta.get('chosen_soh_c_rate')}, cycles/year = {s3_meta.get('chosen_soh_cycles_per_year')}); "
+            f"RTE profile ID = {s3_meta.get('rte_profile_id')} (C-rate <= {s3_meta.get('chosen_rte_c_rate')})."
         )
         doc.add_paragraph(
             f"Guarantee Year (from COD) = {guarantee_year} | POI Energy Target = {poi_target:.2f} MWh"

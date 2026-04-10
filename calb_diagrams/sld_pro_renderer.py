@@ -1595,9 +1595,9 @@ svg {{ font-family: {SLD_FONT_FAMILY}; font-size: {SLD_FONT_SIZE}px; }}
 
             # Busbar A & B (Local)
             dwg.add(dwg.line((bx1, dc_bus_a_y), (bx2, dc_bus_a_y), class_=busbar_class))
-            dwg.add(dwg.text(f"BUSBAR A (Ckt A)", insert=(bx1, dc_bus_a_y - 8), class_="small"))
+            dwg.add(dwg.text(f"DC BUSBAR A (Ckt A)", insert=(bx1, dc_bus_a_y - 8), class_="small"))
             dwg.add(dwg.line((bx1, dc_bus_b_y), (bx2, dc_bus_b_y), class_=busbar_class))
-            dwg.add(dwg.text(f"BUSBAR B (Ckt B)", insert=(bx1, dc_bus_b_y - 8), class_="small"))
+            dwg.add(dwg.text(f"DC BUSBAR B (Ckt B)", insert=(bx1, dc_bus_b_y - 8), class_="small"))
 
             # Connect PCS to both Busbars (Internal DC link)
             _draw_line_anchored(dwg, (cx, pcs_y + pcs_box_h), (cx, dc_bus_b_y), class_="thin")

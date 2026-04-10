@@ -644,6 +644,7 @@ def build_report_bytes(stage1: dict, results_dict: dict, report_order: list):
     p.add_run(f"POI guarantee year: {int(stage1.get('poi_guarantee_year', 0))}\n")
     p.add_run(f"Cycles per year (assumed): {int(stage1['cycles_per_year'])}\n")
     p.add_run(f"S&C time from FAT to COD: {int(round(stage1.get('sc_time_months', 0)))} months\n")
+    p.add_run(f"RTE Curve Adjustment (pp): {float(stage1.get('rte_curve_adjust_pp', 0.0)):.1f}\n")
     p.add_run(f"DC->POI efficiency chain (one-way): {stage1.get('eff_dc_to_poi_frac', 0.0)*100:.2f}%\n")
     p.add_run(f"POI->DC equivalent power: {stage1.get('dc_power_required_mw', 0.0):.2f} MW")
 
