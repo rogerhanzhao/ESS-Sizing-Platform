@@ -7,6 +7,7 @@ This folder contains the active project documentation. Temporary implementation 
 - `QUICK_START.md`: basic app startup and operator workflow
 - `REPORTING_AND_DIAGRAMS.md`: report export, SLD, and layout guidance
 - `PCS_RATING_GUIDE.md`: PCS option selection and container sizing rules
+- `WORKSPACE_BOUNDARY_V1.md`: frozen Project -> Case -> Run workbench boundary
 - `optional_dependencies.md`: optional packages used by some features
 
 ## SLD Baseline And Contracts

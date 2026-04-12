@@ -46,3 +46,24 @@ def test_layout_engine_profiles_are_distinct(sample_excel_path):
     assert engineering.width != compact.width
     assert any(symbol.symbol_type == "dc_busbar_pair" for symbol in engineering.symbols)
     assert any(symbol.symbol_type == "dc_busbar_single" for symbol in compact.symbols)
+
+
+def test_layout_engine_keeps_dc_blocks_in_matching_feeder_columns(sample_excel_path):
+    topology = _build_topology(sample_excel_path)
+    plan = build_sld_layout_plan(topology, layout_profile="engineering_readable", theme="dark")
+
+    pcs_centers = {
+        int(symbol.meta["feeder_index"]): symbol.x + symbol.width / 2
+        for symbol in plan.symbols
+        if symbol.symbol_type == "pcs" and symbol.meta.get("feeder_index") is not None
+    }
+    dc_centers = {
+        int(symbol.meta["feeder_index"]): symbol.x + symbol.width / 2
+        for symbol in plan.symbols
+        if symbol.symbol_type == "dc_block" and symbol.meta.get("feeder_index") is not None
+    }
+
+    assert sorted(pcs_centers) == [1, 2, 3, 4]
+    assert sorted(dc_centers) == [1, 2, 3, 4]
+    for feeder_index, pcs_center in pcs_centers.items():
+        assert abs(dc_centers[feeder_index] - pcs_center) < 40.0

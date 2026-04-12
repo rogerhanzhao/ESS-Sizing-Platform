@@ -12,6 +12,7 @@ from calb_sizing_tool.services.access_control_service import AccessControlServic
 from calb_sizing_tool.services.auth_service import AuthUser
 from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.state.project_state import init_project_state
+from calb_sizing_tool.state.workspace_state import set_active_project
 
 
 def _slug(value: str) -> str:
@@ -40,6 +41,7 @@ def show() -> None:
     )
 
     st.title("Projects")
+    st.caption("Detailed project directory. Daily use is faster from Workbench.")
 
     with st.form("create_project"):
         name = st.text_input("Project Name")
@@ -67,9 +69,11 @@ def show() -> None:
                         role_code="normal_user",
                     )
                     session.flush()
-                    st.session_state["active_project_id"] = project.project_id
-                    st.session_state["active_project_code"] = project.project_code
-                    st.session_state["active_project_name"] = project.project_name
+                    set_active_project(
+                        project_id=project.project_id,
+                        project_code=project.project_code,
+                        project_name=project.project_name,
+                    )
                 st.success(f"Project created: {name.strip()}")
 
     with session_scope() as session:
@@ -95,7 +99,9 @@ def show() -> None:
         cols[1].write(project["project_code"])
         cols[2].write(project["created_at"].strftime("%Y-%m-%d %H:%M"))
         if cols[3].button("Open", key=f"project_open_{project['project_id']}"):
-            st.session_state["active_project_id"] = project["project_id"]
-            st.session_state["active_project_code"] = project["project_code"]
-            st.session_state["active_project_name"] = project["project_name"]
+            set_active_project(
+                project_id=project["project_id"],
+                project_code=project["project_code"],
+                project_name=project["project_name"],
+            )
             st.success(f"Active project set: {project['project_name']}")

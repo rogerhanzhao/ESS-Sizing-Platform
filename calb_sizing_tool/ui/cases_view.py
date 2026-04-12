@@ -11,6 +11,7 @@ from calb_sizing_tool.services.access_control_service import AccessControlServic
 from calb_sizing_tool.services.auth_service import AuthUser
 from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.state.project_state import init_project_state
+from calb_sizing_tool.state.workspace_state import get_workspace_context, set_active_case
 
 
 def _slug(value: str) -> str:
@@ -38,11 +39,13 @@ def show() -> None:
         roles=auth_context.roles,
     )
 
-    project_id = st.session_state.get("active_project_id")
-    project_name = st.session_state.get("active_project_name")
-    project_code = st.session_state.get("active_project_code")
+    workspace = get_workspace_context()
+    project_id = workspace.get("project_id")
+    project_name = workspace.get("project_name")
+    project_code = workspace.get("project_code")
 
     st.title("Cases")
+    st.caption("Detailed case directory. Daily use is faster from Workbench.")
     if not project_id:
         st.warning("Select a project first.")
         return
@@ -88,9 +91,11 @@ def show() -> None:
                         source_ref="ui",
                     )
                     session.flush()
-                    st.session_state["active_case_id"] = case.sizing_case_id
-                    st.session_state["active_case_code"] = case.case_code
-                    st.session_state["active_case_name"] = case.case_name
+                    set_active_case(
+                        case_id=case.sizing_case_id,
+                        case_code=case.case_code,
+                        case_name=case.case_name,
+                    )
                 st.success(f"Case created: {name.strip()}")
 
     with session_scope() as session:
@@ -116,7 +121,9 @@ def show() -> None:
         cols[1].write(case["case_code"])
         cols[2].write(case["created_at"].strftime("%Y-%m-%d %H:%M"))
         if cols[3].button("Open", key=f"case_open_{case['sizing_case_id']}"):
-            st.session_state["active_case_id"] = case["sizing_case_id"]
-            st.session_state["active_case_code"] = case["case_code"]
-            st.session_state["active_case_name"] = case["case_name"]
+            set_active_case(
+                case_id=case["sizing_case_id"],
+                case_code=case["case_code"],
+                case_name=case["case_name"],
+            )
             st.success(f"Active case set: {case['case_name']}")

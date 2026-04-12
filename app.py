@@ -22,6 +22,7 @@ import streamlit as st
 
 import calb_sizing_tool.config as config  # noqa: F401
 from calb_sizing_tool.state.auth_state import clear_auth_context, get_auth_context
+from calb_sizing_tool.state.workspace_state import get_workspace_context
 from calb_sizing_tool.ui.login_view import show as show_login
 
 
@@ -35,6 +36,20 @@ auth_context = get_auth_context()
 if auth_context is None:
     show_login()
     st.stop()
+
+NAV_OPTIONS = [
+    "Workbench",
+    "DC Sizing",
+    "AC Sizing",
+    "Single Line Diagram",
+    "Site Layout",
+    "Report Export",
+    "Project Directory",
+    "Case Directory",
+    "Run Registry",
+]
+if st.session_state.get("main_nav") not in NAV_OPTIONS:
+    st.session_state["main_nav"] = "Workbench"
 
 with st.sidebar:
     logo_path = Path("calb_logo.png")
@@ -50,52 +65,40 @@ with st.sidebar:
         clear_auth_context()
         st.rerun()
 
+    workspace_context = get_workspace_context()
+    st.markdown("---")
+    st.caption("Current Workspace")
+    st.caption(f"Project: {workspace_context.get('project_name') or 'None'}")
+    st.caption(f"Case: {workspace_context.get('case_name') or 'None'}")
+    st.caption(f"Run: {workspace_context.get('run_id') or 'None'}")
+
     st.title("Navigation")
     st.markdown("---")
     nav = st.radio(
         "Go to",
-        [
-            "Dashboard",
-            "Projects",
-            "Cases",
-            "Run History",
-            "DC Sizing",
-            "AC Sizing",
-            "Single Line Diagram",
-            "Site Layout",
-            "Report Export",
-        ],
+        NAV_OPTIONS,
+        key="main_nav",
     )
 
     st.markdown("---")
-    st.caption("v2.1 Refactored")
+    st.caption("v2.1 Workbench")
 
-if nav == "Dashboard":
-    st.title("CALB ESS SIZING PLATFORM")
-    st.markdown("### Utility-Scale Energy Storage Sizing Tool")
-    st.info("Follow the standard workflow:")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown("#### 1. DC Sizing")
-        st.write("Define capacity, select battery technology, and calculate degradation.")
-    with col2:
-        st.markdown("#### 2. AC Sizing")
-        st.write("Configure grid voltage, transformers, and PCS blocks based on DC results.")
-    with col3:
-        st.markdown("#### 3. SLD Generation")
-        st.write("Generate the Single Line Diagram for the system.")
+if nav == "Workbench":
+    from calb_sizing_tool.ui.workbench_view import show
 
-elif nav == "Projects":
+    show()
+
+elif nav == "Project Directory":
     from calb_sizing_tool.ui.projects_view import show
 
     show()
 
-elif nav == "Cases":
+elif nav == "Case Directory":
     from calb_sizing_tool.ui.cases_view import show
 
     show()
 
-elif nav == "Run History":
+elif nav == "Run Registry":
     from calb_sizing_tool.ui.run_history_view import show
 
     show()

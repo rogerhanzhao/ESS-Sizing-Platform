@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from math import ceil
 from typing import Any, Literal
 
 from calb_sizing_tool.schemas.sld_topology import SldTopology
@@ -172,7 +173,14 @@ def build_sld_layout_plan(
     battery_frame_x = diagram_x
     battery_frame_y = ac_frame_y + ac_frame_height + 48.0
     battery_frame_width = diagram_width
-    battery_frame_height = config["battery_height"]
+    max_blocks_per_feeder = max(summary.dc_blocks_per_feeder or [1])
+    max_grid_cols = 1 if max_blocks_per_feeder <= 2 else 2
+    max_grid_rows = max(1, ceil(max_blocks_per_feeder / max_grid_cols))
+    block_stack_height = (
+        max_grid_rows * config["dc_block_height"]
+        + max(0, max_grid_rows - 1) * 18.0
+    )
+    battery_frame_height = max(config["battery_height"], 132.0 + block_stack_height)
 
     summary_box_height = 120.0 if summary.draw_summary else 0.0
     height = int(battery_frame_y + battery_frame_height + summary_box_height + 80.0)
@@ -306,34 +314,16 @@ def build_sld_layout_plan(
     pcs_y = lv_bus_y + 54.0
 
     busbar_pair_gap = config["busbar_gap"]
-    battery_grid_top = battery_frame_y + 72.0
-    battery_slots = max(summary.dc_blocks_total_in_group, 1)
-    battery_slot_width = battery_frame_width / max(battery_slots, 3)
-
-    dc_block_positions: dict[str, tuple[float, float]] = {}
-    for index, dc_block in enumerate(dc_block_nodes):
-        block_x = battery_frame_x + 30.0 + (index % max(1, min(3, battery_slots))) * (
-            config["dc_block_width"] + 24.0
-        )
-        block_y = battery_grid_top + (index // max(1, min(3, battery_slots))) * (
-            config["dc_block_height"] + 18.0
-        )
-        dc_block_positions[dc_block.node_id] = (block_x, block_y)
-        symbols.append(
-            SldLayoutSymbol(
-                symbol_id=f"dc-block-{index + 1}",
-                symbol_type="dc_block",
-                x=block_x,
-                y=block_y,
-                width=config["dc_block_width"],
-                height=config["dc_block_height"],
-                text_lines=(
-                    f"DC Block #{index + 1}",
-                    f"{summary.dc_block_energy_mwh:.3f} MWh",
-                ),
-                anchor_node_id=dc_block.node_id,
-                meta={"feeder_index": dc_block.feeder_index},
-            )
+    battery_bus_y = battery_frame_y + 84.0
+    feeder_column_gap = min(28.0, slot_width * 0.16)
+    dc_blocks_by_feeder: dict[int, list] = {}
+    for dc_block in dc_block_nodes:
+        feeder_key = int(dc_block.feeder_index or 0)
+        dc_blocks_by_feeder.setdefault(feeder_key, []).append(dc_block)
+    for feeder_key in dc_blocks_by_feeder:
+        dc_blocks_by_feeder[feeder_key] = sorted(
+            dc_blocks_by_feeder[feeder_key],
+            key=lambda item: (item.dc_block_index or 0),
         )
 
     for index, pcs_node in enumerate(pcs_nodes):
@@ -356,33 +346,85 @@ def build_sld_layout_plan(
             )
         )
 
-        dc_bus_y = pcs_y + config["pcs_height"] + 36.0
+        feeder_left = lv_bus_x1 + slot_width * index + feeder_column_gap / 2
+        feeder_right = lv_bus_x1 + slot_width * (index + 1) - feeder_column_gap / 2
+        feeder_width = max(140.0, feeder_right - feeder_left)
         dc_bus_node = dc_bus_nodes[index]
+        feeder_index = int(dc_bus_node.feeder_index or (index + 1))
         if layout_profile == "compact":
+            dc_bus_width = min(feeder_width * 0.78, 180.0)
             symbols.append(
                 SldLayoutSymbol(
                     symbol_id=f"dc-busbar-{index + 1}",
                     symbol_type="dc_busbar_single",
-                    x=center_x - slot_width * 0.26,
-                    y=dc_bus_y,
-                    width=slot_width * 0.52,
+                    x=center_x - dc_bus_width / 2,
+                    y=battery_bus_y,
+                    width=dc_bus_width,
                     text_lines=("DC BUSBAR",),
                     anchor_node_id=dc_bus_node.node_id,
-                    meta={"feeder_index": dc_bus_node.feeder_index},
+                    meta={"feeder_index": feeder_index},
                 )
             )
         else:
+            dc_bus_width = min(feeder_width * 0.78, 220.0)
             symbols.append(
                 SldLayoutSymbol(
                     symbol_id=f"dc-busbar-{index + 1}",
                     symbol_type="dc_busbar_pair",
-                    x=center_x - slot_width * 0.30,
-                    y=dc_bus_y,
-                    width=slot_width * 0.60,
+                    x=center_x - dc_bus_width / 2,
+                    y=battery_bus_y,
+                    width=dc_bus_width,
                     height=busbar_pair_gap,
                     text_lines=("DC BUSBAR A", "DC BUSBAR B"),
                     anchor_node_id=dc_bus_node.node_id,
-                    meta={"feeder_index": dc_bus_node.feeder_index},
+                    meta={"feeder_index": feeder_index},
+                )
+            )
+
+        feeder_blocks = dc_blocks_by_feeder.get(feeder_index, [])
+        local_count = len(feeder_blocks)
+        if not feeder_blocks:
+            continue
+
+        grid_cols = 1 if local_count <= 2 else 2
+        grid_rows = max(1, ceil(local_count / grid_cols))
+        col_gap = 18.0
+        row_gap = 18.0
+        inner_padding = 10.0
+        if grid_cols == 1:
+            block_width = min(config["dc_block_width"], feeder_width - inner_padding * 2)
+        else:
+            block_width = min(
+                config["dc_block_width"],
+                (feeder_width - inner_padding * 2 - col_gap) / 2,
+            )
+        block_width = max(84.0, block_width)
+        total_grid_width = grid_cols * block_width + max(0, grid_cols - 1) * col_gap
+        grid_left = max(feeder_left + inner_padding, center_x - total_grid_width / 2)
+        grid_right_limit = feeder_right - inner_padding
+        if grid_left + total_grid_width > grid_right_limit:
+            grid_left = max(feeder_left + inner_padding, grid_right_limit - total_grid_width)
+
+        block_top = battery_bus_y + (42.0 if layout_profile == "compact" else busbar_pair_gap + 36.0)
+        for local_index, dc_block in enumerate(feeder_blocks):
+            row = local_index // grid_cols
+            col = local_index % grid_cols
+            block_x = grid_left + col * (block_width + col_gap)
+            block_y = block_top + row * (config["dc_block_height"] + row_gap)
+            symbols.append(
+                SldLayoutSymbol(
+                    symbol_id=f"dc-block-{dc_block.node_id}",
+                    symbol_type="dc_block",
+                    x=block_x,
+                    y=block_y,
+                    width=block_width,
+                    height=config["dc_block_height"],
+                    text_lines=(
+                        f"DC Block #{dc_block.dc_block_index}",
+                        f"{summary.dc_block_energy_mwh:.3f} MWh",
+                    ),
+                    anchor_node_id=dc_block.node_id,
+                    meta={"feeder_index": feeder_index},
                 )
             )
 

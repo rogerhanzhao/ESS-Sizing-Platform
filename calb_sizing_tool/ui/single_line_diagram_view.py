@@ -30,6 +30,7 @@ from calb_sizing_tool.services.sld_pipeline_service import run_sld_pipeline_from
 from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.state.project_state import get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state
+from calb_sizing_tool.state.workspace_state import get_workspace_context
 from calb_sizing_tool.ui.sld_inputs import render_electrical_inputs
 
 
@@ -69,6 +70,11 @@ def _execute_sld_pipeline(*, bundle, ac_snapshot, options, plugin_id: str, actor
     )
 
 
+def _clear_sld_preview() -> None:
+    st.session_state.pop("sld_artifacts", None)
+    st.session_state.pop("sld_pipeline_meta", None)
+
+
 def show() -> None:
     state = init_shared_state()
     init_project_state()
@@ -85,10 +91,19 @@ def show() -> None:
         roles=auth_context.roles,
     )
 
+    workspace = get_workspace_context()
+
     st.header("Single Line Diagram")
     st.caption("Read runtime run data, execute the SLD pipeline, preview the result, and download artifacts.")
+    st.caption(
+        "Preview is session-scoped. Change the run or AC result, then click Generate SLD again to refresh the formal diagram."
+    )
+    st.caption(
+        f"Active Workspace: Project `{workspace.get('project_name') or 'None'}` | "
+        f"Case `{workspace.get('case_name') or 'None'}` | Run `{workspace.get('run_id') or 'None'}`"
+    )
 
-    run_id_default = st.session_state.get("dc_last_run_id", "")
+    run_id_default = workspace.get("run_id") or st.session_state.get("dc_last_run_id", "")
     run_id = st.text_input("Run ID", value=str(run_id_default or "")).strip()
 
     ac_snapshot = _build_ac_snapshot(state, project_state)
@@ -132,7 +147,18 @@ def show() -> None:
         format_func=lambda pid: registry.get(pid).metadata.plugin_name if registry.get(pid) else pid,
     )
 
-    if st.button("Generate SLD", disabled=not run_id or not ac_snapshot):
+    action_col1, action_col2 = st.columns([1.3, 1.0])
+    generate_sld = action_col1.button("Generate SLD", disabled=not run_id or not ac_snapshot, use_container_width=True)
+    clear_preview = action_col2.button(
+        "Clear Preview",
+        disabled=not st.session_state.get("sld_artifacts"),
+        use_container_width=True,
+    )
+    if clear_preview:
+        _clear_sld_preview()
+        st.info("SLD preview cleared.")
+
+    if generate_sld:
         with session_scope() as session:
             access = AccessControlService(session, auth_user)
             try:
@@ -208,6 +234,11 @@ def show() -> None:
             st.warning("This SLD was produced in draft mode and must not replace the formal baseline result.")
         elif pipeline_meta.get("draft_warnings"):
             st.info("No draft fallback was applied in formal mode.")
+        preview_run_id = str(pipeline_meta.get("run_id") or "").strip()
+        if run_id and preview_run_id and preview_run_id != run_id:
+            st.warning(
+                f"Current preview belongs to run `{preview_run_id}`. Click Generate SLD to refresh the diagram for `{run_id}`."
+            )
     if artifact_bundle:
         artifacts = {item["artifact_kind"]: item for item in artifact_bundle.artifacts}
         svg_item = artifacts.get("sld_svg")

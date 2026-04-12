@@ -26,7 +26,6 @@ from pathlib import Path
 
 # --- Adapted imports for refactor ---
 from calb_sizing_tool.adapters.excel_loader_adapter import bundle_to_legacy_tuple, load_dc_excel_bundle_from_path
-from calb_sizing_tool.adapters.session_state_adapter import build_dc_result_summary, build_stage13_output
 from calb_sizing_tool.config import DC_DATA_PATH, DC_DATA_IS_LEGACY, PROJECT_ROOT
 from calb_sizing_tool.common.nameplate import apply_block_nameplate_recalc, get_standard_container_mwh
 from calb_sizing_tool.infra.db.session import session_scope
@@ -40,7 +39,6 @@ from calb_sizing_tool.services.access_control_service import AccessControlServic
 from calb_sizing_tool.services.dc_pipeline_service import size_with_guarantee as service_size_with_guarantee
 from calb_sizing_tool.services.auth_service import AuthUser
 from calb_sizing_tool.services.run_persistence_service import persist_dc_run
-from calb_sizing_tool.services.run_restore_service import load_dc_run_bundle
 from calb_sizing_tool.services.stage1_service import run_stage1 as service_run_stage1
 from calb_sizing_tool.services.stage2_service import (
     K_MAX_FIXED,
@@ -60,6 +58,7 @@ from calb_sizing_tool.models import DCBlockResult
 from calb_sizing_tool.state.project_state import bump_run_id_dc, init_project_state
 from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
+from calb_sizing_tool.state.workspace_state import get_workspace_context, restore_run_bundle_to_session
 
 # ==========================================
 # 0. SETUP & LIBRARY CHECK
@@ -744,12 +743,13 @@ def show():
         roles=auth_context.roles,
     )
 
-    active_project_id = st.session_state.get("active_project_id")
-    active_project_name = st.session_state.get("active_project_name")
-    active_project_code = st.session_state.get("active_project_code")
-    active_case_id = st.session_state.get("active_case_id")
-    active_case_name = st.session_state.get("active_case_name")
-    active_case_code = st.session_state.get("active_case_code")
+    workspace = get_workspace_context()
+    active_project_id = workspace.get("project_id")
+    active_project_name = workspace.get("project_name")
+    active_project_code = workspace.get("project_code")
+    active_case_id = workspace.get("case_id")
+    active_case_name = workspace.get("case_name")
+    active_case_code = workspace.get("case_code")
 
     if active_project_id:
         with session_scope() as session:
@@ -875,8 +875,6 @@ def show():
                     if not bundle:
                         st.error(f"Run id {run_id} not found.")
                     else:
-                        snapshot = bundle.snapshot
-                        scenario_id = bundle.scenario_mode or snapshot.stage2.mode or "container_only"
                         case_input = (
                             bundle.input_snapshot.payload.get("case_input")
                             if bundle.input_snapshot and isinstance(bundle.input_snapshot.payload, dict)
@@ -888,37 +886,10 @@ def show():
                         poi_frequency_hz = case_input.get("poi_frequency_hz") or st.session_state.get(
                             "poi_frequency_hz"
                         )
-                        dc_block_total_qty = int(snapshot.stage2.container_count + snapshot.stage2.cabinet_count)
 
-                        st.session_state["dc_last_run_id"] = run_id
-                        dc_results["last_run_id"] = run_id
                         st.session_state["poi_nominal_voltage_kv"] = poi_nominal_voltage_kv
                         st.session_state["poi_frequency_hz"] = poi_frequency_hz
-                        st.session_state["dc_result_summary"] = build_dc_result_summary(snapshot)
-                        st.session_state["stage13_output"] = build_stage13_output(
-                            snapshot,
-                            dc_block_total_qty=dc_block_total_qty,
-                            selected_scenario=str(scenario_id),
-                            poi_nominal_voltage_kv=float(poi_nominal_voltage_kv),
-                            poi_frequency_hz=poi_frequency_hz,
-                        )
-                        dc_results.update(
-                            {
-                                "dc_result_summary": st.session_state.get("dc_result_summary"),
-                                "stage13_output": st.session_state.get("stage13_output"),
-                            }
-                        )
-                        project_state = st.session_state.get("project_state")
-                        if isinstance(project_state, dict):
-                            project_state.setdefault("dc", {})["run_id"] = run_id
-                        if bundle.project_id:
-                            st.session_state["active_project_id"] = bundle.project_id
-                            st.session_state["active_project_code"] = bundle.project_code
-                            st.session_state["active_project_name"] = bundle.project_name
-                        if bundle.sizing_case_id:
-                            st.session_state["active_case_id"] = bundle.sizing_case_id
-                            st.session_state["active_case_code"] = bundle.case_code
-                            st.session_state["active_case_name"] = bundle.case_name
+                        restore_run_bundle_to_session(bundle, run_id)
                         set_run_time("dc_results")
                         st.success(f"Loaded DC run {run_id}.")
                 except PermissionError:
@@ -1297,27 +1268,9 @@ def show():
                     if not bundle:
                         st.error("Run persisted but could not be reloaded from DB.")
                     else:
-                        st.session_state["dc_last_run_id"] = run_id
-                        dc_results["last_run_id"] = run_id
-                        st.session_state["dc_result_summary"] = build_dc_result_summary(bundle.snapshot)
-                        st.session_state["stage13_output"] = build_stage13_output(
-                            bundle.snapshot,
-                            dc_block_total_qty=int(
-                                bundle.snapshot.stage2.container_count + bundle.snapshot.stage2.cabinet_count
-                            ),
-                            selected_scenario=str(bundle.scenario_mode or bundle.snapshot.stage2.mode or "container_only"),
-                            poi_nominal_voltage_kv=float(poi_nominal_voltage_kv),
-                            poi_frequency_hz=poi_frequency_hz,
-                        )
-                        dc_results.update(
-                            {
-                                "stage13_output": st.session_state.get("stage13_output"),
-                                "dc_result_summary": st.session_state.get("dc_result_summary"),
-                            }
-                        )
-                        project_state = st.session_state.get("project_state")
-                        if isinstance(project_state, dict):
-                            project_state.setdefault("dc", {})["run_id"] = run_id
+                        st.session_state["poi_nominal_voltage_kv"] = poi_nominal_voltage_kv
+                        st.session_state["poi_frequency_hz"] = poi_frequency_hz
+                        restore_run_bundle_to_session(bundle, run_id)
                         st.info(f"Run saved: {run_id}")
             except Exception as exc:
                 st.error(f"Failed to persist DC run: {exc}")

@@ -6,6 +6,7 @@ from calb_sizing_tool.infra.db.base import Base
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.services.auth_service import AuthService
 from calb_sizing_tool.state.auth_state import AuthContext, set_auth_context
+from calb_sizing_tool.state.workspace_state import navigate_to
 
 
 def _ensure_schema() -> None:
@@ -19,6 +20,7 @@ def show() -> None:
     auth_service.ensure_system_roles()
 
     st.title("Sign In")
+    st.caption("Sign in to the Workbench. Project -> Case -> Run is now the primary working boundary.")
 
     if not auth_service.has_users():
         st.info("No users found. Create the initial admin account.")
@@ -50,6 +52,7 @@ def show() -> None:
                             roles=user.roles,
                         )
                     )
+                    navigate_to("Workbench")
                     st.success("Admin account created.")
                     st.rerun()
         return
@@ -71,5 +74,6 @@ def show() -> None:
                         roles=user.roles,
                     )
                 )
+                navigate_to("Workbench")
                 st.success("Login successful.")
                 st.rerun()
