@@ -1,4 +1,14 @@
 from calb_sizing_tool.services.access_control_service import AccessControlService
+from calb_sizing_tool.services.ac_sizing_service import (
+    ACBlockConfig,
+    ACBlockRatioOption,
+    PCSRecommendation,
+    build_dc_allocation_plan,
+    evaluate_ac_sizing_feasibility,
+    generate_ac_sizing_options,
+    select_ac_block_container_type,
+    suggest_pcs_count_and_rating,
+)
 from calb_sizing_tool.services.artifact_service import persist_artifacts
 from calb_sizing_tool.services.auth_service import AuthService, AuthUser
 from calb_sizing_tool.services.dc_pipeline_service import run_dc_pipeline, size_with_guarantee
@@ -30,9 +40,17 @@ from calb_sizing_tool.services.stage3_service import run_stage3
 
 __all__ = [
     "AccessControlService",
+    "ACBlockConfig",
+    "ACBlockRatioOption",
+    "PCSRecommendation",
     "persist_artifacts",
     "AuthService",
     "AuthUser",
+    "build_dc_allocation_plan",
+    "evaluate_ac_sizing_feasibility",
+    "generate_ac_sizing_options",
+    "select_ac_block_container_type",
+    "suggest_pcs_count_and_rating",
     "render_layout_from_run_bundle",
     "render_sld_from_run_bundle",
     "prepare_sld_pipeline_from_run_bundle",

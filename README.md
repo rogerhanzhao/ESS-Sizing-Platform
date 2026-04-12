@@ -108,6 +108,7 @@ Use the active docs under `docs/`:
 - `docs/QUICK_START.md`: operator quick start
 - `docs/REFACTOR_PHASE1_PLAN.md`: current Phase 1 refactor scope
 - `docs/BASELINE_FREEZE_PLAN_V1.md`: DC baseline freeze plan
+- `docs/SIZING_LOGIC_CANON_V1.md`: frozen DC/AC sizing law and change-control rules
 - `docs/DATA_MODEL_MAP_V1.md`: canonical field and entity mapping
 - `docs/DB_SCHEMA_OVERVIEW_V1.md`: database schema overview
 - `docs/COMPATIBILITY_NOTES_V1.md`: compatibility rules for the refactor

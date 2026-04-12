@@ -55,9 +55,11 @@ Any future change to:
 - output table columns
 - guarantee loop behavior
 - profile selection logic
+- AC ratio, PCS library, or feeder allocation behavior
 
 must update both:
 
+- [SIZING_LOGIC_CANON_V1.md](d:/CALB_SizingTool/docs/SIZING_LOGIC_CANON_V1.md)
 - [BASELINE_FREEZE_PLAN_V1.md](d:/CALB_SizingTool/docs/BASELINE_FREEZE_PLAN_V1.md)
 - [DATA_MODEL_MAP_V1.md](d:/CALB_SizingTool/docs/DATA_MODEL_MAP_V1.md)
 

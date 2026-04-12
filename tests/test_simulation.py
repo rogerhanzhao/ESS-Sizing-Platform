@@ -19,7 +19,7 @@
 import pandas as pd
 import pytest
 
-from simulation import DispatchValidationError, simulate_dispatch
+from calb_sizing_tool.sizing.simulation import DispatchValidationError, simulate_dispatch
 
 
 def test_simulate_dispatch_nominal_profile():

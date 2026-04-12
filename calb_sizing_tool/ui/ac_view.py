@@ -20,24 +20,24 @@
 AC SIZING V2 - DC block based recommendation engine.
 Prioritizes 1:1, 1:2, and 1:4 ratio options.
 """
-import math
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
-from calb_sizing_tool.common.allocation import allocate_dc_blocks, evenly_distribute
 from calb_sizing_tool.common.nameplate import get_standard_container_mwh
 from calb_sizing_tool.models import DCBlockResult
 from calb_sizing_tool.reporting.export_docx import make_report_filename
 from calb_sizing_tool.reporting.report_v2 import export_report_v2_1
-from calb_sizing_tool.state.project_state import bump_run_id_ac, init_project_state
-from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
-from calb_sizing_tool.ui.ac_sizing_config import (
-    ACBlockRatioOption,
+from calb_sizing_tool.services.ac_sizing_service import (
+    build_dc_allocation_plan,
+    evaluate_ac_sizing_feasibility,
     generate_ac_sizing_options,
+    select_ac_block_container_type,
     suggest_pcs_count_and_rating,
 )
+from calb_sizing_tool.state.project_state import bump_run_id_ac, init_project_state
+from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
 
 
 def _format_float(val, decimals=2) -> str:
@@ -246,7 +246,7 @@ def show():
 
             # Container size info - based on single AC block size
             single_block_ac_power = pcs_per_ac * pcs_kw / 1000
-            auto_container = "40ft" if single_block_ac_power > 5 or pcs_per_ac >= 4 else "20ft"
+            auto_container = select_ac_block_container_type(single_block_ac_power, pcs_per_ac)
             st.info(
                 f"**AC Block Container**: {auto_container} "
                 f"(Single block: {single_block_ac_power:.2f} MW, "
@@ -265,26 +265,13 @@ def show():
             total_ac_mw = num_blocks * block_size_mw
             overhead = total_ac_mw - target_mw
 
-            errors = []
-            warnings = []
-
-            # Check energy
             total_energy = total_energy_mwh
-            if total_energy < target_mwh * 0.95:
-                errors.append(f"Insufficient energy: {total_energy:.0f} MWh < {target_mwh:.0f} MWh")
-            elif total_energy > target_mwh * 1.05:
-                warnings.append(
-                    f"Excess energy: {total_energy:.0f} MWh > {target_mwh:.0f} MWh "
-                    f"(+{(total_energy/target_mwh-1)*100:.1f}%)"
-                )
-
-            # Check power
-            if total_ac_mw < target_mw * 0.95:
-                errors.append(f"Insufficient power: {total_ac_mw:.1f} MW < {target_mw:.1f} MW")
-            elif overhead > target_mw * 0.3:
-                warnings.append(
-                    f"Power overhead: {overhead:.1f} MW ({overhead/target_mw*100:.0f}% of POI requirement)"
-                )
+            errors, warnings = evaluate_ac_sizing_feasibility(
+                total_energy_mwh=total_energy,
+                target_energy_mwh=target_mwh,
+                total_ac_mw=total_ac_mw,
+                target_power_mw=target_mw,
+            )
 
             if errors:
                 for err in errors:
@@ -329,23 +316,14 @@ def show():
 
             st.write(
                 "**Container Type:** "
-                + ("40ft" if block_size_mw > 5 or pcs_per_block >= 4 else "20ft")
+                + select_ac_block_container_type(block_size_mw, pcs_per_block)
                 + " per AC Block"
             )
             st.divider()
 
             # --- DETAILED DC ALLOCATION ---
-            dc_blocks_per_ac_block_list = evenly_distribute(dc_blocks_total, num_blocks)
-            dc_allocation_plan = []
-            for i, num_dc in enumerate(dc_blocks_per_ac_block_list):
-                feeder_allocations = allocate_dc_blocks(num_dc, pcs_per_block)
-                dc_allocation_plan.append(
-                    {
-                        "ac_block_index": i + 1,
-                        "dc_blocks_total": num_dc,
-                        "feeder_allocations": feeder_allocations,
-                    }
-                )
+            dc_allocation_plan = build_dc_allocation_plan(dc_blocks_total, num_blocks, pcs_per_block)
+            dc_blocks_per_ac_block_list = [int(plan["dc_blocks_total"]) for plan in dc_allocation_plan]
 
             mv_kv = float(mv_kv_value or 33.0)
             lv_v = float(st.session_state.get("pcs_lv_v", 690.0))

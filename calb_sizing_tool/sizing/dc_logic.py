@@ -1,42 +1,31 @@
-﻿# -----------------------------------------------------------------------------
-# Personal Open-Source Notice
-#
-# Copyright (c) 2026 Alex.Zhao. All rights reserved.
-#
-# This repository is released under the MIT License (see LICENSE file).
-# Intended use: learning, evaluation, and engineering reference for Utility-scale
-# BESS/ESS sizing and Reporting workflows.
-#
-# DISCLAIMER: This software is provided "AS IS", without warranty of any kind,
-# express or implied. In no event shall the author(s) be liable for any claim,
-# damages, or other liability arising from, out of, or in connection with the
-# software or the use or other dealings in the software.
-#
-# NOTE: This is a personal project. It is not an official product or statement
-# of any company or organization.
-# -----------------------------------------------------------------------------
+"""Authoritative DC sizing facade.
 
-import pandas as pd
+The frozen DC sizing law lives in the Stage 1-3 services and guarantee loop service.
+This module prevents placeholder formulas from diverging from the real pipeline.
+"""
 
-def load_dc_data(data_path: str):
-    """
-    Load DC Block related data from Data Dictionary.
-    """
-    return pd.read_excel(data_path, sheet_name=None)
+from calb_sizing_tool.services.dc_pipeline_service import run_dc_pipeline, size_with_guarantee
+from calb_sizing_tool.services.stage1_service import calc_sc_loss_pct, run_stage1
+from calb_sizing_tool.services.stage2_service import (
+    K_MAX_FIXED,
+    build_config_cabinet_only,
+    build_config_container_only,
+    build_config_hybrid,
+    pick_dc_block,
+    rebuild_stage2_counts,
+)
+from calb_sizing_tool.services.stage3_service import run_stage3
 
-def calculate_dc_energy(dc_params: dict, profile: list):
-    """
-    Compute DC energy deliverable based on profile and DC Block params.
-    """
-    # Example placeholder; replace with actual logic.
-    total_energy = dc_params.get("capacity_nominal", 0)
-    delivered = sum(profile) / len(profile) * total_energy
-    return delivered
-
-def dc_rte_calculation(dc_params: dict):
-    """
-    Compute DC round-trip efficiency.
-    """
-    # Placeholder formula for illustration.
-    return dc_params.get("rte_dc", 0.94)
-
+__all__ = [
+    "K_MAX_FIXED",
+    "build_config_cabinet_only",
+    "build_config_container_only",
+    "build_config_hybrid",
+    "calc_sc_loss_pct",
+    "pick_dc_block",
+    "rebuild_stage2_counts",
+    "run_dc_pipeline",
+    "run_stage1",
+    "run_stage3",
+    "size_with_guarantee",
+]

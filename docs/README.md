@@ -22,6 +22,7 @@ This folder contains the active project documentation. Temporary implementation 
 
 - `REFACTOR_PHASE1_PLAN.md`: current Phase 1 refactor scope and deliverables
 - `BASELINE_FREEZE_PLAN_V1.md`: golden-case baseline freeze plan and regression contract
+- `SIZING_LOGIC_CANON_V1.md`: frozen DC/AC sizing law and change-control rules
 - `DATA_MODEL_MAP_V1.md`: canonical field and entity mapping for DC sizing
 - `DB_SCHEMA_OVERVIEW_V1.md`: SQLAlchemy and Alembic schema overview
 - `COMPATIBILITY_NOTES_V1.md`: compatibility constraints for the Phase 1 refactor
