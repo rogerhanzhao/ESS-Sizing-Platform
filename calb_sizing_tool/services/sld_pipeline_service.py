@@ -17,8 +17,7 @@ from calb_sizing_tool.schemas.diagram_inputs import (
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
 from calb_sizing_tool.schemas.sld_topology import SldTopology
 from calb_sizing_tool.services.artifact_service import persist_artifacts
-from calb_sizing_tool.services.sld_input_builder import build_sld_canonical_input
-from calb_sizing_tool.services.sld_topology_builder import build_sld_topology
+from calb_sizing_tool.services.sld_authoritative_builder import build_sld_authoritative_result
 
 
 @dataclass
@@ -52,23 +51,30 @@ def prepare_sld_pipeline_from_run_bundle(
     layout_rules: LayoutRuleSnapshot | None = None,
     plugin_id: str = "sld_engineering_v1",
 ) -> PreparedSldPipeline:
+    """Prepare the authoritative SLD runtime chain.
+
+    Formal flow:
+    AcSnapshot -> SldCanonicalInput -> SldTopology -> renderer compatibility spec.
+    Legacy snapshot/spec builders are not part of this path.
+    """
     registry = get_plugin_registry()
     plugin = registry.get(plugin_id)
     if plugin is None:
         raise ValueError(f"SLD plugin not found: {plugin_id}")
 
     validation_mode = resolve_sld_validation_mode(options)
-    canonical_input = build_sld_canonical_input(
+    authoritative = build_sld_authoritative_result(
         run_bundle=run_bundle,
         ac_snapshot=ac_snapshot,
         options=options,
         project_settings=project_settings,
         validation_mode=validation_mode,
     )
+    canonical_input = authoritative.canonical_input
     topology = (
         SldTopology.model_validate(topology_snapshot.payload)
         if topology_snapshot and topology_snapshot.payload
-        else build_sld_topology(canonical_input)
+        else authoritative.topology
     )
     render_input = SldRenderInput(
         run_id=run_bundle.run_id,

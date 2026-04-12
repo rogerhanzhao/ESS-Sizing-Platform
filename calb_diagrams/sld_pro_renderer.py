@@ -60,6 +60,12 @@ def _write_png(svg_path: Path, png_path: Path) -> None:
 
 
 def _topology_from_legacy_spec(spec: SldGroupSpec) -> SldTopology:
+    """DEPRECATED compatibility adapter.
+
+    This path exists only for legacy callers that still hand renderer-facing
+    SldGroupSpec objects to the renderer. Any defaults applied here are draft
+    compatibility behavior and must never be treated as formal runtime input.
+    """
     equipment_list = spec.equipment_list if isinstance(spec.equipment_list, dict) else {}
     mv_labels = equipment_list.get("mv_labels") if isinstance(equipment_list.get("mv_labels"), dict) else {}
     rmu_payload = {
@@ -178,7 +184,10 @@ def _topology_from_legacy_spec(spec: SldGroupSpec) -> SldTopology:
         "run_id": None,
         "project_name": "Legacy SLD Group",
         "scenario_id": "legacy_sld_group_spec",
-        "source_trace": {"A": "legacy SldGroupSpec compatibility adapter"},
+        "source_trace": {
+            "A": "deprecated renderer compatibility adapter",
+            "B": "legacy spec defaults are draft-only and non-authoritative",
+        },
         "validation_mode": "draft",
         "labels": labels.model_dump(mode="python"),
         "equipment_ratings": equipment_ratings.model_dump(mode="python"),
@@ -405,6 +414,7 @@ def render_sld_pro_svg(
 
     Rendering is delegated to render_sld_svg(topology, ...). This wrapper only adapts the legacy
     SldGroupSpec shape into topology and must not contain engineering allocation logic.
+    Formal SLD generation must call render_sld_svg() with authoritative topology instead.
     """
     if isinstance(spec, SldTopology):
         topology = spec

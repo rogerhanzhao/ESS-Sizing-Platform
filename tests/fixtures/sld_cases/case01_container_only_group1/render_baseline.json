@@ -1,8 +1,8 @@
 {
   "metadata": {
-    "artifact_mode": "draft_override",
+    "artifact_mode": "official",
     "group_index": 1,
-    "input_hash": "fece301919de0ccded23ab7cd76d75289baee59b002f4e69ee5e1cef19c708b7",
+    "input_hash": "1339505c2cc7c139067647a839f595a3af2946e70bb23eaef6a3f3eada8c2fa2",
     "png_hash": "e67892cb826ae8b8c0a8583795142ed3dac4c3b31081bcda65ea62cfbb790447",
     "render_spec_hash": "4cfd1026a6f1d9ac5c966beca5a436c1410599ddab7d2893a69b3866df1c9ad3",
     "renderer_version": "1.1.0",
@@ -10,9 +10,9 @@
     "scenario_id": "container_only",
     "svg_hash": "3f968879f80f83ecf9c00f5ddb26737df4bd73cd61580946aab57562bad68851",
     "topology_edge_count": 15,
-    "topology_hash": "88d8cec2d81ad9b2f53fbfa7f9b9beef1210ec88b3ff6e747640b18d64e1d5f2",
+    "topology_hash": "e7dc4f91c11a2e194659854c68ac9bf52b0576bac137ba30bbff918679cd65b4",
     "topology_node_count": 16,
-    "validation_mode": "draft"
+    "validation_mode": "strict"
   },
   "spec": {
     "dc_block_energy_mwh": 0.836,

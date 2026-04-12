@@ -17,7 +17,7 @@ def load_case_definition(case_dir: Path) -> dict:
     return json.loads((case_dir / "case_definition.json").read_text(encoding="utf-8"))
 
 
-def build_case_inputs(case_definition: dict) -> tuple[DcRunBundle, AcSnapshot, SldRenderOptions]:
+def build_case_inputs(case_definition: dict) -> tuple[DcRunBundle, AcSnapshot, SldRenderOptions, dict]:
     project_root = Path(__file__).resolve().parents[2]
     sample_excel_path = project_root / "tests" / "fixtures" / "sample_excels" / "dc_dictionary_minimal.xlsx"
     excel_bundle = load_dc_excel_bundle_from_path(sample_excel_path)
@@ -68,4 +68,5 @@ def build_case_inputs(case_definition: dict) -> tuple[DcRunBundle, AcSnapshot, S
     if override_payload is not None:
         options_payload["overrides"] = SldInputOverride.model_validate(override_payload)
     options = SldRenderOptions.model_validate(options_payload)
-    return run_bundle, ac_snapshot, options
+    project_settings = dict(case_definition.get("project_settings") or {})
+    return run_bundle, ac_snapshot, options, project_settings

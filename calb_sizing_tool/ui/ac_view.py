@@ -328,6 +328,8 @@ def show():
             mv_kv = float(mv_kv_value or 33.0)
             lv_v = float(st.session_state.get("pcs_lv_v", 690.0))
             transformer_mva = block_size_mw / 0.9 if block_size_mw > 0 else 0.0
+            # Authoritative AC->SLD contract fields. Downstream SLD logic must normalize
+            # through the dedicated adapter instead of re-guessing aliases in-place.
             ac_output = {
                 "project_name": project_name,
                 "selected_ratio": selected_option.ratio,

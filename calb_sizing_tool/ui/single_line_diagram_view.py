@@ -34,6 +34,11 @@ from calb_sizing_tool.ui.sld_inputs import render_electrical_inputs
 
 
 def _build_ac_snapshot(state, project_state) -> AcSnapshot | None:
+    """UI compatibility collector.
+
+    The page only captures runtime AC results into AcSnapshot. Authoritative SLD
+    normalization starts downstream in services.sld_authoritative_builder.
+    """
     ac_output = st.session_state.get("ac_output") or project_state.get("ac_results") or state.ac_results
     if not isinstance(ac_output, dict) or not ac_output:
         return None
@@ -45,13 +50,13 @@ def _build_ac_snapshot(state, project_state) -> AcSnapshot | None:
 
 def _resolve_ac_blocks_total(ac_output: dict) -> int:
     if not isinstance(ac_output, dict):
-        return 1
-    value = ac_output.get("num_blocks") or ac_output.get("ac_blocks_total")
+        return 0
+    value = ac_output.get("num_blocks")
     try:
         value = int(value)
     except Exception:
-        value = 1
-    return max(1, value)
+        value = 0
+    return max(0, value)
 
 
 def _execute_sld_pipeline(*, bundle, ac_snapshot, options, plugin_id: str, actor: str):
@@ -91,11 +96,12 @@ def show() -> None:
         st.warning("AC snapshot not found. Run AC sizing before generating SLD.")
 
     ac_blocks_total = _resolve_ac_blocks_total(ac_snapshot.output if ac_snapshot else {})
+    group_choices = list(range(1, ac_blocks_total + 1)) if ac_blocks_total > 0 else [1]
     group_index = st.selectbox(
         "AC Block Group",
-        list(range(1, ac_blocks_total + 1)),
+        group_choices,
         index=0,
-        disabled=not ac_snapshot,
+        disabled=not ac_snapshot or ac_blocks_total <= 0,
     )
 
     display_col1, display_col2, display_col3 = st.columns(3)

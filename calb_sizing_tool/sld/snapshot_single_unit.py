@@ -21,7 +21,6 @@ import hashlib
 import json
 from typing import Dict, List, Optional
 
-from calb_sizing_tool.common.allocation import allocate_dc_blocks, evenly_distribute
 from calb_sizing_tool.sld.ac_block_group import build_ac_block_group_spec
 
 
@@ -97,7 +96,7 @@ def build_single_unit_snapshot(
     sld_inputs: dict,
     scenario_id: str,
 ) -> dict:
-    """LEGACY compatibility only.
+    """DEPRECATED LEGACY compatibility only.
 
     The authoritative SLD build chain is now:
     canonical input -> SldTopology -> compatibility adapters.

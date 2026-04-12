@@ -13,8 +13,7 @@ from calb_sizing_tool.plugins.base import ArtifactPayload, DiagramPlugin, Plugin
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot, LayoutRuleSnapshot, SldRenderInput, SldRenderOptions, TopologySnapshot
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
 from calb_sizing_tool.schemas.sld_topology import SldTopology
-from calb_sizing_tool.services.sld_input_builder import build_sld_canonical_input
-from calb_sizing_tool.services.sld_topology_builder import build_sld_topology
+from calb_sizing_tool.services.sld_authoritative_builder import build_sld_authoritative_result
 
 
 def _hash_bytes(payload: bytes) -> str:
@@ -63,21 +62,20 @@ class SldEngineeringPlugin:
         options: SldRenderOptions,
     ) -> SldRenderInput:
         validation_mode = "draft" if bool(options.override_mode) else "strict"
-        canonical_input = build_sld_canonical_input(
+        authoritative = build_sld_authoritative_result(
             run_bundle=run_bundle,
             ac_snapshot=ac_snapshot,
             options=options,
             validation_mode=validation_mode,
         )
-        topology = build_sld_topology(canonical_input)
         return SldRenderInput(
             run_id=run_bundle.run_id,
             run_bundle=run_bundle,
             ac_snapshot=ac_snapshot,
-            topology_snapshot=topology_snapshot or TopologySnapshot(payload=topology.model_dump(mode="python")),
+            topology_snapshot=topology_snapshot or TopologySnapshot(payload=authoritative.topology.model_dump(mode="python")),
             layout_rules=layout_rules,
             options=options,
-            canonical_input=canonical_input,
+            canonical_input=authoritative.canonical_input,
         )
 
     def validate_input(self, render_input: SldRenderInput) -> list[str]:

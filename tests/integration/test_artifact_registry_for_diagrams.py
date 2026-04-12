@@ -16,7 +16,16 @@ from calb_sizing_tool.services.stage1_service import run_stage1 as service_run_s
 def _make_ac_snapshot() -> AcSnapshot:
     return AcSnapshot(
         inputs={"grid_kv": 33.0, "lv_voltage_v": 690.0},
-        output={"num_blocks": 1, "pcs_per_block": 4, "pcs_kw": 1250.0, "transformer_mva": 6.0},
+        output={
+            "num_blocks": 1,
+            "pcs_per_block": 4,
+            "pcs_kw": 1250.0,
+            "block_size_mw": 5.0,
+            "transformer_mva": 6.0,
+            "dc_allocation_plan": [
+                {"ac_block_index": 1, "dc_blocks_total": 4, "feeder_allocations": [1, 1, 1, 1]}
+            ],
+        },
         results={},
     )
 

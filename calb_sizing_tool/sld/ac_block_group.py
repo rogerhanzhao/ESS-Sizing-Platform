@@ -19,8 +19,6 @@
 from dataclasses import dataclass
 from typing import List, Optional, Sequence
 
-from calb_sizing_tool.common.allocation import allocate_dc_blocks, evenly_distribute
-from calb_sizing_tool.common.nameplate import get_standard_container_mwh
 from calb_sizing_tool.services.sld_topology_builder import build_legacy_sld_topology
 
 
@@ -121,7 +119,7 @@ def build_ac_block_group_spec(
     sld_inputs: dict,
     group_index: int,
 ) -> AcBlockGroupSpec:
-    """LEGACY compatibility only.
+    """DEPRECATED LEGACY compatibility only.
 
     Authoritative engineering relationship data now comes from SldTopology.
     This wrapper is kept only for old snapshot code paths that still expect AcBlockGroupSpec.

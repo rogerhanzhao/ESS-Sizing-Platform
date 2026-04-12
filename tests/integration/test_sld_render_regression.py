@@ -17,17 +17,19 @@ CASE_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "sld_cases" / "cas
 def test_sld_render_regression():
     case_definition = load_case_definition(CASE_DIR)
     baseline = json.loads((CASE_DIR / "render_baseline.json").read_text(encoding="utf-8"))
-    run_bundle, ac_snapshot, options = build_case_inputs(case_definition)
+    run_bundle, ac_snapshot, options, project_settings = build_case_inputs(case_definition)
 
     prepared_a = prepare_sld_pipeline_from_run_bundle(
         run_bundle,
         ac_snapshot=ac_snapshot,
         options=options,
+        project_settings=project_settings,
     )
     prepared_b = prepare_sld_pipeline_from_run_bundle(
         run_bundle,
         ac_snapshot=ac_snapshot,
         options=options,
+        project_settings=project_settings,
     )
 
     normalized_a = normalize_sld_render_output(render_prepared_sld_pipeline(prepared_a))
@@ -35,3 +37,11 @@ def test_sld_render_regression():
 
     assert normalized_a == normalized_b
     assert normalized_a == baseline
+    assert normalized_a["metadata"]["validation_mode"] == "strict"
+    assert normalized_a["metadata"]["artifact_mode"] == "official"
+    assert normalized_a["metadata"]["input_hash"]
+    assert normalized_a["metadata"]["topology_hash"]
+    assert normalized_a["metadata"]["render_spec_hash"]
+    assert normalized_a["spec"]["pcs_count"] == 4
+    assert normalized_a["spec"]["dc_blocks_per_feeder"] == [1, 1, 1, 1]
+    assert "PCS&MVT SKID (AC Block)" in normalized_a["svg"]["text_nodes"]

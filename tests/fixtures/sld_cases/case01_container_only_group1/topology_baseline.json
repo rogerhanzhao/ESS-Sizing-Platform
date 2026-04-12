@@ -676,10 +676,10 @@
   "run_id": "sld-regression-case01",
   "scenario_id": "container_only",
   "source_trace": {
-    "A": "explicit snapshot / canonical run data",
-    "B": "ac_output authoritative allocation",
-    "C": "project-level persisted settings",
-    "D": "UI override with explicit override_mode only",
+    "A": "authoritative builder: build_sld_canonical_input()",
+    "B": "authoritative AC output normalized by adapters.ac_to_sld_adapter.normalize_ac_output_for_sld()",
+    "C": "project-level persisted engineering settings",
+    "D": "draft-only override payload from ui.sld_inputs when override_mode is enabled",
     "E": "all other sources forbidden"
   },
   "summary": {
@@ -713,5 +713,5 @@
     "transformer_uk_percent": 7.0,
     "transformer_vector_group": "Dyn11"
   },
-  "validation_mode": "draft"
+  "validation_mode": "strict"
 }

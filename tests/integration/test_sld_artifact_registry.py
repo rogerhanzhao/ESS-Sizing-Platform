@@ -29,6 +29,8 @@ def _make_ac_snapshot() -> AcSnapshot:
             "num_blocks": 1,
             "pcs_count_by_block": [4],
             "pcs_per_block": 4,
+            "pcs_kw": 1250.0,
+            "block_size_mw": 5.0,
             "pcs_rating_kw_list_by_block": [[1250.0, 1250.0, 1250.0, 1250.0]],
             "transformer_mva": 6.0,
             "dc_allocation_plan": [

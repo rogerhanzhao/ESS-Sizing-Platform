@@ -40,6 +40,11 @@ def _safe_float(value, default):
 
 
 def render_electrical_inputs(defaults: dict | None, key_prefix: str | None = None) -> SldInputOverride:
+    """Draft-only UI override collector.
+
+    Formal SLD generation must rely on authoritative runtime/project inputs. This
+    form exists only for explicit override_mode workflows.
+    """
     defaults = defaults or legacy_sld_override_preset()
     key_prefix = key_prefix or "sld_inputs"
     labels = defaults.get("labels", {}) if isinstance(defaults.get("labels"), dict) else {}

@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from calb_sizing_tool.adapters.ac_to_sld_adapter import AcToSldAdapterError, normalize_ac_output_for_sld
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot, SldRenderOptions
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
 from calb_sizing_tool.schemas.sld_render_input import (
@@ -16,10 +17,10 @@ from calb_sizing_tool.schemas.sld_render_input import (
 
 
 SOURCE_PRIORITY_V1 = {
-    "A": "explicit snapshot / canonical run data",
-    "B": "ac_output authoritative allocation",
-    "C": "project-level persisted settings",
-    "D": "UI override with explicit override_mode only",
+    "A": "authoritative builder: build_sld_canonical_input()",
+    "B": "authoritative AC output normalized by adapters.ac_to_sld_adapter.normalize_ac_output_for_sld()",
+    "C": "project-level persisted engineering settings",
+    "D": "draft-only override payload from ui.sld_inputs when override_mode is enabled",
     "E": "all other sources forbidden",
 }
 
@@ -58,6 +59,13 @@ def _deep_get(mapping: dict[str, Any], *path: str) -> Any:
 
 
 class SldInputBuilder:
+    """AUTHORITATIVE builder for formal SLD runtime input.
+
+    This builder accepts the run bundle, the raw AC snapshot, and the optional
+    draft override payload. It must not guess AC/DC topology from scattered
+    aliases. AC aliases are normalized once inside adapters.ac_to_sld_adapter.
+    """
+
     def build_from_sources(
         self,
         *,
@@ -77,16 +85,20 @@ class SldInputBuilder:
         if override is not None and not override_mode:
             errors.append("SLD overrides were provided but override_mode is disabled.")
 
+        try:
+            authoritative_ac = normalize_ac_output_for_sld(ac_output)
+        except AcToSldAdapterError as exc:
+            errors.extend(exc.errors)
+            authoritative_ac = None
+
         input_payload = {}
         if run_bundle.input_snapshot and isinstance(run_bundle.input_snapshot.payload, dict):
             input_payload = run_bundle.input_snapshot.payload
         case_input = input_payload.get("case_input") or {}
 
-        ac_blocks_total = self._required_int(
-            "ac_blocks_total",
-            [ac_output.get("num_blocks"), ac_output.get("ac_blocks_total")],
-            errors,
-        )
+        ac_blocks_total = authoritative_ac.num_blocks if authoritative_ac is not None else None
+        if ac_blocks_total is None:
+            errors.append("ac_blocks_total is unavailable because AC->SLD normalization failed.")
 
         group_index = _safe_int(options.group_index)
         if group_index is None or group_index <= 0:
@@ -115,16 +127,17 @@ class SldInputBuilder:
         )
 
         project_frequency_hz = self._optional_float(
-            [case_input.get("poi_frequency_hz"), ac_snapshot.inputs.get("grid_frequency_hz")]
+            [
+                case_input.get("poi_frequency_hz"),
+                ac_snapshot.inputs.get("grid_frequency_hz"),
+            ]
         )
 
         mv_voltage_kv = self._required_float(
             "mv_voltage_kv",
             [
+                authoritative_ac.mv_voltage_kv if authoritative_ac else None,
                 case_input.get("poi_nominal_voltage_kv"),
-                ac_output.get("mv_voltage_kv"),
-                ac_output.get("mv_kv"),
-                ac_output.get("grid_kv"),
             ],
             errors,
         )
@@ -132,9 +145,7 @@ class SldInputBuilder:
         lv_voltage_v_ll = self._required_float(
             "lv_voltage_v_ll",
             [
-                ac_output.get("lv_voltage_v"),
-                ac_output.get("lv_v"),
-                ac_output.get("inverter_lv_v"),
+                authoritative_ac.lv_voltage_v if authoritative_ac else None,
                 ac_snapshot.inputs.get("lv_voltage_v"),
             ],
             errors,
@@ -143,8 +154,7 @@ class SldInputBuilder:
         transformer_rating_mva = self._required_float(
             "transformer_rating_mva",
             [
-                ac_output.get("transformer_mva"),
-                self._kva_to_mva(ac_output.get("transformer_kva")),
+                authoritative_ac.transformer_mva if authoritative_ac else None,
                 project_settings.get("transformer_rating_mva"),
             ],
             errors,
@@ -185,12 +195,23 @@ class SldInputBuilder:
             legacy_sld_override_preset().get("transformer_uk_percent"),
         )
 
-        pcs_count = self._resolve_group_pcs_count(ac_output, group_index, errors)
-        pcs_rating_kw_list = self._resolve_group_pcs_ratings(ac_output, group_index, pcs_count, errors)
+        pcs_count = self._resolve_group_value(
+            "pcs_count",
+            authoritative_ac.pcs_count_by_block if authoritative_ac else None,
+            group_index,
+            errors,
+            must_be_positive=True,
+        )
+        pcs_rating_kw_list = self._resolve_group_rating_list(
+            authoritative_ac.pcs_rating_kw_list_by_block if authoritative_ac else None,
+            group_index,
+            pcs_count,
+            errors,
+        )
 
         dc_block_energy_mwh = self._resolve_dc_block_energy(run_bundle, errors)
-        dc_blocks_per_feeder = self._resolve_dc_blocks_per_feeder(
-            ac_output,
+        dc_blocks_per_feeder = self._resolve_group_feeder_allocation(
+            authoritative_ac.dc_blocks_per_feeder_by_block if authoritative_ac else None,
             group_index,
             pcs_count,
             errors,
@@ -234,6 +255,12 @@ class SldInputBuilder:
             errors=errors,
         )
 
+        if authoritative_ac is not None and authoritative_ac.legacy_aliases_used:
+            draft_warnings.append(
+                "legacy AC aliases were normalized by the compatibility adapter: "
+                + ", ".join(authoritative_ac.legacy_aliases_used)
+            )
+
         if errors:
             raise SldInputValidationError(errors)
 
@@ -271,43 +298,53 @@ class SldInputBuilder:
             normalized = [f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}" for err in exc.errors()]
             raise SldInputValidationError(normalized) from exc
 
-    def _resolve_group_pcs_count(self, ac_output: dict[str, Any], group_index: int, errors: list[str]) -> int | None:
-        group_idx = max(0, group_index - 1)
-        pcs_count_by_block = ac_output.get("pcs_count_by_block")
-        if isinstance(pcs_count_by_block, list) and group_idx < len(pcs_count_by_block):
-            value = _safe_int(pcs_count_by_block[group_idx])
-            if value is not None and value > 0:
-                return value
-        for key in ("pcs_count_per_ac_block", "pcs_per_block"):
-            value = _safe_int(ac_output.get(key))
-            if value is not None and value > 0:
-                return value
-        errors.append("pcs_count is required from authoritative AC output. No silent default is allowed.")
-        return None
-
-    def _resolve_group_pcs_ratings(
+    def _resolve_group_value(
         self,
-        ac_output: dict[str, Any],
+        field_name: str,
+        values: list[int] | None,
+        group_index: int,
+        errors: list[str],
+        *,
+        must_be_positive: bool = False,
+    ) -> int | None:
+        if not values:
+            errors.append(f"{field_name} is required from the authoritative AC->SLD adapter.")
+            return None
+        group_idx = max(0, group_index - 1)
+        if group_idx >= len(values):
+            errors.append(f"{field_name} is missing for group_index={group_index}.")
+            return None
+        value = _safe_int(values[group_idx])
+        if value is None:
+            errors.append(f"{field_name} is invalid for group_index={group_index}.")
+            return None
+        if must_be_positive and value <= 0:
+            errors.append(f"{field_name} must be > 0 for group_index={group_index}.")
+            return None
+        return int(value)
+
+    def _resolve_group_rating_list(
+        self,
+        rating_matrix: list[list[float]] | None,
         group_index: int,
         pcs_count: int | None,
         errors: list[str],
     ) -> list[float]:
         if not pcs_count:
             return []
-        ratings_by_block = ac_output.get("pcs_rating_kw_list_by_block")
+        if not rating_matrix:
+            errors.append("pcs_rating_kw_list is required from the authoritative AC->SLD adapter.")
+            return []
         group_idx = max(0, group_index - 1)
-        if isinstance(ratings_by_block, list) and group_idx < len(ratings_by_block):
-            candidate = ratings_by_block[group_idx]
-            if isinstance(candidate, list) and len(candidate) == pcs_count:
-                parsed = [_safe_float(value) for value in candidate]
-                if all(value is not None and value > 0 for value in parsed):
-                    return [float(value) for value in parsed if value is not None]
-        for key in ("pcs_rating_kw_each", "pcs_kw", "pcs_power_kw"):
-            rating = _safe_float(ac_output.get(key))
-            if rating is not None and rating > 0:
-                return [float(rating) for _ in range(pcs_count)]
-        errors.append("pcs_rating_kw_list is required from authoritative AC output. No silent default is allowed.")
-        return []
+        if group_idx >= len(rating_matrix):
+            errors.append(f"pcs_rating_kw_list is missing for group_index={group_index}.")
+            return []
+        candidate = rating_matrix[group_idx]
+        parsed = [_safe_float(value) for value in candidate]
+        if len(candidate) != pcs_count or not all(value is not None and value > 0 for value in parsed):
+            errors.append(f"pcs_rating_kw_list is invalid for group_index={group_index}.")
+            return []
+        return [float(value) for value in parsed if value is not None]
 
     def _resolve_dc_block_energy(self, run_bundle: DcRunBundle, errors: list[str]) -> float | None:
         capacities = sorted(
@@ -327,9 +364,9 @@ class SldInputBuilder:
             )
         return None
 
-    def _resolve_dc_blocks_per_feeder(
+    def _resolve_group_feeder_allocation(
         self,
-        ac_output: dict[str, Any],
+        feeder_matrix: list[list[int]] | None,
         group_index: int,
         pcs_count: int | None,
         errors: list[str],
@@ -338,39 +375,22 @@ class SldInputBuilder:
     ) -> list[int] | None:
         if not pcs_count:
             return None
+        if not feeder_matrix:
+            if not override_available:
+                errors.append(
+                    "dc_blocks_per_feeder is required from the authoritative AC allocation or explicit draft override."
+                )
+            return None
         group_idx = max(0, group_index - 1)
-        plan = ac_output.get("dc_allocation_plan")
-        if isinstance(plan, list) and group_idx < len(plan):
-            entry = plan[group_idx]
-            if isinstance(entry, dict):
-                feeder_allocations = entry.get("feeder_allocations")
-                if isinstance(feeder_allocations, list) and len(feeder_allocations) == pcs_count:
-                    parsed = [_safe_int(value) for value in feeder_allocations]
-                    if all(value is not None and value >= 0 for value in parsed):
-                        return [int(value) for value in parsed if value is not None]
-        by_block = ac_output.get("dc_blocks_per_feeder_by_block")
-        if isinstance(by_block, list) and group_idx < len(by_block):
-            candidate = by_block[group_idx]
-            if isinstance(candidate, list) and len(candidate) == pcs_count:
-                parsed = [_safe_int(value) for value in candidate]
-                if all(value is not None and value >= 0 for value in parsed):
-                    return [int(value) for value in parsed if value is not None]
-        allocation = ac_output.get("dc_block_allocation")
-        if isinstance(allocation, dict):
-            per_ac_block = allocation.get("per_ac_block")
-            if isinstance(per_ac_block, list) and group_idx < len(per_ac_block):
-                per_feeder = per_ac_block[group_idx].get("per_feeder")
-                if isinstance(per_feeder, dict):
-                    values = [per_feeder[key] for key in sorted(per_feeder.keys())]
-                    if len(values) == pcs_count:
-                        parsed = [_safe_int(value) for value in values]
-                        if all(value is not None and value >= 0 for value in parsed):
-                            return [int(value) for value in parsed if value is not None]
-        if not override_available:
-            errors.append(
-                "dc_blocks_per_feeder is required from AC authoritative allocation or explicit override. No even-distribution fallback is allowed."
-            )
-        return None
+        if group_idx >= len(feeder_matrix):
+            errors.append(f"dc_blocks_per_feeder is missing for group_index={group_index}.")
+            return None
+        candidate = feeder_matrix[group_idx]
+        parsed = [_safe_int(value) for value in candidate]
+        if len(candidate) != pcs_count or not all(value is not None and value >= 0 for value in parsed):
+            errors.append(f"dc_blocks_per_feeder is invalid for group_index={group_index}.")
+            return None
+        return [int(value) for value in parsed if value is not None]
 
     def _resolve_labels(
         self,
@@ -443,14 +463,6 @@ class SldInputBuilder:
             errors.append(f"{field_name} is required from authoritative sources and must be > 0.")
             return None
         return value
-
-    def _required_int(self, field_name: str, candidates: list[Any], errors: list[str]) -> int | None:
-        for raw in candidates:
-            value = _safe_int(raw)
-            if value is not None and value > 0:
-                return value
-        errors.append(f"{field_name} is required from authoritative sources and must be > 0.")
-        return None
 
     def _optional_float(self, candidates: list[Any]) -> float | None:
         for raw in candidates:
@@ -537,12 +549,6 @@ class SldInputBuilder:
         if validation_mode == "strict":
             errors.append(f"{field_name} is required in strict mode.")
         return None
-
-    def _kva_to_mva(self, value: Any) -> float | None:
-        parsed = _safe_float(value)
-        if parsed is None or parsed <= 0:
-            return None
-        return parsed / 1000.0
 
 
 def build_sld_canonical_input(

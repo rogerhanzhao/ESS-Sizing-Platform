@@ -48,13 +48,14 @@
     "theme": "dark",
     "compact_mode": false,
     "draw_summary": false,
-    "override_mode": true
+    "override_mode": false
   },
-  "override_payload": {
-    "transformer_vector_group": "Dyn11",
-    "transformer_uk_percent": 7.0,
+  "project_settings": {
+    "transformer": {
+      "vector_group": "Dyn11",
+      "uk_percent": 7.0
+    },
     "dc_block_voltage_v": 1500.0,
-    "dc_blocks_per_feeder": [1, 1, 1, 1],
     "labels": {
       "to_switchgear": "To Switchgear",
       "to_other_rmu": "To Other RMU"
