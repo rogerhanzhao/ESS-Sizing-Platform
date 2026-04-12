@@ -3,12 +3,12 @@
     "artifact_mode": "official",
     "group_index": 1,
     "input_hash": "1339505c2cc7c139067647a839f595a3af2946e70bb23eaef6a3f3eada8c2fa2",
-    "png_hash": "31e1ec58c6b02cdfa1aca060252f3a30747e83b9bc40ed629d1a7cd1828f5646",
+    "png_hash": "1e3b9f56b6a85db9b30ac9278a7d0b34adfd1d0363c66d442eab2e1fb80ade89",
     "render_spec_hash": "4cfd1026a6f1d9ac5c966beca5a436c1410599ddab7d2893a69b3866df1c9ad3",
-    "renderer_version": "1.2.0",
+    "renderer_version": "1.3.0",
     "run_id": "sld-regression-case01",
     "scenario_id": "container_only",
-    "svg_hash": "1409557f5ac486d62ade2b2d8929606bfe663cbc395f3e3cab1ed38580fba2cc",
+    "svg_hash": "b64016b2086fd4159c6c3a3acc2dc10d404f58762e9cfde2dbfcb6ccc2c369bd",
     "topology_edge_count": 15,
     "topology_hash": "e7dc4f91c11a2e194659854c68ac9bf52b0576bac137ba30bbff918679cd65b4",
     "topology_node_count": 16,
@@ -319,7 +319,7 @@
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1118.0,
+        "x1": 711.5,
         "x2": 711.5,
         "y1": 364.0,
         "y2": 418.0
@@ -343,7 +343,7 @@
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1118.0,
+        "x1": 982.5,
         "x2": 982.5,
         "y1": 364.0,
         "y2": 418.0
@@ -367,7 +367,7 @@
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1118.0,
+        "x1": 1253.5,
         "x2": 1253.5,
         "y1": 364.0,
         "y2": 418.0
@@ -391,7 +391,7 @@
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1118.0,
+        "x1": 1524.5,
         "x2": 1524.5,
         "y1": 364.0,
         "y2": 418.0
@@ -424,7 +424,8 @@
         "class": "label title",
         "tag": "text",
         "text": "PCS&MVT SKID (AC Block)",
-        "x": 504.0,
+        "text-anchor": "middle",
+        "x": 1118.0,
         "y": 58.0
       },
       {

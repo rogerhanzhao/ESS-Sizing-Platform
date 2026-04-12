@@ -67,3 +67,19 @@ def test_layout_engine_keeps_dc_blocks_in_matching_feeder_columns(sample_excel_p
     assert sorted(dc_centers) == [1, 2, 3, 4]
     for feeder_index, pcs_center in pcs_centers.items():
         assert abs(dc_centers[feeder_index] - pcs_center) < 40.0
+
+
+def test_layout_engine_uses_vertical_feeder_taps(sample_excel_path):
+    topology = _build_topology(sample_excel_path)
+    plan = build_sld_layout_plan(topology, layout_profile="engineering_readable", theme="dark")
+
+    lv_to_pcs = [connector for connector in plan.connectors if "EDGE-LVBUS-PCS" in connector.connector_id]
+    pcs_to_dc = [connector for connector in plan.connectors if "EDGE-PCS-DCBUS" in connector.connector_id]
+    dc_to_block = [connector for connector in plan.connectors if "DC-BLOCK-" in connector.connector_id and connector.connector_id.endswith("-EDGE")]
+
+    assert len(lv_to_pcs) == 4
+    assert len(pcs_to_dc) == 4
+    assert len(dc_to_block) == 4
+    assert all(abs(connector.points[0][0] - connector.points[1][0]) < 1e-6 for connector in lv_to_pcs)
+    assert all(abs(connector.points[0][0] - connector.points[1][0]) < 1e-6 for connector in pcs_to_dc)
+    assert all(abs(connector.points[0][0] - connector.points[1][0]) < 1e-6 for connector in dc_to_block)

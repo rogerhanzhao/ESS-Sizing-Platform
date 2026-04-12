@@ -144,6 +144,28 @@ def _profile_config(layout_profile: LayoutProfileId) -> dict[str, float]:
     }
 
 
+def _symbol_center_x(symbol: SldLayoutSymbol) -> float:
+    if symbol.symbol_type in {"rmu", "transformer"}:
+        return symbol.x
+    return symbol.x + symbol.width / 2
+
+
+def _symbol_top_y(symbol: SldLayoutSymbol) -> float:
+    return symbol.y
+
+
+def _symbol_bottom_y(symbol: SldLayoutSymbol) -> float:
+    if symbol.symbol_type == "transformer":
+        return symbol.y + max(symbol.height, 62.0)
+    return symbol.y + symbol.height
+
+
+def _dc_bus_connection_y(symbol: SldLayoutSymbol) -> float:
+    if symbol.symbol_type == "dc_busbar_pair":
+        return symbol.y + max(symbol.height, 22.0)
+    return symbol.y
+
+
 def build_sld_layout_plan(
     topology: SldTopology,
     *,
@@ -174,7 +196,7 @@ def build_sld_layout_plan(
     battery_frame_y = ac_frame_y + ac_frame_height + 48.0
     battery_frame_width = diagram_width
     max_blocks_per_feeder = max(summary.dc_blocks_per_feeder or [1])
-    max_grid_cols = 1 if max_blocks_per_feeder <= 2 else 2
+    max_grid_cols = 1 if max_blocks_per_feeder <= 4 else 2
     max_grid_rows = max(1, ceil(max_blocks_per_feeder / max_grid_cols))
     block_stack_height = (
         max_grid_rows * config["dc_block_height"]
@@ -194,7 +216,7 @@ def build_sld_layout_plan(
             width=ac_frame_width,
             height=ac_frame_height,
             text_lines=("PCS&MVT SKID (AC Block)",),
-            meta={"frame_style": "dash"},
+            meta={"frame_style": "dash", "title_align": "center"},
         ),
         SldLayoutSymbol(
             symbol_id="battery-frame",
@@ -386,7 +408,7 @@ def build_sld_layout_plan(
         if not feeder_blocks:
             continue
 
-        grid_cols = 1 if local_count <= 2 else 2
+        grid_cols = 1 if local_count <= 4 else 2
         grid_rows = max(1, ceil(local_count / grid_cols))
         col_gap = 18.0
         row_gap = 18.0
@@ -461,8 +483,8 @@ def build_sld_layout_plan(
                 SldLayoutConnector(
                     connector_id=edge.edge_id,
                     points=(
-                        (source_symbol.x + source_symbol.width / 2, source_symbol.y),
-                        (target_symbol.x + target_symbol.width / 2, target_symbol.y),
+                        (_symbol_center_x(target_symbol), _symbol_top_y(source_symbol)),
+                        (_symbol_center_x(target_symbol), _symbol_top_y(target_symbol)),
                     ),
                 )
             )
@@ -471,8 +493,8 @@ def build_sld_layout_plan(
                 SldLayoutConnector(
                     connector_id=edge.edge_id,
                     points=(
-                        (source_symbol.x + source_symbol.width / 2, source_symbol.y + source_symbol.height),
-                        (target_symbol.x + target_symbol.width / 2, target_symbol.y),
+                        (_symbol_center_x(source_symbol), _symbol_bottom_y(source_symbol)),
+                        (_symbol_center_x(source_symbol), _symbol_top_y(target_symbol)),
                     ),
                 )
             )
@@ -481,8 +503,8 @@ def build_sld_layout_plan(
                 SldLayoutConnector(
                     connector_id=edge.edge_id,
                     points=(
-                        (source_symbol.x + source_symbol.width / 2, source_symbol.y + max(2.0, source_symbol.height)),
-                        (target_symbol.x + target_symbol.width / 2, target_symbol.y),
+                        (_symbol_center_x(target_symbol), _dc_bus_connection_y(source_symbol)),
+                        (_symbol_center_x(target_symbol), _symbol_top_y(target_symbol)),
                     ),
                 )
             )

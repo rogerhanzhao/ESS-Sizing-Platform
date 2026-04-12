@@ -120,8 +120,8 @@ def test_artifact_registry_for_diagrams(sample_excel_path, tmp_path):
         assert "sld_render_spec_json" in kinds
         for artifact in artifacts:
             assert artifact.content_hash
-            assert artifact.version_tag == "1.2.0"
+            assert artifact.version_tag == "1.3.0"
             assert artifact.metadata_json["actor"] == "tester"
-            assert artifact.metadata_json["renderer_version"] == "1.2.0"
+            assert artifact.metadata_json["renderer_version"] == "1.3.0"
             assert artifact.metadata_json["input_hash"]
             assert artifact.metadata_json["topology_hash"]

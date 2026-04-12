@@ -43,7 +43,7 @@ class SldEngineeringPlugin:
     metadata = PluginMetadata(
         plugin_id="sld_engineering_v1",
         plugin_name="SLD Engineering Renderer",
-        plugin_version="1.2.0",
+        plugin_version="1.3.0",
         supported_artifact_kind=[
             "sld_svg",
             "sld_png",

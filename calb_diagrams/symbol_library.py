@@ -66,7 +66,19 @@ def draw_section_frame(dwg, symbol, palette: SldThemePalette) -> None:
     class_name = "dash" if dash else "outline"
     dwg.add(dwg.rect(insert=(symbol.x, symbol.y), size=(symbol.width, symbol.height), class_=class_name))
     if symbol.text_lines:
-        dwg.add(dwg.text(symbol.text_lines[0], insert=(symbol.x + 8, symbol.y + 18), class_="label title"))
+        title_align = symbol.meta.get("title_align")
+        title_y = symbol.y + float(symbol.meta.get("title_offset_y", 18.0))
+        if title_align == "center":
+            dwg.add(
+                dwg.text(
+                    symbol.text_lines[0],
+                    insert=(symbol.x + symbol.width / 2, title_y),
+                    class_="label title",
+                    text_anchor="middle",
+                )
+            )
+        else:
+            dwg.add(dwg.text(symbol.text_lines[0], insert=(symbol.x + 8, title_y), class_="label title"))
 
 
 def draw_busbar_horizontal(dwg, symbol, palette: SldThemePalette) -> None:
