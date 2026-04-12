@@ -14,6 +14,7 @@ This folder contains the active project documentation. Temporary implementation 
 
 - `SLD_CURRENT_ISSUE_ROOT_CAUSE.md`: current SLD failure root cause and V1 repair scope
 - `SLD_AC_FIELD_CONTRACT_V1.md`: authoritative AC->SLD contract and compatibility alias rules
+- `SLD_DB_GOVERNANCE_V1.md`: persisted run input authority and DC->AC->SLD cross-run data governance
 - `SLD_RENDERER_BOUNDARY_PATCH_V1.md`: renderer boundary shrink and remaining compatibility scope
 - `SLD_REGRESSION_BASELINE_V1.md`: topology/render baseline strategy and update gate
 

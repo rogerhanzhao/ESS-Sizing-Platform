@@ -36,8 +36,9 @@ from calb_sizing_tool.services.ac_sizing_service import (
     select_ac_block_container_type,
     suggest_pcs_count_and_rating,
 )
-from calb_sizing_tool.state.project_state import bump_run_id_ac, init_project_state
+from calb_sizing_tool.state.project_state import bump_run_id_ac, get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
+from calb_sizing_tool.state.workspace_state import get_workspace_context
 
 
 def _format_float(val, decimals=2) -> str:
@@ -72,9 +73,11 @@ def show():
     """AC SIZING V2 main entrypoint."""
     state = init_shared_state()
     init_project_state()
+    project_state = get_project_state()
     dc_results = state.dc_results
     ac_inputs = state.ac_inputs
     ac_results = state.ac_results
+    workspace = get_workspace_context()
 
     st.header("AC Block Sizing (V2 - DC-First Approach)")
 
@@ -258,6 +261,7 @@ def show():
         # ========== STEP 4: Calculation & Validation ==========
         if submitted:
             bump_run_id_ac()
+            ac_run_id = project_state.get("ac", {}).get("run_id")
 
             num_blocks = selected_option.ac_block_count
             pcs_per_block = pcs_per_ac
@@ -328,6 +332,11 @@ def show():
             mv_kv = float(mv_kv_value or 33.0)
             lv_v = float(st.session_state.get("pcs_lv_v", 690.0))
             transformer_mva = block_size_mw / 0.9 if block_size_mw > 0 else 0.0
+            source_run_id = (
+                workspace.get("run_id")
+                or dc_results.get("last_run_id")
+                or project_state.get("dc", {}).get("run_id")
+            )
             # Authoritative AC->SLD contract fields. Downstream SLD logic must normalize
             # through the dedicated adapter instead of re-guessing aliases in-place.
             ac_output = {
@@ -360,6 +369,16 @@ def show():
                 "transformer_mva": transformer_mva,
                 "transformer_count": num_blocks,
                 "pcs_count_total": num_blocks * pcs_per_block,
+                "source_project_id": workspace.get("project_id"),
+                "source_project_code": workspace.get("project_code"),
+                "source_project_name": workspace.get("project_name") or project_name,
+                "source_case_id": workspace.get("case_id"),
+                "source_case_code": workspace.get("case_code"),
+                "source_case_name": workspace.get("case_name"),
+                "source_run_id": source_run_id,
+                "source_ac_run_id": ac_run_id,
+                "source_poi_nominal_voltage_kv": mv_kv,
+                "source_poi_frequency_hz": stage13_output.get("poi_frequency_hz"),
             }
 
             st.session_state["ac_output"] = ac_output

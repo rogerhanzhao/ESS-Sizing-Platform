@@ -64,18 +64,24 @@ def _build_run_bundle(sample_excel_path) -> DcRunBundle:
     )
 
 
-def _make_ac_snapshot() -> AcSnapshot:
+def _make_ac_snapshot(*, input_overrides: dict | None = None, output_overrides: dict | None = None) -> AcSnapshot:
+    inputs = {"grid_kv": 33.0, "lv_voltage_v": 690.0}
+    if input_overrides:
+        inputs.update(input_overrides)
+    output = {
+        "num_blocks": 1,
+        "pcs_per_block": 4,
+        "pcs_kw": 1250.0,
+        "transformer_mva": 6.0,
+        "dc_allocation_plan": [
+            {"ac_block_index": 1, "dc_blocks_total": 4, "feeder_allocations": [1, 1, 1, 1]}
+        ],
+    }
+    if output_overrides:
+        output.update(output_overrides)
     return AcSnapshot(
-        inputs={"grid_kv": 33.0, "lv_voltage_v": 690.0},
-        output={
-            "num_blocks": 1,
-            "pcs_per_block": 4,
-            "pcs_kw": 1250.0,
-            "transformer_mva": 6.0,
-            "dc_allocation_plan": [
-                {"ac_block_index": 1, "dc_blocks_total": 4, "feeder_allocations": [1, 1, 1, 1]}
-            ],
-        },
+        inputs=inputs,
+        output=output,
         results={},
     )
 
@@ -142,3 +148,54 @@ def test_builder_requires_explicit_override_mode(sample_excel_path):
         )
 
     assert "override_mode is disabled" in str(exc_info.value)
+
+
+def test_builder_prefers_persisted_case_input_voltage_and_frequency(sample_excel_path):
+    run_bundle = _build_run_bundle(sample_excel_path)
+    run_bundle.input_snapshot.payload["case_input"]["poi_nominal_voltage_kv"] = 34.5
+    run_bundle.input_snapshot.payload["case_input"]["poi_frequency_hz"] = 60.0
+
+    override_payload = legacy_sld_override_preset()
+    override_payload["dc_block_voltage_v"] = 1500.0
+
+    canonical = build_sld_canonical_input(
+        run_bundle=run_bundle,
+        ac_snapshot=_make_ac_snapshot(input_overrides={"grid_frequency_hz": 60.0, "grid_kv": 33.0}),
+        options=SldRenderOptions(
+            group_index=1,
+            override_mode=True,
+            overrides=SldInputOverride.model_validate(override_payload),
+        ),
+        validation_mode="strict",
+    )
+
+    assert canonical.mv_voltage_kv == pytest.approx(34.5)
+    assert canonical.project_frequency_hz == pytest.approx(60.0)
+
+
+def test_builder_rejects_conflicting_persisted_case_input_voltage_and_frequency(sample_excel_path):
+    run_bundle = _build_run_bundle(sample_excel_path)
+    run_bundle.input_snapshot.payload["case_input"]["poi_nominal_voltage_kv"] = 33.0
+    run_bundle.input_snapshot.payload["case_input"]["poi_frequency_hz"] = 50.0
+
+    override_payload = legacy_sld_override_preset()
+    override_payload["dc_block_voltage_v"] = 1500.0
+
+    with pytest.raises(SldInputValidationError) as exc_info:
+        build_sld_canonical_input(
+            run_bundle=run_bundle,
+            ac_snapshot=_make_ac_snapshot(
+                input_overrides={"grid_frequency_hz": 60.0},
+                output_overrides={"mv_voltage_kv": 34.5},
+            ),
+            options=SldRenderOptions(
+                group_index=1,
+                override_mode=True,
+                overrides=SldInputOverride.model_validate(override_payload),
+            ),
+            validation_mode="strict",
+        )
+
+    message = str(exc_info.value)
+    assert "mv_voltage_kv conflicts between case_input.poi_nominal_voltage_kv=33" in message
+    assert "project_frequency_hz conflicts between case_input.poi_frequency_hz=50" in message

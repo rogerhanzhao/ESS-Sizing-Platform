@@ -8,6 +8,49 @@ from calb_sizing_tool.adapters.session_state_adapter import build_dc_result_summ
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
 
 
+def _clear_sld_runtime_state() -> None:
+    st.session_state.pop("sld_artifacts", None)
+    st.session_state.pop("sld_pipeline_meta", None)
+
+    diagram_outputs = st.session_state.get("diagram_outputs")
+    if diagram_outputs is not None:
+        for field_name in ("sld_svg", "sld_png", "sld_svg_path", "sld_png_path"):
+            if hasattr(diagram_outputs, field_name):
+                setattr(diagram_outputs, field_name, None)
+
+    artifacts = st.session_state.get("artifacts")
+    if isinstance(artifacts, dict):
+        artifacts["sld_png_bytes"] = None
+        artifacts["sld_svg_bytes"] = None
+        artifacts["sld_meta"] = {}
+
+
+def _clear_ac_runtime_state() -> None:
+    st.session_state.pop("ac_output", None)
+    st.session_state.pop("selected_ac_ratio", None)
+
+    for key in ("ac_inputs", "ac_results"):
+        value = st.session_state.get(key)
+        if isinstance(value, dict):
+            value.clear()
+
+    project_state = st.session_state.get("project_state")
+    if isinstance(project_state, dict):
+        for key in ("ac_inputs", "ac_results"):
+            value = project_state.get(key)
+            if isinstance(value, dict):
+                value.clear()
+        ac_state = project_state.get("ac")
+        if isinstance(ac_state, dict):
+            ac_state["run_id"] = None
+            ac_state["results"] = {}
+
+
+def _clear_downstream_runtime_state() -> None:
+    _clear_ac_runtime_state()
+    _clear_sld_runtime_state()
+
+
 def get_workspace_context() -> dict[str, Any]:
     return {
         "project_id": st.session_state.get("active_project_id"),
@@ -25,7 +68,19 @@ def navigate_to(page_name: str) -> None:
 
 
 def clear_active_run() -> None:
+    had_downstream_context = any(
+        (
+            st.session_state.get("active_run_id"),
+            st.session_state.get("dc_last_run_id"),
+            st.session_state.get("ac_output"),
+            st.session_state.get("sld_artifacts"),
+            st.session_state.get("sld_pipeline_meta"),
+        )
+    )
     st.session_state.pop("active_run_id", None)
+    st.session_state.pop("dc_last_run_id", None)
+    if had_downstream_context:
+        _clear_downstream_runtime_state()
 
 
 def clear_active_case() -> None:
@@ -76,6 +131,8 @@ def restore_run_bundle_to_session(bundle: DcRunBundle, run_id: str) -> None:
     poi_nominal_voltage_kv = case_input.get("poi_nominal_voltage_kv", 33.0)
     poi_frequency_hz = case_input.get("poi_frequency_hz")
 
+    _clear_downstream_runtime_state()
+
     set_active_project(
         project_id=bundle.project_id,
         project_code=bundle.project_code,
@@ -96,6 +153,10 @@ def restore_run_bundle_to_session(bundle: DcRunBundle, run_id: str) -> None:
         poi_nominal_voltage_kv=float(poi_nominal_voltage_kv),
         poi_frequency_hz=poi_frequency_hz,
     )
+    st.session_state["poi_nominal_voltage_kv"] = float(poi_nominal_voltage_kv)
+    st.session_state["grid_kv"] = float(poi_nominal_voltage_kv)
+    if poi_frequency_hz is not None:
+        st.session_state["poi_frequency_hz"] = float(poi_frequency_hz)
 
     dc_results = st.session_state.get("dc_results")
     if isinstance(dc_results, dict):
@@ -103,6 +164,18 @@ def restore_run_bundle_to_session(bundle: DcRunBundle, run_id: str) -> None:
         dc_results["stage13_output"] = st.session_state.get("stage13_output")
         dc_results["last_run_id"] = run_id
 
+    ac_inputs = st.session_state.get("ac_inputs")
+    if isinstance(ac_inputs, dict):
+        ac_inputs["grid_kv"] = float(poi_nominal_voltage_kv)
+        ac_inputs["mv_kv"] = float(poi_nominal_voltage_kv)
+        if poi_frequency_hz is not None:
+            ac_inputs["grid_frequency_hz"] = float(poi_frequency_hz)
+
     project_state = st.session_state.get("project_state")
     if isinstance(project_state, dict):
         project_state.setdefault("dc", {})["run_id"] = run_id
+        inputs_state = project_state.setdefault("inputs", {})
+        inputs_state["project_name"] = bundle.project_name
+        inputs_state["mv_kv"] = float(poi_nominal_voltage_kv)
+        if poi_frequency_hz is not None:
+            inputs_state["poi_freq_hz"] = float(poi_frequency_hz)

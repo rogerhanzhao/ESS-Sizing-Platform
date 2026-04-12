@@ -62,3 +62,28 @@ def test_sld_ui_module_does_not_own_core_builder_logic():
     assert "build_sld_topology" not in source
     assert "render_sld_svg" not in source
     assert "build_sld_group_spec" not in source
+
+
+def test_sld_ui_rejects_missing_ac_snapshot_provenance():
+    message = single_line_diagram_view._validate_ac_snapshot_context(
+        {"num_blocks": 1, "pcs_per_block": 2},
+        expected_run_id="run-1",
+    )
+
+    assert "missing source_run_id provenance" in message
+
+
+def test_sld_ui_rejects_ac_snapshot_from_different_run():
+    message = single_line_diagram_view._validate_ac_snapshot_context(
+        {
+            "source_project_id": "project-1",
+            "source_case_id": "case-1",
+            "source_run_id": "run-old",
+        },
+        expected_run_id="run-new",
+        expected_case_id="case-1",
+        expected_project_id="project-1",
+    )
+
+    assert "run `run-old`" in message
+    assert "run `run-new`" in message

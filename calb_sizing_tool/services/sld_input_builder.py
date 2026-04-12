@@ -126,20 +126,22 @@ class SldInputBuilder:
             errors,
         )
 
-        project_frequency_hz = self._optional_float(
-            [
-                case_input.get("poi_frequency_hz"),
-                ac_snapshot.inputs.get("grid_frequency_hz"),
-            ]
+        project_frequency_hz = self._resolve_preferred_optional_float(
+            field_name="project_frequency_hz",
+            primary_value=case_input.get("poi_frequency_hz"),
+            secondary_value=ac_snapshot.inputs.get("grid_frequency_hz"),
+            primary_label="case_input.poi_frequency_hz",
+            secondary_label="ac_snapshot.inputs.grid_frequency_hz",
+            errors=errors,
         )
 
-        mv_voltage_kv = self._required_float(
-            "mv_voltage_kv",
-            [
-                authoritative_ac.mv_voltage_kv if authoritative_ac else None,
-                case_input.get("poi_nominal_voltage_kv"),
-            ],
-            errors,
+        mv_voltage_kv = self._resolve_preferred_required_float(
+            field_name="mv_voltage_kv",
+            primary_value=case_input.get("poi_nominal_voltage_kv"),
+            secondary_value=authoritative_ac.mv_voltage_kv if authoritative_ac else None,
+            primary_label="case_input.poi_nominal_voltage_kv",
+            secondary_label="authoritative_ac.mv_voltage_kv",
+            errors=errors,
         )
 
         lv_voltage_v_ll = self._required_float(
@@ -469,6 +471,51 @@ class SldInputBuilder:
             value = _safe_float(raw)
             if value is not None:
                 return value
+        return None
+
+    def _resolve_preferred_required_float(
+        self,
+        field_name: str,
+        primary_value: Any,
+        secondary_value: Any,
+        primary_label: str,
+        secondary_label: str,
+        errors: list[str],
+    ) -> float | None:
+        value = self._resolve_preferred_optional_float(
+            field_name=field_name,
+            primary_value=primary_value,
+            secondary_value=secondary_value,
+            primary_label=primary_label,
+            secondary_label=secondary_label,
+            errors=errors,
+        )
+        if value is None or value <= 0:
+            errors.append(f"{field_name} is required from authoritative sources and must be > 0.")
+            return None
+        return value
+
+    def _resolve_preferred_optional_float(
+        self,
+        *,
+        field_name: str,
+        primary_value: Any,
+        secondary_value: Any,
+        primary_label: str,
+        secondary_label: str,
+        errors: list[str],
+    ) -> float | None:
+        primary = _safe_float(primary_value)
+        secondary = _safe_float(secondary_value)
+        if primary is not None and primary > 0:
+            if secondary is not None and secondary > 0 and abs(float(primary) - float(secondary)) > 1e-6:
+                errors.append(
+                    f"{field_name} conflicts between {primary_label}={float(primary):g} and "
+                    f"{secondary_label}={float(secondary):g}."
+                )
+            return float(primary)
+        if secondary is not None and secondary > 0:
+            return float(secondary)
         return None
 
     def _fill_from_override_if_missing(

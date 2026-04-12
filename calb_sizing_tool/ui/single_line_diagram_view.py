@@ -18,6 +18,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import streamlit as st
 
 from calb_sizing_tool.infra.db.session import session_scope
@@ -34,19 +36,66 @@ from calb_sizing_tool.state.workspace_state import get_workspace_context
 from calb_sizing_tool.ui.sld_inputs import render_electrical_inputs
 
 
+def _resolve_ac_output(state, project_state) -> dict[str, Any] | None:
+    ac_output = st.session_state.get("ac_output") or project_state.get("ac_results") or state.ac_results
+    if not isinstance(ac_output, dict) or not ac_output:
+        return None
+    return ac_output
+
+
 def _build_ac_snapshot(state, project_state) -> AcSnapshot | None:
     """UI compatibility collector.
 
     The page only captures runtime AC results into AcSnapshot. Authoritative SLD
     normalization starts downstream in services.sld_authoritative_builder.
     """
-    ac_output = st.session_state.get("ac_output") or project_state.get("ac_results") or state.ac_results
-    if not isinstance(ac_output, dict) or not ac_output:
+    ac_output = _resolve_ac_output(state, project_state)
+    if ac_output is None:
         return None
     ac_inputs = project_state.get("ac_inputs") or state.ac_inputs
     if not isinstance(ac_inputs, dict):
         ac_inputs = {}
     return AcSnapshot(inputs=ac_inputs, output=ac_output, results={})
+
+
+def _validate_ac_snapshot_context(
+    ac_output: dict[str, Any] | None,
+    *,
+    expected_run_id: str | None,
+    expected_case_id: str | None = None,
+    expected_project_id: str | None = None,
+) -> str | None:
+    if not isinstance(ac_output, dict) or not ac_output:
+        return "AC snapshot not found. Run AC sizing before generating SLD."
+
+    source_run_id = str(ac_output.get("source_run_id") or "").strip()
+    if not source_run_id:
+        return "AC snapshot is missing source_run_id provenance. Re-run AC sizing from the active database run."
+
+    expected_run_id = str(expected_run_id or "").strip()
+    if expected_run_id and source_run_id != expected_run_id:
+        return (
+            f"AC snapshot belongs to run `{source_run_id}` instead of active run `{expected_run_id}`. "
+            "Re-run AC sizing for the current run before generating SLD."
+        )
+
+    expected_case_id = str(expected_case_id or "").strip()
+    source_case_id = str(ac_output.get("source_case_id") or "").strip()
+    if expected_case_id and source_case_id and source_case_id != expected_case_id:
+        return (
+            f"AC snapshot belongs to case `{source_case_id}` instead of active case `{expected_case_id}`. "
+            "Re-run AC sizing for the current case before generating SLD."
+        )
+
+    expected_project_id = str(expected_project_id or "").strip()
+    source_project_id = str(ac_output.get("source_project_id") or "").strip()
+    if expected_project_id and source_project_id and source_project_id != expected_project_id:
+        return (
+            f"AC snapshot belongs to project `{source_project_id}` instead of active project `{expected_project_id}`. "
+            "Re-run AC sizing for the current project before generating SLD."
+        )
+
+    return None
 
 
 def _resolve_ac_blocks_total(ac_output: dict) -> int:
@@ -107,8 +156,15 @@ def show() -> None:
     run_id = st.text_input("Run ID", value=str(run_id_default or "")).strip()
 
     ac_snapshot = _build_ac_snapshot(state, project_state)
-    if ac_snapshot is None:
-        st.warning("AC snapshot not found. Run AC sizing before generating SLD.")
+    ac_snapshot_issue = _validate_ac_snapshot_context(
+        ac_snapshot.output if ac_snapshot else None,
+        expected_run_id=run_id or workspace.get("run_id"),
+        expected_case_id=workspace.get("case_id"),
+        expected_project_id=workspace.get("project_id"),
+    )
+    if ac_snapshot_issue:
+        st.warning(ac_snapshot_issue)
+        ac_snapshot = None
 
     ac_blocks_total = _resolve_ac_blocks_total(ac_snapshot.output if ac_snapshot else {})
     group_choices = list(range(1, ac_blocks_total + 1)) if ac_blocks_total > 0 else [1]
@@ -168,6 +224,15 @@ def show() -> None:
                 return
         if not bundle:
             st.error("Run not found.")
+            return
+        ac_context_error = _validate_ac_snapshot_context(
+            ac_snapshot.output if ac_snapshot else None,
+            expected_run_id=bundle.run_id,
+            expected_case_id=bundle.sizing_case_id,
+            expected_project_id=bundle.project_id,
+        )
+        if ac_context_error:
+            st.error(ac_context_error)
             return
 
         options = SldRenderOptions(
