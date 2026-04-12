@@ -5,6 +5,7 @@ from calb_sizing_tool.infra.db.models import ArtifactRegistry
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.schemas.case import SizingCaseInput
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot, SldRenderOptions
+from calb_sizing_tool.schemas.sld_render_input import SldInputOverride, legacy_sld_override_preset
 from calb_sizing_tool.services.dc_pipeline_service import size_with_guarantee
 from calb_sizing_tool.services.diagram_service import render_sld_from_run_bundle
 from calb_sizing_tool.services.run_persistence_service import persist_dc_run
@@ -15,7 +16,7 @@ from calb_sizing_tool.services.stage1_service import run_stage1 as service_run_s
 def _make_ac_snapshot() -> AcSnapshot:
     return AcSnapshot(
         inputs={"grid_kv": 33.0, "lv_voltage_v": 690.0},
-        output={"num_blocks": 1, "pcs_per_block": 4},
+        output={"num_blocks": 1, "pcs_per_block": 4, "pcs_kw": 1250.0, "transformer_mva": 6.0},
         results={},
     )
 
@@ -85,10 +86,18 @@ def test_artifact_registry_for_diagrams(sample_excel_path, tmp_path):
     run_bundle = load_dc_run_bundle(run_id, db_url=db_url)
     assert run_bundle is not None
 
+    override_payload = legacy_sld_override_preset()
+    override_payload["dc_block_voltage_v"] = 1500.0
+    override_payload["dc_blocks_per_feeder"] = [1, 1, 1, 1]
+
     render_sld_from_run_bundle(
         run_bundle,
         ac_snapshot=_make_ac_snapshot(),
-        options=SldRenderOptions(group_index=1, dc_blocks_per_feeder=[1, 1, 1, 1]),
+        options=SldRenderOptions(
+            group_index=1,
+            override_mode=True,
+            overrides=SldInputOverride.model_validate(override_payload),
+        ),
         actor="tester",
         db_url=db_url,
     )
@@ -98,5 +107,12 @@ def test_artifact_registry_for_diagrams(sample_excel_path, tmp_path):
         kinds = {artifact.artifact_kind for artifact in artifacts}
         assert "sld_svg" in kinds
         assert "sld_png" in kinds
-        assert "sld_spec_json" in kinds
-        assert "sld_metadata_json" in kinds
+        assert "sld_topology_json" in kinds
+        assert "sld_render_spec_json" in kinds
+        for artifact in artifacts:
+            assert artifact.content_hash
+            assert artifact.version_tag == "1.1.0"
+            assert artifact.metadata_json["actor"] == "tester"
+            assert artifact.metadata_json["renderer_version"] == "1.1.0"
+            assert artifact.metadata_json["input_hash"]
+            assert artifact.metadata_json["topology_hash"]

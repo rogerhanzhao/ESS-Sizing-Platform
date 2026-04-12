@@ -97,6 +97,12 @@ def build_single_unit_snapshot(
     sld_inputs: dict,
     scenario_id: str,
 ) -> dict:
+    """LEGACY compatibility only.
+
+    The authoritative SLD build chain is now:
+    canonical input -> SldTopology -> compatibility adapters.
+    This raw snapshot format is retained only for older tools that still consume it.
+    """
     stage13_output = stage13_output or {}
     ac_output = ac_output or {}
     dc_summary = dc_summary or {}
@@ -181,9 +187,9 @@ def build_single_unit_snapshot(
                 dc_blocks_for_one_ac_block_group = group_spec.dc_blocks_total_in_group
         if dc_blocks_for_one_ac_block_group <= 0:
             dc_blocks_for_one_ac_block_group = group_spec.pcs_count
-        dc_blocks_per_feeder = allocate_dc_blocks(
-            dc_blocks_for_one_ac_block_group, group_spec.pcs_count
-        )
+        dc_blocks_per_feeder = list(group_spec.dc_blocks_per_feeder)
+        if sum(dc_blocks_per_feeder) != dc_blocks_for_one_ac_block_group:
+            dc_blocks_for_one_ac_block_group = sum(dc_blocks_per_feeder)
         dc_blocks_by_feeder = _build_dc_blocks_by_feeder(
             dc_blocks_per_feeder, group_spec.dc_block_energy_mwh
         )

@@ -29,8 +29,11 @@ pip install svgwrite cairosvg
 ## Run
 
 ```bash
-streamlit run app.py
+pwsh ./scripts/start_local_web.ps1
 ```
+
+Local development is fixed to `http://127.0.0.1:8511`.
+The startup script refuses to auto-switch ports. If `8511` is occupied, it exits with a clear error instead of silently moving to `8502+`.
 
 The required Excel dictionaries should remain under `data/`.
 

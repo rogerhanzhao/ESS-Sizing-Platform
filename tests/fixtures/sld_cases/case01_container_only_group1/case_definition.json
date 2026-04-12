@@ -1,0 +1,87 @@
+{
+  "run_id": "sld-regression-case01",
+  "scenario_mode": "container_only",
+  "stage1_inputs": {
+    "project_name": "SLD Regression Container",
+    "poi_power_req_mw": 50.0,
+    "poi_energy_req_mwh": 200.0,
+    "project_life_years": 20,
+    "cycles_per_year": 365,
+    "poi_guarantee_year": 0,
+    "sc_time_months": 3,
+    "dod_pct": 95.0,
+    "dc_round_trip_efficiency_pct": 94.0,
+    "eff_dc_cables": 99.5,
+    "eff_pcs": 98.5,
+    "eff_mvt": 99.5,
+    "eff_ac_cables_sw_rmu": 99.2,
+    "eff_hvt_others": 100.0,
+    "rte_curve_adjust_pp": 0.0,
+    "rte_monotonic_enforce": true
+  },
+  "case_input": {
+    "poi_nominal_voltage_kv": 33.0,
+    "poi_frequency_hz": 50.0
+  },
+  "ac_snapshot": {
+    "inputs": {
+      "grid_kv": 33.0,
+      "lv_voltage_v": 690.0
+    },
+    "output": {
+      "num_blocks": 1,
+      "pcs_per_block": 4,
+      "pcs_kw": 1250.0,
+      "transformer_mva": 6.0,
+      "dc_allocation_plan": [
+        {
+          "ac_block_index": 1,
+          "dc_blocks_total": 4,
+          "feeder_allocations": [1, 1, 1, 1]
+        }
+      ]
+    },
+    "results": {}
+  },
+  "options": {
+    "group_index": 1,
+    "theme": "dark",
+    "compact_mode": false,
+    "draw_summary": false,
+    "override_mode": true
+  },
+  "override_payload": {
+    "transformer_vector_group": "Dyn11",
+    "transformer_uk_percent": 7.0,
+    "dc_block_voltage_v": 1500.0,
+    "dc_blocks_per_feeder": [1, 1, 1, 1],
+    "labels": {
+      "to_switchgear": "To Switchgear",
+      "to_other_rmu": "To Other RMU"
+    },
+    "equipment_ratings": {
+      "rmu": {
+        "rated_kv": 24.0,
+        "rated_a": 630.0,
+        "short_circuit_ka_3s": 25.0,
+        "ct_ratio": "200/1",
+        "ct_class": "5P20",
+        "ct_va": 10.0
+      },
+      "lv_busbar": {
+        "rated_a": 2500.0,
+        "short_circuit_ka": 25.0
+      },
+      "cables": {
+        "mv_cable_spec": "TBD",
+        "lv_cable_spec": "TBD",
+        "dc_cable_spec": "TBD"
+      },
+      "dc_fuse": {
+        "fuse_spec": "TBD"
+      },
+      "transformer_tap_range": "+/-2x2.5%",
+      "transformer_cooling": "ONAN"
+    }
+  }
+}

@@ -1,0 +1,717 @@
+{
+  "edges": [
+    {
+      "attributes": {},
+      "edge_id": "G01-EDGE-MV-RMU",
+      "edge_type": "mv_link",
+      "feeder_index": null,
+      "labels": [
+        {
+          "label_id": "G01-LABEL-TO-SWITCHGEAR",
+          "scope": "mv",
+          "semantic_key": "to_switchgear",
+          "text": "To Switchgear"
+        },
+        {
+          "label_id": "G01-LABEL-TO-OTHER-RMU",
+          "scope": "mv",
+          "semantic_key": "to_other_rmu",
+          "text": "To Other RMU"
+        }
+      ],
+      "source_node_id": "G01-MV-BUS",
+      "target_node_id": "G01-RMU-NODE"
+    },
+    {
+      "attributes": {},
+      "edge_id": "G01-EDGE-RMU-TX",
+      "edge_type": "rmu_to_transformer",
+      "feeder_index": null,
+      "labels": [],
+      "source_node_id": "G01-RMU-NODE",
+      "target_node_id": "G01-TX-NODE"
+    },
+    {
+      "attributes": {},
+      "edge_id": "G01-EDGE-TX-LVBUS",
+      "edge_type": "transformer_to_lv_busbar",
+      "feeder_index": null,
+      "labels": [],
+      "source_node_id": "G01-TX-NODE",
+      "target_node_id": "G01-LV-BUSBAR-NODE"
+    },
+    {
+      "attributes": {},
+      "edge_id": "G01-F01-EDGE-LVBUS-PCS",
+      "edge_type": "lv_busbar_to_pcs",
+      "feeder_index": 1,
+      "labels": [],
+      "source_node_id": "G01-LV-BUSBAR-NODE",
+      "target_node_id": "G01-F01-PCS-NODE"
+    },
+    {
+      "attributes": {},
+      "edge_id": "G01-F01-EDGE-PCS-DCBUS",
+      "edge_type": "pcs_to_dc_busbar",
+      "feeder_index": 1,
+      "labels": [],
+      "source_node_id": "G01-F01-PCS-NODE",
+      "target_node_id": "G01-F01-DC-BUSBAR-NODE"
+    },
+    {
+      "attributes": {
+        "local_block_index": 1
+      },
+      "edge_id": "G01-F01-DC-BLOCK-01-EDGE",
+      "edge_type": "dc_busbar_to_dc_block",
+      "feeder_index": 1,
+      "labels": [],
+      "source_node_id": "G01-F01-DC-BUSBAR-NODE",
+      "target_node_id": "G01-F01-DC-BLOCK-01-NODE"
+    },
+    {
+      "attributes": {},
+      "edge_id": "G01-F02-EDGE-LVBUS-PCS",
+      "edge_type": "lv_busbar_to_pcs",
+      "feeder_index": 2,
+      "labels": [],
+      "source_node_id": "G01-LV-BUSBAR-NODE",
+      "target_node_id": "G01-F02-PCS-NODE"
+    },
+    {
+      "attributes": {},
+      "edge_id": "G01-F02-EDGE-PCS-DCBUS",
+      "edge_type": "pcs_to_dc_busbar",
+      "feeder_index": 2,
+      "labels": [],
+      "source_node_id": "G01-F02-PCS-NODE",
+      "target_node_id": "G01-F02-DC-BUSBAR-NODE"
+    },
+    {
+      "attributes": {
+        "local_block_index": 1
+      },
+      "edge_id": "G01-F02-DC-BLOCK-01-EDGE",
+      "edge_type": "dc_busbar_to_dc_block",
+      "feeder_index": 2,
+      "labels": [],
+      "source_node_id": "G01-F02-DC-BUSBAR-NODE",
+      "target_node_id": "G01-F02-DC-BLOCK-01-NODE"
+    },
+    {
+      "attributes": {},
+      "edge_id": "G01-F03-EDGE-LVBUS-PCS",
+      "edge_type": "lv_busbar_to_pcs",
+      "feeder_index": 3,
+      "labels": [],
+      "source_node_id": "G01-LV-BUSBAR-NODE",
+      "target_node_id": "G01-F03-PCS-NODE"
+    },
+    {
+      "attributes": {},
+      "edge_id": "G01-F03-EDGE-PCS-DCBUS",
+      "edge_type": "pcs_to_dc_busbar",
+      "feeder_index": 3,
+      "labels": [],
+      "source_node_id": "G01-F03-PCS-NODE",
+      "target_node_id": "G01-F03-DC-BUSBAR-NODE"
+    },
+    {
+      "attributes": {
+        "local_block_index": 1
+      },
+      "edge_id": "G01-F03-DC-BLOCK-01-EDGE",
+      "edge_type": "dc_busbar_to_dc_block",
+      "feeder_index": 3,
+      "labels": [],
+      "source_node_id": "G01-F03-DC-BUSBAR-NODE",
+      "target_node_id": "G01-F03-DC-BLOCK-01-NODE"
+    },
+    {
+      "attributes": {},
+      "edge_id": "G01-F04-EDGE-LVBUS-PCS",
+      "edge_type": "lv_busbar_to_pcs",
+      "feeder_index": 4,
+      "labels": [],
+      "source_node_id": "G01-LV-BUSBAR-NODE",
+      "target_node_id": "G01-F04-PCS-NODE"
+    },
+    {
+      "attributes": {},
+      "edge_id": "G01-F04-EDGE-PCS-DCBUS",
+      "edge_type": "pcs_to_dc_busbar",
+      "feeder_index": 4,
+      "labels": [],
+      "source_node_id": "G01-F04-PCS-NODE",
+      "target_node_id": "G01-F04-DC-BUSBAR-NODE"
+    },
+    {
+      "attributes": {
+        "local_block_index": 1
+      },
+      "edge_id": "G01-F04-DC-BLOCK-01-EDGE",
+      "edge_type": "dc_busbar_to_dc_block",
+      "feeder_index": 4,
+      "labels": [],
+      "source_node_id": "G01-F04-DC-BUSBAR-NODE",
+      "target_node_id": "G01-F04-DC-BLOCK-01-NODE"
+    }
+  ],
+  "equipment": [
+    {
+      "attributes": {
+        "ct_class": "5P20",
+        "ct_ratio": "200/1",
+        "ct_va": 10.0,
+        "rated_a": 630.0,
+        "rated_kv": 24.0,
+        "short_circuit_ka_3s": 25.0
+      },
+      "dc_block_index": null,
+      "display_name": "RMU",
+      "equipment_id": "G01-RMU",
+      "equipment_type": "rmu",
+      "feeder_index": null
+    },
+    {
+      "attributes": {
+        "lv_voltage_v_ll": 690.0,
+        "mv_voltage_kv": 33.0,
+        "transformer_cooling": "ONAN",
+        "transformer_rating_mva": 6.0,
+        "transformer_tap_range": "+/-2x2.5%",
+        "transformer_uk_percent": 7.0,
+        "transformer_vector_group": "Dyn11"
+      },
+      "dc_block_index": null,
+      "display_name": "Transformer",
+      "equipment_id": "G01-TX",
+      "equipment_type": "transformer",
+      "feeder_index": null
+    },
+    {
+      "attributes": {
+        "rated_a": 2500.0,
+        "short_circuit_ka": 25.0
+      },
+      "dc_block_index": null,
+      "display_name": "LV Busbar",
+      "equipment_id": "G01-LV-BUSBAR",
+      "equipment_type": "lv_busbar",
+      "feeder_index": null
+    },
+    {
+      "attributes": {
+        "lv_voltage_v_ll": 690.0,
+        "pcs_rating_kw": 1250.0
+      },
+      "dc_block_index": null,
+      "display_name": "PCS 1",
+      "equipment_id": "G01-F01-PCS",
+      "equipment_type": "pcs",
+      "feeder_index": 1
+    },
+    {
+      "attributes": {
+        "dc_block_count": 1,
+        "dc_block_voltage_v": 1500.0
+      },
+      "dc_block_index": null,
+      "display_name": "DC Busbar 1",
+      "equipment_id": "G01-F01-DC-BUSBAR",
+      "equipment_type": "dc_busbar",
+      "feeder_index": 1
+    },
+    {
+      "attributes": {
+        "dc_block_energy_mwh": 0.836,
+        "dc_block_voltage_v": 1500.0
+      },
+      "dc_block_index": 1,
+      "display_name": "DC Block 1",
+      "equipment_id": "G01-F01-DC-BLOCK-01",
+      "equipment_type": "dc_block",
+      "feeder_index": 1
+    },
+    {
+      "attributes": {
+        "lv_voltage_v_ll": 690.0,
+        "pcs_rating_kw": 1250.0
+      },
+      "dc_block_index": null,
+      "display_name": "PCS 2",
+      "equipment_id": "G01-F02-PCS",
+      "equipment_type": "pcs",
+      "feeder_index": 2
+    },
+    {
+      "attributes": {
+        "dc_block_count": 1,
+        "dc_block_voltage_v": 1500.0
+      },
+      "dc_block_index": null,
+      "display_name": "DC Busbar 2",
+      "equipment_id": "G01-F02-DC-BUSBAR",
+      "equipment_type": "dc_busbar",
+      "feeder_index": 2
+    },
+    {
+      "attributes": {
+        "dc_block_energy_mwh": 0.836,
+        "dc_block_voltage_v": 1500.0
+      },
+      "dc_block_index": 2,
+      "display_name": "DC Block 2",
+      "equipment_id": "G01-F02-DC-BLOCK-01",
+      "equipment_type": "dc_block",
+      "feeder_index": 2
+    },
+    {
+      "attributes": {
+        "lv_voltage_v_ll": 690.0,
+        "pcs_rating_kw": 1250.0
+      },
+      "dc_block_index": null,
+      "display_name": "PCS 3",
+      "equipment_id": "G01-F03-PCS",
+      "equipment_type": "pcs",
+      "feeder_index": 3
+    },
+    {
+      "attributes": {
+        "dc_block_count": 1,
+        "dc_block_voltage_v": 1500.0
+      },
+      "dc_block_index": null,
+      "display_name": "DC Busbar 3",
+      "equipment_id": "G01-F03-DC-BUSBAR",
+      "equipment_type": "dc_busbar",
+      "feeder_index": 3
+    },
+    {
+      "attributes": {
+        "dc_block_energy_mwh": 0.836,
+        "dc_block_voltage_v": 1500.0
+      },
+      "dc_block_index": 3,
+      "display_name": "DC Block 3",
+      "equipment_id": "G01-F03-DC-BLOCK-01",
+      "equipment_type": "dc_block",
+      "feeder_index": 3
+    },
+    {
+      "attributes": {
+        "lv_voltage_v_ll": 690.0,
+        "pcs_rating_kw": 1250.0
+      },
+      "dc_block_index": null,
+      "display_name": "PCS 4",
+      "equipment_id": "G01-F04-PCS",
+      "equipment_type": "pcs",
+      "feeder_index": 4
+    },
+    {
+      "attributes": {
+        "dc_block_count": 1,
+        "dc_block_voltage_v": 1500.0
+      },
+      "dc_block_index": null,
+      "display_name": "DC Busbar 4",
+      "equipment_id": "G01-F04-DC-BUSBAR",
+      "equipment_type": "dc_busbar",
+      "feeder_index": 4
+    },
+    {
+      "attributes": {
+        "dc_block_energy_mwh": 0.836,
+        "dc_block_voltage_v": 1500.0
+      },
+      "dc_block_index": 4,
+      "display_name": "DC Block 4",
+      "equipment_id": "G01-F04-DC-BLOCK-01",
+      "equipment_type": "dc_block",
+      "feeder_index": 4
+    }
+  ],
+  "equipment_ratings": {
+    "cables": {
+      "dc_cable_spec": "TBD",
+      "lv_cable_spec": "TBD",
+      "mv_cable_spec": "TBD"
+    },
+    "dc_fuse": {
+      "fuse_spec": "TBD"
+    },
+    "lv_busbar": {
+      "rated_a": 2500.0,
+      "short_circuit_ka": 25.0
+    },
+    "rmu": {
+      "ct_class": "5P20",
+      "ct_ratio": "200/1",
+      "ct_va": 10.0,
+      "rated_a": 630.0,
+      "rated_kv": 24.0,
+      "short_circuit_ka_3s": 25.0
+    },
+    "transformer_cooling": "ONAN",
+    "transformer_tap_range": "+/-2x2.5%"
+  },
+  "labels": {
+    "to_other_rmu": "To Other RMU",
+    "to_switchgear": "To Switchgear"
+  },
+  "nodes": [
+    {
+      "attributes": {
+        "group_index": 1,
+        "mv_voltage_kv": 33.0
+      },
+      "dc_block_index": null,
+      "display_name": "MV Bus",
+      "equipment_id": null,
+      "feeder_index": null,
+      "labels": [
+        {
+          "label_id": "G01-LABEL-TO-SWITCHGEAR",
+          "scope": "mv",
+          "semantic_key": "to_switchgear",
+          "text": "To Switchgear"
+        },
+        {
+          "label_id": "G01-LABEL-TO-OTHER-RMU",
+          "scope": "mv",
+          "semantic_key": "to_other_rmu",
+          "text": "To Other RMU"
+        }
+      ],
+      "node_id": "G01-MV-BUS",
+      "node_type": "mv_bus"
+    },
+    {
+      "attributes": {
+        "mv_voltage_kv": 33.0
+      },
+      "dc_block_index": null,
+      "display_name": "RMU",
+      "equipment_id": "G01-RMU",
+      "feeder_index": null,
+      "labels": [
+        {
+          "label_id": "G01-LABEL-TO-SWITCHGEAR",
+          "scope": "mv",
+          "semantic_key": "to_switchgear",
+          "text": "To Switchgear"
+        },
+        {
+          "label_id": "G01-LABEL-TO-OTHER-RMU",
+          "scope": "mv",
+          "semantic_key": "to_other_rmu",
+          "text": "To Other RMU"
+        }
+      ],
+      "node_id": "G01-RMU-NODE",
+      "node_type": "rmu"
+    },
+    {
+      "attributes": {
+        "transformer_rating_mva": 6.0,
+        "transformer_uk_percent": 7.0,
+        "transformer_vector_group": "Dyn11"
+      },
+      "dc_block_index": null,
+      "display_name": "Transformer",
+      "equipment_id": "G01-TX",
+      "feeder_index": null,
+      "labels": [],
+      "node_id": "G01-TX-NODE",
+      "node_type": "transformer"
+    },
+    {
+      "attributes": {
+        "lv_voltage_v_ll": 690.0
+      },
+      "dc_block_index": null,
+      "display_name": "LV Busbar",
+      "equipment_id": "G01-LV-BUSBAR",
+      "feeder_index": null,
+      "labels": [],
+      "node_id": "G01-LV-BUSBAR-NODE",
+      "node_type": "lv_busbar"
+    },
+    {
+      "attributes": {
+        "pcs_rating_kw": 1250.0
+      },
+      "dc_block_index": null,
+      "display_name": "PCS 1",
+      "equipment_id": "G01-F01-PCS",
+      "feeder_index": 1,
+      "labels": [
+        {
+          "label_id": "G01-F01-PCS-LABEL",
+          "scope": "pcs",
+          "semantic_key": "pcs_rating_kw",
+          "text": "1250 kW"
+        }
+      ],
+      "node_id": "G01-F01-PCS-NODE",
+      "node_type": "pcs"
+    },
+    {
+      "attributes": {
+        "dc_block_count": 1
+      },
+      "dc_block_index": null,
+      "display_name": "DC Busbar 1",
+      "equipment_id": "G01-F01-DC-BUSBAR",
+      "feeder_index": 1,
+      "labels": [
+        {
+          "label_id": "G01-F01-DC-BUSBAR-LABEL",
+          "scope": "dc_busbar",
+          "semantic_key": "dc_blocks_per_feeder",
+          "text": "1 DC blocks"
+        }
+      ],
+      "node_id": "G01-F01-DC-BUSBAR-NODE",
+      "node_type": "dc_busbar"
+    },
+    {
+      "attributes": {
+        "dc_block_energy_mwh": 0.836,
+        "dc_block_voltage_v": 1500.0
+      },
+      "dc_block_index": 1,
+      "display_name": "DC Block 1",
+      "equipment_id": "G01-F01-DC-BLOCK-01",
+      "feeder_index": 1,
+      "labels": [
+        {
+          "label_id": "G01-F01-DC-BLOCK-01-LABEL",
+          "scope": "dc_block",
+          "semantic_key": "dc_block_energy_mwh",
+          "text": "0.836 MWh"
+        }
+      ],
+      "node_id": "G01-F01-DC-BLOCK-01-NODE",
+      "node_type": "dc_block"
+    },
+    {
+      "attributes": {
+        "pcs_rating_kw": 1250.0
+      },
+      "dc_block_index": null,
+      "display_name": "PCS 2",
+      "equipment_id": "G01-F02-PCS",
+      "feeder_index": 2,
+      "labels": [
+        {
+          "label_id": "G01-F02-PCS-LABEL",
+          "scope": "pcs",
+          "semantic_key": "pcs_rating_kw",
+          "text": "1250 kW"
+        }
+      ],
+      "node_id": "G01-F02-PCS-NODE",
+      "node_type": "pcs"
+    },
+    {
+      "attributes": {
+        "dc_block_count": 1
+      },
+      "dc_block_index": null,
+      "display_name": "DC Busbar 2",
+      "equipment_id": "G01-F02-DC-BUSBAR",
+      "feeder_index": 2,
+      "labels": [
+        {
+          "label_id": "G01-F02-DC-BUSBAR-LABEL",
+          "scope": "dc_busbar",
+          "semantic_key": "dc_blocks_per_feeder",
+          "text": "1 DC blocks"
+        }
+      ],
+      "node_id": "G01-F02-DC-BUSBAR-NODE",
+      "node_type": "dc_busbar"
+    },
+    {
+      "attributes": {
+        "dc_block_energy_mwh": 0.836,
+        "dc_block_voltage_v": 1500.0
+      },
+      "dc_block_index": 2,
+      "display_name": "DC Block 2",
+      "equipment_id": "G01-F02-DC-BLOCK-01",
+      "feeder_index": 2,
+      "labels": [
+        {
+          "label_id": "G01-F02-DC-BLOCK-01-LABEL",
+          "scope": "dc_block",
+          "semantic_key": "dc_block_energy_mwh",
+          "text": "0.836 MWh"
+        }
+      ],
+      "node_id": "G01-F02-DC-BLOCK-01-NODE",
+      "node_type": "dc_block"
+    },
+    {
+      "attributes": {
+        "pcs_rating_kw": 1250.0
+      },
+      "dc_block_index": null,
+      "display_name": "PCS 3",
+      "equipment_id": "G01-F03-PCS",
+      "feeder_index": 3,
+      "labels": [
+        {
+          "label_id": "G01-F03-PCS-LABEL",
+          "scope": "pcs",
+          "semantic_key": "pcs_rating_kw",
+          "text": "1250 kW"
+        }
+      ],
+      "node_id": "G01-F03-PCS-NODE",
+      "node_type": "pcs"
+    },
+    {
+      "attributes": {
+        "dc_block_count": 1
+      },
+      "dc_block_index": null,
+      "display_name": "DC Busbar 3",
+      "equipment_id": "G01-F03-DC-BUSBAR",
+      "feeder_index": 3,
+      "labels": [
+        {
+          "label_id": "G01-F03-DC-BUSBAR-LABEL",
+          "scope": "dc_busbar",
+          "semantic_key": "dc_blocks_per_feeder",
+          "text": "1 DC blocks"
+        }
+      ],
+      "node_id": "G01-F03-DC-BUSBAR-NODE",
+      "node_type": "dc_busbar"
+    },
+    {
+      "attributes": {
+        "dc_block_energy_mwh": 0.836,
+        "dc_block_voltage_v": 1500.0
+      },
+      "dc_block_index": 3,
+      "display_name": "DC Block 3",
+      "equipment_id": "G01-F03-DC-BLOCK-01",
+      "feeder_index": 3,
+      "labels": [
+        {
+          "label_id": "G01-F03-DC-BLOCK-01-LABEL",
+          "scope": "dc_block",
+          "semantic_key": "dc_block_energy_mwh",
+          "text": "0.836 MWh"
+        }
+      ],
+      "node_id": "G01-F03-DC-BLOCK-01-NODE",
+      "node_type": "dc_block"
+    },
+    {
+      "attributes": {
+        "pcs_rating_kw": 1250.0
+      },
+      "dc_block_index": null,
+      "display_name": "PCS 4",
+      "equipment_id": "G01-F04-PCS",
+      "feeder_index": 4,
+      "labels": [
+        {
+          "label_id": "G01-F04-PCS-LABEL",
+          "scope": "pcs",
+          "semantic_key": "pcs_rating_kw",
+          "text": "1250 kW"
+        }
+      ],
+      "node_id": "G01-F04-PCS-NODE",
+      "node_type": "pcs"
+    },
+    {
+      "attributes": {
+        "dc_block_count": 1
+      },
+      "dc_block_index": null,
+      "display_name": "DC Busbar 4",
+      "equipment_id": "G01-F04-DC-BUSBAR",
+      "feeder_index": 4,
+      "labels": [
+        {
+          "label_id": "G01-F04-DC-BUSBAR-LABEL",
+          "scope": "dc_busbar",
+          "semantic_key": "dc_blocks_per_feeder",
+          "text": "1 DC blocks"
+        }
+      ],
+      "node_id": "G01-F04-DC-BUSBAR-NODE",
+      "node_type": "dc_busbar"
+    },
+    {
+      "attributes": {
+        "dc_block_energy_mwh": 0.836,
+        "dc_block_voltage_v": 1500.0
+      },
+      "dc_block_index": 4,
+      "display_name": "DC Block 4",
+      "equipment_id": "G01-F04-DC-BLOCK-01",
+      "feeder_index": 4,
+      "labels": [
+        {
+          "label_id": "G01-F04-DC-BLOCK-01-LABEL",
+          "scope": "dc_block",
+          "semantic_key": "dc_block_energy_mwh",
+          "text": "0.836 MWh"
+        }
+      ],
+      "node_id": "G01-F04-DC-BLOCK-01-NODE",
+      "node_type": "dc_block"
+    }
+  ],
+  "project_name": "SLD Regression Container",
+  "run_id": "sld-regression-case01",
+  "scenario_id": "container_only",
+  "source_trace": {
+    "A": "explicit snapshot / canonical run data",
+    "B": "ac_output authoritative allocation",
+    "C": "project-level persisted settings",
+    "D": "UI override with explicit override_mode only",
+    "E": "all other sources forbidden"
+  },
+  "summary": {
+    "ac_blocks_total": 1,
+    "compact_mode": false,
+    "dc_block_energy_mwh": 0.836,
+    "dc_block_voltage_v": 1500.0,
+    "dc_blocks_per_feeder": [
+      1,
+      1,
+      1,
+      1
+    ],
+    "dc_blocks_total_in_group": 4,
+    "diagram_mode": "one_ac_block_group",
+    "draw_summary": false,
+    "feeder_count": 4,
+    "group_index": 1,
+    "lv_voltage_v_ll": 690.0,
+    "mv_voltage_kv": 33.0,
+    "pcs_count": 4,
+    "pcs_rating_kw_list": [
+      1250.0,
+      1250.0,
+      1250.0,
+      1250.0
+    ],
+    "project_frequency_hz": 50.0,
+    "theme": "dark",
+    "transformer_rating_mva": 6.0,
+    "transformer_uk_percent": 7.0,
+    "transformer_vector_group": "Dyn11"
+  },
+  "validation_mode": "draft"
+}

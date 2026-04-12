@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence
 
 from calb_sizing_tool.common.allocation import allocate_dc_blocks, evenly_distribute
+from calb_sizing_tool.schemas.sld_topology import SldTopology
 
 SLD_FONT_FAMILY = "Arial, 'DejaVu Sans', sans-serif"
 SLD_FONT_SIZE = 11
@@ -182,197 +183,72 @@ def build_sld_group_spec(
     sld_inputs: dict,
     group_index: int,
 ) -> SldGroupSpec:
-    stage13_output = stage13_output or {}
-    ac_output = ac_output or {}
-    dc_summary = dc_summary or {}
-    sld_inputs = sld_inputs or {}
+    """LEGACY compatibility wrapper.
 
-    ac_blocks_total = _safe_int(ac_output.get("num_blocks") or ac_output.get("ac_blocks_total"), 0)
-    if ac_blocks_total <= 0:
-        # Try to infer from total PCS and PCS per block
-        total_pcs = _safe_int(ac_output.get("total_pcs"), 0)
-        pcs_per_block = _safe_int(ac_output.get("pcs_per_block"), 0)
-        if total_pcs > 0 and pcs_per_block > 0:
-            ac_blocks_total = total_pcs // pcs_per_block
-    if ac_blocks_total <= 0:
-        ac_blocks_total = 1
+    Authoritative builder chain is:
+    canonical input -> SldTopology -> SldGroupSpec adapter -> renderer.
+    Old dict-based callers must route through this wrapper only for backward compatibility.
+    """
+    from calb_sizing_tool.services.sld_topology_builder import build_legacy_sld_topology
 
-    group_index = _safe_int(group_index, 1)
-    if group_index < 1:
-        group_index = 1
-    if group_index > ac_blocks_total:
-        group_index = ac_blocks_total
-    group_idx = group_index - 1
-
-    pcs_counts = _resolve_pcs_count_by_block(ac_output, ac_blocks_total)
-    pcs_count = pcs_counts[group_idx] if group_idx < len(pcs_counts) else _safe_int(
-        ac_output.get("pcs_per_block"), 4
+    topology = build_legacy_sld_topology(
+        stage13_output=stage13_output,
+        ac_output=ac_output,
+        dc_summary=dc_summary,
+        sld_inputs=sld_inputs,
+        group_index=group_index,
     )
-    if pcs_count <= 0:
-        pcs_count = 1
+    return build_sld_group_spec_from_topology(topology)
 
-    block_size_mw = _safe_float(ac_output.get("block_size_mw"), 0.0)
-    pcs_rating_each_kw = _safe_float(sld_inputs.get("pcs_rating_each_kw"), 0.0)
-    if pcs_rating_each_kw <= 0:
-        pcs_rating_each_kw = _safe_float(sld_inputs.get("pcs_rating_each_kva"), 0.0)
-    if pcs_rating_each_kw <= 0:
-        pcs_rating_each_kw = _safe_float(ac_output.get("pcs_power_kw"), 0.0)
-    if pcs_rating_each_kw <= 0 and block_size_mw > 0 and pcs_count > 0:
-        pcs_rating_each_kw = block_size_mw * 1000 / pcs_count
-    if pcs_rating_each_kw <= 0:
-        pcs_rating_each_kw = 1250.0
 
-    pcs_rating_kw_list = sld_inputs.get("pcs_rating_kw_list")
-    if not isinstance(pcs_rating_kw_list, list) or len(pcs_rating_kw_list) != pcs_count:
-        pcs_rating_kw_list = [pcs_rating_each_kw for _ in range(pcs_count)]
-
-    mv_kv = _safe_float(
-        sld_inputs.get("mv_nominal_kv_ac")
-        or ac_output.get("mv_voltage_kv")
-        or ac_output.get("mv_kv")
-        or ac_output.get("grid_kv")
-        or stage13_output.get("poi_nominal_voltage_kv"),
-        33.0,
-    )
-    lv_v = _safe_float(
-        sld_inputs.get("pcs_lv_voltage_v_ll")
-        or ac_output.get("lv_voltage_v")
-        or ac_output.get("lv_v")
-        or ac_output.get("inverter_lv_v"),
-        0.0,
-    )
-
-    transformer_mva = _safe_float(sld_inputs.get("transformer_rating_mva"), 0.0)
-    if transformer_mva <= 0:
-        transformer_mva = _safe_float(ac_output.get("transformer_mva"), 0.0)
-    if transformer_mva <= 0:
-        transformer_kva = _safe_float(
-            sld_inputs.get("transformer_rating_kva") or ac_output.get("transformer_kva"),
-            0.0,
-        )
-        if transformer_kva > 0:
-            transformer_mva = transformer_kva / 1000.0
-        elif block_size_mw > 0:
-            transformer_mva = block_size_mw / 0.9
-    if transformer_mva <= 0:
-        transformer_mva = 5.0
-
-    dc_block_energy_mwh = _safe_float(sld_inputs.get("dc_block_energy_mwh"), 0.0)
-    if dc_block_energy_mwh <= 0:
-        dc_block = dc_summary.get("dc_block") if isinstance(dc_summary, dict) else None
-        if dc_block is not None:
-            dc_block_energy_mwh = _safe_float(getattr(dc_block, "capacity_mwh", 0.0))
-    if dc_block_energy_mwh <= 0:
-        dc_block_energy_mwh = 5.106
-
-    dc_blocks_per_feeder = _normalize_counts(sld_inputs.get("dc_blocks_per_feeder"), pcs_count)
-
-    if not dc_blocks_per_feeder:
-        allocation = ac_output.get("dc_block_allocation")
-        if isinstance(allocation, dict):
-            per_ac_block = allocation.get("per_ac_block")
-            if isinstance(per_ac_block, list) and per_ac_block:
-                if group_idx < len(per_ac_block):
-                    per_feeder = per_ac_block[group_idx].get("per_feeder")
-                    if isinstance(per_feeder, dict) and per_feeder:
-                        keys = sorted(
-                            per_feeder.keys(),
-                            key=lambda k: _safe_int(str(k).lstrip("Ff"), 0),
-                        )
-                        dc_blocks_per_feeder = [
-                            _safe_int(per_feeder.get(key), 0) for key in keys
-                        ]
-            if not dc_blocks_per_feeder:
-                per_feeder = allocation.get("per_feeder")
-                if isinstance(per_feeder, dict) and per_feeder:
-                    keys = sorted(
-                        per_feeder.keys(),
-                        key=lambda k: _safe_int(str(k).lstrip("Ff"), 0),
-                    )
-                    dc_blocks_per_feeder = [
-                        _safe_int(per_feeder.get(key), 0) for key in keys
-                    ]
-            if not dc_blocks_per_feeder:
-                per_pcs_group = allocation.get("per_pcs_group")
-                if isinstance(per_pcs_group, list) and per_pcs_group:
-                    dc_blocks_per_feeder = [
-                        _safe_int(item.get("dc_block_count"), 0) for item in per_pcs_group
-                    ]
-
-    if not dc_blocks_per_feeder:
-        dc_blocks_per_feeder_by_block = ac_output.get("dc_blocks_per_feeder_by_block")
-        if isinstance(dc_blocks_per_feeder_by_block, list) and dc_blocks_per_feeder_by_block:
-            if group_idx < len(dc_blocks_per_feeder_by_block):
-                candidate = dc_blocks_per_feeder_by_block[group_idx]
-                if isinstance(candidate, list) and candidate:
-                    dc_blocks_per_feeder = _normalize_counts(candidate, pcs_count)
-
-    if not dc_blocks_per_feeder:
-        dc_totals_by_block = _resolve_dc_blocks_total_by_block(
-            ac_output, stage13_output, dc_summary, ac_blocks_total
-        )
-        dc_total_group = (
-            dc_totals_by_block[group_idx] if group_idx < len(dc_totals_by_block) else 0
-        )
-        dc_blocks_per_feeder = allocate_dc_blocks(dc_total_group, pcs_count)
-
-    dc_blocks_total_in_group = sum(dc_blocks_per_feeder)
-
-    mv_labels = sld_inputs.get("mv_labels")
-    if not isinstance(mv_labels, dict):
-        mv_labels = {}
-
-    equipment_list = sld_inputs.get("equipment_list")
-    if not isinstance(equipment_list, dict):
-        equipment_list = {
-            "mv_labels": mv_labels,
-            "rmu": sld_inputs.get("rmu", {}) or {},
-            "transformer": sld_inputs.get("transformer", {}) or {},
-            "lv_busbar": sld_inputs.get("lv_busbar", {}) or {},
-            "cables": sld_inputs.get("cables", {}) or {},
-            "dc_fuse": sld_inputs.get("dc_fuse", {}) or {},
-        }
-    dc_block_voltage_v = _safe_float(sld_inputs.get("dc_block_voltage_v"), 0.0)
-    if dc_block_voltage_v <= 0 and isinstance(dc_summary, dict):
-        dc_block = dc_summary.get("dc_block")
-        if dc_block is not None:
-            dc_block_voltage_v = _safe_float(getattr(dc_block, "voltage_v", 0.0), 0.0)
-    project_hz = _safe_float(stage13_output.get("poi_frequency_hz"), 0.0)
-    if project_hz > 0 or dc_block_voltage_v > 0:
-        equipment_list = dict(equipment_list)
-        if project_hz > 0:
-            equipment_list.setdefault("project_hz", project_hz)
-        if dc_block_voltage_v > 0:
-            equipment_list.setdefault("dc_block_voltage_v", dc_block_voltage_v)
+def build_sld_group_spec_from_topology(topology: SldTopology) -> SldGroupSpec:
+    """Compatibility adapter. Renderer still consumes SldGroupSpec, but topology is authoritative."""
+    summary = topology.summary
+    equipment_ratings = topology.equipment_ratings
+    equipment_list = {
+        "mv_labels": topology.labels.model_dump(mode="python"),
+        "rmu": equipment_ratings.rmu.model_dump(mode="python"),
+        "transformer": {
+            "vector_group": summary.transformer_vector_group,
+            "uk_percent": summary.transformer_uk_percent,
+            "tap_range": equipment_ratings.transformer_tap_range,
+            "cooling": equipment_ratings.transformer_cooling,
+        },
+        "lv_busbar": equipment_ratings.lv_busbar.model_dump(mode="python"),
+        "cables": equipment_ratings.cables.model_dump(mode="python"),
+        "dc_fuse": equipment_ratings.dc_fuse.model_dump(mode="python"),
+        "dc_block_voltage_v": summary.dc_block_voltage_v,
+    }
+    if summary.project_frequency_hz is not None and summary.project_frequency_hz > 0:
+        equipment_list["project_hz"] = summary.project_frequency_hz
 
     layout_params = {
-        "svg_width": _safe_float(sld_inputs.get("svg_width"), 1750),
-        "svg_height": _safe_float(sld_inputs.get("svg_height"), 900),
-        "left_margin": _safe_float(sld_inputs.get("left_margin"), 40),
-        "top_margin": _safe_float(sld_inputs.get("top_margin"), 40),
-        "column_width": _safe_float(sld_inputs.get("column_width"), 420),
-        "row_height": _safe_float(sld_inputs.get("row_height"), 16),
-        "pcs_gap": _safe_float(sld_inputs.get("pcs_gap"), 60),
-        "busbar_gap": _safe_float(sld_inputs.get("busbar_gap"), 22),
-        "font_scale": _safe_float(sld_inputs.get("font_scale"), 1.0),
-        "compact_mode": bool(sld_inputs.get("compact_mode")),
-        "theme": str(sld_inputs.get("theme") or "light"),
+        "svg_width": 1750.0,
+        "svg_height": 900.0,
+        "left_margin": 40.0,
+        "top_margin": 40.0,
+        "column_width": 420.0,
+        "row_height": 16.0,
+        "pcs_gap": 60.0,
+        "busbar_gap": 22.0,
+        "font_scale": 1.0,
+        "compact_mode": summary.compact_mode,
+        "theme": summary.theme,
+        "draw_summary": summary.draw_summary,
     }
-    if sld_inputs.get("draw_summary") is not None:
-        layout_params["draw_summary"] = bool(sld_inputs.get("draw_summary"))
 
     return SldGroupSpec(
-        group_index=group_index,
-        mv_voltage_kv=mv_kv,
-        lv_voltage_v_ll=lv_v,
-        transformer_mva=transformer_mva,
-        transformer_vector_group=sld_inputs.get("transformer", {}).get("vector_group"),
-        transformer_uk_percent=sld_inputs.get("transformer", {}).get("uk_percent"),
-        pcs_count=pcs_count,
-        pcs_rating_kw_list=pcs_rating_kw_list,
-        dc_block_energy_mwh=dc_block_energy_mwh,
-        dc_blocks_total_in_group=dc_blocks_total_in_group,
-        dc_blocks_per_feeder=dc_blocks_per_feeder,
+        group_index=summary.group_index,
+        mv_voltage_kv=summary.mv_voltage_kv,
+        lv_voltage_v_ll=summary.lv_voltage_v_ll,
+        transformer_mva=summary.transformer_rating_mva,
+        transformer_vector_group=summary.transformer_vector_group,
+        transformer_uk_percent=summary.transformer_uk_percent,
+        pcs_count=summary.pcs_count,
+        pcs_rating_kw_list=list(summary.pcs_rating_kw_list),
+        dc_block_energy_mwh=summary.dc_block_energy_mwh,
+        dc_blocks_total_in_group=summary.dc_blocks_total_in_group,
+        dc_blocks_per_feeder=list(summary.dc_blocks_per_feeder),
         equipment_list=equipment_list,
         layout_params=layout_params,
     )

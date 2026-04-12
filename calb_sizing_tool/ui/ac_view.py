@@ -349,16 +349,23 @@ def show():
 
             mv_kv = float(mv_kv_value or 33.0)
             lv_v = float(st.session_state.get("pcs_lv_v", 690.0))
+            transformer_mva = block_size_mw / 0.9 if block_size_mw > 0 else 0.0
             ac_output = {
                 "project_name": project_name,
                 "selected_ratio": selected_option.ratio,
                 "num_blocks": num_blocks,
                 "pcs_per_block": pcs_per_block,
+                "pcs_count_by_block": [pcs_per_block for _ in range(num_blocks)],
                 "pcs_kw": pcs_kw,
+                "pcs_rating_kw_each": pcs_kw,
                 "block_size_mw": block_size_mw,
                 "total_ac_mw": total_ac_mw,
                 "overhead_mw": overhead,
                 "dc_blocks_per_ac": selected_option.dc_blocks_per_ac,
+                "dc_blocks_total_by_block": list(dc_blocks_per_ac_block_list),
+                "dc_blocks_per_feeder_by_block": [
+                    list(plan.get("feeder_allocations", [])) for plan in dc_allocation_plan
+                ],
                 "dc_allocation_plan": dc_allocation_plan,
                 "dc_blocks_total": dc_blocks_total,
                 "dc_total_mwh": total_energy,
@@ -370,6 +377,7 @@ def show():
                 "lv_v": lv_v,
                 "lv_voltage_v": lv_v,
                 "inverter_lv_v": lv_v,
+                "transformer_mva": transformer_mva,
                 "transformer_count": num_blocks,
                 "pcs_count_total": num_blocks * pcs_per_block,
             }

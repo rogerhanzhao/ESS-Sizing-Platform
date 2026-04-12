@@ -24,9 +24,10 @@ except Exception:  # pragma: no cover
     render_layout_block_svg = None
 
 try:  # pragma: no cover - optional dependency
-    from calb_diagrams.sld_pro_renderer import render_sld_pro_svg
+    from calb_diagrams.sld_pro_renderer import render_sld_pro_svg, render_sld_svg
 except Exception:  # pragma: no cover
     render_sld_pro_svg = None
+    render_sld_svg = None
 
 __all__ = [
     "LayoutBlockSpec",
@@ -35,4 +36,5 @@ __all__ = [
     "build_sld_group_spec",
     "render_layout_block_svg",
     "render_sld_pro_svg",
+    "render_sld_svg",
 ]

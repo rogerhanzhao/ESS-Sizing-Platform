@@ -21,6 +21,7 @@ from typing import List, Optional, Sequence
 
 from calb_sizing_tool.common.allocation import allocate_dc_blocks, evenly_distribute
 from calb_sizing_tool.common.nameplate import get_standard_container_mwh
+from calb_sizing_tool.services.sld_topology_builder import build_legacy_sld_topology
 
 
 def _safe_int(value, default=0) -> int:
@@ -120,105 +121,29 @@ def build_ac_block_group_spec(
     sld_inputs: dict,
     group_index: int,
 ) -> AcBlockGroupSpec:
-    stage13_output = stage13_output or {}
-    ac_output = ac_output or {}
-    dc_summary = dc_summary or {}
-    sld_inputs = sld_inputs or {}
+    """LEGACY compatibility only.
 
-    ac_blocks_total = _safe_int(ac_output.get("num_blocks") or ac_output.get("ac_blocks_total"), 0)
-    if ac_blocks_total <= 0:
-        ac_blocks_total = 1
-
-    group_index = _safe_int(group_index, 1)
-    if group_index < 1:
-        group_index = 1
-    if group_index > ac_blocks_total:
-        group_index = ac_blocks_total
-    group_idx = group_index - 1
-
-    pcs_counts = _resolve_pcs_count_by_block(ac_output, ac_blocks_total)
-    pcs_count = pcs_counts[group_idx] if group_idx < len(pcs_counts) else _safe_int(
-        ac_output.get("pcs_per_block"), 4
-    )
-    if pcs_count <= 0:
-        pcs_count = 1
-
-    block_size_mw = _safe_float(ac_output.get("block_size_mw"), 0.0)
-    pcs_rating_each_kva = _safe_float(sld_inputs.get("pcs_rating_each_kva"), 0.0)
-    if pcs_rating_each_kva <= 0:
-        pcs_rating_each_kva = _safe_float(ac_output.get("pcs_power_kw"), 0.0)
-    if pcs_rating_each_kva <= 0 and block_size_mw > 0 and pcs_count > 0:
-        pcs_rating_each_kva = block_size_mw * 1000 / pcs_count
-    if pcs_rating_each_kva <= 0:
-        pcs_rating_each_kva = 1250.0
-
-    pcs_rating_list = sld_inputs.get("pcs_rating_kva_list")
-    if not isinstance(pcs_rating_list, list) or len(pcs_rating_list) != pcs_count:
-        pcs_rating_list = [pcs_rating_each_kva for _ in range(pcs_count)]
-
-    mv_kv = _safe_float(
-        sld_inputs.get("mv_nominal_kv_ac")
-        or ac_output.get("mv_voltage_kv")
-        or ac_output.get("mv_kv")
-        or ac_output.get("grid_kv")
-        or stage13_output.get("poi_nominal_voltage_kv"),
-        33.0,
-    )
-    lv_v = _safe_float(
-        sld_inputs.get("pcs_lv_voltage_v_ll")
-        or ac_output.get("lv_voltage_v")
-        or ac_output.get("lv_v")
-        or ac_output.get("inverter_lv_v"),
-        690.0,
-    )
-
-    transformer_rating_mva = _safe_float(sld_inputs.get("transformer_rating_mva"), 0.0)
-    if transformer_rating_mva <= 0:
-        transformer_kva = _safe_float(
-            sld_inputs.get("transformer_rating_kva") or ac_output.get("transformer_kva"),
-            0.0,
-        )
-        if transformer_kva > 0:
-            transformer_rating_mva = transformer_kva / 1000.0
-        elif block_size_mw > 0:
-            transformer_rating_mva = block_size_mw / 0.9
-    if transformer_rating_mva <= 0:
-        transformer_rating_mva = 5.0
-
-    dc_block_energy_mwh = _safe_float(sld_inputs.get("dc_block_energy_mwh"), 0.0)
-    if dc_block_energy_mwh <= 0:
-        dc_block = dc_summary.get("dc_block") if isinstance(dc_summary, dict) else None
-        if dc_block is not None:
-            dc_block_energy_mwh = _safe_float(getattr(dc_block, "capacity_mwh", 0.0))
-    if dc_block_energy_mwh <= 0:
-        dc_block_energy_mwh = get_standard_container_mwh()
-
-    dc_blocks_per_feeder = None
-    dc_blocks_per_feeder_by_block = ac_output.get("dc_blocks_per_feeder_by_block")
-    if isinstance(dc_blocks_per_feeder_by_block, list) and dc_blocks_per_feeder_by_block:
-        if group_idx < len(dc_blocks_per_feeder_by_block):
-            candidate = dc_blocks_per_feeder_by_block[group_idx]
-            if isinstance(candidate, list) and candidate:
-                dc_blocks_per_feeder = _normalize_counts(candidate, pcs_count)
-
-    if dc_blocks_per_feeder is None:
-        dc_totals_by_block = _resolve_dc_blocks_total_by_block(
-            ac_output, stage13_output, dc_summary, ac_blocks_total
-        )
-        dc_total_group = (
-            dc_totals_by_block[group_idx] if group_idx < len(dc_totals_by_block) else 0
-        )
-        dc_blocks_per_feeder = allocate_dc_blocks(dc_total_group, pcs_count)
-    return AcBlockGroupSpec(
+    Authoritative engineering relationship data now comes from SldTopology.
+    This wrapper is kept only for old snapshot code paths that still expect AcBlockGroupSpec.
+    """
+    topology = build_legacy_sld_topology(
+        stage13_output=stage13_output,
+        ac_output=ac_output,
+        dc_summary=dc_summary,
+        sld_inputs=sld_inputs,
         group_index=group_index,
-        mv_voltage_kv=mv_kv,
-        lv_voltage_v_ll=lv_v,
-        transformer_rating_mva=transformer_rating_mva,
-        transformer_uk_percent=sld_inputs.get("transformer", {}).get("uk_percent"),
-        transformer_vector_group=sld_inputs.get("transformer", {}).get("vector_group"),
-        pcs_count=pcs_count,
-        pcs_rating_kva_list=pcs_rating_list,
-        dc_block_energy_mwh=dc_block_energy_mwh,
-        dc_blocks_per_feeder=dc_blocks_per_feeder,
-        dc_blocks_total_in_group=sum(dc_blocks_per_feeder),
+    )
+    summary = topology.summary
+    return AcBlockGroupSpec(
+        group_index=summary.group_index,
+        mv_voltage_kv=summary.mv_voltage_kv,
+        lv_voltage_v_ll=summary.lv_voltage_v_ll,
+        transformer_rating_mva=summary.transformer_rating_mva,
+        transformer_uk_percent=summary.transformer_uk_percent,
+        transformer_vector_group=summary.transformer_vector_group,
+        pcs_count=summary.pcs_count,
+        pcs_rating_kva_list=list(summary.pcs_rating_kw_list),
+        dc_block_energy_mwh=summary.dc_block_energy_mwh,
+        dc_blocks_per_feeder=list(summary.dc_blocks_per_feeder),
+        dc_blocks_total_in_group=summary.dc_blocks_total_in_group,
     )

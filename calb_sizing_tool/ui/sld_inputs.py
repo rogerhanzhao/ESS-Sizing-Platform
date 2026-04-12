@@ -16,7 +16,20 @@
 # of any company or organization.
 # -----------------------------------------------------------------------------
 
+from __future__ import annotations
+
 import streamlit as st
+
+from calb_sizing_tool.schemas.sld_render_input import (
+    SldDcFuseSpec,
+    SldEquipmentRatings,
+    SldInputOverride,
+    SldLabels,
+    SldLvBusbarRatings,
+    SldCableSpecs,
+    SldRmuRatings,
+    legacy_sld_override_preset,
+)
 
 
 def _safe_float(value, default):
@@ -26,21 +39,26 @@ def _safe_float(value, default):
         return default
 
 
-def render_electrical_inputs(defaults: dict, key_prefix: str | None = None) -> dict:
-    defaults = defaults or {}
+def render_electrical_inputs(defaults: dict | None, key_prefix: str | None = None) -> SldInputOverride:
+    defaults = defaults or legacy_sld_override_preset()
     key_prefix = key_prefix or "sld_inputs"
-    labels = defaults.get("mv_labels", {}) if isinstance(defaults.get("mv_labels"), dict) else {}
-    rmu_defaults = defaults.get("rmu", {}) if isinstance(defaults.get("rmu"), dict) else {}
-    tr_defaults = (
-        defaults.get("transformer", {}) if isinstance(defaults.get("transformer"), dict) else {}
+    labels = defaults.get("labels", {}) if isinstance(defaults.get("labels"), dict) else {}
+    equipment_defaults = (
+        defaults.get("equipment_ratings", {}) if isinstance(defaults.get("equipment_ratings"), dict) else {}
     )
+    rmu_defaults = equipment_defaults.get("rmu", {}) if isinstance(equipment_defaults.get("rmu"), dict) else {}
     bus_defaults = (
-        defaults.get("lv_busbar", {}) if isinstance(defaults.get("lv_busbar"), dict) else {}
+        equipment_defaults.get("lv_busbar", {}) if isinstance(equipment_defaults.get("lv_busbar"), dict) else {}
     )
-    cable_defaults = defaults.get("cables", {}) if isinstance(defaults.get("cables"), dict) else {}
-    fuse_defaults = defaults.get("dc_fuse", {}) if isinstance(defaults.get("dc_fuse"), dict) else {}
+    cable_defaults = (
+        equipment_defaults.get("cables", {}) if isinstance(equipment_defaults.get("cables"), dict) else {}
+    )
+    fuse_defaults = (
+        equipment_defaults.get("dc_fuse", {}) if isinstance(equipment_defaults.get("dc_fuse"), dict) else {}
+    )
 
-    st.subheader("SLD Electrical Inputs")
+    st.subheader("SLD Override Inputs")
+    st.caption("Legacy preset values are only allowed when override mode is explicitly enabled.")
 
     def _key(field: str) -> str:
         return f"{key_prefix}.{field}"
@@ -99,29 +117,37 @@ def render_electrical_inputs(defaults: dict, key_prefix: str | None = None) -> d
         step=1.0,
     )
 
-    st.markdown("**Transformer**")
+    st.markdown("**Transformer / DC Block**")
     t1, t2, t3, t4 = st.columns(4)
     tr_vector_group = t1.text_input(
         "Vector group",
-        value=tr_defaults.get("vector_group") or "Dyn11",
+        value=defaults.get("transformer_vector_group") or "Dyn11",
         key=_key("tr_vector_group"),
     )
     tr_uk_percent = t2.number_input(
         "Uk (%)",
         min_value=0.0,
-        value=_safe_float(tr_defaults.get("uk_percent"), 7.0),
+        value=_safe_float(defaults.get("transformer_uk_percent"), 7.0),
         key=_key("tr_uk_percent"),
         step=0.1,
     )
     tr_tap_range = t3.text_input(
         "Tap range",
-        value=tr_defaults.get("tap_range") or "+/-2x2.5%",
+        value=equipment_defaults.get("transformer_tap_range") or "+/-2x2.5%",
         key=_key("tr_tap_range"),
     )
     tr_cooling = t4.text_input(
         "Cooling",
-        value=tr_defaults.get("cooling") or "ONAN",
+        value=equipment_defaults.get("transformer_cooling") or "ONAN",
         key=_key("tr_cooling"),
+    )
+    d1 = st.columns(1)[0]
+    dc_block_voltage_v = d1.number_input(
+        "DC block voltage (V)",
+        min_value=0.0,
+        value=_safe_float(defaults.get("dc_block_voltage_v"), 1500.0),
+        key=_key("dc_block_voltage_v"),
+        step=10.0,
     )
 
     st.markdown("**LV Busbar**")
@@ -166,27 +192,36 @@ def render_electrical_inputs(defaults: dict, key_prefix: str | None = None) -> d
         key=_key("dc_fuse_spec"),
     )
 
-    return {
-        "mv_labels": {"to_switchgear": to_switchgear, "to_other_rmu": to_other_rmu},
-        "rmu": {
-            "rated_kv": rmu_rated_kv,
-            "rated_a": rmu_rated_a,
-            "short_circuit_ka_3s": rmu_short_circuit_ka,
-            "ct_ratio": rmu_ct_ratio,
-            "ct_class": rmu_ct_class,
-            "ct_va": rmu_ct_va,
-        },
-        "transformer": {
-            "vector_group": tr_vector_group,
-            "uk_percent": tr_uk_percent,
-            "tap_range": tr_tap_range,
-            "cooling": tr_cooling,
-        },
-        "lv_busbar": {"rated_a": lv_rated_a, "short_circuit_ka": lv_short_circuit_ka},
-        "cables": {
-            "mv_cable_spec": mv_cable_spec,
-            "lv_cable_spec": lv_cable_spec,
-            "dc_cable_spec": dc_cable_spec,
-        },
-        "dc_fuse": {"fuse_spec": fuse_spec},
-    }
+    return SldInputOverride(
+        transformer_vector_group=tr_vector_group,
+        transformer_uk_percent=tr_uk_percent,
+        dc_block_voltage_v=dc_block_voltage_v,
+        labels=SldLabels(
+            to_switchgear=to_switchgear,
+            to_other_rmu=to_other_rmu,
+        ),
+        equipment_ratings=SldEquipmentRatings(
+            rmu=SldRmuRatings(
+                rated_kv=rmu_rated_kv,
+                rated_a=rmu_rated_a,
+                short_circuit_ka_3s=rmu_short_circuit_ka,
+                ct_ratio=rmu_ct_ratio,
+                ct_class=rmu_ct_class,
+                ct_va=rmu_ct_va,
+            ),
+            lv_busbar=SldLvBusbarRatings(
+                rated_a=lv_rated_a,
+                short_circuit_ka=lv_short_circuit_ka,
+            ),
+            cables=SldCableSpecs(
+                mv_cable_spec=mv_cable_spec,
+                lv_cable_spec=lv_cable_spec,
+                dc_cable_spec=dc_cable_spec,
+            ),
+            dc_fuse=SldDcFuseSpec(
+                fuse_spec=fuse_spec,
+            ),
+            transformer_tap_range=tr_tap_range,
+            transformer_cooling=tr_cooling,
+        ),
+    )

@@ -6,6 +6,7 @@ from pydantic import Field
 
 from calb_sizing_tool.schemas.common import CanonicalBaseModel
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
+from calb_sizing_tool.schemas.sld_render_input import SldCanonicalInput, SldInputOverride
 
 
 class AcSnapshot(CanonicalBaseModel):
@@ -23,20 +24,12 @@ class LayoutRuleSnapshot(CanonicalBaseModel):
 
 
 class SldRenderOptions(CanonicalBaseModel):
-    group_index: int = 1
+    group_index: int | None = None
     theme: str = "dark"
     draw_summary: bool = False
-    mv_kv: float | None = None
-    lv_v: float | None = None
-    transformer_mva: float | None = None
-    pcs_rating_each_kw: float | None = None
-    dc_block_energy_mwh: float | None = None
-    svg_width: int | None = None
-    svg_height: int | None = None
-    pcs_gap: int | None = None
-    busbar_gap: int | None = None
-    font_scale: float | None = None
-    dc_blocks_per_feeder: list[int] | None = None
+    compact_mode: bool = False
+    override_mode: bool = False
+    overrides: SldInputOverride | None = None
 
 
 class SldRenderInput(CanonicalBaseModel):
@@ -46,6 +39,7 @@ class SldRenderInput(CanonicalBaseModel):
     topology_snapshot: TopologySnapshot | None = None
     layout_rules: LayoutRuleSnapshot | None = None
     options: SldRenderOptions
+    canonical_input: SldCanonicalInput
 
 
 class DiagramArtifactBundle(CanonicalBaseModel):
