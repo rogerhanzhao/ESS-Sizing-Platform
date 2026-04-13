@@ -9,14 +9,17 @@ This folder contains the active project documentation. Temporary implementation 
 - `PCS_RATING_GUIDE.md`: PCS option selection and container sizing rules
 - `WORKSPACE_BOUNDARY_V1.md`: frozen Project -> Case -> Run workbench boundary
 - `optional_dependencies.md`: optional packages used by some features
+- `CURRENT_STATUS_2026-04-13.md`: consolidated status after MV/RMU, DB runtime, SLD stabilization, and formal engineering settings follow-up
 
 ## SLD Baseline And Contracts
 
+- `MV_RMU_VOLTAGE_CONTRACT_V1.md`: authoritative MV/RMU voltage contract
 - `SLD_CURRENT_ISSUE_ROOT_CAUSE.md`: current SLD failure root cause and V1 repair scope
 - `SLD_AC_FIELD_CONTRACT_V1.md`: authoritative AC->SLD contract and compatibility alias rules
 - `SLD_DB_GOVERNANCE_V1.md`: persisted run input authority and DC->AC->SLD cross-run data governance
 - `SLD_RENDERER_BOUNDARY_PATCH_V1.md`: renderer boundary shrink and remaining compatibility scope
 - `SLD_REGRESSION_BASELINE_V1.md`: topology/render baseline strategy and update gate
+- `RUNTIME_SOURCE_OF_TRUTH_CHECK_V2.md`: Phase 2 runtime source-of-truth result after persisted AC snapshot wiring
 
 ## Deployment
 

@@ -1,77 +1,98 @@
 # SLD Current Issue Root Cause
 
-## 当前为什么会乱
+## Scope
 
-最近这轮重构之前，SLD 的“输入解释权”没有被收口，导致以下三层都在重复解释 AC/DC 结果：
+This document records the actual root cause addressed in Phase 3 of the SLD stabilization work.
 
-1. `ui/single_line_diagram_view.py`
-   页面从 session/project state 直接抓 `ac_output`，再进入 SLD pipeline。
-2. `services/sld_input_builder.py`
-   builder 一边读当前 AC 输出，一边继续猜 `pcs_power_kw`、`dc_block_allocation`、`total_pcs` 这类旧字段。
-3. `calb_diagrams/specs.py` / `calb_diagrams/sld_pro_renderer.py`
-   spec builder 和 legacy renderer wrapper 里还保留了旧的拓扑推断与默认工程值。
+Covered scope:
 
-结果就是：
+- one authoritative SLD input path
+- AC -> SLD field contract unification
+- strict-mode fallback removal
+- renderer boundary reduction
+- regression baseline setup
 
-- 同一个 SLD，不同层会对 `pcs_count`、`dc_blocks_per_feeder`、`transformer_mva` 做重复解释。
-- AC 输出字段和 SLD 消费字段不完全同构时，会进入 silent fallback。
-- 图虽然能画出来，但核心 feeder / PCS / DC block 关系可能已经不是运行结果，而是兼容逻辑猜出来的。
+Out of scope:
 
-## 本轮修什么
+- Layout redesign
+- DB takeover of all pages
+- DC sizing math changes
+- AC sizing math rewrite
+- login / RBAC
 
-本轮只修 SLD V1 的结构问题：
+## Root Cause Summary
 
-1. 收口 authoritative input
-   `AcSnapshot -> SldCanonicalInput -> SldTopology` 成为正式主链。
-2. 统一 AC -> SLD 字段契约
-   只允许 `adapters/ac_to_sld_adapter.py` 做 legacy alias 转换。
-3. 收缩 renderer 边界
-   renderer 正式入口只吃 `SldTopology`，不再决定 feeder allocation 和 PCS/DC 数量关系。
-4. 建立 SLD regression baseline
-   对 topology、normalized render output、hash 和关键结构做自动比对。
+The SLD stack had already started migrating to a formal path, but the old compatibility path was still able to infer key engineering data. That left the runtime with two behaviors at once:
 
-## 本轮不修什么
+1. formal path:
+   `AcSnapshot -> SldCanonicalInput -> SldTopology -> render`
+2. legacy compatibility path:
+   raw AC dict / SLD dict / legacy spec -> guessed topology -> render
 
-以下内容明确不在本轮：
+Because both paths still existed, the system could produce a diagram even when the authoritative runtime data was incomplete. In that state, the picture could be drawable, but the engineering structure was no longer guaranteed to match the upstream AC result.
 
-- Layout
-- 登录
-- RBAC
-- DB 主链
-- DC/AC sizing 数学逻辑
-- Report Export
-- UI 样式大改
+## Concrete Failure Modes Before Phase 3
 
-## 修复后的职责边界
+The main failure modes were:
 
-### Authoritative builder
+- `pcs_count` could be guessed instead of read from authoritative AC data.
+- `dc_blocks_per_feeder` could be evenly distributed by fallback logic.
+- transformer rating could be re-derived from `block_size_mw / 0.9`.
+- legacy equipment defaults could fill RMU / CT / cable / fuse data in paths that looked formal.
+- renderer compatibility code still contained topology-building logic.
+- `snapshot_single_unit.py` and `ac_block_group.py` still behaved like partial builders instead of pure compatibility projections.
 
-- `calb_sizing_tool/services/sld_authoritative_builder.py`
-- `calb_sizing_tool/services/sld_input_builder.py`
+## What Phase 3 Changed
 
-职责：
+### 1. One formal build path
 
-- 从 `DcRunBundle + AcSnapshot + project_settings/override` 构造 `SldCanonicalInput`
-- 从 `SldCanonicalInput` 构造 `SldTopology`
+The formal path is now:
 
-### Compatibility adapter
+`AcSnapshot -> normalize_ac_output_for_sld() -> SldCanonicalInput -> SldTopology -> compatibility spec projection -> renderer`
 
-- `calb_sizing_tool/adapters/ac_to_sld_adapter.py`
-- `calb_diagrams/specs.py::build_sld_group_spec_from_topology`
+Only this path is allowed to decide:
 
-职责：
+- feeder count
+- PCS count
+- PCS rating list
+- DC block allocation
+- transformer MVA
 
-- 单点处理 AC legacy aliases
-- 单点把 topology 适配成 renderer 仍在消费的 `SldGroupSpec`
+### 2. Compatibility path downgraded
 
-### Deprecated path
+Legacy helpers are still present only for compatibility, but they no longer act as engineering decision makers.
 
-- `calb_sizing_tool/sld/snapshot_single_unit.py`
-- `calb_sizing_tool/sld/ac_block_group.py`
-- `calb_diagrams/sld_pro_renderer.py::_topology_from_legacy_spec`
+- `snapshot_single_unit.py` now projects from resolved group data.
+- `ac_block_group.py` now projects from resolved topology summary.
+- legacy `SldGroupSpec -> SldTopology` conversion moved out of the renderer and now requires explicit engineering fields.
 
-职责：
+### 3. Strict mode is actually strict
 
-- 仅保留历史兼容
-- 默认按 `draft` 处理
-- 不再代表正式 SLD 生成链
+In `validation_mode="strict"`, missing critical engineering inputs now fail fast instead of silently falling back.
+
+The important removed guesses are:
+
+- default `pcs_count = 4`
+- auto-even feeder allocation
+- `transformer_mva = block_size_mw / 0.9`
+- default engineering equipment preset for formal generation
+
+## Remaining Limits After Phase 3
+
+Phase 3 stabilizes the SLD engine, but it does not solve every upstream workflow gap.
+
+Known remaining limits:
+
+- formal SLD engineering settings still need a proper user-maintained source or page
+- some compatibility wrappers still exist for legacy callers
+- `SldGroupSpec` remains as a compatibility view, not the formal engineering truth
+
+## Acceptance Result
+
+Phase 3 is considered complete when the following are true:
+
+- formal SLD uses one authoritative input path
+- AC -> SLD contract is normalized in one adapter
+- strict mode no longer guesses missing engineering structure
+- renderer no longer decides feeder / PCS / DC topology
+- regression tests lock topology and render output

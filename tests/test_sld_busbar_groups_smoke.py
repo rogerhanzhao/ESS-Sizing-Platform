@@ -34,12 +34,18 @@ def test_sld_busbar_groups_smoke(tmp_path: Path):
     }
     ac_output = {
         "num_blocks": 1,
-        "grid_kv": 33.0,
-        "inverter_lv_v": 690.0,
+        "pcs_per_block": 4,
+        "mv_voltage_kv": 33.0,
+        "lv_voltage_v": 690.0,
         "block_size_mw": 5.0,
-        "pcs_power_kw": 2500.0,
+        "pcs_kw": 1250.0,
+        "transformer_mva": 5.0,
         "pcs_count_by_block": [4],
         "dc_blocks_total_by_block": [6],
+        "dc_blocks_per_feeder_by_block": [[2, 1, 2, 1]],
+        "dc_allocation_plan": [
+            {"ac_block_index": 1, "dc_blocks_total": 6, "feeder_allocations": [2, 1, 2, 1]},
+        ],
     }
     sld_inputs = {
         "mv_nominal_kv_ac": 33.0,
@@ -48,7 +54,16 @@ def test_sld_busbar_groups_smoke(tmp_path: Path):
         "pcs_rating_each_kw": 1250.0,
         "dc_block_energy_mwh": 5.106,
         "dc_blocks_per_feeder": [2, 1, 2, 1],
-        "rmu": {"rated_kv": 36.0, "rated_a": 630, "short_circuit_ka_3s": 25.0},
+        "dc_block_voltage_v": 1500.0,
+        "mv_labels": {"to_switchgear": "To Switchgear", "to_other_rmu": "To Other RMU"},
+        "rmu": {
+            "rated_kv": 33.0,
+            "rated_a": 630,
+            "short_circuit_ka_3s": 25.0,
+            "ct_ratio": "200/1",
+            "ct_class": "5P20",
+            "ct_va": 10.0,
+        },
         "transformer": {"vector_group": "Dyn11", "uk_percent": 7.0, "cooling": "ONAN"},
         "lv_busbar": {"rated_a": 2500.0, "short_circuit_ka": 25.0},
         "cables": {"mv_cable_spec": "TBD", "lv_cable_spec": "TBD", "dc_cable_spec": "TBD"},

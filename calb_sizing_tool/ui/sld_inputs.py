@@ -30,6 +30,7 @@ from calb_sizing_tool.schemas.sld_render_input import (
     SldRmuRatings,
     legacy_sld_override_preset,
 )
+from calb_sizing_tool.sld.voltage_contract import resolve_mv_rmu_voltage_contract
 
 
 def _safe_float(value, default):
@@ -39,7 +40,14 @@ def _safe_float(value, default):
         return default
 
 
-def render_electrical_inputs(defaults: dict | None, key_prefix: str | None = None) -> SldInputOverride:
+def render_electrical_inputs(
+    defaults: dict | None,
+    key_prefix: str | None = None,
+    *,
+    mv_nominal_voltage_kv: float | None = None,
+    section_title: str = "SLD Override Inputs",
+    section_caption: str | None = None,
+) -> SldInputOverride:
     """Draft-only UI override collector.
 
     Formal SLD generation must rely on authoritative runtime/project inputs. This
@@ -48,9 +56,12 @@ def render_electrical_inputs(defaults: dict | None, key_prefix: str | None = Non
     defaults = defaults or legacy_sld_override_preset()
     key_prefix = key_prefix or "sld_inputs"
     labels = defaults.get("labels", {}) if isinstance(defaults.get("labels"), dict) else {}
+    if not labels and isinstance(defaults.get("mv_labels"), dict):
+        labels = defaults.get("mv_labels", {})
     equipment_defaults = (
         defaults.get("equipment_ratings", {}) if isinstance(defaults.get("equipment_ratings"), dict) else {}
     )
+    transformer_defaults = defaults.get("transformer", {}) if isinstance(defaults.get("transformer"), dict) else {}
     rmu_defaults = equipment_defaults.get("rmu", {}) if isinstance(equipment_defaults.get("rmu"), dict) else {}
     bus_defaults = (
         equipment_defaults.get("lv_busbar", {}) if isinstance(equipment_defaults.get("lv_busbar"), dict) else {}
@@ -62,8 +73,8 @@ def render_electrical_inputs(defaults: dict | None, key_prefix: str | None = Non
         equipment_defaults.get("dc_fuse", {}) if isinstance(equipment_defaults.get("dc_fuse"), dict) else {}
     )
 
-    st.subheader("SLD Override Inputs")
-    st.caption("Legacy preset values are only allowed when override mode is explicitly enabled.")
+    st.subheader(section_title)
+    st.caption(section_caption or "Legacy preset values are only allowed when override mode is explicitly enabled.")
 
     def _key(field: str) -> str:
         return f"{key_prefix}.{field}"
@@ -80,14 +91,42 @@ def render_electrical_inputs(defaults: dict | None, key_prefix: str | None = Non
         key=_key("mv_label_to_other_rmu"),
     )
 
+    contract = None
+    try:
+        contract = resolve_mv_rmu_voltage_contract(mv_nominal_voltage_kv=mv_nominal_voltage_kv)
+    except ValueError:
+        contract = None
+    derived_rmu_kv = contract.rmu_rated_voltage_kv if contract else _safe_float(rmu_defaults.get("rated_kv"), 24.0)
+
+    for stale_key in (
+        _key("rmu_rated_kv"),
+        _key("rmu_rated_kv_auto"),
+        _key("rmu_rated_kv_manual"),
+        _key("rmu_rated_kv_manual_override"),
+    ):
+        if stale_key in st.session_state:
+            st.session_state.pop(stale_key)
+
+    rmu_derived_value_key = _key("rmu_rated_kv_derived")
+    st.session_state[rmu_derived_value_key] = derived_rmu_kv
+
     st.markdown("**RMU**")
+    if mv_nominal_voltage_kv is not None and float(mv_nominal_voltage_kv) > 0:
+        st.caption(
+            f"RMU rated voltage follows POI / MV Voltage (kV): {float(mv_nominal_voltage_kv):.1f} kV. "
+            "This page does not redefine a second RMU voltage input."
+        )
+    else:
+        st.caption("POI / MV Voltage is unavailable. RMU rated voltage display falls back to the current draft preset.")
     r1, r2, r3 = st.columns(3)
     rmu_rated_kv = r1.number_input(
-        "Rated voltage (kV)",
+        "RMU rated voltage (kV)",
         min_value=0.0,
-        value=_safe_float(rmu_defaults.get("rated_kv"), 24.0),
-        key=_key("rmu_rated_kv"),
+        value=_safe_float(st.session_state.get(rmu_derived_value_key), derived_rmu_kv),
+        key=rmu_derived_value_key,
         step=0.1,
+        disabled=True,
+        help="Derived directly from POI / MV Voltage (kV).",
     )
     rmu_rated_a = r2.number_input(
         "Rated current (A)",
@@ -126,13 +165,16 @@ def render_electrical_inputs(defaults: dict | None, key_prefix: str | None = Non
     t1, t2, t3, t4 = st.columns(4)
     tr_vector_group = t1.text_input(
         "Vector group",
-        value=defaults.get("transformer_vector_group") or "Dyn11",
+        value=defaults.get("transformer_vector_group") or transformer_defaults.get("vector_group") or "Dyn11",
         key=_key("tr_vector_group"),
     )
     tr_uk_percent = t2.number_input(
         "Uk (%)",
         min_value=0.0,
-        value=_safe_float(defaults.get("transformer_uk_percent"), 7.0),
+        value=_safe_float(
+            defaults.get("transformer_uk_percent", transformer_defaults.get("uk_percent")),
+            7.0,
+        ),
         key=_key("tr_uk_percent"),
         step=0.1,
     )

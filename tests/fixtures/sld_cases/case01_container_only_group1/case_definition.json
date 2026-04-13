@@ -62,7 +62,7 @@
     },
     "equipment_ratings": {
       "rmu": {
-        "rated_kv": 24.0,
+        "rated_kv": 33.0,
         "rated_a": 630.0,
         "short_circuit_ka_3s": 25.0,
         "ct_ratio": "200/1",

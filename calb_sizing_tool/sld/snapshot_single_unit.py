@@ -19,7 +19,7 @@
 import datetime
 import hashlib
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from calb_sizing_tool.sld.ac_block_group import build_ac_block_group_spec
 
@@ -43,22 +43,20 @@ def _safe_float(value, default=0.0):
         return default
 
 
-def _build_feeders(pcs_rating_kva_list: List[float]) -> List[Dict]:
+def _build_feeders(pcs_rating_kw_list: List[float]) -> List[Dict]:
     feeders = []
-    for idx, rating in enumerate(pcs_rating_kva_list, start=1):
+    for idx, rating in enumerate(pcs_rating_kw_list, start=1):
         feeders.append(
             {
                 "feeder_id": f"FDR-{idx:02d}",
                 "pcs_id": f"PCS-{idx:02d}",
-                "pcs_rating_kva": rating,
+                "pcs_rating_kw": rating,
             }
         )
     return feeders
 
 
-def _build_dc_blocks_by_feeder(
-    dc_blocks_per_feeder: List[int], dc_block_unit_mwh: Optional[float]
-) -> List[Dict]:
+def _build_dc_blocks_by_feeder(dc_blocks_per_feeder: List[int], dc_block_unit_mwh: float | None) -> List[Dict]:
     allocations = []
     for idx, count in enumerate(dc_blocks_per_feeder, start=1):
         entry = {
@@ -98,70 +96,60 @@ def build_single_unit_snapshot(
 ) -> dict:
     """DEPRECATED LEGACY compatibility only.
 
-    The authoritative SLD build chain is now:
-    canonical input -> SldTopology -> compatibility adapters.
-    This raw snapshot format is retained only for older tools that still consume it.
+    This module now projects the already-resolved legacy topology/group spec into
+    the older raw snapshot format. It must not re-derive feeder allocation or
+    transformer sizing when the compatibility topology already contains them.
     """
     stage13_output = stage13_output or {}
     ac_output = ac_output or {}
     dc_summary = dc_summary or {}
     sld_inputs = sld_inputs or {}
 
-    project_name = (
-        stage13_output.get("project_name")
-        or ac_output.get("project_name")
-        or "CALB ESS Project"
-    )
+    project_name = stage13_output.get("project_name") or ac_output.get("project_name") or "CALB ESS Project"
     project_hz = _safe_float(stage13_output.get("poi_frequency_hz"), 60.0)
 
-    group_index = _safe_int(sld_inputs.get("group_index"), 1)
     group_spec = build_ac_block_group_spec(
-        stage13_output, ac_output, dc_summary, sld_inputs, group_index
+        stage13_output,
+        ac_output,
+        dc_summary,
+        sld_inputs,
+        _safe_int(sld_inputs.get("group_index"), 1),
     )
 
-    site_ac_block_total = _safe_int(
-        sld_inputs.get("site_ac_block_total") or _compute_site_ac_blocks(ac_output)
-    )
-    site_dc_block_total = _safe_int(
-        sld_inputs.get("site_dc_block_total") or _compute_site_dc_blocks(stage13_output, dc_summary)
-    )
-    ratio_default = 0
-    if site_ac_block_total > 0 and site_dc_block_total > 0:
-        ratio_default = max(1, int(round(site_dc_block_total / site_ac_block_total)))
+    site_ac_block_total = _safe_int(sld_inputs.get("site_ac_block_total") or group_spec.ac_blocks_total)
+    if site_ac_block_total <= 0:
+        site_ac_block_total = _compute_site_ac_blocks(ac_output)
+    site_dc_block_total = _safe_int(sld_inputs.get("site_dc_block_total") or _compute_site_dc_blocks(stage13_output, dc_summary))
 
     feeders = sld_inputs.get("feeders")
     if not isinstance(feeders, list) or len(feeders) != group_spec.pcs_count:
-        feeders = _build_feeders(group_spec.pcs_rating_kva_list)
+        feeders = _build_feeders(group_spec.pcs_rating_kw_list)
     else:
         normalized_feed = []
         for idx, entry in enumerate(feeders, start=1):
             if not isinstance(entry, dict):
                 continue
-            pcs_rating = entry.get("pcs_rating_kva")
-            if pcs_rating is None and idx - 1 < len(group_spec.pcs_rating_kva_list):
-                pcs_rating = group_spec.pcs_rating_kva_list[idx - 1]
+            pcs_rating = entry.get("pcs_rating_kw")
+            if pcs_rating is None and idx - 1 < len(group_spec.pcs_rating_kw_list):
+                pcs_rating = group_spec.pcs_rating_kw_list[idx - 1]
             normalized_feed.append(
                 {
                     "feeder_id": entry.get("feeder_id") or f"FDR-{idx:02d}",
                     "pcs_id": entry.get("pcs_id") or f"PCS-{idx:02d}",
-                    "pcs_rating_kva": pcs_rating,
+                    "pcs_rating_kw": pcs_rating,
                 }
             )
-        feeders = normalized_feed if len(normalized_feed) == group_spec.pcs_count else _build_feeders(
-            group_spec.pcs_rating_kva_list
-        )
+        if len(normalized_feed) != group_spec.pcs_count:
+            raise ValueError("feeders must match the compatibility topology PCS count.")
+        feeders = normalized_feed
 
     dc_blocks_by_feeder = sld_inputs.get("dc_blocks_by_feeder")
-    dc_blocks_for_one_ac_block_group = _safe_int(
-        sld_inputs.get("dc_blocks_for_one_ac_block_group"), 0
-    )
-
     if isinstance(dc_blocks_by_feeder, list) and len(dc_blocks_by_feeder) == group_spec.pcs_count:
         normalized = []
         total_count = 0
         for idx, entry in enumerate(dc_blocks_by_feeder, start=1):
             if not isinstance(entry, dict):
-                continue
+                raise ValueError("dc_blocks_by_feeder entries must be dicts.")
             feeder_id = entry.get("feeder_id") or f"FDR-{idx:02d}"
             count = _safe_int(entry.get("dc_block_count"), 0)
             total_count += count
@@ -176,21 +164,12 @@ def build_single_unit_snapshot(
                 }
             )
         dc_blocks_by_feeder = normalized
-        if total_count > 0:
-            dc_blocks_for_one_ac_block_group = total_count
+        dc_blocks_for_one_ac_block_group = total_count
     else:
-        if dc_blocks_for_one_ac_block_group <= 0:
-            if sld_inputs.get("use_site_ratio"):
-                dc_blocks_for_one_ac_block_group = ratio_default or group_spec.dc_blocks_total_in_group
-            else:
-                dc_blocks_for_one_ac_block_group = group_spec.dc_blocks_total_in_group
-        if dc_blocks_for_one_ac_block_group <= 0:
-            dc_blocks_for_one_ac_block_group = group_spec.pcs_count
-        dc_blocks_per_feeder = list(group_spec.dc_blocks_per_feeder)
-        if sum(dc_blocks_per_feeder) != dc_blocks_for_one_ac_block_group:
-            dc_blocks_for_one_ac_block_group = sum(dc_blocks_per_feeder)
+        dc_blocks_for_one_ac_block_group = group_spec.dc_blocks_total_in_group
         dc_blocks_by_feeder = _build_dc_blocks_by_feeder(
-            dc_blocks_per_feeder, group_spec.dc_block_energy_mwh
+            list(group_spec.dc_blocks_per_feeder),
+            group_spec.dc_block_energy_mwh,
         )
 
     labels = sld_inputs.get("mv_labels") if isinstance(sld_inputs.get("mv_labels"), dict) else {}
@@ -227,10 +206,8 @@ def build_single_unit_snapshot(
         "ac_block": {
             "group_index": group_spec.group_index,
             "pcs_count": group_spec.pcs_count,
-            "pcs_rating_each_kva": group_spec.pcs_rating_kva_list[0]
-            if group_spec.pcs_rating_kva_list
-            else None,
-            "pcs_rating_kva_list": group_spec.pcs_rating_kva_list,
+            "pcs_rating_each_kw": group_spec.pcs_rating_kw_list[0] if group_spec.pcs_rating_kw_list else None,
+            "pcs_rating_kw_list": list(group_spec.pcs_rating_kw_list),
             "pcs_lv_voltage_v_ll": group_spec.lv_voltage_v_ll,
         },
         "feeders": feeders,
@@ -282,7 +259,7 @@ def validate_single_unit_snapshot(snapshot: dict) -> None:
     ac_block = snapshot.get("ac_block")
     if not isinstance(ac_block, dict):
         raise ValueError("Snapshot 'ac_block' must be a dict.")
-    for key in ("pcs_count", "pcs_rating_each_kva", "pcs_lv_voltage_v_ll"):
+    for key in ("pcs_count", "pcs_rating_each_kw", "pcs_lv_voltage_v_ll"):
         if key not in ac_block:
             raise ValueError(f"Missing '{key}' in ac_block.")
 

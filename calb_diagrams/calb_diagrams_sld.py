@@ -353,12 +353,14 @@ def _table_row_lines(text: str, max_chars: int) -> List[str]:
     return lines if lines else ["TBD"]
 
 
-def _rmu_class_kv(mv_kv: float) -> float:
-    if mv_kv <= 24:
-        return 24.0
-    if mv_kv <= 36:
-        return 36.0
-    return round(mv_kv)
+def _require_rmu_class_kv(spec: SldGroupSpec, rmu_payload: dict) -> float:
+    rated_kv = _safe_float(rmu_payload.get("rated_kv"), 0.0)
+    if rated_kv <= 0:
+        raise ValueError(
+            f"Legacy SLD spec for group {spec.group_index} is missing rmu.rated_kv. "
+            "Renderer will not infer RMU equipment class from mv_voltage_kv."
+        )
+    return rated_kv
 
 
 def _range_text(values: List[float], unit: str) -> str:
@@ -441,9 +443,7 @@ def _build_dark_equipment_sections(spec: SldGroupSpec) -> list[tuple[str, list[s
         else:
             dc_cable_spec = "TBD"
 
-    rated_kv = _safe_float(rmu.get("rated_kv"), 0.0)
-    if rated_kv <= 0:
-        rated_kv = _rmu_class_kv(spec.mv_voltage_kv)
+    rated_kv = _require_rmu_class_kv(spec, rmu)
     rated_a = _safe_float(rmu.get("rated_a"), 0.0)
     short_ka = _safe_float(rmu.get("short_circuit_ka_3s"), 0.0)
     ct_ratio = rmu.get("ct_ratio") or "TBD"
@@ -559,9 +559,7 @@ def _build_equipment_list(
     items.append(("MV Cable", cables.get("mv_cable_spec") or "TBD"))
 
     rmu_parts = []
-    rated_kv = _safe_float(rmu.get("rated_kv"), 0.0)
-    if rated_kv <= 0:
-        rated_kv = _rmu_class_kv(spec.mv_voltage_kv)
+    rated_kv = _require_rmu_class_kv(spec, rmu)
     rmu_parts.append(f"{rated_kv:.0f} kV class")
     rated_a = _safe_float(rmu.get("rated_a"), 0.0)
     if rated_a > 0:

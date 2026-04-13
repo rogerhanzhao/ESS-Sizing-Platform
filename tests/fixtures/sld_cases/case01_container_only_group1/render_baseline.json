@@ -2,19 +2,20 @@
   "metadata": {
     "artifact_mode": "official",
     "group_index": 1,
-    "input_hash": "1339505c2cc7c139067647a839f595a3af2946e70bb23eaef6a3f3eada8c2fa2",
-    "png_hash": "1e3b9f56b6a85db9b30ac9278a7d0b34adfd1d0363c66d442eab2e1fb80ade89",
-    "render_spec_hash": "4cfd1026a6f1d9ac5c966beca5a436c1410599ddab7d2893a69b3866df1c9ad3",
+    "input_hash": "559aec5519ca2447b0fa562605efbf031d48dced0e15de334b92d51907092d0d",
+    "png_hash": "3fd37d270f7a0cde869ccdc33e26a35225401811c590a243a72fcec3c5bea6ee",
+    "render_spec_hash": "020cd30e13afafde21ceebb22b6581c3add1c5065ce081a847c3ad7cecd280b5",
     "renderer_version": "1.3.0",
     "run_id": "sld-regression-case01",
     "scenario_id": "container_only",
-    "svg_hash": "b64016b2086fd4159c6c3a3acc2dc10d404f58762e9cfde2dbfcb6ccc2c369bd",
+    "svg_hash": "f1cc35fb74d2c52aedca67d6d626d354e5311435f7920f320d9141709e6b617a",
     "topology_edge_count": 15,
-    "topology_hash": "e7dc4f91c11a2e194659854c68ac9bf52b0576bac137ba30bbff918679cd65b4",
+    "topology_hash": "53aa9dbe48e45b86ebda28984b4d4959acbf065c615f943f8775da41538f7413",
     "topology_node_count": 16,
     "validation_mode": "strict"
   },
   "spec": {
+    "ac_blocks_total": 1,
     "dc_block_energy_mwh": 0.836,
     "dc_blocks_per_feeder": [
       1,
@@ -47,7 +48,7 @@
         "ct_ratio": "200/1",
         "ct_va": 10.0,
         "rated_a": 630.0,
-        "rated_kv": 24.0,
+        "rated_kv": 33.0,
         "short_circuit_ka_3s": 25.0
       },
       "transformer": {
@@ -178,7 +179,7 @@
       {
         "class": "small",
         "tag": "text",
-        "text": "24 kV, 630 A, 25.0 kA/3s",
+        "text": "33 kV, 630 A, 25.0 kA/3s",
         "x": 203.4,
         "y": 132.0
       },
@@ -543,7 +544,7 @@
       {
         "class": "small",
         "tag": "text",
-        "text": "24 kV",
+        "text": "33 kV",
         "text-anchor": "middle",
         "x": 1118.0,
         "y": 234.0
@@ -1253,7 +1254,7 @@
       "MV System",
       "33.0 kV",
       "RMU",
-      "24 kV, 630 A, 25.0 kA/3s",
+      "33 kV, 630 A, 25.0 kA/3s",
       "Transformer",
       "6.0 MVA, Dyn11, Uk=7.0%, ONAN",
       "LV Busbar",
@@ -1270,7 +1271,7 @@
       "To Switchgear",
       "To Other RMU",
       "RMU",
-      "24 kV",
+      "33 kV",
       "Transformer",
       "6.0 MVA",
       "Dyn11, Uk=7.0%",

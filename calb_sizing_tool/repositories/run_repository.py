@@ -138,6 +138,22 @@ class RunRepository:
             .all()
         )
 
+    def get_latest_input_snapshot_by_kind(self, sizing_run_id: str, snapshot_kind: str) -> RunInputSnapshot | None:
+        return (
+            self.session.query(RunInputSnapshot)
+            .filter_by(sizing_run_id=sizing_run_id, snapshot_kind=snapshot_kind)
+            .order_by(RunInputSnapshot.created_at.desc())
+            .first()
+        )
+
+    def get_latest_output_snapshot_by_kind(self, sizing_run_id: str, snapshot_kind: str) -> RunOutputSnapshot | None:
+        return (
+            self.session.query(RunOutputSnapshot)
+            .filter_by(sizing_run_id=sizing_run_id, snapshot_kind=snapshot_kind)
+            .order_by(RunOutputSnapshot.created_at.desc())
+            .first()
+        )
+
     def get_run_bundle(self, sizing_run_id: str) -> dict[str, object] | None:
         run = self.get_run(sizing_run_id)
         if run is None:
@@ -154,8 +170,14 @@ class RunRepository:
         )
         inputs = self.get_input_snapshots(sizing_run_id)
         outputs = self.get_output_snapshots(sizing_run_id)
-        input_snapshot = inputs[-1] if inputs else None
-        output_snapshot = outputs[-1] if outputs else None
+        input_snapshot = (
+            self.get_latest_input_snapshot_by_kind(sizing_run_id, "dc_case_input")
+            or (inputs[-1] if inputs else None)
+        )
+        output_snapshot = (
+            self.get_latest_output_snapshot_by_kind(sizing_run_id, "dc_pipeline_output")
+            or (outputs[-1] if outputs else None)
+        )
         return {
             "run": run,
             "case": sizing_case,

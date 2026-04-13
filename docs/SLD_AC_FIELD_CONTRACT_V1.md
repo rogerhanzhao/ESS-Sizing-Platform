@@ -1,35 +1,35 @@
 # SLD AC Field Contract V1
 
-## Authoritative rule
+## Contract Rule
 
-SLD V1 的正式 AC 输入以 `ac_output` 为来源，但必须先经过：
+SLD formal generation is allowed to read AC runtime data only through:
 
 - `calb_sizing_tool/adapters/ac_to_sld_adapter.py::normalize_ac_output_for_sld`
 
-该 adapter 是唯一允许做 legacy alias 转换的地方。下游 builder、topology、renderer 不允许再自己猜字段。
+This adapter is the only place where legacy aliases may be translated. Downstream builder, topology, spec, and renderer code must not reinterpret AC fields again.
 
-## Authoritative field map
+## Authoritative AC Fields
 
-| AC authoritative field | 含义 | SLD authoritative usage |
+| AC field | Meaning | SLD usage |
 | --- | --- | --- |
-| `num_blocks` | AC block 总数 | `SldCanonicalInput.ac_blocks_total` |
-| `pcs_per_block` | 每个 AC block 的 PCS 数量 | 当前 V1 要求所有 block 一致 |
-| `pcs_kw` | 每个 PCS 的额定功率 | 生成 `pcs_rating_kw_list` |
-| `block_size_mw` | 单个 AC block 容量 | 必须等于 `pcs_per_block * pcs_kw / 1000` |
-| `dc_allocation_plan` | AC block 的正式 DC 分配计划 | 权威来源 |
-| `dc_blocks_total_by_block` | 每个 block 的 DC block 总数 | 从 `dc_allocation_plan` 镜像得到 |
-| `dc_blocks_per_feeder_by_block` | 每个 block 每个 feeder 的 DC block 分配 | 从 `dc_allocation_plan` 镜像得到 |
-| `transformer_mva` | 每个 AC block 的变压器容量 | `SldCanonicalInput.transformer_rating_mva` |
-| `transformer_count` | 变压器数量 | 当前 V1 必须等于 `num_blocks` |
-| `pcs_count_total` | PCS 总数 | 当前 V1 必须等于 `sum(pcs_count_by_block)` |
-| `dc_blocks_total` | 全站 DC block 总数 | 可选镜像字段 |
-| `dc_total_mwh` | 全站 DC 总能量 | 可选镜像字段 |
-| `mv_voltage_kv` | MV 电压 | 可选镜像字段 |
-| `lv_voltage_v` | LV 电压 | 可选镜像字段 |
+| `num_blocks` | total AC blocks | `SldCanonicalInput.ac_blocks_total` |
+| `pcs_per_block` | PCS count per AC block | required and uniform in current V1 |
+| `pcs_kw` | PCS rated power per unit | used to build `pcs_rating_kw_list` |
+| `block_size_mw` | MW per AC block | must match `pcs_per_block * pcs_kw / 1000` |
+| `dc_allocation_plan` | authoritative DC allocation plan | authoritative source |
+| `dc_blocks_total_by_block` | total DC blocks per AC block | mirror of allocation plan |
+| `dc_blocks_per_feeder_by_block` | DC block distribution by feeder | mirror of allocation plan |
+| `transformer_mva` | transformer MVA per AC block | `SldCanonicalInput.transformer_rating_mva` |
+| `transformer_count` | transformer count | optional consistency mirror |
+| `pcs_count_total` | site PCS total | optional consistency mirror |
+| `dc_blocks_total` | site DC block total | optional consistency mirror |
+| `dc_total_mwh` | site DC energy total | optional consistency mirror |
+| `mv_voltage_kv` | site MV nominal voltage | optional mirror |
+| `lv_voltage_v` | PCS LV voltage | optional mirror |
 
-## Legacy aliases
+## Allowed Legacy Aliases
 
-| Authoritative field | Allowed legacy alias |
+| Authoritative field | Allowed alias |
 | --- | --- |
 | `num_blocks` | `ac_blocks_total` |
 | `pcs_per_block` | `pcs_count_per_ac_block` |
@@ -40,9 +40,9 @@ SLD V1 的正式 AC 输入以 `ac_output` 为来源，但必须先经过：
 | `mv_voltage_kv` | `mv_kv`, `grid_kv` |
 | `lv_voltage_v` | `lv_v`, `inverter_lv_v` |
 
-## Required / optional / compatibility-only
+## Required Data For Formal SLD
 
-### Required in formal path
+Required AC-side fields:
 
 - `num_blocks`
 - `pcs_per_block`
@@ -51,7 +51,7 @@ SLD V1 的正式 AC 输入以 `ac_output` 为来源，但必须先经过：
 - `dc_allocation_plan`
 - `transformer_mva`
 
-### Required outside AC output but still mandatory for formal SLD
+Required non-AC engineering fields:
 
 - `labels`
 - `equipment_ratings`
@@ -59,42 +59,27 @@ SLD V1 的正式 AC 输入以 `ac_output` 为来源，但必须先经过：
 - `transformer.uk_percent`
 - `dc_block_voltage_v`
 
-这些字段来自 `project_settings`；如果没有，再允许 `override_mode` 下的 draft override。
+These non-AC fields must come from persisted engineering settings or an explicit draft override. They must not be guessed in the formal path.
 
-### Optional mirrors
+## Forbidden Fallbacks
 
-- `transformer_count`
-- `pcs_count_total`
-- `dc_blocks_total`
-- `dc_total_mwh`
-- `mv_voltage_kv`
-- `lv_voltage_v`
+The following are forbidden in the formal path:
 
-### Compatibility fallback allowed
+- default `group_index = 1` as an engineering substitute
+- default `pcs_count = 4`
+- auto-even distribution of DC blocks across feeders
+- `transformer_mva = block_size_mw / 0.9`
+- default RMU / CT / cable / fuse engineering preset
 
-只允许两类：
+## Strict vs Draft
 
-1. `ac_to_sld_adapter.py` 内的 legacy alias 转换
-2. `override_mode=true` 时的 draft override
+In `validation_mode="strict"`:
 
-## Forbidden fallback
+- missing required inputs raise validation errors
+- formal output is blocked
 
-以下 fallback 不再允许出现在正式 SLD builder / topology / renderer 主链：
+In `validation_mode="draft"`:
 
-- 默认 `group_index = 1` 并继续当正式输入使用
-- 默认 `pcs_count = 4`
-- 默认 `dc_blocks_per_feeder = even distribute`
-- 默认 `transformer_mva = block_size_mw / 0.9`
-- 默认 RMU / CT / cable / fuse 通用值直接当正式图输入
-
-## Strict mode behavior
-
-`validation_mode = "strict"` 时：
-
-- 缺关键字段直接抛 `SldInputValidationError`
-- 不允许 warning 后继续生成正式图
-
-`validation_mode = "draft"` 时：
-
-- 允许显式 override
-- 结果必须以 draft 对待，不能替代正式 baseline
+- explicit override is allowed
+- result must be treated as draft only
+- override does not redefine the formal contract

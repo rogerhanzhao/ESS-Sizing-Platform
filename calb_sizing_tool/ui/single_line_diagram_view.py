@@ -28,6 +28,13 @@ from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot, SldRenderOptions
 from calb_sizing_tool.schemas.sld_render_input import legacy_sld_override_preset
 from calb_sizing_tool.services.access_control_service import AccessControlService
 from calb_sizing_tool.services.auth_service import AuthUser
+from calb_sizing_tool.services.sld_data_source_service import AcSnapshotResolution, resolve_preferred_ac_snapshot
+from calb_sizing_tool.services.sld_engineering_settings_service import (
+    build_persisted_sld_project_settings,
+    load_case_sld_project_settings,
+    load_run_sld_project_settings,
+    save_case_sld_project_settings,
+)
 from calb_sizing_tool.services.sld_pipeline_service import run_sld_pipeline_from_run_bundle
 from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.state.project_state import get_project_state, init_project_state
@@ -36,26 +43,38 @@ from calb_sizing_tool.state.workspace_state import get_workspace_context
 from calb_sizing_tool.ui.sld_inputs import render_electrical_inputs
 
 
-def _resolve_ac_output(state, project_state) -> dict[str, Any] | None:
-    ac_output = st.session_state.get("ac_output") or project_state.get("ac_results") or state.ac_results
-    if not isinstance(ac_output, dict) or not ac_output:
-        return None
-    return ac_output
+def _resolve_ac_snapshot(
+    state,
+    project_state,
+    *,
+    run_id: str | None,
+    db_url: str | None = None,
+) -> AcSnapshotResolution:
+    return resolve_preferred_ac_snapshot(
+        run_id,
+        project_state=project_state,
+        shared_state=state,
+        session_state=st.session_state,
+        db_url=db_url,
+    )
 
 
-def _build_ac_snapshot(state, project_state) -> AcSnapshot | None:
-    """UI compatibility collector.
-
-    The page only captures runtime AC results into AcSnapshot. Authoritative SLD
-    normalization starts downstream in services.sld_authoritative_builder.
-    """
-    ac_output = _resolve_ac_output(state, project_state)
-    if ac_output is None:
-        return None
-    ac_inputs = project_state.get("ac_inputs") or state.ac_inputs
-    if not isinstance(ac_inputs, dict):
-        ac_inputs = {}
-    return AcSnapshot(inputs=ac_inputs, output=ac_output, results={})
+def _resolve_mv_nominal_voltage_kv(state, project_state, ac_snapshot: AcSnapshot | None) -> float | None:
+    candidates = [
+        st.session_state.get("poi_nominal_voltage_kv"),
+        (project_state.get("dc_inputs") or {}).get("poi_nominal_voltage_kv") if isinstance(project_state, dict) else None,
+        getattr(state, "dc_inputs", {}).get("poi_nominal_voltage_kv") if hasattr(state, "dc_inputs") else None,
+        ac_snapshot.output.get("mv_voltage_kv") if ac_snapshot and isinstance(ac_snapshot.output, dict) else None,
+        ac_snapshot.inputs.get("grid_kv") if ac_snapshot and isinstance(ac_snapshot.inputs, dict) else None,
+    ]
+    for raw in candidates:
+        try:
+            value = float(raw)
+        except Exception:
+            continue
+        if value > 0:
+            return value
+    return None
 
 
 def _validate_ac_snapshot_context(
@@ -109,11 +128,12 @@ def _resolve_ac_blocks_total(ac_output: dict) -> int:
     return max(0, value)
 
 
-def _execute_sld_pipeline(*, bundle, ac_snapshot, options, plugin_id: str, actor: str):
+def _execute_sld_pipeline(*, bundle, ac_snapshot, options, plugin_id: str, actor: str, project_settings: dict[str, Any] | None):
     return run_sld_pipeline_from_run_bundle(
         bundle,
         ac_snapshot=ac_snapshot,
         options=options,
+        project_settings=project_settings,
         plugin_id=plugin_id,
         actor=actor,
     )
@@ -155,7 +175,12 @@ def show() -> None:
     run_id_default = workspace.get("run_id") or st.session_state.get("dc_last_run_id", "")
     run_id = st.text_input("Run ID", value=str(run_id_default or "")).strip()
 
-    ac_snapshot = _build_ac_snapshot(state, project_state)
+    ac_resolution = _resolve_ac_snapshot(
+        state,
+        project_state,
+        run_id=run_id or workspace.get("run_id"),
+    )
+    ac_snapshot = ac_resolution.snapshot
     ac_snapshot_issue = _validate_ac_snapshot_context(
         ac_snapshot.output if ac_snapshot else None,
         expected_run_id=run_id or workspace.get("run_id"),
@@ -165,8 +190,16 @@ def show() -> None:
     if ac_snapshot_issue:
         st.warning(ac_snapshot_issue)
         ac_snapshot = None
+    elif ac_resolution.source == "persisted_run_snapshot":
+        st.caption("AC runtime source: persisted run snapshot")
+    elif ac_resolution.source == "compatibility_adapter":
+        st.caption("AC runtime source: compatibility adapter")
+    elif ac_resolution.source == "session_cache":
+        st.caption("AC runtime source: session cache fallback")
 
     ac_blocks_total = _resolve_ac_blocks_total(ac_snapshot.output if ac_snapshot else {})
+    mv_nominal_voltage_kv = _resolve_mv_nominal_voltage_kv(state, project_state, ac_snapshot)
+    persisted_project_settings = load_case_sld_project_settings(workspace.get("case_id"))
     group_choices = list(range(1, ac_blocks_total + 1)) if ac_blocks_total > 0 else [1]
     group_index = st.selectbox(
         "AC Block Group",
@@ -180,6 +213,47 @@ def show() -> None:
     compact_mode = display_col2.checkbox("Compact Mode", value=False)
     draw_summary = display_col3.checkbox("Draw Summary", value=False)
 
+    if workspace.get("case_id"):
+        if persisted_project_settings:
+            st.caption("Formal engineering settings source: persisted case settings")
+        else:
+            st.warning(
+                "Formal engineering settings are not yet saved for this case. "
+                "Save them below before using strict mode, or switch to draft override mode."
+            )
+        with st.expander("Formal Engineering Settings", expanded=not bool(persisted_project_settings)):
+            formal_settings_input = render_electrical_inputs(
+                persisted_project_settings or legacy_sld_override_preset(),
+                key_prefix="sld_formal_settings",
+                mv_nominal_voltage_kv=mv_nominal_voltage_kv,
+                section_title="Formal SLD Engineering Settings",
+                section_caption="Persisted case-level settings used by formal / strict SLD mode.",
+            )
+            if st.button("Save Formal Engineering Settings", use_container_width=True):
+                try:
+                    with session_scope() as session:
+                        access = AccessControlService(session, auth_user)
+                        case_row = access.case_repo.get_case_by_id(str(workspace.get("case_id")))
+                        if case_row is None:
+                            raise ValueError("Active case not found.")
+                        access.ensure_project_access(case_row.project_id)
+                    formal_project_settings = build_persisted_sld_project_settings(
+                        formal_settings_input,
+                        mv_nominal_voltage_kv=mv_nominal_voltage_kv,
+                    )
+                    save_case_sld_project_settings(
+                        str(workspace.get("case_id")),
+                        formal_project_settings,
+                        actor=auth_user.username,
+                    )
+                except Exception as exc:
+                    st.error(f"Saving formal engineering settings failed: {exc}")
+                else:
+                    st.success("Formal engineering settings saved to the active case.")
+                    st.rerun()
+    else:
+        st.info("Select an active case to save formal engineering settings.")
+
     override_mode = st.checkbox(
         "Enable Engineering Override Mode",
         value=False,
@@ -189,7 +263,11 @@ def show() -> None:
     if override_mode:
         st.warning("Engineering override mode is active. The generated SLD will be treated as a non-official draft.")
         with st.expander("SLD Override Inputs", expanded=True):
-            overrides = render_electrical_inputs(legacy_sld_override_preset(), key_prefix="sld_override")
+            overrides = render_electrical_inputs(
+                legacy_sld_override_preset(),
+                key_prefix="sld_override",
+                mv_nominal_voltage_kv=mv_nominal_voltage_kv,
+            )
     else:
         st.info("Formal mode uses strict runtime inputs only. Missing required engineering inputs will fail fast.")
 
@@ -234,6 +312,7 @@ def show() -> None:
         if ac_context_error:
             st.error(ac_context_error)
             return
+        persisted_project_settings = load_run_sld_project_settings(bundle.run_id)
 
         options = SldRenderOptions(
             group_index=group_index,
@@ -248,6 +327,7 @@ def show() -> None:
                 bundle=bundle,
                 ac_snapshot=ac_snapshot,
                 options=options,
+                project_settings=persisted_project_settings,
                 plugin_id=selected_plugin,
                 actor=auth_user.username,
             )

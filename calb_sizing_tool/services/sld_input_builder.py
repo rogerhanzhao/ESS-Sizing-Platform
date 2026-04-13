@@ -14,6 +14,7 @@ from calb_sizing_tool.schemas.sld_render_input import (
     SldLabels,
     legacy_sld_override_preset,
 )
+from calb_sizing_tool.sld.voltage_contract import resolve_mv_rmu_voltage_contract
 
 
 SOURCE_PRIORITY_V1 = {
@@ -21,6 +22,7 @@ SOURCE_PRIORITY_V1 = {
     "B": "authoritative AC output normalized by adapters.ac_to_sld_adapter.normalize_ac_output_for_sld()",
     "C": "project-level persisted engineering settings",
     "D": "draft-only override payload from ui.sld_inputs when override_mode is enabled",
+    "MV_RMU_CONTRACT": "Phase 1 contract: POI / MV voltage is the single authoritative MV field and RMU rated voltage mirrors it.",
     "E": "all other sources forbidden",
 }
 
@@ -253,6 +255,7 @@ class SldInputBuilder:
             override=override,
             override_mode=override_mode,
             validation_mode=validation_mode,
+            mv_voltage_kv=mv_voltage_kv,
             draft_warnings=draft_warnings,
             errors=errors,
         )
@@ -427,22 +430,70 @@ class SldInputBuilder:
         override: SldInputOverride | None,
         override_mode: bool,
         validation_mode: str,
+        mv_voltage_kv: float | None,
         draft_warnings: list[str],
         errors: list[str],
     ) -> SldEquipmentRatings | None:
         try:
             if isinstance(project_settings.get("equipment_ratings"), dict):
-                return SldEquipmentRatings.model_validate(project_settings["equipment_ratings"])
+                equipment = SldEquipmentRatings.model_validate(project_settings["equipment_ratings"])
+                return self._sync_rmu_rated_voltage_to_mv(
+                    equipment_ratings=equipment,
+                    mv_voltage_kv=mv_voltage_kv,
+                    draft_warnings=draft_warnings,
+                    errors=errors,
+                    source_name="project_settings.equipment_ratings.rmu.rated_kv",
+                )
             if override_mode and override and override.equipment_ratings is not None:
-                return override.equipment_ratings
+                return self._sync_rmu_rated_voltage_to_mv(
+                    equipment_ratings=override.equipment_ratings,
+                    mv_voltage_kv=mv_voltage_kv,
+                    draft_warnings=draft_warnings,
+                    errors=errors,
+                    source_name="override.equipment_ratings.rmu.rated_kv",
+                )
             if validation_mode == "draft":
                 draft_warnings.append("equipment_ratings were filled from legacy draft preset.")
-                return SldEquipmentRatings.model_validate(legacy_sld_override_preset()["equipment_ratings"])
+                return self._sync_rmu_rated_voltage_to_mv(
+                    equipment_ratings=SldEquipmentRatings.model_validate(legacy_sld_override_preset()["equipment_ratings"]),
+                    mv_voltage_kv=mv_voltage_kv,
+                    draft_warnings=draft_warnings,
+                    errors=errors,
+                    source_name="legacy draft preset rmu.rated_kv",
+                )
             errors.append("equipment_ratings are required in strict mode from project settings or explicit override.")
             return None
         except ValidationError as exc:
             errors.append(f"equipment_ratings: {exc.errors()[0]['msg']}")
             return None
+
+    def _sync_rmu_rated_voltage_to_mv(
+        self,
+        *,
+        equipment_ratings: SldEquipmentRatings,
+        mv_voltage_kv: float | None,
+        draft_warnings: list[str],
+        errors: list[str],
+        source_name: str,
+    ) -> SldEquipmentRatings | None:
+        try:
+            contract = resolve_mv_rmu_voltage_contract(mv_nominal_voltage_kv=mv_voltage_kv)
+        except ValueError as exc:
+            errors.append(str(exc))
+            return None
+
+        existing_rated_kv = _safe_float(equipment_ratings.rmu.rated_kv)
+        if existing_rated_kv is not None and abs(float(existing_rated_kv) - float(contract.rmu_rated_voltage_kv)) > 1e-6:
+            draft_warnings.append(
+                f"{source_name}={float(existing_rated_kv):g} kV was ignored; "
+                f"using authoritative POI / MV voltage {contract.rmu_rated_voltage_kv:g} kV for RMU rated voltage."
+            )
+
+        payload = equipment_ratings.model_dump(mode="python")
+        rmu_payload = dict(payload.get("rmu") or {})
+        rmu_payload["rated_kv"] = float(contract.rmu_rated_voltage_kv)
+        payload["rmu"] = rmu_payload
+        return SldEquipmentRatings.model_validate(payload)
 
     def _required_text(self, field_name: str, candidates: list[Any], errors: list[str]) -> str | None:
         for value in candidates:

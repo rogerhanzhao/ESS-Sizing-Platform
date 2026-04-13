@@ -6,6 +6,7 @@ from calb_diagrams.specs import build_sld_group_spec, build_sld_group_spec_from_
 from calb_sizing_tool.services.sld_topology_builder import build_legacy_sld_topology
 from calb_sizing_tool.sld.ac_block_group import build_ac_block_group_spec
 from calb_sizing_tool.sld.snapshot_single_unit import build_single_unit_snapshot
+import pytest
 
 
 def _legacy_payload():
@@ -17,6 +18,7 @@ def _legacy_payload():
     }
     ac_output = {
         "num_blocks": 1,
+        "pcs_per_block": 4,
         "grid_kv": 33.0,
         "inverter_lv_v": 690.0,
         "block_size_mw": 5.0,
@@ -68,3 +70,13 @@ def test_legacy_builders_are_marked_compatibility_only():
     assert "LEGACY" in (build_sld_group_spec.__doc__ or "")
     assert "LEGACY" in (build_ac_block_group_spec.__doc__ or "")
     assert "LEGACY" in (build_single_unit_snapshot.__doc__ or "")
+
+
+def test_legacy_builders_do_not_guess_missing_feeder_allocation():
+    stage13_output, ac_output, dc_summary, sld_inputs = _legacy_payload()
+    ac_output.pop("dc_blocks_per_feeder_by_block", None)
+    ac_output.pop("dc_blocks_total_by_block", None)
+    sld_inputs.pop("dc_blocks_per_feeder", None)
+
+    with pytest.raises(ValueError, match="dc_allocation_plan is required"):
+        build_legacy_sld_topology(stage13_output, ac_output, dc_summary, sld_inputs, group_index=1)

@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
-from calb_sizing_tool.common.allocation import allocate_dc_blocks, evenly_distribute
+from calb_sizing_tool.adapters.ac_to_sld_adapter import AcToSldAdapterError, normalize_ac_output_for_sld
 from calb_sizing_tool.schemas.sld_render_input import (
     SldCanonicalInput,
     SldEquipmentRatings,
-    SldInputOverride,
     SldLabels,
-    legacy_sld_override_preset,
 )
 from calb_sizing_tool.schemas.sld_topology import (
     SldEdge,
@@ -46,26 +44,11 @@ def _normalize_counts(values: Sequence[Any], expected_len: int) -> list[int]:
     return counts
 
 
-def _base_equipment_payload() -> dict[str, Any]:
-    preset = legacy_sld_override_preset()
-    return {
-        "labels": dict(preset["labels"]),
-        "equipment_ratings": {
-            "rmu": dict(preset["equipment_ratings"]["rmu"]),
-            "lv_busbar": dict(preset["equipment_ratings"]["lv_busbar"]),
-            "cables": dict(preset["equipment_ratings"]["cables"]),
-            "dc_fuse": dict(preset["equipment_ratings"]["dc_fuse"]),
-            "transformer_tap_range": preset["equipment_ratings"]["transformer_tap_range"],
-            "transformer_cooling": preset["equipment_ratings"]["transformer_cooling"],
-        },
-        "transformer_vector_group": preset["transformer_vector_group"],
-        "transformer_uk_percent": preset["transformer_uk_percent"],
-        "dc_block_voltage_v": 1500.0,
-    }
-
-
 def _merge_legacy_equipment_payload(sld_inputs: dict[str, Any]) -> tuple[SldLabels, SldEquipmentRatings, str, float, float]:
-    payload = _base_equipment_payload()
+    payload = {
+        "labels": {},
+        "equipment_ratings": {},
+    }
 
     mv_labels = sld_inputs.get("mv_labels")
     if isinstance(mv_labels, dict):
@@ -79,9 +62,8 @@ def _merge_legacy_equipment_payload(sld_inputs: dict[str, Any]) -> tuple[SldLabe
         for key in ("rmu", "lv_busbar", "cables", "dc_fuse"):
             candidate = equipment_list.get(key)
             if isinstance(candidate, dict):
-                payload["equipment_ratings"][key].update(
-                    {name: value for name, value in candidate.items() if value not in (None, "")}
-                )
+                payload["equipment_ratings"].setdefault(key, {})
+                payload["equipment_ratings"][key].update({name: value for name, value in candidate.items() if value not in (None, "")})
         transformer_equipment = equipment_list.get("transformer")
         if isinstance(transformer_equipment, dict):
             if transformer_equipment.get("vector_group"):
@@ -98,9 +80,8 @@ def _merge_legacy_equipment_payload(sld_inputs: dict[str, Any]) -> tuple[SldLabe
     for key in ("rmu", "lv_busbar", "cables", "dc_fuse"):
         candidate = sld_inputs.get(key)
         if isinstance(candidate, dict):
-            payload["equipment_ratings"][key].update(
-                {name: value for name, value in candidate.items() if value not in (None, "")}
-            )
+            payload["equipment_ratings"].setdefault(key, {})
+            payload["equipment_ratings"][key].update({name: value for name, value in candidate.items() if value not in (None, "")})
 
     transformer_input = sld_inputs.get("transformer")
     if isinstance(transformer_input, dict):
@@ -116,80 +97,45 @@ def _merge_legacy_equipment_payload(sld_inputs: dict[str, Any]) -> tuple[SldLabe
     if sld_inputs.get("dc_block_voltage_v") not in (None, ""):
         payload["dc_block_voltage_v"] = sld_inputs["dc_block_voltage_v"]
 
+    missing_fields: list[str] = []
+    label_to_switchgear = str(payload["labels"].get("to_switchgear") or "").strip()
+    label_to_other_rmu = str(payload["labels"].get("to_other_rmu") or "").strip()
+    if not label_to_switchgear:
+        missing_fields.append("mv_labels.to_switchgear")
+    if not label_to_other_rmu:
+        missing_fields.append("mv_labels.to_other_rmu")
+    if "rmu" not in payload["equipment_ratings"]:
+        missing_fields.append("rmu")
+    if "lv_busbar" not in payload["equipment_ratings"]:
+        missing_fields.append("lv_busbar")
+    if "cables" not in payload["equipment_ratings"]:
+        missing_fields.append("cables")
+    if "dc_fuse" not in payload["equipment_ratings"]:
+        missing_fields.append("dc_fuse")
+    if not str(payload.get("transformer_vector_group") or "").strip():
+        missing_fields.append("transformer.vector_group")
+    if _safe_float(payload.get("transformer_uk_percent"), 0.0) <= 0:
+        missing_fields.append("transformer.uk_percent")
+    if _safe_float(payload.get("dc_block_voltage_v"), 0.0) <= 0:
+        missing_fields.append("dc_block_voltage_v")
+    if missing_fields:
+        raise ValueError(
+            "legacy compatibility inputs are missing required engineering fields: "
+            + ", ".join(missing_fields)
+        )
+
     return (
-        SldLabels.model_validate(payload["labels"]),
+        SldLabels.model_validate(
+            {
+                "to_switchgear": label_to_switchgear,
+                "to_other_rmu": label_to_other_rmu,
+            }
+        ),
         SldEquipmentRatings.model_validate(payload["equipment_ratings"]),
         str(payload["transformer_vector_group"]),
         float(payload["transformer_uk_percent"]),
         float(payload["dc_block_voltage_v"]),
     )
-
-
-def _resolve_pcs_count_by_block(ac_output: dict[str, Any], ac_blocks_total: int) -> list[int]:
-    pcs_counts = _normalize_counts(ac_output.get("pcs_count_by_block"), ac_blocks_total)
-    if pcs_counts:
-        return pcs_counts
-
-    pcs_units = ac_output.get("pcs_units")
-    if isinstance(pcs_units, list) and pcs_units:
-        return [len(pcs_units) for _ in range(ac_blocks_total or 1)]
-
-    pcs_count_per_block = _safe_int(ac_output.get("pcs_count_per_ac_block"), 0)
-    if ac_blocks_total > 0 and pcs_count_per_block > 0:
-        return [pcs_count_per_block for _ in range(ac_blocks_total)]
-
-    pcs_per_block = _safe_int(ac_output.get("pcs_per_block"), 0)
-    total_pcs = _safe_int(ac_output.get("total_pcs"), 0)
-    if ac_blocks_total > 0 and total_pcs > 0:
-        return evenly_distribute(total_pcs, ac_blocks_total)
-    if ac_blocks_total > 0 and pcs_per_block > 0:
-        return [pcs_per_block for _ in range(ac_blocks_total)]
-    return [4] if ac_blocks_total == 1 else []
-
-
-def _resolve_dc_blocks_total_by_block(
-    ac_output: dict[str, Any],
-    stage13_output: dict[str, Any],
-    dc_summary: dict[str, Any],
-    ac_blocks_total: int,
-) -> list[int]:
-    allocation = ac_output.get("dc_block_allocation")
-    if isinstance(allocation, dict):
-        per_ac_block = allocation.get("per_ac_block")
-        if isinstance(per_ac_block, list) and per_ac_block:
-            totals: list[int] = []
-            for entry in per_ac_block:
-                total = entry.get("dc_blocks_total")
-                if total is None:
-                    per_feeder = entry.get("per_feeder")
-                    if isinstance(per_feeder, dict):
-                        total = sum(_safe_int(v, 0) for v in per_feeder.values())
-                totals.append(_safe_int(total, 0))
-            normalized = _normalize_counts(totals, ac_blocks_total)
-            if normalized:
-                return normalized
-
-    totals = _normalize_counts(ac_output.get("dc_blocks_total_by_block"), ac_blocks_total)
-    if totals:
-        return totals
-
-    dc_per_ac = _safe_int(ac_output.get("dc_blocks_per_ac"), 0)
-    if ac_blocks_total > 0 and dc_per_ac > 0:
-        return [dc_per_ac for _ in range(ac_blocks_total)]
-
-    total_dc_blocks = _safe_int(stage13_output.get("dc_block_total_qty"), 0)
-    if total_dc_blocks <= 0:
-        total_dc_blocks = _safe_int(stage13_output.get("container_count"), 0) + _safe_int(
-            stage13_output.get("cabinet_count"), 0
-        )
-    if total_dc_blocks <= 0 and isinstance(dc_summary, dict):
-        dc_block = dc_summary.get("dc_block")
-        if dc_block is not None:
-            total_dc_blocks = _safe_int(getattr(dc_block, "count", 0))
-
-    if ac_blocks_total > 0:
-        return evenly_distribute(total_dc_blocks, ac_blocks_total)
-    return []
 
 
 def build_legacy_sld_canonical_input(
@@ -199,81 +145,59 @@ def build_legacy_sld_canonical_input(
     sld_inputs: dict[str, Any],
     group_index: int,
 ) -> SldCanonicalInput:
-    """LEGACY compatibility only. Convert old dict-based SLD inputs into SldCanonicalInput."""
+    """LEGACY compatibility only.
+
+    Old dict-based callers are adapted into SldCanonicalInput, but this path is
+    now strict about feeder allocation and transformer sizing. It no longer
+    fabricates PCS counts, transformer MVA, or DC feeder splits.
+    """
     stage13_output = stage13_output or {}
     ac_output = ac_output or {}
     dc_summary = dc_summary or {}
     sld_inputs = sld_inputs or {}
 
-    ac_blocks_total = _safe_int(ac_output.get("num_blocks") or ac_output.get("ac_blocks_total"), 0)
-    if ac_blocks_total <= 0:
-        total_pcs = _safe_int(ac_output.get("total_pcs"), 0)
-        pcs_per_block = _safe_int(ac_output.get("pcs_per_block"), 0)
-        if total_pcs > 0 and pcs_per_block > 0:
-            ac_blocks_total = max(1, total_pcs // pcs_per_block)
-    if ac_blocks_total <= 0:
-        ac_blocks_total = 1
+    try:
+        authoritative_ac = normalize_ac_output_for_sld(ac_output)
+    except AcToSldAdapterError as exc:
+        raise ValueError(
+            "legacy compatibility path requires an AC output that satisfies the AC->SLD contract: "
+            + "; ".join(exc.errors)
+        ) from exc
+
+    ac_blocks_total = authoritative_ac.num_blocks
 
     resolved_group_index = _safe_int(group_index, 1)
-    if resolved_group_index < 1:
-        resolved_group_index = 1
-    if resolved_group_index > ac_blocks_total:
-        resolved_group_index = ac_blocks_total
+    if resolved_group_index < 1 or resolved_group_index > ac_blocks_total:
+        raise ValueError(
+            f"group_index={resolved_group_index} is outside the authoritative AC block range 1..{ac_blocks_total}."
+        )
     group_idx = resolved_group_index - 1
 
-    pcs_counts = _resolve_pcs_count_by_block(ac_output, ac_blocks_total)
-    pcs_count = pcs_counts[group_idx] if group_idx < len(pcs_counts) else _safe_int(ac_output.get("pcs_per_block"), 4)
-    if pcs_count <= 0:
-        pcs_count = 1
-
-    block_size_mw = _safe_float(ac_output.get("block_size_mw"), 0.0)
-    pcs_rating_each_kw = _safe_float(sld_inputs.get("pcs_rating_each_kw"), 0.0)
-    if pcs_rating_each_kw <= 0:
-        pcs_rating_each_kw = _safe_float(sld_inputs.get("pcs_rating_each_kva"), 0.0)
-    if pcs_rating_each_kw <= 0:
-        pcs_rating_each_kw = _safe_float(ac_output.get("pcs_power_kw"), 0.0)
-    if pcs_rating_each_kw <= 0:
-        pcs_rating_each_kw = _safe_float(ac_output.get("pcs_kw"), 0.0)
-    if pcs_rating_each_kw <= 0 and block_size_mw > 0 and pcs_count > 0:
-        pcs_rating_each_kw = block_size_mw * 1000.0 / pcs_count
-    if pcs_rating_each_kw <= 0:
-        pcs_rating_each_kw = 1250.0
-
-    pcs_rating_kw_list = sld_inputs.get("pcs_rating_kw_list")
-    if not isinstance(pcs_rating_kw_list, list):
-        pcs_rating_kw_list = sld_inputs.get("pcs_rating_kva_list")
-    if not isinstance(pcs_rating_kw_list, list) or len(pcs_rating_kw_list) != pcs_count:
-        pcs_rating_kw_list = [pcs_rating_each_kw for _ in range(pcs_count)]
-    else:
-        pcs_rating_kw_list = [_safe_float(value, pcs_rating_each_kw) for value in pcs_rating_kw_list]
+    pcs_count = authoritative_ac.pcs_count_by_block[group_idx]
+    pcs_rating_kw_list = list(authoritative_ac.pcs_rating_kw_list_by_block[group_idx])
 
     mv_voltage_kv = _safe_float(
         sld_inputs.get("mv_nominal_kv_ac")
-        or ac_output.get("mv_voltage_kv")
-        or ac_output.get("mv_kv")
-        or ac_output.get("grid_kv")
+        or authoritative_ac.mv_voltage_kv
         or stage13_output.get("poi_nominal_voltage_kv"),
-        33.0,
+        0.0,
     )
+    if mv_voltage_kv <= 0:
+        raise ValueError("legacy compatibility path requires mv_nominal_kv_ac or authoritative MV voltage.")
     lv_voltage_v_ll = _safe_float(
         sld_inputs.get("pcs_lv_voltage_v_ll")
-        or ac_output.get("lv_voltage_v")
-        or ac_output.get("lv_v")
-        or ac_output.get("inverter_lv_v"),
-        690.0,
+        or authoritative_ac.lv_voltage_v,
+        0.0,
     )
+    if lv_voltage_v_ll <= 0:
+        raise ValueError("legacy compatibility path requires pcs_lv_voltage_v_ll or authoritative LV voltage.")
 
-    transformer_rating_mva = _safe_float(sld_inputs.get("transformer_rating_mva"), 0.0)
+    transformer_rating_mva = _safe_float(
+        sld_inputs.get("transformer_rating_mva") or authoritative_ac.transformer_mva,
+        0.0,
+    )
     if transformer_rating_mva <= 0:
-        transformer_rating_mva = _safe_float(ac_output.get("transformer_mva"), 0.0)
-    if transformer_rating_mva <= 0:
-        transformer_kva = _safe_float(sld_inputs.get("transformer_rating_kva") or ac_output.get("transformer_kva"), 0.0)
-        if transformer_kva > 0:
-            transformer_rating_mva = transformer_kva / 1000.0
-        elif block_size_mw > 0:
-            transformer_rating_mva = block_size_mw / 0.9
-    if transformer_rating_mva <= 0:
-        transformer_rating_mva = 5.0
+        raise ValueError("legacy compatibility path requires transformer_rating_mva or authoritative transformer_mva.")
 
     dc_block_energy_mwh = _safe_float(sld_inputs.get("dc_block_energy_mwh"), 0.0)
     if dc_block_energy_mwh <= 0:
@@ -281,42 +205,18 @@ def build_legacy_sld_canonical_input(
         if dc_block is not None:
             dc_block_energy_mwh = _safe_float(getattr(dc_block, "capacity_mwh", 0.0), 0.0)
     if dc_block_energy_mwh <= 0:
-        dc_block_energy_mwh = 5.106
+        raise ValueError("legacy compatibility path requires dc_block_energy_mwh or dc_summary.dc_block.capacity_mwh.")
 
     dc_blocks_per_feeder = _normalize_counts(sld_inputs.get("dc_blocks_per_feeder"), pcs_count)
     if not dc_blocks_per_feeder:
-        allocation = ac_output.get("dc_block_allocation")
-        if isinstance(allocation, dict):
-            per_ac_block = allocation.get("per_ac_block")
-            if isinstance(per_ac_block, list) and group_idx < len(per_ac_block):
-                per_feeder = per_ac_block[group_idx].get("per_feeder")
-                if isinstance(per_feeder, dict) and per_feeder:
-                    keys = sorted(per_feeder.keys(), key=lambda key: _safe_int(str(key).lstrip("Ff"), 0))
-                    dc_blocks_per_feeder = [_safe_int(per_feeder.get(key), 0) for key in keys]
-            if not dc_blocks_per_feeder:
-                per_feeder = allocation.get("per_feeder")
-                if isinstance(per_feeder, dict) and per_feeder:
-                    keys = sorted(per_feeder.keys(), key=lambda key: _safe_int(str(key).lstrip("Ff"), 0))
-                    dc_blocks_per_feeder = [_safe_int(per_feeder.get(key), 0) for key in keys]
-            if not dc_blocks_per_feeder:
-                per_pcs_group = allocation.get("per_pcs_group")
-                if isinstance(per_pcs_group, list) and per_pcs_group:
-                    dc_blocks_per_feeder = [_safe_int(item.get("dc_block_count"), 0) for item in per_pcs_group]
-
-    if not dc_blocks_per_feeder:
-        dc_blocks_per_feeder_by_block = ac_output.get("dc_blocks_per_feeder_by_block")
-        if isinstance(dc_blocks_per_feeder_by_block, list) and group_idx < len(dc_blocks_per_feeder_by_block):
-            candidate = dc_blocks_per_feeder_by_block[group_idx]
-            if isinstance(candidate, list) and candidate:
-                dc_blocks_per_feeder = _normalize_counts(candidate, pcs_count)
-
-    if not dc_blocks_per_feeder:
-        dc_totals_by_block = _resolve_dc_blocks_total_by_block(ac_output, stage13_output, dc_summary, ac_blocks_total)
-        dc_total_group = dc_totals_by_block[group_idx] if group_idx < len(dc_totals_by_block) else 0
-        dc_blocks_per_feeder = allocate_dc_blocks(dc_total_group, pcs_count)
-
-    if not dc_blocks_per_feeder:
-        dc_blocks_per_feeder = [0 for _ in range(pcs_count)]
+        dc_blocks_per_feeder = list(authoritative_ac.dc_blocks_per_feeder_by_block[group_idx])
+    if len(dc_blocks_per_feeder) != pcs_count:
+        raise ValueError("legacy compatibility path requires dc_blocks_per_feeder to match authoritative PCS count.")
+    expected_dc_blocks_total = authoritative_ac.dc_blocks_total_by_block[group_idx]
+    if sum(dc_blocks_per_feeder) != expected_dc_blocks_total:
+        raise ValueError(
+            "legacy compatibility path requires dc_blocks_per_feeder to match the authoritative AC allocation total."
+        )
 
     labels, equipment_ratings, transformer_vector_group, transformer_uk_percent, dc_block_voltage_v = (
         _merge_legacy_equipment_payload(sld_inputs)

@@ -1,65 +1,67 @@
 # SLD Renderer Boundary Patch V1
 
-## 本轮边界收缩到什么程度
+## Objective
 
-本轮不重写整个 renderer，但把正式链路的职责边界压到了下面这条线：
+The renderer must render a finished topology. It must not decide the engineering structure of that topology.
 
-- `SldCanonicalInput`
-- `SldTopology`
-- `SldGroupSpec` compatibility view
-- `render_sld_svg()` geometry renderer
+## Boundary After Phase 3
 
-正式路径现在必须以 `SldTopology` 为 renderer 输入。
+Formal runtime boundary:
 
-## 已外移的逻辑
+`SldCanonicalInput -> SldTopology -> compatibility spec projection -> renderer`
 
-以下逻辑不再允许由正式 renderer 决定：
+The renderer now owns only:
 
-- feeder count
-- feeder allocation
-- PCS count
-- `dc_blocks_per_feeder`
-- group topology 的核心设备关系
-
-这些关系都前移到了：
-
-- `services/sld_input_builder.py`
-- `services/sld_authoritative_builder.py`
-- `services/sld_topology_builder.py`
-
-## renderer 现在只负责什么
-
-`calb_diagrams/sld_pro_renderer.py::render_sld_svg()` 现在只负责：
-
-- layout profile 选择
+- layout profile selection
 - symbol placement
-- geometry / line drawing
-- summary box 绘制
-- SVG / PNG 输出
+- SVG geometry generation
+- summary box drawing
+- SVG / PNG export packaging
 
-它不再读取 `ac_output`、`stage13_output`、`session_state` 之类的零散运行时字典来决定拓扑。
+The renderer must not own:
 
-## 仍暂时保留在 renderer 的兼容逻辑
+- feeder count decision
+- feeder allocation decision
+- PCS count decision
+- DC block count decision
+- transformer sizing decision
 
-以下内容还在 renderer 文件里，但已降级为 compatibility-only：
+## Concrete Patch
 
-- `_topology_from_legacy_spec(spec)`
-- `render_sld_pro_svg(spec_or_topology, ...)`
+### Moved out of renderer
 
-这两处保留的原因是历史调用点仍有 `SldGroupSpec` 输入。
+Legacy topology conversion is no longer implemented inside `calb_diagrams/sld_pro_renderer.py`.
 
-### 当前约束
+It now delegates to:
 
-- 这条路径默认按 `draft` 处理
-- 只作为 legacy wrapper
-- 不能再扩张为正式工程决策入口
+- `calb_diagrams/specs.py::build_topology_from_legacy_sld_group_spec`
 
-## 后续再拆的部分
+That means renderer compatibility code may still accept a legacy `SldGroupSpec`, but the engineering interpretation lives outside the renderer file.
 
-本轮没有继续拆的内容：
+### Renderer behavior now
 
-- legacy `SldGroupSpec` 彻底下线
-- old snapshot/raw renderer 系列的历史模块清退
-- renderer 文件级拆分
+`render_sld_pro_svg()` accepts:
 
-这些属于后续阶段，不在 SLD 问题修复 V1 范围内
+- `SldTopology` as the formal input
+- `SldGroupSpec` only as a compatibility wrapper input
+
+If a legacy spec is missing required engineering data, the compatibility adapter fails. The renderer does not invent the missing values.
+
+## What This Fix Prevents
+
+This patch prevents the renderer layer from silently doing any of the following:
+
+- reconstructing feeder allocation from totals
+- inferring PCS count
+- inventing RMU class from MV voltage
+- deciding transformer parameters
+
+## What Is Still Deferred
+
+Not done in this phase:
+
+- complete removal of `SldGroupSpec`
+- removal of all historical compatibility entry points
+- deeper renderer file decomposition
+
+Those are follow-up refactor items, not blockers for the Phase 3 stabilization target.

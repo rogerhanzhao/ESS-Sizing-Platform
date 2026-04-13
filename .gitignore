@@ -43,6 +43,8 @@ verify_*.py
 .ssh/
 user_preferences.json
 outputs/
+var/*.sqlite
+var/*.sqlite-*
 
 # Systemd env files
 deploy/systemd/*.env

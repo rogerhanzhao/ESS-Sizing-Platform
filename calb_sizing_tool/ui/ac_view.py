@@ -36,6 +36,7 @@ from calb_sizing_tool.services.ac_sizing_service import (
     select_ac_block_container_type,
     suggest_pcs_count_and_rating,
 )
+from calb_sizing_tool.services.sld_data_source_service import persist_ac_runtime_snapshot
 from calb_sizing_tool.state.project_state import bump_run_id_ac, get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
 from calb_sizing_tool.state.workspace_state import get_workspace_context
@@ -384,5 +385,12 @@ def show():
             st.session_state["ac_output"] = ac_output
             ac_results.update(ac_output)
             set_run_time("ac_results")
+            persist_ac_runtime_snapshot(
+                run_id=source_run_id,
+                ac_inputs=ac_inputs,
+                ac_output=ac_output,
+                results={},
+                source_ref="ac_view",
+            )
 
             st.info("Configuration saved. Proceed to SLD generation and report export.")

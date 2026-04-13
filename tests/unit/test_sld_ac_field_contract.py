@@ -96,6 +96,22 @@ def test_ac_to_sld_authoritative_field_map_rejects_missing_allocation():
     assert "dc_allocation_plan is required" in str(exc_info.value)
 
 
+def test_ac_to_sld_authoritative_field_map_does_not_evenly_distribute_totals():
+    with pytest.raises(AcToSldAdapterError) as exc_info:
+        normalize_ac_output_for_sld(
+            {
+                "num_blocks": 1,
+                "pcs_per_block": 4,
+                "pcs_kw": 1250.0,
+                "block_size_mw": 5.0,
+                "transformer_mva": 6.0,
+                "dc_blocks_total_by_block": [4],
+            }
+        )
+
+    assert "dc_allocation_plan is required" in str(exc_info.value)
+
+
 def test_ac_to_sld_authoritative_field_map_rejects_conflicting_mirror_fields():
     with pytest.raises(AcToSldAdapterError) as exc_info:
         normalize_ac_output_for_sld(

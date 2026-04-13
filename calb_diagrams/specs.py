@@ -17,9 +17,10 @@
 # -----------------------------------------------------------------------------
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from calb_sizing_tool.schemas.sld_topology import SldTopology
+from calb_sizing_tool.schemas.sld_render_input import SldEquipmentRatings, SldLabels
 
 SLD_FONT_FAMILY = "Arial, 'DejaVu Sans', sans-serif"
 SLD_FONT_SIZE = 11
@@ -49,6 +50,7 @@ def _safe_int(value, default=0) -> int:
 @dataclass
 class SldGroupSpec:
     group_index: int
+    ac_blocks_total: int
     mv_voltage_kv: float
     lv_voltage_v_ll: float
     transformer_mva: float
@@ -154,6 +156,7 @@ def build_sld_group_spec_from_topology(topology: SldTopology) -> SldGroupSpec:
 
     return SldGroupSpec(
         group_index=summary.group_index,
+        ac_blocks_total=summary.ac_blocks_total,
         mv_voltage_kv=summary.mv_voltage_kv,
         lv_voltage_v_ll=summary.lv_voltage_v_ll,
         transformer_mva=summary.transformer_rating_mva,
@@ -167,6 +170,276 @@ def build_sld_group_spec_from_topology(topology: SldTopology) -> SldGroupSpec:
         equipment_list=equipment_list,
         layout_params=layout_params,
     )
+
+
+def _require_legacy_text(value: Any, field_name: str) -> str:
+    resolved = str(value or "").strip()
+    if not resolved:
+        raise ValueError(f"Legacy SLD spec is missing required field: {field_name}.")
+    return resolved
+
+
+def _require_legacy_positive_float(value: Any, field_name: str, *, missing_message: str | None = None) -> float:
+    try:
+        resolved = float(value)
+    except Exception as exc:
+        raise ValueError(missing_message or f"Legacy SLD spec is missing required field: {field_name}.") from exc
+    if resolved <= 0:
+        raise ValueError(missing_message or f"Legacy SLD spec is missing required field: {field_name}.")
+    return resolved
+
+
+def build_topology_from_legacy_sld_group_spec(spec: SldGroupSpec) -> SldTopology:
+    """Compatibility adapter only.
+
+    This converts legacy renderer-facing SldGroupSpec objects into SldTopology.
+    It must not invent feeder allocation, PCS count, or engineering ratings.
+    Missing required engineering fields raise immediately.
+    """
+    equipment_list = spec.equipment_list if isinstance(spec.equipment_list, dict) else {}
+    mv_labels = equipment_list.get("mv_labels") if isinstance(equipment_list.get("mv_labels"), dict) else {}
+    transformer = equipment_list.get("transformer") if isinstance(equipment_list.get("transformer"), dict) else {}
+
+    labels = SldLabels.model_validate(
+        {
+            "to_switchgear": _require_legacy_text(mv_labels.get("to_switchgear"), "equipment_list.mv_labels.to_switchgear"),
+            "to_other_rmu": _require_legacy_text(mv_labels.get("to_other_rmu"), "equipment_list.mv_labels.to_other_rmu"),
+        }
+    )
+
+    if not isinstance(equipment_list.get("rmu"), dict):
+        raise ValueError("Legacy SLD spec is missing required field: equipment_list.rmu.")
+    if not isinstance(equipment_list.get("lv_busbar"), dict):
+        raise ValueError("Legacy SLD spec is missing required field: equipment_list.lv_busbar.")
+    if not isinstance(equipment_list.get("cables"), dict):
+        raise ValueError("Legacy SLD spec is missing required field: equipment_list.cables.")
+    if not isinstance(equipment_list.get("dc_fuse"), dict):
+        raise ValueError("Legacy SLD spec is missing required field: equipment_list.dc_fuse.")
+
+    rmu_payload = dict(equipment_list["rmu"])
+    _require_legacy_positive_float(
+        rmu_payload.get("rated_kv"),
+        "equipment_list.rmu.rated_kv",
+        missing_message="Legacy SLD spec is missing equipment_list.rmu.rated_kv. Renderer will not infer RMU equipment class.",
+    )
+
+    equipment_ratings = SldEquipmentRatings.model_validate(
+        {
+            "rmu": rmu_payload,
+            "lv_busbar": dict(equipment_list["lv_busbar"]),
+            "cables": dict(equipment_list["cables"]),
+            "dc_fuse": dict(equipment_list["dc_fuse"]),
+            "transformer_tap_range": transformer.get("tap_range"),
+            "transformer_cooling": transformer.get("cooling"),
+        }
+    )
+
+    transformer_vector_group = _require_legacy_text(
+        transformer.get("vector_group") or spec.transformer_vector_group,
+        "transformer.vector_group",
+    )
+    transformer_uk_percent = _require_legacy_positive_float(
+        transformer.get("uk_percent") if transformer.get("uk_percent") is not None else spec.transformer_uk_percent,
+        "transformer.uk_percent",
+    )
+    dc_block_voltage_v = _require_legacy_positive_float(
+        equipment_list.get("dc_block_voltage_v"),
+        "equipment_list.dc_block_voltage_v",
+    )
+
+    dc_bus_nodes: list[dict[str, Any]] = []
+    pcs_nodes: list[dict[str, Any]] = []
+    dc_block_nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+
+    for feeder_index, rating in enumerate(spec.pcs_rating_kw_list, start=1):
+        pcs_node_id = f"G{spec.group_index:02d}-F{feeder_index:02d}-PCS-NODE"
+        dc_bus_node_id = f"G{spec.group_index:02d}-F{feeder_index:02d}-DC-BUSBAR-NODE"
+        pcs_nodes.append(
+            {
+                "node_id": pcs_node_id,
+                "node_type": "pcs",
+                "display_name": f"PCS {feeder_index}",
+                "equipment_id": f"G{spec.group_index:02d}-F{feeder_index:02d}-PCS",
+                "feeder_index": feeder_index,
+                "attributes": {"pcs_rating_kw": rating},
+            }
+        )
+        dc_bus_nodes.append(
+            {
+                "node_id": dc_bus_node_id,
+                "node_type": "dc_busbar",
+                "display_name": f"DC Busbar {feeder_index}",
+                "equipment_id": f"G{spec.group_index:02d}-F{feeder_index:02d}-DC-BUSBAR",
+                "feeder_index": feeder_index,
+                "attributes": {"dc_block_count": spec.dc_blocks_per_feeder[feeder_index - 1]},
+            }
+        )
+        edges.append(
+            {
+                "edge_id": f"G{spec.group_index:02d}-EDGE-LV-PCS-{feeder_index:02d}",
+                "edge_type": "lv_busbar_to_pcs",
+                "source_node_id": f"G{spec.group_index:02d}-LV-BUSBAR-NODE",
+                "target_node_id": pcs_node_id,
+                "feeder_index": feeder_index,
+            }
+        )
+        edges.append(
+            {
+                "edge_id": f"G{spec.group_index:02d}-EDGE-PCS-DCBUS-{feeder_index:02d}",
+                "edge_type": "pcs_to_dc_busbar",
+                "source_node_id": pcs_node_id,
+                "target_node_id": dc_bus_node_id,
+                "feeder_index": feeder_index,
+            }
+        )
+
+    dc_block_index = 0
+    for feeder_index, count in enumerate(spec.dc_blocks_per_feeder, start=1):
+        for local_index in range(1, count + 1):
+            dc_block_index += 1
+            node_id = f"G{spec.group_index:02d}-F{feeder_index:02d}-DC-BLOCK-{local_index:02d}-NODE"
+            dc_block_nodes.append(
+                {
+                    "node_id": node_id,
+                    "node_type": "dc_block",
+                    "display_name": f"DC Block {dc_block_index}",
+                    "equipment_id": f"G{spec.group_index:02d}-F{feeder_index:02d}-DC-BLOCK-{local_index:02d}",
+                    "feeder_index": feeder_index,
+                    "dc_block_index": dc_block_index,
+                    "attributes": {
+                        "dc_block_energy_mwh": spec.dc_block_energy_mwh,
+                        "dc_block_voltage_v": dc_block_voltage_v,
+                    },
+                }
+            )
+            edges.append(
+                {
+                    "edge_id": f"G{spec.group_index:02d}-EDGE-DCBUS-BLOCK-{dc_block_index:02d}",
+                    "edge_type": "dc_busbar_to_dc_block",
+                    "source_node_id": f"G{spec.group_index:02d}-F{feeder_index:02d}-DC-BUSBAR-NODE",
+                    "target_node_id": node_id,
+                    "feeder_index": feeder_index,
+                }
+            )
+
+    topology_payload = {
+        "run_id": None,
+        "project_name": "Legacy SLD Group",
+        "scenario_id": "legacy_sld_group_spec",
+        "source_trace": {
+            "A": "deprecated spec compatibility adapter",
+            "B": "legacy SldGroupSpec inputs must already contain explicit engineering topology and ratings",
+        },
+        "validation_mode": "draft",
+        "labels": labels.model_dump(mode="python"),
+        "equipment_ratings": equipment_ratings.model_dump(mode="python"),
+        "summary": {
+            "group_index": spec.group_index,
+            "ac_blocks_total": spec.ac_blocks_total,
+            "feeder_count": spec.pcs_count,
+            "pcs_count": spec.pcs_count,
+            "dc_blocks_total_in_group": spec.dc_blocks_total_in_group,
+            "dc_blocks_per_feeder": list(spec.dc_blocks_per_feeder),
+            "mv_voltage_kv": spec.mv_voltage_kv,
+            "lv_voltage_v_ll": spec.lv_voltage_v_ll,
+            "transformer_rating_mva": spec.transformer_mva,
+            "transformer_vector_group": transformer_vector_group,
+            "transformer_uk_percent": transformer_uk_percent,
+            "pcs_rating_kw_list": list(spec.pcs_rating_kw_list),
+            "dc_block_energy_mwh": spec.dc_block_energy_mwh,
+            "dc_block_voltage_v": dc_block_voltage_v,
+            "project_frequency_hz": equipment_list.get("project_hz"),
+            "diagram_mode": "one_ac_block_group",
+            "theme": (spec.layout_params or {}).get("theme") or "light",
+            "compact_mode": bool((spec.layout_params or {}).get("compact_mode")),
+            "draw_summary": bool((spec.layout_params or {}).get("draw_summary")),
+        },
+        "nodes": [
+            {
+                "node_id": f"G{spec.group_index:02d}-MV-BUS",
+                "node_type": "mv_bus",
+                "display_name": "MV Bus",
+                "attributes": {"mv_voltage_kv": spec.mv_voltage_kv},
+            },
+            {
+                "node_id": f"G{spec.group_index:02d}-RMU-NODE",
+                "node_type": "rmu",
+                "display_name": "RMU",
+                "equipment_id": f"G{spec.group_index:02d}-RMU",
+            },
+            {
+                "node_id": f"G{spec.group_index:02d}-TX-NODE",
+                "node_type": "transformer",
+                "display_name": "Transformer",
+                "equipment_id": f"G{spec.group_index:02d}-TX",
+            },
+            {
+                "node_id": f"G{spec.group_index:02d}-LV-BUSBAR-NODE",
+                "node_type": "lv_busbar",
+                "display_name": "LV Busbar",
+                "equipment_id": f"G{spec.group_index:02d}-LV-BUSBAR",
+            },
+            *pcs_nodes,
+            *dc_bus_nodes,
+            *dc_block_nodes,
+        ],
+        "equipment": [
+            {"equipment_id": f"G{spec.group_index:02d}-RMU", "equipment_type": "rmu", "display_name": "RMU"},
+            {"equipment_id": f"G{spec.group_index:02d}-TX", "equipment_type": "transformer", "display_name": "Transformer"},
+            {"equipment_id": f"G{spec.group_index:02d}-LV-BUSBAR", "equipment_type": "lv_busbar", "display_name": "LV Busbar"},
+            *[
+                {
+                    "equipment_id": f"G{spec.group_index:02d}-F{feeder_index:02d}-PCS",
+                    "equipment_type": "pcs",
+                    "display_name": f"PCS {feeder_index}",
+                    "feeder_index": feeder_index,
+                }
+                for feeder_index in range(1, spec.pcs_count + 1)
+            ],
+            *[
+                {
+                    "equipment_id": f"G{spec.group_index:02d}-F{feeder_index:02d}-DC-BUSBAR",
+                    "equipment_type": "dc_busbar",
+                    "display_name": f"DC Busbar {feeder_index}",
+                    "feeder_index": feeder_index,
+                }
+                for feeder_index in range(1, spec.pcs_count + 1)
+            ],
+            *[
+                {
+                    "equipment_id": item["equipment_id"],
+                    "equipment_type": "dc_block",
+                    "display_name": item["display_name"],
+                    "feeder_index": item["feeder_index"],
+                    "dc_block_index": item["dc_block_index"],
+                }
+                for item in dc_block_nodes
+            ],
+        ],
+        "edges": [
+            {
+                "edge_id": f"G{spec.group_index:02d}-EDGE-MV-RMU",
+                "edge_type": "mv_link",
+                "source_node_id": f"G{spec.group_index:02d}-MV-BUS",
+                "target_node_id": f"G{spec.group_index:02d}-RMU-NODE",
+            },
+            {
+                "edge_id": f"G{spec.group_index:02d}-EDGE-RMU-TX",
+                "edge_type": "rmu_to_transformer",
+                "source_node_id": f"G{spec.group_index:02d}-RMU-NODE",
+                "target_node_id": f"G{spec.group_index:02d}-TX-NODE",
+            },
+            {
+                "edge_id": f"G{spec.group_index:02d}-EDGE-TX-LVBUS",
+                "edge_type": "transformer_to_lv_busbar",
+                "source_node_id": f"G{spec.group_index:02d}-TX-NODE",
+                "target_node_id": f"G{spec.group_index:02d}-LV-BUSBAR-NODE",
+            },
+            *edges,
+        ],
+    }
+    return SldTopology.model_validate(topology_payload)
 
 
 def build_layout_block_spec(
