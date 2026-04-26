@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 import streamlit as st
 
 from calb_sizing_tool.adapters.session_state_adapter import build_dc_result_summary, build_stage13_output
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
+
+MAIN_NAV_KEY = "main_nav"
+PENDING_MAIN_NAV_KEY = "_pending_main_nav"
 
 
 def _clear_sld_runtime_state() -> None:
@@ -64,7 +68,18 @@ def get_workspace_context() -> dict[str, Any]:
 
 
 def navigate_to(page_name: str) -> None:
-    st.session_state["main_nav"] = page_name
+    st.session_state[PENDING_MAIN_NAV_KEY] = page_name
+
+
+def apply_pending_navigation(nav_options: Sequence[str], *, default_page: str = "Workbench") -> str:
+    pending_page = st.session_state.pop(PENDING_MAIN_NAV_KEY, None)
+    if pending_page in nav_options:
+        st.session_state[MAIN_NAV_KEY] = pending_page
+
+    fallback_page = default_page if default_page in nav_options else nav_options[0]
+    if st.session_state.get(MAIN_NAV_KEY) not in nav_options:
+        st.session_state[MAIN_NAV_KEY] = fallback_page
+    return str(st.session_state[MAIN_NAV_KEY])
 
 
 def clear_active_run() -> None:

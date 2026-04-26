@@ -28,6 +28,14 @@ def test_voltage_contract_uses_single_authoritative_mv_value_for_rmu():
     assert contract.rmu_rated_voltage_kv == pytest.approx(33.0)
 
 
+@pytest.mark.parametrize("mv_kv", [22.0, 33.0, 34.5])
+def test_voltage_contract_does_not_map_mv_to_separate_equipment_class(mv_kv: float):
+    contract = resolve_mv_rmu_voltage_contract(mv_nominal_voltage_kv=mv_kv)
+
+    assert contract.authoritative_mv_voltage_kv == pytest.approx(mv_kv)
+    assert contract.rmu_rated_voltage_kv == pytest.approx(mv_kv)
+
+
 def test_builder_forces_rmu_rated_voltage_to_match_poi_mv_voltage(sample_excel_path):
     canonical = build_sld_canonical_input(
         run_bundle=_build_run_bundle(sample_excel_path),
@@ -102,7 +110,7 @@ def test_renderer_compatibility_wrapper_rejects_missing_rmu_rated_kv(tmp_path: P
             "transformer": {"vector_group": "Dyn11", "uk_percent": 7.0, "cooling": "ONAN"},
             "lv_busbar": {"rated_a": 2500.0, "short_circuit_ka": 25.0},
             "cables": {"mv_cable_spec": "TBD", "lv_cable_spec": "TBD", "dc_cable_spec": "TBD"},
-            "dc_fuse": {"fuse_spec": "TBD"},
+            "dc_fuse": {"fuse_spec": "DC isolator/fuse"},
             "dc_block_voltage_v": 1500.0,
         },
         layout_params={"theme": "dark"},

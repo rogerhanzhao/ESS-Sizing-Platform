@@ -17,6 +17,10 @@ from calb_sizing_tool.schemas.diagram_inputs import (
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
 from calb_sizing_tool.schemas.sld_topology import SldTopology
 from calb_sizing_tool.services.artifact_service import persist_artifacts
+from calb_sizing_tool.services.sld_formal_readiness_service import (
+    SldFormalReadinessReport,
+    assess_sld_formal_readiness,
+)
 from calb_sizing_tool.services.sld_authoritative_builder import build_sld_authoritative_result
 
 
@@ -28,6 +32,7 @@ class PreparedSldPipeline:
     render_input: SldRenderInput
     topology: SldTopology
     plugin: Any
+    formal_readiness: SldFormalReadinessReport
 
 
 @dataclass
@@ -88,6 +93,13 @@ def prepare_sld_pipeline_from_run_bundle(
     errors = plugin.validate_input(render_input)
     if errors:
         raise ValueError("; ".join(errors))
+    formal_readiness = assess_sld_formal_readiness(
+        run_bundle=run_bundle,
+        ac_snapshot=ac_snapshot,
+        canonical_input=canonical_input,
+        options=options,
+        project_settings=project_settings,
+    )
 
     return PreparedSldPipeline(
         plugin_id=plugin.metadata.plugin_id,
@@ -96,6 +108,7 @@ def prepare_sld_pipeline_from_run_bundle(
         render_input=render_input,
         topology=topology,
         plugin=plugin,
+        formal_readiness=formal_readiness,
     )
 
 
@@ -130,6 +143,7 @@ def run_sld_pipeline_from_run_bundle(
     render_output = render_prepared_sld_pipeline(prepared)
     artifacts = prepared.plugin.emit_artifact(render_output)
     metadata = prepared.plugin.metadata_payload(prepared.render_input, render_output)
+    metadata["formal_readiness"] = prepared.formal_readiness.to_payload()
 
     persist_artifacts(
         run_id=run_bundle.run_id,

@@ -1,17 +1,30 @@
 {
   "metadata": {
     "artifact_mode": "official",
+    "engineering_v2_connector_count": 23,
+    "engineering_v2_edge_count": 23,
+    "engineering_v2_graph_hash": "38ebeb26e9cea71698a4008a81cbffe281df09cd137b13664af699c912d017c6",
+    "engineering_v2_layout_hash": "06a81b3a346dd1a59017a03b6eb8b66b6a6385836606e18dd24675f1adcfba55",
+    "engineering_v2_layout_issue_count": 0,
+    "engineering_v2_layout_warning_count": 4,
+    "engineering_v2_node_count": 24,
+    "engineering_v2_png_height": 900,
+    "engineering_v2_png_width": 1780,
+    "engineering_v2_template": "professional_electrical_reference_v1",
     "group_index": 1,
-    "input_hash": "559aec5519ca2447b0fa562605efbf031d48dced0e15de334b92d51907092d0d",
-    "png_hash": "3fd37d270f7a0cde869ccdc33e26a35225401811c590a243a72fcec3c5bea6ee",
-    "render_spec_hash": "020cd30e13afafde21ceebb22b6581c3add1c5065ce081a847c3ad7cecd280b5",
+    "input_hash": "79dc70f2afce679748a815e49b55cb265216f0fefeea944e672c662728f50833",
+    "png_hash": "520a06af4575eb7a43c7682806fafffdc9309b2306492471e57188f0b7763e0f",
+    "render_spec_hash": "7f2c78d43d364225e1f95bf39db62f2d467d4689a80cefbb7c37deef3f7fcd9f",
+    "renderer_lineage": "port_bay_engineering_v2_preview",
+    "renderer_mode": "engineering_v2",
     "renderer_version": "1.3.0",
     "run_id": "sld-regression-case01",
     "scenario_id": "container_only",
-    "svg_hash": "f1cc35fb74d2c52aedca67d6d626d354e5311435f7920f320d9141709e6b617a",
-    "topology_edge_count": 15,
-    "topology_hash": "53aa9dbe48e45b86ebda28984b4d4959acbf065c615f943f8775da41538f7413",
-    "topology_node_count": 16,
+    "server_baseline_commit": null,
+    "svg_hash": "2a6c68f96472e0834cc1dc3a09564dd348efb0c078a006587779accfd9184874",
+    "topology_edge_count": 17,
+    "topology_hash": "6ef93afc2348d5dbb590d702f9a40f712f4e2d053e2403e0628423c5cee5d009",
+    "topology_node_count": 18,
     "validation_mode": "strict"
   },
   "spec": {
@@ -32,10 +45,10 @@
       },
       "dc_block_voltage_v": 1500.0,
       "dc_fuse": {
-        "fuse_spec": "TBD"
+        "fuse_spec": "DC isolator/fuse"
       },
       "lv_busbar": {
-        "rated_a": 2500.0,
+        "rated_a": 6300.0,
         "short_circuit_ka": 25.0
       },
       "mv_labels": {
@@ -88,29 +101,33 @@
   },
   "svg": {
     "class_counts": {
-      "busbar": 10,
-      "dash": 2,
-      "label": 2,
-      "label title": 3,
-      "outline": 15,
-      "small": 45,
-      "thick": 1,
-      "thin": 71
+      "background": 1,
+      "busbar": 1,
+      "notes": 15,
+      "notes-title": 8,
+      "outline": 30,
+      "small text": 43,
+      "symbol-fill": 15,
+      "text": 1,
+      "thin": 103,
+      "title text": 2,
+      "wire": 51
     },
     "element_counts": {
-      "circle": 3,
+      "circle": 27,
       "defs": 1,
-      "line": 78,
+      "line": 151,
       "polygon": 2,
       "polyline": 4,
-      "rect": 13,
+      "rect": 17,
       "style": 1,
       "svg": 1,
-      "text": 50
+      "text": 78
     },
     "geometry": [
       {
-        "height": 808.0,
+        "class": "background",
+        "height": 900.0,
         "tag": "rect",
         "width": 1780.0,
         "x": 0.0,
@@ -118,14 +135,14 @@
       },
       {
         "class": "outline",
-        "height": 296.0,
+        "height": 646.0,
         "tag": "rect",
-        "width": 420.0,
-        "x": 40.0,
+        "width": 424.0,
+        "x": 38.0,
         "y": 40.0
       },
       {
-        "class": "label title",
+        "class": "notes-title",
         "tag": "text",
         "text": "Equipment List",
         "x": 48.0,
@@ -134,1170 +151,2180 @@
       {
         "class": "thin",
         "tag": "line",
-        "x1": 195.4,
-        "x2": 195.4,
-        "y1": 64.0,
-        "y2": 336.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 40.0,
-        "x2": 460.0,
-        "y1": 86.0,
-        "y2": 86.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "MV System",
-        "x": 48.0,
-        "y": 104.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "33.0 kV",
-        "x": 203.4,
-        "y": 104.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 40.0,
-        "x2": 460.0,
-        "y1": 114.0,
-        "y2": 114.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "RMU",
-        "x": 48.0,
-        "y": 132.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "33 kV, 630 A, 25.0 kA/3s",
-        "x": 203.4,
-        "y": 132.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 40.0,
-        "x2": 460.0,
-        "y1": 142.0,
-        "y2": 142.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "Transformer",
-        "x": 48.0,
-        "y": 160.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "6.0 MVA, Dyn11, Uk=7.0%, ONAN",
-        "x": 203.4,
-        "y": 160.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 40.0,
-        "x2": 460.0,
-        "y1": 170.0,
-        "y2": 170.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "LV Busbar",
-        "x": 48.0,
-        "y": 188.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "2500 A, 25.0 kA",
-        "x": 203.4,
-        "y": 188.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 40.0,
-        "x2": 460.0,
-        "y1": 198.0,
-        "y2": 198.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "PCS",
-        "x": 48.0,
-        "y": 216.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "4 x 1250 kW @ 690 V",
-        "x": 203.4,
-        "y": 216.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 40.0,
-        "x2": 460.0,
-        "y1": 226.0,
-        "y2": 226.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "Battery Storage Bank",
-        "x": 48.0,
-        "y": 244.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "4 x 0.836 MWh",
-        "x": 203.4,
-        "y": 244.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 40.0,
-        "x2": 460.0,
-        "y1": 254.0,
-        "y2": 254.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "DC Block Allocation",
-        "x": 48.0,
-        "y": 272.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "F1=1, F2=1, F3=1, F4=1",
-        "x": 203.4,
-        "y": 272.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1118.0,
-        "x2": 1118.0,
-        "y1": 112.0,
-        "y2": 148.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1118.0,
-        "x2": 1118.0,
+        "x1": 38.0,
+        "x2": 462.0,
         "y1": 206.0,
-        "y2": 270.0
+        "y2": 206.0
       },
       {
-        "class": "thick",
-        "tag": "line",
-        "x1": 1118.0,
-        "x2": 1118.0,
-        "y1": 332.0,
-        "y2": 364.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 711.5,
-        "x2": 711.5,
-        "y1": 364.0,
-        "y2": 418.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 711.5,
-        "x2": 711.5,
-        "y1": 492.0,
-        "y2": 552.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 711.5,
-        "x2": 711.5,
-        "y1": 624.0,
-        "y2": 660.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 982.5,
-        "x2": 982.5,
-        "y1": 364.0,
-        "y2": 418.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 982.5,
-        "x2": 982.5,
-        "y1": 492.0,
-        "y2": 552.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 982.5,
-        "x2": 982.5,
-        "y1": 624.0,
-        "y2": 660.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1253.5,
-        "x2": 1253.5,
-        "y1": 364.0,
-        "y2": 418.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1253.5,
-        "x2": 1253.5,
-        "y1": 492.0,
-        "y2": 552.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1253.5,
-        "x2": 1253.5,
-        "y1": 624.0,
-        "y2": 660.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1524.5,
-        "x2": 1524.5,
-        "y1": 364.0,
-        "y2": 418.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1524.5,
-        "x2": 1524.5,
-        "y1": 492.0,
-        "y2": 552.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1524.5,
-        "x2": 1524.5,
-        "y1": 624.0,
-        "y2": 660.0
-      },
-      {
-        "class": "dash",
-        "height": 380.0,
-        "tag": "rect",
-        "width": 1244.0,
-        "x": 496.0,
-        "y": 40.0
-      },
-      {
-        "class": "label title",
+        "class": "notes-title",
         "tag": "text",
-        "text": "PCS&MVT SKID (AC Block)",
-        "text-anchor": "middle",
-        "x": 1118.0,
-        "y": 58.0
+        "text": "Cable Connection Vault",
+        "x": 46.0,
+        "y": 70.0
       },
       {
-        "class": "dash",
-        "height": 260.0,
-        "tag": "rect",
-        "width": 1244.0,
-        "x": 496.0,
-        "y": 468.0
-      },
-      {
-        "class": "label title",
+        "class": "notes",
         "tag": "text",
-        "text": "Battery Storage Bank",
-        "x": 504.0,
-        "y": 486.0
+        "text": "CB:33 kV, 630 A, 25.0 kA/3s",
+        "x": 46.0,
+        "y": 94.0
       },
       {
-        "class": "busbar",
-        "tag": "line",
-        "x1": 606.0,
-        "x2": 1630.0,
-        "y1": 112.0,
-        "y2": 112.0
-      },
-      {
-        "class": "label",
+        "class": "notes",
         "tag": "text",
-        "text": "MV BUS",
-        "x": 606.0,
-        "y": 104.0
+        "text": "DS:33 kV, 630 A, 25.0 kA/3s",
+        "x": 46.0,
+        "y": 111.0
+      },
+      {
+        "class": "notes",
+        "tag": "text",
+        "text": "CT:200/1, 5P20, 10 VA",
+        "x": 46.0,
+        "y": 128.0
+      },
+      {
+        "class": "notes",
+        "tag": "text",
+        "text": "With DC, ES, & Live Displayer",
+        "x": 46.0,
+        "y": 145.0
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 606.0,
-        "x2": 606.0,
-        "y1": 102.0,
-        "y2": 66.0
+        "x1": 38.0,
+        "x2": 462.0,
+        "y1": 266.0,
+        "y2": 266.0
       },
       {
-        "class": "outline",
-        "points": "606.0,58.0 601.0,66.0 611.0,66.0",
-        "tag": "polygon"
-      },
-      {
-        "class": "small",
+        "class": "notes-title",
         "tag": "text",
-        "text": "To Switchgear",
-        "text-anchor": "start",
-        "x": 614.0,
-        "y": 62.0
+        "text": "Power Cable-33kV",
+        "x": 46.0,
+        "y": 236.0
+      },
+      {
+        "class": "notes",
+        "tag": "text",
+        "text": "MISSING: MV cable spec",
+        "x": 46.0,
+        "y": 260.0
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1630.0,
-        "x2": 1630.0,
-        "y1": 102.0,
-        "y2": 66.0
+        "x1": 38.0,
+        "x2": 462.0,
+        "y1": 358.0,
+        "y2": 358.0
       },
       {
-        "class": "outline",
-        "points": "1630.0,58.0 1625.0,66.0 1635.0,66.0",
-        "tag": "polygon"
-      },
-      {
-        "class": "small",
+        "class": "notes-title",
         "tag": "text",
-        "text": "To Other RMU",
-        "text-anchor": "end",
-        "x": 1622.0,
-        "y": 62.0
-      },
-      {
-        "class": "outline",
-        "height": 58.0,
-        "tag": "rect",
-        "width": 92.0,
-        "x": 1072.0,
-        "y": 148.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1092.24,
-        "x2": 1143.76,
-        "y1": 171.2,
-        "y2": 171.2
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1101.44,
-        "x2": 1114.32,
-        "y1": 161.2,
-        "y2": 179.2
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1134.56,
-        "x2": 1121.68,
-        "y1": 161.2,
-        "y2": 179.2
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "RMU",
-        "text-anchor": "middle",
-        "x": 1118.0,
-        "y": 220.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "33 kV",
-        "text-anchor": "middle",
-        "x": 1118.0,
-        "y": 234.0
-      },
-      {
-        "class": "outline",
-        "cx": 1118.0,
-        "cy": 284.0,
-        "r": 14.0,
-        "tag": "circle"
-      },
-      {
-        "class": "outline",
-        "cx": 1095.6,
-        "cy": 309.2,
-        "r": 14.0,
-        "tag": "circle"
-      },
-      {
-        "class": "outline",
-        "cx": 1140.4,
-        "cy": 309.2,
-        "r": 14.0,
-        "tag": "circle"
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "Transformer",
-        "x": 1143.6,
-        "y": 282.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "6.0 MVA",
-        "x": 1143.6,
+        "text": "Step-up Transformer (OIL)",
+        "x": 46.0,
         "y": 296.0
       },
       {
-        "class": "small",
+        "class": "notes",
+        "tag": "text",
+        "text": "33.0/0.690 kV",
+        "x": 46.0,
+        "y": 320.0
+      },
+      {
+        "class": "notes",
+        "tag": "text",
+        "text": "6.0 MVA",
+        "x": 46.0,
+        "y": 337.0
+      },
+      {
+        "class": "notes",
         "tag": "text",
         "text": "Dyn11, Uk=7.0%",
-        "x": 1143.6,
-        "y": 310.0
+        "x": 46.0,
+        "y": 354.0
+      },
+      {
+        "class": "notes",
+        "tag": "text",
+        "text": "ONAN",
+        "x": 46.0,
+        "y": 371.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 38.0,
+        "x2": 462.0,
+        "y1": 418.0,
+        "y2": 418.0
+      },
+      {
+        "class": "notes-title",
+        "tag": "text",
+        "text": "Connecting Cable Type",
+        "x": 46.0,
+        "y": 388.0
+      },
+      {
+        "class": "notes",
+        "tag": "text",
+        "text": "MISSING: LV cable spec",
+        "x": 46.0,
+        "y": 412.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 38.0,
+        "x2": 462.0,
+        "y1": 514.0,
+        "y2": 514.0
+      },
+      {
+        "class": "notes-title",
+        "tag": "text",
+        "text": "Power Converter System",
+        "x": 46.0,
+        "y": 448.0
+      },
+      {
+        "class": "notes",
+        "tag": "text",
+        "text": "PCS-1250kW*4",
+        "x": 46.0,
+        "y": 472.0
+      },
+      {
+        "class": "notes",
+        "tag": "text",
+        "text": "AC690V 50Hz, DC1500V",
+        "x": 46.0,
+        "y": 489.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 38.0,
+        "x2": 462.0,
+        "y1": 574.0,
+        "y2": 574.0
+      },
+      {
+        "class": "notes-title",
+        "tag": "text",
+        "text": "Power Cable",
+        "x": 46.0,
+        "y": 544.0
+      },
+      {
+        "class": "notes",
+        "tag": "text",
+        "text": "MISSING: DC cable spec",
+        "x": 46.0,
+        "y": 568.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 38.0,
+        "x2": 462.0,
+        "y1": 686.0,
+        "y2": 686.0
+      },
+      {
+        "class": "notes-title",
+        "tag": "text",
+        "text": "Battery Energy Storage System",
+        "x": 46.0,
+        "y": 604.0
+      },
+      {
+        "class": "notes",
+        "tag": "text",
+        "text": "1~4 BESS (0.836 MWh*4)",
+        "x": 46.0,
+        "y": 628.0
+      },
+      {
+        "class": "notes",
+        "tag": "text",
+        "text": "Cell: MISSING: BESS cell spec",
+        "x": 46.0,
+        "y": 645.0
+      },
+      {
+        "class": "title text",
+        "tag": "text",
+        "text": "PCS&MVT SKID (AC Block)",
+        "text-anchor": "middle",
+        "x": 1120.0,
+        "y": 54.0
+      },
+      {
+        "class": "title text",
+        "tag": "text",
+        "text": "RMU / MV Switchgear",
+        "text-anchor": "middle",
+        "x": 1120.0,
+        "y": 98.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 915.0,
+        "x2": 915.0,
+        "y1": 80.0,
+        "y2": 270.0
+      },
+      {
+        "class": "outline",
+        "points": "915.0,67.0 908.0,81.0 922.0,81.0",
+        "tag": "polygon"
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "To 33kV Switchgear",
+        "text-anchor": "start",
+        "x": 925.0,
+        "y": 62.0
+      },
+      {
+        "class": "outline",
+        "height": 24.0,
+        "tag": "rect",
+        "width": 14.0,
+        "x": 908.0,
+        "y": 120.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 915.0,
+        "x2": 915.0,
+        "y1": 120.0,
+        "y2": 144.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 915.0,
+        "x2": 889.0,
+        "y1": 182.0,
+        "y2": 182.0
+      },
+      {
+        "class": "outline",
+        "cx": 903.0,
+        "cy": 182.0,
+        "r": 4.0,
+        "tag": "circle"
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 887.0,
+        "x2": 887.0,
+        "y1": 175.0,
+        "y2": 189.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 882.0,
+        "x2": 882.0,
+        "y1": 177.0,
+        "y2": 187.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 915.0,
+        "x2": 915.0,
+        "y1": 206.0,
+        "y2": 216.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 915.0,
+        "x2": 915.0,
+        "y1": 228.0,
+        "y2": 238.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 915.0,
+        "x2": 933.0,
+        "y1": 216.0,
+        "y2": 230.0
+      },
+      {
+        "class": "symbol-fill",
+        "cx": 915.0,
+        "cy": 228.0,
+        "r": 2.2,
+        "tag": "circle"
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1325.0,
+        "x2": 1325.0,
+        "y1": 80.0,
+        "y2": 270.0
+      },
+      {
+        "class": "outline",
+        "points": "1325.0,67.0 1318.0,81.0 1332.0,81.0",
+        "tag": "polygon"
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "To Other RMU",
+        "text-anchor": "end",
+        "x": 1315.0,
+        "y": 62.0
+      },
+      {
+        "class": "outline",
+        "height": 24.0,
+        "tag": "rect",
+        "width": 14.0,
+        "x": 1318.0,
+        "y": 120.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1325.0,
+        "x2": 1325.0,
+        "y1": 120.0,
+        "y2": 144.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1325.0,
+        "x2": 1351.0,
+        "y1": 182.0,
+        "y2": 182.0
+      },
+      {
+        "class": "outline",
+        "cx": 1337.0,
+        "cy": 182.0,
+        "r": 4.0,
+        "tag": "circle"
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1353.0,
+        "x2": 1353.0,
+        "y1": 175.0,
+        "y2": 189.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1358.0,
+        "x2": 1358.0,
+        "y1": 177.0,
+        "y2": 187.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1325.0,
+        "x2": 1325.0,
+        "y1": 206.0,
+        "y2": 216.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1325.0,
+        "x2": 1325.0,
+        "y1": 228.0,
+        "y2": 238.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1325.0,
+        "x2": 1307.0,
+        "y1": 216.0,
+        "y2": 230.0
+      },
+      {
+        "class": "symbol-fill",
+        "cx": 1325.0,
+        "cy": 228.0,
+        "r": 2.2,
+        "tag": "circle"
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 915.0,
+        "x2": 1325.0,
+        "y1": 270.0,
+        "y2": 270.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "Ring In",
+        "text-anchor": "end",
+        "x": 887.0,
+        "y": 158.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "Ring Out",
+        "text-anchor": "start",
+        "x": 1353.0,
+        "y": 158.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "33kV RMU",
+        "text-anchor": "end",
+        "x": 1321.0,
+        "y": 260.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1120.0,
+        "x2": 1120.0,
+        "y1": 270.0,
+        "y2": 348.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1120.0,
+        "x2": 1120.0,
+        "y1": 284.0,
+        "y2": 294.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1120.0,
+        "x2": 1120.0,
+        "y1": 306.0,
+        "y2": 316.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1120.0,
+        "x2": 1138.0,
+        "y1": 294.0,
+        "y2": 308.0
+      },
+      {
+        "class": "symbol-fill",
+        "cx": 1120.0,
+        "cy": 306.0,
+        "r": 2.2,
+        "tag": "circle"
+      },
+      {
+        "class": "outline",
+        "height": 24.0,
+        "tag": "rect",
+        "width": 14.0,
+        "x": 1113.0,
+        "y": 324.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1120.0,
+        "x2": 1120.0,
+        "y1": 324.0,
+        "y2": 348.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1120.0,
+        "x2": 1094.0,
+        "y1": 370.0,
+        "y2": 370.0
+      },
+      {
+        "class": "outline",
+        "cx": 1108.0,
+        "cy": 370.0,
+        "r": 4.0,
+        "tag": "circle"
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1092.0,
+        "x2": 1092.0,
+        "y1": 363.0,
+        "y2": 377.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1087.0,
+        "x2": 1087.0,
+        "y1": 365.0,
+        "y2": 375.0
+      },
+      {
+        "class": "outline",
+        "cx": 1106.0,
+        "cy": 386.0,
+        "r": 6.0,
+        "tag": "circle"
+      },
+      {
+        "class": "outline",
+        "cx": 1106.0,
+        "cy": 399.0,
+        "r": 6.0,
+        "tag": "circle"
+      },
+      {
+        "class": "outline",
+        "cx": 1120.0,
+        "cy": 386.0,
+        "r": 6.0,
+        "tag": "circle"
+      },
+      {
+        "class": "outline",
+        "cx": 1120.0,
+        "cy": 399.0,
+        "r": 6.0,
+        "tag": "circle"
+      },
+      {
+        "class": "outline",
+        "cx": 1134.0,
+        "cy": 386.0,
+        "r": 6.0,
+        "tag": "circle"
+      },
+      {
+        "class": "outline",
+        "cx": 1134.0,
+        "cy": 399.0,
+        "r": 6.0,
+        "tag": "circle"
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1107.0,
+        "x2": 1133.0,
+        "y1": 408.0,
+        "y2": 400.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1107.0,
+        "x2": 1133.0,
+        "y1": 415.0,
+        "y2": 407.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1107.0,
+        "x2": 1133.0,
+        "y1": 422.0,
+        "y2": 414.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "Transformer Feeder",
+        "x": 1146.0,
+        "y": 316.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1120.0,
+        "x2": 1120.0,
+        "y1": 420.0,
+        "y2": 408.0
+      },
+      {
+        "class": "outline",
+        "cx": 1120.0,
+        "cy": 440.0,
+        "r": 30.0,
+        "tag": "circle"
+      },
+      {
+        "class": "outline",
+        "cx": 1092.0,
+        "cy": 482.0,
+        "r": 30.0,
+        "tag": "circle"
+      },
+      {
+        "class": "outline",
+        "cx": 1148.0,
+        "cy": 482.0,
+        "r": 30.0,
+        "tag": "circle"
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1120.0,
+        "x2": 1108.0,
+        "y1": 428.48,
+        "y2": 449.6
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1108.0,
+        "x2": 1132.0,
+        "y1": 449.6,
+        "y2": 449.6
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1132.0,
+        "x2": 1120.0,
+        "y1": 449.6,
+        "y2": 428.48
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1092.0,
+        "x2": 1092.0,
+        "y1": 482.0,
+        "y2": 469.52
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1092.0,
+        "x2": 1080.48,
+        "y1": 482.0,
+        "y2": 491.6
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1092.0,
+        "x2": 1103.52,
+        "y1": 482.0,
+        "y2": 491.6
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1148.0,
+        "x2": 1148.0,
+        "y1": 482.0,
+        "y2": 469.52
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1148.0,
+        "x2": 1136.48,
+        "y1": 482.0,
+        "y2": 491.6
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1148.0,
+        "x2": 1159.52,
+        "y1": 482.0,
+        "y2": 491.6
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "Transformer",
+        "x": 1208.0,
+        "y": 430.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "33.0/0.690 kV",
+        "x": 1208.0,
+        "y": 444.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "6.0 MVA",
+        "x": 1208.0,
+        "y": 458.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "Dyn11, Uk=7.0%",
+        "x": 1208.0,
+        "y": 472.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "ONAN",
+        "x": 1208.0,
+        "y": 486.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1120.0,
+        "x2": 1120.0,
+        "y1": 512.0,
+        "y2": 540.0
+      },
+      {
+        "tag": "text",
+        "text": "DC Interface",
+        "x": 585.0,
+        "y": 706.0
       },
       {
         "class": "busbar",
         "tag": "line",
-        "x1": 576.0,
-        "x2": 1660.0,
-        "y1": 364.0,
-        "y2": 364.0
+        "x1": 585.0,
+        "x2": 1650.0,
+        "y1": 540.0,
+        "y2": 540.0
       },
       {
-        "class": "label",
+        "class": "text",
         "tag": "text",
-        "text": "LV Busbar",
-        "x": 576.0,
-        "y": 356.0
+        "text": "LV Busbar=690V",
+        "text-anchor": "end",
+        "x": 1646.0,
+        "y": 532.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 715.0,
+        "x2": 715.0,
+        "y1": 540.0,
+        "y2": 594.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 715.0,
+        "x2": 715.0,
+        "y1": 548.0,
+        "y2": 558.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 715.0,
+        "x2": 715.0,
+        "y1": 570.0,
+        "y2": 580.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 715.0,
+        "x2": 733.0,
+        "y1": 558.0,
+        "y2": 572.0
+      },
+      {
+        "class": "symbol-fill",
+        "cx": 715.0,
+        "cy": 570.0,
+        "r": 2.2,
+        "tag": "circle"
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "F1",
+        "x": 723.0,
+        "y": 568.0
       },
       {
         "class": "outline",
-        "height": 74.0,
+        "height": 52.0,
         "tag": "rect",
-        "width": 118.0,
-        "x": 652.5,
-        "y": 418.0
+        "width": 72.0,
+        "x": 679.0,
+        "y": 594.0
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 673.74,
-        "x2": 699.7,
-        "y1": 436.5,
-        "y2": 467.58
+        "x1": 694.84,
+        "x2": 729.4,
+        "y1": 606.48,
+        "y2": 630.4
       },
       {
         "class": "thin",
-        "tag": "line",
-        "x1": 673.74,
-        "x2": 699.7,
-        "y1": 471.28,
-        "y2": 471.28
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 673.74,
-        "x2": 699.7,
-        "y1": 465.28,
-        "y2": 465.28
-      },
-      {
-        "class": "thin",
-        "points": "725.66,443.16 731.66,440.16 737.66,446.16 753.98,443.16",
+        "points": "702.04,609.6 709.24,607.0 716.44,612.2 726.52,609.6",
         "tag": "polyline"
       },
       {
-        "class": "small",
+        "class": "thin",
+        "tag": "line",
+        "x1": 699.16,
+        "x2": 730.84,
+        "y1": 633.52,
+        "y2": 633.52
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 703.48,
+        "x2": 726.52,
+        "y1": 638.72,
+        "y2": 638.72
+      },
+      {
+        "class": "small text",
         "tag": "text",
         "text": "PCS-1",
-        "x": 717.4,
-        "y": 436.0
+        "x": 761.0,
+        "y": 617.92
       },
       {
-        "class": "small",
+        "class": "small text",
         "tag": "text",
         "text": "1250 kW",
-        "x": 717.4,
-        "y": 452.0
+        "x": 761.0,
+        "y": 631.44
       },
       {
-        "class": "busbar",
+        "class": "wire",
         "tag": "line",
-        "x1": 616.73,
-        "x2": 806.27,
-        "y1": 552.0,
-        "y2": 552.0
+        "x1": 715.0,
+        "x2": 715.0,
+        "y1": 674.0,
+        "y2": 684.0
       },
       {
-        "class": "busbar",
-        "tag": "line",
-        "x1": 616.73,
-        "x2": 806.27,
-        "y1": 624.0,
-        "y2": 624.0
+        "class": "symbol-fill",
+        "cx": 715.0,
+        "cy": 684.0,
+        "r": 2.2,
+        "tag": "circle"
       },
       {
-        "class": "small",
-        "tag": "text",
-        "text": "DC BUSBAR A",
-        "x": 616.73,
-        "y": 544.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "DC BUSBAR B",
-        "x": 616.73,
-        "y": 616.0
-      },
-      {
-        "class": "outline",
-        "height": 56.0,
-        "tag": "rect",
-        "width": 126.0,
-        "x": 648.5,
-        "y": 660.0
+        "class": "symbol-fill",
+        "cx": 715.0,
+        "cy": 702.0,
+        "r": 2.2,
+        "tag": "circle"
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 711.5,
-        "x2": 711.5,
-        "y1": 670.0,
-        "y2": 706.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 697.5,
-        "x2": 725.5,
-        "y1": 672.0,
-        "y2": 672.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 697.5,
-        "x2": 725.5,
-        "y1": 679.0,
-        "y2": 679.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 697.5,
-        "x2": 725.5,
-        "y1": 686.0,
-        "y2": 686.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 697.5,
-        "x2": 725.5,
-        "y1": 693.0,
-        "y2": 693.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 697.5,
-        "x2": 725.5,
-        "y1": 700.0,
+        "x1": 715.0,
+        "x2": 730.0,
+        "y1": 684.0,
         "y2": 700.0
       },
       {
-        "class": "thin",
+        "class": "wire",
         "tag": "line",
-        "x1": 697.5,
-        "x2": 725.5,
-        "y1": 707.0,
-        "y2": 707.0
+        "x1": 715.0,
+        "x2": 715.0,
+        "y1": 702.0,
+        "y2": 712.0
       },
       {
-        "class": "small",
+        "class": "outline",
+        "height": 18.0,
+        "tag": "rect",
+        "width": 10.0,
+        "x": 710.0,
+        "y": 712.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 715.0,
+        "x2": 715.0,
+        "y1": 712.0,
+        "y2": 730.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 715.0,
+        "x2": 715.0,
+        "y1": 730.0,
+        "y2": 738.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 715.0,
+        "x2": 715.0,
+        "y1": 646.0,
+        "y2": 674.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 715.0,
+        "x2": 715.0,
+        "y1": 738.0,
+        "y2": 764.0
+      },
+      {
+        "tag": "text",
+        "text": "DC Isolator/Fuse",
+        "x": 731.0,
+        "y": 711.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "F1",
+        "x": 725.0,
+        "y": 711.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 715.0,
+        "x2": 715.0,
+        "y1": 758.0,
+        "y2": 784.0
+      },
+      {
+        "tag": "text",
+        "text": "DC Block #1 0.836 MWh",
+        "x": 715.0,
+        "y": 784.0
+      },
+      {
+        "class": "outline",
+        "height": 78.0,
+        "tag": "rect",
+        "width": 96.0,
+        "x": 667.0,
+        "y": 784.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 715.0,
+        "x2": 715.0,
+        "y1": 794.0,
+        "y2": 852.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "+",
+        "x": 741.88,
+        "y": 799.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "-",
+        "x": 741.88,
+        "y": 855.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 700.0,
+        "x2": 730.0,
+        "y1": 798.0,
+        "y2": 798.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 706.0,
+        "x2": 724.0,
+        "y1": 803.0,
+        "y2": 803.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 700.0,
+        "x2": 730.0,
+        "y1": 810.5,
+        "y2": 810.5
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 706.0,
+        "x2": 724.0,
+        "y1": 815.5,
+        "y2": 815.5
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 700.0,
+        "x2": 730.0,
+        "y1": 823.0,
+        "y2": 823.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 706.0,
+        "x2": 724.0,
+        "y1": 828.0,
+        "y2": 828.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 700.0,
+        "x2": 730.0,
+        "y1": 835.5,
+        "y2": 835.5
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 706.0,
+        "x2": 724.0,
+        "y1": 840.5,
+        "y2": 840.5
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 700.0,
+        "x2": 730.0,
+        "y1": 848.0,
+        "y2": 848.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 706.0,
+        "x2": 724.0,
+        "y1": 853.0,
+        "y2": 853.0
+      },
+      {
+        "class": "small text",
         "tag": "text",
         "text": "DC Block #1",
-        "x": 656.5,
-        "y": 678.0
+        "text-anchor": "middle",
+        "x": 715.0,
+        "y": 874.0
       },
       {
-        "class": "small",
+        "class": "small text",
         "tag": "text",
         "text": "0.836 MWh",
-        "x": 656.5,
-        "y": 692.0
+        "text-anchor": "middle",
+        "x": 715.0,
+        "y": 887.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 983.333333,
+        "x2": 983.333333,
+        "y1": 540.0,
+        "y2": 594.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 983.333333,
+        "x2": 983.333333,
+        "y1": 548.0,
+        "y2": 558.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 983.333333,
+        "x2": 983.333333,
+        "y1": 570.0,
+        "y2": 580.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 983.333333,
+        "x2": 1001.333333,
+        "y1": 558.0,
+        "y2": 572.0
+      },
+      {
+        "class": "symbol-fill",
+        "cx": 983.333333,
+        "cy": 570.0,
+        "r": 2.2,
+        "tag": "circle"
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "F2",
+        "x": 991.333333,
+        "y": 568.0
       },
       {
         "class": "outline",
-        "height": 74.0,
+        "height": 52.0,
         "tag": "rect",
-        "width": 118.0,
-        "x": 923.5,
-        "y": 418.0
+        "width": 72.0,
+        "x": 947.333333,
+        "y": 594.0
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 944.74,
-        "x2": 970.7,
-        "y1": 436.5,
-        "y2": 467.58
+        "x1": 963.173333,
+        "x2": 997.733333,
+        "y1": 606.48,
+        "y2": 630.4
       },
       {
         "class": "thin",
-        "tag": "line",
-        "x1": 944.74,
-        "x2": 970.7,
-        "y1": 471.28,
-        "y2": 471.28
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 944.74,
-        "x2": 970.7,
-        "y1": 465.28,
-        "y2": 465.28
-      },
-      {
-        "class": "thin",
-        "points": "996.66,443.16 1002.66,440.16 1008.66,446.16 1024.98,443.16",
+        "points": "970.3733333333332,609.6 977.5733333333333,607.0 984.7733333333333,612.2 994.8533333333332,609.6",
         "tag": "polyline"
       },
       {
-        "class": "small",
+        "class": "thin",
+        "tag": "line",
+        "x1": 967.493333,
+        "x2": 999.173333,
+        "y1": 633.52,
+        "y2": 633.52
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 971.813333,
+        "x2": 994.853333,
+        "y1": 638.72,
+        "y2": 638.72
+      },
+      {
+        "class": "small text",
         "tag": "text",
         "text": "PCS-2",
-        "x": 988.4,
-        "y": 436.0
+        "x": 1029.333333,
+        "y": 617.92
       },
       {
-        "class": "small",
+        "class": "small text",
         "tag": "text",
         "text": "1250 kW",
-        "x": 988.4,
-        "y": 452.0
+        "x": 1029.333333,
+        "y": 631.44
       },
       {
-        "class": "busbar",
+        "class": "wire",
         "tag": "line",
-        "x1": 887.73,
-        "x2": 1077.27,
-        "y1": 552.0,
-        "y2": 552.0
+        "x1": 983.333333,
+        "x2": 983.333333,
+        "y1": 674.0,
+        "y2": 684.0
       },
       {
-        "class": "busbar",
-        "tag": "line",
-        "x1": 887.73,
-        "x2": 1077.27,
-        "y1": 624.0,
-        "y2": 624.0
+        "class": "symbol-fill",
+        "cx": 983.333333,
+        "cy": 684.0,
+        "r": 2.2,
+        "tag": "circle"
       },
       {
-        "class": "small",
-        "tag": "text",
-        "text": "DC BUSBAR A",
-        "x": 887.73,
-        "y": 544.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "DC BUSBAR B",
-        "x": 887.73,
-        "y": 616.0
-      },
-      {
-        "class": "outline",
-        "height": 56.0,
-        "tag": "rect",
-        "width": 126.0,
-        "x": 919.5,
-        "y": 660.0
+        "class": "symbol-fill",
+        "cx": 983.333333,
+        "cy": 702.0,
+        "r": 2.2,
+        "tag": "circle"
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 982.5,
-        "x2": 982.5,
-        "y1": 670.0,
-        "y2": 706.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 968.5,
-        "x2": 996.5,
-        "y1": 672.0,
-        "y2": 672.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 968.5,
-        "x2": 996.5,
-        "y1": 679.0,
-        "y2": 679.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 968.5,
-        "x2": 996.5,
-        "y1": 686.0,
-        "y2": 686.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 968.5,
-        "x2": 996.5,
-        "y1": 693.0,
-        "y2": 693.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 968.5,
-        "x2": 996.5,
-        "y1": 700.0,
+        "x1": 983.333333,
+        "x2": 998.333333,
+        "y1": 684.0,
         "y2": 700.0
       },
       {
-        "class": "thin",
+        "class": "wire",
         "tag": "line",
-        "x1": 968.5,
-        "x2": 996.5,
-        "y1": 707.0,
-        "y2": 707.0
+        "x1": 983.333333,
+        "x2": 983.333333,
+        "y1": 702.0,
+        "y2": 712.0
       },
       {
-        "class": "small",
+        "class": "outline",
+        "height": 18.0,
+        "tag": "rect",
+        "width": 10.0,
+        "x": 978.333333,
+        "y": 712.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 983.333333,
+        "x2": 983.333333,
+        "y1": 712.0,
+        "y2": 730.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 983.333333,
+        "x2": 983.333333,
+        "y1": 730.0,
+        "y2": 738.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 983.333333,
+        "x2": 983.333333,
+        "y1": 646.0,
+        "y2": 674.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 983.333333,
+        "x2": 983.333333,
+        "y1": 738.0,
+        "y2": 764.0
+      },
+      {
+        "tag": "text",
+        "text": "DC Isolator/Fuse",
+        "x": 999.333333,
+        "y": 711.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "F2",
+        "x": 993.333333,
+        "y": 711.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 983.333333,
+        "x2": 983.333333,
+        "y1": 758.0,
+        "y2": 784.0
+      },
+      {
+        "tag": "text",
+        "text": "DC Block #2 0.836 MWh",
+        "x": 983.333333,
+        "y": 784.0
+      },
+      {
+        "class": "outline",
+        "height": 78.0,
+        "tag": "rect",
+        "width": 96.0,
+        "x": 935.333333,
+        "y": 784.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 983.333333,
+        "x2": 983.333333,
+        "y1": 794.0,
+        "y2": 852.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "+",
+        "x": 1010.213333,
+        "y": 799.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "-",
+        "x": 1010.213333,
+        "y": 855.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 968.333333,
+        "x2": 998.333333,
+        "y1": 798.0,
+        "y2": 798.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 974.333333,
+        "x2": 992.333333,
+        "y1": 803.0,
+        "y2": 803.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 968.333333,
+        "x2": 998.333333,
+        "y1": 810.5,
+        "y2": 810.5
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 974.333333,
+        "x2": 992.333333,
+        "y1": 815.5,
+        "y2": 815.5
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 968.333333,
+        "x2": 998.333333,
+        "y1": 823.0,
+        "y2": 823.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 974.333333,
+        "x2": 992.333333,
+        "y1": 828.0,
+        "y2": 828.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 968.333333,
+        "x2": 998.333333,
+        "y1": 835.5,
+        "y2": 835.5
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 974.333333,
+        "x2": 992.333333,
+        "y1": 840.5,
+        "y2": 840.5
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 968.333333,
+        "x2": 998.333333,
+        "y1": 848.0,
+        "y2": 848.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 974.333333,
+        "x2": 992.333333,
+        "y1": 853.0,
+        "y2": 853.0
+      },
+      {
+        "class": "small text",
         "tag": "text",
         "text": "DC Block #2",
-        "x": 927.5,
-        "y": 678.0
+        "text-anchor": "middle",
+        "x": 983.333333,
+        "y": 874.0
       },
       {
-        "class": "small",
+        "class": "small text",
         "tag": "text",
         "text": "0.836 MWh",
-        "x": 927.5,
-        "y": 692.0
+        "text-anchor": "middle",
+        "x": 983.333333,
+        "y": 887.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1251.666667,
+        "x2": 1251.666667,
+        "y1": 540.0,
+        "y2": 594.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1251.666667,
+        "x2": 1251.666667,
+        "y1": 548.0,
+        "y2": 558.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1251.666667,
+        "x2": 1251.666667,
+        "y1": 570.0,
+        "y2": 580.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1251.666667,
+        "x2": 1269.666667,
+        "y1": 558.0,
+        "y2": 572.0
+      },
+      {
+        "class": "symbol-fill",
+        "cx": 1251.666667,
+        "cy": 570.0,
+        "r": 2.2,
+        "tag": "circle"
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "F3",
+        "x": 1259.666667,
+        "y": 568.0
       },
       {
         "class": "outline",
-        "height": 74.0,
+        "height": 52.0,
         "tag": "rect",
-        "width": 118.0,
-        "x": 1194.5,
-        "y": 418.0
+        "width": 72.0,
+        "x": 1215.666667,
+        "y": 594.0
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1215.74,
-        "x2": 1241.7,
-        "y1": 436.5,
-        "y2": 467.58
+        "x1": 1231.506667,
+        "x2": 1266.066667,
+        "y1": 606.48,
+        "y2": 630.4
       },
       {
         "class": "thin",
-        "tag": "line",
-        "x1": 1215.74,
-        "x2": 1241.7,
-        "y1": 471.28,
-        "y2": 471.28
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1215.74,
-        "x2": 1241.7,
-        "y1": 465.28,
-        "y2": 465.28
-      },
-      {
-        "class": "thin",
-        "points": "1267.66,443.16 1273.66,440.16 1279.66,446.16 1295.98,443.16",
+        "points": "1238.7066666666665,609.6 1245.9066666666665,607.0 1253.1066666666666,612.2 1263.1866666666665,609.6",
         "tag": "polyline"
       },
       {
-        "class": "small",
+        "class": "thin",
+        "tag": "line",
+        "x1": 1235.826667,
+        "x2": 1267.506667,
+        "y1": 633.52,
+        "y2": 633.52
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1240.146667,
+        "x2": 1263.186667,
+        "y1": 638.72,
+        "y2": 638.72
+      },
+      {
+        "class": "small text",
         "tag": "text",
         "text": "PCS-3",
-        "x": 1259.4,
-        "y": 436.0
+        "x": 1297.666667,
+        "y": 617.92
       },
       {
-        "class": "small",
+        "class": "small text",
         "tag": "text",
         "text": "1250 kW",
-        "x": 1259.4,
-        "y": 452.0
+        "x": 1297.666667,
+        "y": 631.44
       },
       {
-        "class": "busbar",
+        "class": "wire",
         "tag": "line",
-        "x1": 1158.73,
-        "x2": 1348.27,
-        "y1": 552.0,
-        "y2": 552.0
+        "x1": 1251.666667,
+        "x2": 1251.666667,
+        "y1": 674.0,
+        "y2": 684.0
       },
       {
-        "class": "busbar",
-        "tag": "line",
-        "x1": 1158.73,
-        "x2": 1348.27,
-        "y1": 624.0,
-        "y2": 624.0
+        "class": "symbol-fill",
+        "cx": 1251.666667,
+        "cy": 684.0,
+        "r": 2.2,
+        "tag": "circle"
       },
       {
-        "class": "small",
-        "tag": "text",
-        "text": "DC BUSBAR A",
-        "x": 1158.73,
-        "y": 544.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "DC BUSBAR B",
-        "x": 1158.73,
-        "y": 616.0
-      },
-      {
-        "class": "outline",
-        "height": 56.0,
-        "tag": "rect",
-        "width": 126.0,
-        "x": 1190.5,
-        "y": 660.0
+        "class": "symbol-fill",
+        "cx": 1251.666667,
+        "cy": 702.0,
+        "r": 2.2,
+        "tag": "circle"
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1253.5,
-        "x2": 1253.5,
-        "y1": 670.0,
-        "y2": 706.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1239.5,
-        "x2": 1267.5,
-        "y1": 672.0,
-        "y2": 672.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1239.5,
-        "x2": 1267.5,
-        "y1": 679.0,
-        "y2": 679.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1239.5,
-        "x2": 1267.5,
-        "y1": 686.0,
-        "y2": 686.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1239.5,
-        "x2": 1267.5,
-        "y1": 693.0,
-        "y2": 693.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1239.5,
-        "x2": 1267.5,
-        "y1": 700.0,
+        "x1": 1251.666667,
+        "x2": 1266.666667,
+        "y1": 684.0,
         "y2": 700.0
       },
       {
-        "class": "thin",
+        "class": "wire",
         "tag": "line",
-        "x1": 1239.5,
-        "x2": 1267.5,
-        "y1": 707.0,
-        "y2": 707.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "DC Block #3",
-        "x": 1198.5,
-        "y": 678.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "0.836 MWh",
-        "x": 1198.5,
-        "y": 692.0
+        "x1": 1251.666667,
+        "x2": 1251.666667,
+        "y1": 702.0,
+        "y2": 712.0
       },
       {
         "class": "outline",
-        "height": 74.0,
+        "height": 18.0,
         "tag": "rect",
-        "width": 118.0,
-        "x": 1465.5,
-        "y": 418.0
+        "width": 10.0,
+        "x": 1246.666667,
+        "y": 712.0
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1486.74,
-        "x2": 1512.7,
-        "y1": 436.5,
-        "y2": 467.58
+        "x1": 1251.666667,
+        "x2": 1251.666667,
+        "y1": 712.0,
+        "y2": 730.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1251.666667,
+        "x2": 1251.666667,
+        "y1": 730.0,
+        "y2": 738.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1251.666667,
+        "x2": 1251.666667,
+        "y1": 646.0,
+        "y2": 674.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1251.666667,
+        "x2": 1251.666667,
+        "y1": 738.0,
+        "y2": 764.0
+      },
+      {
+        "tag": "text",
+        "text": "DC Isolator/Fuse",
+        "x": 1267.666667,
+        "y": 711.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "F3",
+        "x": 1261.666667,
+        "y": 711.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1251.666667,
+        "x2": 1251.666667,
+        "y1": 758.0,
+        "y2": 784.0
+      },
+      {
+        "tag": "text",
+        "text": "DC Block #3 0.836 MWh",
+        "x": 1251.666667,
+        "y": 784.0
+      },
+      {
+        "class": "outline",
+        "height": 78.0,
+        "tag": "rect",
+        "width": 96.0,
+        "x": 1203.666667,
+        "y": 784.0
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1486.74,
-        "x2": 1512.7,
-        "y1": 471.28,
-        "y2": 471.28
+        "x1": 1251.666667,
+        "x2": 1251.666667,
+        "y1": 794.0,
+        "y2": 852.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "+",
+        "x": 1278.546667,
+        "y": 799.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "-",
+        "x": 1278.546667,
+        "y": 855.0
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1486.74,
-        "x2": 1512.7,
-        "y1": 465.28,
-        "y2": 465.28
+        "x1": 1236.666667,
+        "x2": 1266.666667,
+        "y1": 798.0,
+        "y2": 798.0
       },
       {
         "class": "thin",
-        "points": "1538.66,443.16 1544.66,440.16 1550.66,446.16 1566.98,443.16",
+        "tag": "line",
+        "x1": 1242.666667,
+        "x2": 1260.666667,
+        "y1": 803.0,
+        "y2": 803.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1236.666667,
+        "x2": 1266.666667,
+        "y1": 810.5,
+        "y2": 810.5
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1242.666667,
+        "x2": 1260.666667,
+        "y1": 815.5,
+        "y2": 815.5
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1236.666667,
+        "x2": 1266.666667,
+        "y1": 823.0,
+        "y2": 823.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1242.666667,
+        "x2": 1260.666667,
+        "y1": 828.0,
+        "y2": 828.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1236.666667,
+        "x2": 1266.666667,
+        "y1": 835.5,
+        "y2": 835.5
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1242.666667,
+        "x2": 1260.666667,
+        "y1": 840.5,
+        "y2": 840.5
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1236.666667,
+        "x2": 1266.666667,
+        "y1": 848.0,
+        "y2": 848.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1242.666667,
+        "x2": 1260.666667,
+        "y1": 853.0,
+        "y2": 853.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "DC Block #3",
+        "text-anchor": "middle",
+        "x": 1251.666667,
+        "y": 874.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "0.836 MWh",
+        "text-anchor": "middle",
+        "x": 1251.666667,
+        "y": 887.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1520.0,
+        "x2": 1520.0,
+        "y1": 540.0,
+        "y2": 594.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1520.0,
+        "x2": 1520.0,
+        "y1": 548.0,
+        "y2": 558.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1520.0,
+        "x2": 1520.0,
+        "y1": 570.0,
+        "y2": 580.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1520.0,
+        "x2": 1538.0,
+        "y1": 558.0,
+        "y2": 572.0
+      },
+      {
+        "class": "symbol-fill",
+        "cx": 1520.0,
+        "cy": 570.0,
+        "r": 2.2,
+        "tag": "circle"
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "F4",
+        "x": 1528.0,
+        "y": 568.0
+      },
+      {
+        "class": "outline",
+        "height": 52.0,
+        "tag": "rect",
+        "width": 72.0,
+        "x": 1484.0,
+        "y": 594.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1499.84,
+        "x2": 1534.4,
+        "y1": 606.48,
+        "y2": 630.4
+      },
+      {
+        "class": "thin",
+        "points": "1507.04,609.6 1514.24,607.0 1521.44,612.2 1531.52,609.6",
         "tag": "polyline"
       },
       {
-        "class": "small",
+        "class": "thin",
+        "tag": "line",
+        "x1": 1504.16,
+        "x2": 1535.84,
+        "y1": 633.52,
+        "y2": 633.52
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1508.48,
+        "x2": 1531.52,
+        "y1": 638.72,
+        "y2": 638.72
+      },
+      {
+        "class": "small text",
         "tag": "text",
         "text": "PCS-4",
-        "x": 1530.4,
-        "y": 436.0
+        "x": 1566.0,
+        "y": 617.92
       },
       {
-        "class": "small",
+        "class": "small text",
         "tag": "text",
         "text": "1250 kW",
-        "x": 1530.4,
-        "y": 452.0
+        "x": 1566.0,
+        "y": 631.44
       },
       {
-        "class": "busbar",
+        "class": "wire",
         "tag": "line",
-        "x1": 1429.73,
-        "x2": 1619.27,
-        "y1": 552.0,
-        "y2": 552.0
+        "x1": 1520.0,
+        "x2": 1520.0,
+        "y1": 674.0,
+        "y2": 684.0
       },
       {
-        "class": "busbar",
-        "tag": "line",
-        "x1": 1429.73,
-        "x2": 1619.27,
-        "y1": 624.0,
-        "y2": 624.0
+        "class": "symbol-fill",
+        "cx": 1520.0,
+        "cy": 684.0,
+        "r": 2.2,
+        "tag": "circle"
       },
       {
-        "class": "small",
-        "tag": "text",
-        "text": "DC BUSBAR A",
-        "x": 1429.73,
-        "y": 544.0
-      },
-      {
-        "class": "small",
-        "tag": "text",
-        "text": "DC BUSBAR B",
-        "x": 1429.73,
-        "y": 616.0
-      },
-      {
-        "class": "outline",
-        "height": 56.0,
-        "tag": "rect",
-        "width": 126.0,
-        "x": 1461.5,
-        "y": 660.0
+        "class": "symbol-fill",
+        "cx": 1520.0,
+        "cy": 702.0,
+        "r": 2.2,
+        "tag": "circle"
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1524.5,
-        "x2": 1524.5,
-        "y1": 670.0,
-        "y2": 706.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1510.5,
-        "x2": 1538.5,
-        "y1": 672.0,
-        "y2": 672.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1510.5,
-        "x2": 1538.5,
-        "y1": 679.0,
-        "y2": 679.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1510.5,
-        "x2": 1538.5,
-        "y1": 686.0,
-        "y2": 686.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1510.5,
-        "x2": 1538.5,
-        "y1": 693.0,
-        "y2": 693.0
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1510.5,
-        "x2": 1538.5,
-        "y1": 700.0,
+        "x1": 1520.0,
+        "x2": 1535.0,
+        "y1": 684.0,
         "y2": 700.0
       },
       {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1520.0,
+        "x2": 1520.0,
+        "y1": 702.0,
+        "y2": 712.0
+      },
+      {
+        "class": "outline",
+        "height": 18.0,
+        "tag": "rect",
+        "width": 10.0,
+        "x": 1515.0,
+        "y": 712.0
+      },
+      {
         "class": "thin",
         "tag": "line",
-        "x1": 1510.5,
-        "x2": 1538.5,
-        "y1": 707.0,
-        "y2": 707.0
+        "x1": 1520.0,
+        "x2": 1520.0,
+        "y1": 712.0,
+        "y2": 730.0
       },
       {
-        "class": "small",
+        "class": "wire",
+        "tag": "line",
+        "x1": 1520.0,
+        "x2": 1520.0,
+        "y1": 730.0,
+        "y2": 738.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1520.0,
+        "x2": 1520.0,
+        "y1": 646.0,
+        "y2": 674.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1520.0,
+        "x2": 1520.0,
+        "y1": 738.0,
+        "y2": 764.0
+      },
+      {
+        "tag": "text",
+        "text": "DC Isolator/Fuse",
+        "x": 1536.0,
+        "y": 711.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "F4",
+        "x": 1530.0,
+        "y": 711.0
+      },
+      {
+        "class": "wire",
+        "tag": "line",
+        "x1": 1520.0,
+        "x2": 1520.0,
+        "y1": 758.0,
+        "y2": 784.0
+      },
+      {
+        "tag": "text",
+        "text": "DC Block #4 0.836 MWh",
+        "x": 1520.0,
+        "y": 784.0
+      },
+      {
+        "class": "outline",
+        "height": 78.0,
+        "tag": "rect",
+        "width": 96.0,
+        "x": 1472.0,
+        "y": 784.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1520.0,
+        "x2": 1520.0,
+        "y1": 794.0,
+        "y2": 852.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "+",
+        "x": 1546.88,
+        "y": 799.0
+      },
+      {
+        "class": "small text",
+        "tag": "text",
+        "text": "-",
+        "x": 1546.88,
+        "y": 855.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1505.0,
+        "x2": 1535.0,
+        "y1": 798.0,
+        "y2": 798.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1511.0,
+        "x2": 1529.0,
+        "y1": 803.0,
+        "y2": 803.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1505.0,
+        "x2": 1535.0,
+        "y1": 810.5,
+        "y2": 810.5
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1511.0,
+        "x2": 1529.0,
+        "y1": 815.5,
+        "y2": 815.5
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1505.0,
+        "x2": 1535.0,
+        "y1": 823.0,
+        "y2": 823.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1511.0,
+        "x2": 1529.0,
+        "y1": 828.0,
+        "y2": 828.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1505.0,
+        "x2": 1535.0,
+        "y1": 835.5,
+        "y2": 835.5
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1511.0,
+        "x2": 1529.0,
+        "y1": 840.5,
+        "y2": 840.5
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1505.0,
+        "x2": 1535.0,
+        "y1": 848.0,
+        "y2": 848.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1511.0,
+        "x2": 1529.0,
+        "y1": 853.0,
+        "y2": 853.0
+      },
+      {
+        "class": "small text",
         "tag": "text",
         "text": "DC Block #4",
-        "x": 1469.5,
-        "y": 678.0
+        "text-anchor": "middle",
+        "x": 1520.0,
+        "y": 874.0
       },
       {
-        "class": "small",
+        "class": "small text",
         "tag": "text",
         "text": "0.836 MWh",
-        "x": 1469.5,
-        "y": 692.0
+        "text-anchor": "middle",
+        "x": 1520.0,
+        "y": 887.0
       }
     ],
     "svg": {
-      "height": "808px",
-      "viewBox": "0 0 1780 808",
+      "height": "900px",
+      "viewBox": "0 0 1780 900",
       "width": "1780px"
     },
     "text_nodes": [
-      "svg { font-family: Arial, 'DejaVu Sans', sans-serif; font-size: 11px; } .outline { stroke: #e5e7eb; stroke-width: 2.0; fill: none; } .thin { stroke: #cbd5e1; stroke-width: 1.4; fill: none; } .thick { stroke: #e5e7eb; stroke-width: 2.0; fill: none; } .dash { stroke: #22d3ee; stroke-width: 2.0; fill: none; stroke-dasharray: 6,4; } .busbar { stroke: #ef4444; stroke-width: 2.2; fill: none; } .label { fill: #e5e7eb; } .title { font-size: 12px; font-weight: bold; fill: #f8fafc; } .small { font-size: 10px; fill: #e5e7eb; }",
+      "svg { font-family: Arial, 'DejaVu Sans', sans-serif; font-size: 12px; } .background { fill: #0b0f13; } .wire { stroke: #e5e7eb; stroke-width: 2.0; fill: none; stroke-linecap: square; stroke-linejoin: miter; } .thin { stroke: #cbd5e1; stroke-width: 1.4; fill: none; stroke-linecap: square; stroke-linejoin: miter; } .busbar { stroke: #ef4444; stroke-width: 2.6; fill: none; stroke-linecap: square; } .outline { stroke: #e5e7eb; stroke-width: 1.8; fill: none; } .symbol-fill { fill: #0b0f13; stroke: #e5e7eb; stroke-width: 1.6; } .text { fill: #e5e7eb; } .title { fill: #f8fafc; font-size: 13px; font-weight: bold; } .small { fill: #e5e7eb; font-size: 10px; } .notes { fill: #e5e7eb; font-size: 12px; font-family: Consolas, 'Courier New', monospace; } .notes-title { fill: #f8fafc; font-size: 13px; font-weight: bold; font-family: Consolas, 'Courier New', monospace; } .debug { stroke: #22d3ee; stroke-width: 1.0; fill: none; opacity: 0.55; } .port { stroke: #e5e7eb; stroke-width: 1.2; fill: #0b0f13; }",
       "Equipment List",
-      "MV System",
-      "33.0 kV",
-      "RMU",
-      "33 kV, 630 A, 25.0 kA/3s",
-      "Transformer",
-      "6.0 MVA, Dyn11, Uk=7.0%, ONAN",
-      "LV Busbar",
-      "2500 A, 25.0 kA",
-      "PCS",
-      "4 x 1250 kW @ 690 V",
-      "Battery Storage Bank",
-      "4 x 0.836 MWh",
-      "DC Block Allocation",
-      "F1=1, F2=1, F3=1, F4=1",
-      "PCS&MVT SKID (AC Block)",
-      "Battery Storage Bank",
-      "MV BUS",
-      "To Switchgear",
-      "To Other RMU",
-      "RMU",
-      "33 kV",
-      "Transformer",
+      "Cable Connection Vault",
+      "CB:33 kV, 630 A, 25.0 kA/3s",
+      "DS:33 kV, 630 A, 25.0 kA/3s",
+      "CT:200/1, 5P20, 10 VA",
+      "With DC, ES, & Live Displayer",
+      "Power Cable-33kV",
+      "MISSING: MV cable spec",
+      "Step-up Transformer (OIL)",
+      "33.0/0.690 kV",
       "6.0 MVA",
       "Dyn11, Uk=7.0%",
-      "LV Busbar",
+      "ONAN",
+      "Connecting Cable Type",
+      "MISSING: LV cable spec",
+      "Power Converter System",
+      "PCS-1250kW*4",
+      "AC690V 50Hz, DC1500V",
+      "Power Cable",
+      "MISSING: DC cable spec",
+      "Battery Energy Storage System",
+      "1~4 BESS (0.836 MWh*4)",
+      "Cell: MISSING: BESS cell spec",
+      "PCS&MVT SKID (AC Block)",
+      "RMU / MV Switchgear",
+      "To 33kV Switchgear",
+      "To Other RMU",
+      "Ring In",
+      "Ring Out",
+      "33kV RMU",
+      "Transformer Feeder",
+      "Transformer",
+      "33.0/0.690 kV",
+      "6.0 MVA",
+      "Dyn11, Uk=7.0%",
+      "ONAN",
+      "DC Interface",
+      "LV Busbar=690V",
+      "F1",
       "PCS-1",
       "1250 kW",
-      "DC BUSBAR A",
-      "DC BUSBAR B",
+      "DC Isolator/Fuse",
+      "F1",
+      "DC Block #1 0.836 MWh",
+      "+",
+      "-",
       "DC Block #1",
       "0.836 MWh",
+      "F2",
       "PCS-2",
       "1250 kW",
-      "DC BUSBAR A",
-      "DC BUSBAR B",
+      "DC Isolator/Fuse",
+      "F2",
+      "DC Block #2 0.836 MWh",
+      "+",
+      "-",
       "DC Block #2",
       "0.836 MWh",
+      "F3",
       "PCS-3",
       "1250 kW",
-      "DC BUSBAR A",
-      "DC BUSBAR B",
+      "DC Isolator/Fuse",
+      "F3",
+      "DC Block #3 0.836 MWh",
+      "+",
+      "-",
       "DC Block #3",
       "0.836 MWh",
+      "F4",
       "PCS-4",
       "1250 kW",
-      "DC BUSBAR A",
-      "DC BUSBAR B",
+      "DC Isolator/Fuse",
+      "F4",
+      "DC Block #4 0.836 MWh",
+      "+",
+      "-",
       "DC Block #4",
       "0.836 MWh"
     ]

@@ -11,7 +11,7 @@ AC_TO_SLD_AUTHORITATIVE_FIELDS_V1 = {
     "num_blocks": "Required. Total AC block count.",
     "pcs_per_block": "Required. Uniform PCS count per AC block in SLD V1.",
     "pcs_kw": "Required. Uniform PCS rating per feeder in kW.",
-    "block_size_mw": "Required. Must equal pcs_per_block * pcs_kw / 1000.",
+    "block_size_mw": "Required. Must equal pcs_per_block * pcs_kw / 1000. The adapter must not derive it silently.",
     "dc_allocation_plan": "Required. Authoritative AC block allocation plan with feeder_allocations.",
     "dc_blocks_total_by_block": "Derived mirror of dc_allocation_plan totals.",
     "dc_blocks_per_feeder_by_block": "Derived mirror of dc_allocation_plan feeder allocations.",
@@ -160,6 +160,32 @@ def _resolve_optional_int(
     return int(value)
 
 
+def _build_allocation_entry(
+    *,
+    source_name: str,
+    ac_block_index: int,
+    pcs_count: int,
+    pcs_rating_kw: float,
+    dc_blocks_total: int,
+    feeder_allocations: list[int],
+    errors: list[str],
+) -> SldAcBlockAllocation | None:
+    try:
+        return SldAcBlockAllocation(
+            ac_block_index=ac_block_index,
+            pcs_count=pcs_count,
+            pcs_rating_kw=pcs_rating_kw,
+            dc_blocks_total=dc_blocks_total,
+            feeder_allocations=feeder_allocations,
+        )
+    except ValidationError as exc:
+        for item in exc.errors():
+            location = ".".join(str(part) for part in item.get("loc", ()))
+            suffix = f".{location}" if location else ""
+            errors.append(f"{source_name}{suffix}: {item.get('msg')}")
+        return None
+
+
 def _resolve_dc_allocation_plan(
     payload: dict[str, Any],
     *,
@@ -185,15 +211,18 @@ def _resolve_dc_allocation_plan(
             dc_blocks_total = _safe_int(entry.get("dc_blocks_total"))
             if dc_blocks_total is None:
                 dc_blocks_total = sum(feeder_allocations)
-            plans.append(
-                SldAcBlockAllocation(
-                    ac_block_index=_safe_int(entry.get("ac_block_index")) or block_index,
-                    pcs_count=pcs_per_block,
-                    pcs_rating_kw=pcs_kw,
-                    dc_blocks_total=dc_blocks_total,
-                    feeder_allocations=feeder_allocations,
-                )
+            plan_entry = _build_allocation_entry(
+                source_name=f"dc_allocation_plan[{block_index - 1}]",
+                ac_block_index=_safe_int(entry.get("ac_block_index")) or block_index,
+                pcs_count=pcs_per_block,
+                pcs_rating_kw=pcs_kw,
+                dc_blocks_total=dc_blocks_total,
+                feeder_allocations=feeder_allocations,
+                errors=errors,
             )
+            if plan_entry is None:
+                return None
+            plans.append(plan_entry)
         if len(plans) != num_blocks:
             errors.append("dc_allocation_plan length must match num_blocks.")
             return None
@@ -226,52 +255,27 @@ def _resolve_dc_allocation_plan(
                 dc_blocks_total = _safe_int(entry.get("dc_blocks_total"))
                 if dc_blocks_total is None:
                     dc_blocks_total = sum(feeder_allocations)
-                plans.append(
-                    SldAcBlockAllocation(
-                        ac_block_index=_safe_int(entry.get("ac_block_index")) or block_index,
-                        pcs_count=pcs_per_block,
-                        pcs_rating_kw=pcs_kw,
-                        dc_blocks_total=dc_blocks_total,
-                        feeder_allocations=feeder_allocations,
-                    )
+                plan_entry = _build_allocation_entry(
+                    source_name=f"dc_block_allocation.per_ac_block[{block_index - 1}]",
+                    ac_block_index=_safe_int(entry.get("ac_block_index")) or block_index,
+                    pcs_count=pcs_per_block,
+                    pcs_rating_kw=pcs_kw,
+                    dc_blocks_total=dc_blocks_total,
+                    feeder_allocations=feeder_allocations,
+                    errors=errors,
                 )
+                if plan_entry is None:
+                    return None
+                plans.append(plan_entry)
             if len(plans) != num_blocks:
                 errors.append("dc_block_allocation.per_ac_block length must match num_blocks.")
                 return None
             return plans
 
-    feeder_by_block = payload.get("dc_blocks_per_feeder_by_block")
-    if isinstance(feeder_by_block, list) and feeder_by_block:
-        field_sources["dc_allocation_plan"] = "dc_blocks_per_feeder_by_block"
-        plans = []
-        totals_by_block = payload.get("dc_blocks_total_by_block")
-        for block_index, row in enumerate(feeder_by_block, start=1):
-            feeder_allocations = _normalize_non_negative_int_list(row)
-            if feeder_allocations is None or len(feeder_allocations) != pcs_per_block:
-                errors.append("dc_blocks_per_feeder_by_block rows must match pcs_per_block.")
-                return None
-            dc_blocks_total = None
-            if isinstance(totals_by_block, list) and block_index - 1 < len(totals_by_block):
-                dc_blocks_total = _safe_int(totals_by_block[block_index - 1])
-            if dc_blocks_total is None:
-                dc_blocks_total = sum(feeder_allocations)
-            plans.append(
-                SldAcBlockAllocation(
-                    ac_block_index=block_index,
-                    pcs_count=pcs_per_block,
-                    pcs_rating_kw=pcs_kw,
-                    dc_blocks_total=dc_blocks_total,
-                    feeder_allocations=feeder_allocations,
-                )
-            )
-        if len(plans) != num_blocks:
-            errors.append("dc_blocks_per_feeder_by_block length must match num_blocks.")
-            return None
-        return plans
-
     errors.append(
         "dc_allocation_plan is required in the AC->SLD contract. "
-        "Only the compatibility adapter may translate legacy dc_block_allocation / dc_blocks_per_feeder_by_block."
+        "Only the compatibility adapter may translate legacy dc_block_allocation. "
+        "dc_blocks_total_by_block and dc_blocks_per_feeder_by_block are derived mirrors and cannot replace it."
     )
     return None
 
@@ -329,6 +333,7 @@ def normalize_ac_output_for_sld(ac_output: dict[str, Any]) -> SldAuthoritativeAc
     num_blocks = _resolve_required_int("num_blocks", ac_output, errors, field_sources, legacy_aliases_used)
     pcs_per_block = _resolve_required_int("pcs_per_block", ac_output, errors, field_sources, legacy_aliases_used)
     pcs_kw = _resolve_required_float("pcs_kw", ac_output, errors, field_sources, legacy_aliases_used)
+    block_size_mw = _resolve_required_float("block_size_mw", ac_output, errors, field_sources, legacy_aliases_used)
     transformer_mva = _resolve_required_float("transformer_mva", ac_output, errors, field_sources, legacy_aliases_used)
 
     if errors:
@@ -350,12 +355,6 @@ def normalize_ac_output_for_sld(ac_output: dict[str, Any]) -> SldAuthoritativeAc
 
     dc_blocks_total_by_block = [entry.dc_blocks_total for entry in dc_allocation_plan]
     dc_blocks_per_feeder_by_block = [list(entry.feeder_allocations) for entry in dc_allocation_plan]
-    block_size_mw = _safe_float(ac_output.get("block_size_mw"))
-    if block_size_mw is None:
-        block_size_mw = pcs_per_block * pcs_kw / 1000.0
-        field_sources["block_size_mw"] = "derived_from_pcs_per_block_and_pcs_kw"
-    else:
-        field_sources["block_size_mw"] = "block_size_mw"
     transformer_count = _resolve_optional_int("transformer_count", ac_output, field_sources, legacy_aliases_used)
     if transformer_count is None:
         transformer_count = num_blocks

@@ -48,7 +48,11 @@ def test_renderer_only_consumes_topology_contract(sample_excel_path, tmp_path):
     svg_text = svg_path.read_text(encoding="utf-8")
     assert "PCS&amp;MVT SKID (AC Block)" in svg_text
     assert "Battery Storage Bank" in svg_text
-    assert "DC BUSBAR A" in svg_text
+    assert "RMU / MV Switchgear" in svg_text
+    assert "Transformer Feeder" in svg_text
+    assert "DC Interface" in svg_text
+    assert "DC Isolator/Fuse" in svg_text
+    assert "DC BUSBAR" not in svg_text
 
 
 def test_renderer_source_does_not_reference_legacy_runtime_inputs():

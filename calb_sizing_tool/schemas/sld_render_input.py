@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from math import sqrt
 from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
@@ -94,6 +95,7 @@ class SldEquipmentRatings(CanonicalBaseModel):
     dc_fuse: SldDcFuseSpec
     transformer_tap_range: str | None = None
     transformer_cooling: str | None = None
+    battery_cell_spec: str | None = None
 
 
 class SldInputOverride(CanonicalBaseModel):
@@ -196,6 +198,18 @@ class SldCanonicalInput(CanonicalBaseModel):
             raise ValueError("dc_blocks_per_feeder length must match pcs_count")
         if sum(self.dc_blocks_per_feeder) != self.dc_blocks_total_in_group:
             raise ValueError("dc_blocks_total_in_group must equal sum(dc_blocks_per_feeder)")
+        if self.validation_mode == "strict":
+            fuse_spec = str(self.equipment_ratings.dc_fuse.fuse_spec or "").strip().lower()
+            if fuse_spec in {"tbd", "n/a", "na"}:
+                raise ValueError("dc_fuse.fuse_spec must be explicit in strict SLD mode")
+        transformer_lv_current_a = self.transformer_rating_mva * 1_000_000.0 / (sqrt(3.0) * self.lv_voltage_v_ll)
+        pcs_total_current_a = sum(self.pcs_rating_kw_list) * 1_000.0 / (sqrt(3.0) * self.lv_voltage_v_ll)
+        required_lv_busbar_a = max(transformer_lv_current_a, pcs_total_current_a)
+        if self.equipment_ratings.lv_busbar.rated_a + 1e-6 < required_lv_busbar_a:
+            raise ValueError(
+                "lv_busbar.rated_a is below the required LV current "
+                f"({self.equipment_ratings.lv_busbar.rated_a:.0f} A < {required_lv_busbar_a:.0f} A)"
+            )
         return self
 
 
@@ -215,7 +229,7 @@ def legacy_sld_override_preset() -> dict:
                 "ct_va": 10.0,
             },
             "lv_busbar": {
-                "rated_a": 2500.0,
+                "rated_a": 6300.0,
                 "short_circuit_ka": 25.0,
             },
             "cables": {
@@ -224,7 +238,7 @@ def legacy_sld_override_preset() -> dict:
                 "dc_cable_spec": "TBD",
             },
             "dc_fuse": {
-                "fuse_spec": "TBD",
+                "fuse_spec": "DC isolator/fuse",
             },
             "transformer_tap_range": "+/-2x2.5%",
             "transformer_cooling": "ONAN",

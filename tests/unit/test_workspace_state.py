@@ -55,6 +55,33 @@ def test_clear_active_run_clears_downstream_runtime_state(monkeypatch):
     assert session_state["artifacts"]["sld_meta"] == {}
 
 
+def test_navigate_to_defers_main_nav_until_app_can_apply_it(monkeypatch):
+    session_state = {"main_nav": "Workbench"}
+    monkeypatch.setattr(workspace_state, "st", SimpleNamespace(session_state=session_state))
+
+    workspace_state.navigate_to("DC Sizing")
+
+    assert session_state["main_nav"] == "Workbench"
+    assert session_state["_pending_main_nav"] == "DC Sizing"
+
+    selected = workspace_state.apply_pending_navigation(["Workbench", "DC Sizing"])
+
+    assert selected == "DC Sizing"
+    assert session_state["main_nav"] == "DC Sizing"
+    assert "_pending_main_nav" not in session_state
+
+
+def test_apply_pending_navigation_ignores_invalid_page_and_uses_default(monkeypatch):
+    session_state = {"main_nav": "Missing", "_pending_main_nav": "Unknown"}
+    monkeypatch.setattr(workspace_state, "st", SimpleNamespace(session_state=session_state))
+
+    selected = workspace_state.apply_pending_navigation(["Workbench", "DC Sizing"])
+
+    assert selected == "Workbench"
+    assert session_state["main_nav"] == "Workbench"
+    assert "_pending_main_nav" not in session_state
+
+
 def test_restore_run_bundle_to_session_clears_stale_ac_state_and_seeds_case_voltage(monkeypatch, sample_excel_path):
     session_state = _seed_session_state()
     monkeypatch.setattr(workspace_state, "st", SimpleNamespace(session_state=session_state))

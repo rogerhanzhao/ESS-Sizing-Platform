@@ -71,6 +71,7 @@ def _make_ac_snapshot() -> AcSnapshot:
             "num_blocks": 1,
             "pcs_per_block": 4,
             "pcs_kw": 1250.0,
+            "block_size_mw": 5.0,
             "transformer_mva": 6.0,
             "dc_allocation_plan": [
                 {"ac_block_index": 1, "dc_blocks_total": 4, "feeder_allocations": [1, 1, 1, 1]}
@@ -110,20 +111,32 @@ def test_sld_topology_builder_outputs_stable_graph(sample_excel_path):
     assert topology.summary.dc_blocks_per_feeder == [1, 1, 1, 1]
 
     node_ids = {node.node_id for node in topology.nodes}
-    assert "G01-MV-BUS" in node_ids
+    assert "G01-MV-RING-IN" in node_ids
     assert "G01-RMU-NODE" in node_ids
+    assert "G01-MV-TX-FEEDER" in node_ids
+    assert "G01-MV-RING-OUT" in node_ids
     assert "G01-TX-NODE" in node_ids
     assert "G01-LV-BUSBAR-NODE" in node_ids
     assert "G01-F01-PCS-NODE" in node_ids
-    assert "G01-F01-DC-BUSBAR-NODE" in node_ids
+    assert "G01-F01-DC-INTERFACE-NODE" in node_ids
 
+    assert len([node for node in topology.nodes if node.node_type == "mv_ring_in"]) == 1
+    assert len([node for node in topology.nodes if node.node_type == "mv_switchgear"]) == 1
+    assert len([node for node in topology.nodes if node.node_type == "mv_transformer_feeder"]) == 1
+    assert len([node for node in topology.nodes if node.node_type == "mv_ring_out"]) == 1
     assert len([node for node in topology.nodes if node.node_type == "pcs"]) == 4
-    assert len([node for node in topology.nodes if node.node_type == "dc_busbar"]) == 4
+    assert len([node for node in topology.nodes if node.node_type == "dc_interface"]) == 4
     assert len([node for node in topology.nodes if node.node_type == "dc_block"]) == 4
+    assert not any(node.node_type == "dc_busbar" for node in topology.nodes)
+    assert not any(node.node_type == "mv_bus" for node in topology.nodes)
 
+    assert len([edge for edge in topology.edges if edge.edge_type == "ring_in_to_switchgear"]) == 1
+    assert len([edge for edge in topology.edges if edge.edge_type == "switchgear_to_transformer_feeder"]) == 1
+    assert len([edge for edge in topology.edges if edge.edge_type == "transformer_feeder_to_transformer"]) == 1
+    assert len([edge for edge in topology.edges if edge.edge_type == "switchgear_to_ring_out"]) == 1
     assert len([edge for edge in topology.edges if edge.edge_type == "lv_busbar_to_pcs"]) == 4
-    assert len([edge for edge in topology.edges if edge.edge_type == "pcs_to_dc_busbar"]) == 4
-    assert len([edge for edge in topology.edges if edge.edge_type == "dc_busbar_to_dc_block"]) == 4
+    assert len([edge for edge in topology.edges if edge.edge_type == "pcs_to_dc_interface"]) == 4
+    assert len([edge for edge in topology.edges if edge.edge_type == "dc_interface_to_dc_block"]) == 4
 
 
 def test_sld_topology_builder_preserves_feeder_relationships(sample_excel_path):
@@ -134,8 +147,8 @@ def test_sld_topology_builder_preserves_feeder_relationships(sample_excel_path):
     feeder_2_edges = [edge for edge in topology.edges if edge.feeder_index == 2]
 
     assert any(node.node_type == "pcs" for node in feeder_2_nodes)
-    assert any(node.node_type == "dc_busbar" for node in feeder_2_nodes)
+    assert any(node.node_type == "dc_interface" for node in feeder_2_nodes)
     assert len([node for node in feeder_2_nodes if node.node_type == "dc_block"]) == 1
     assert any(edge.edge_type == "lv_busbar_to_pcs" for edge in feeder_2_edges)
-    assert any(edge.edge_type == "pcs_to_dc_busbar" for edge in feeder_2_edges)
-    assert any(edge.edge_type == "dc_busbar_to_dc_block" for edge in feeder_2_edges)
+    assert any(edge.edge_type == "pcs_to_dc_interface" for edge in feeder_2_edges)
+    assert any(edge.edge_type == "dc_interface_to_dc_block" for edge in feeder_2_edges)

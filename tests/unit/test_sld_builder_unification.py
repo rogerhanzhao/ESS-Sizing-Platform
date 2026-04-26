@@ -26,6 +26,9 @@ def _legacy_payload():
         "pcs_count_by_block": [4],
         "dc_blocks_total_by_block": [6],
         "dc_blocks_per_feeder_by_block": [[2, 1, 2, 1]],
+        "dc_allocation_plan": [
+            {"ac_block_index": 1, "dc_blocks_total": 6, "feeder_allocations": [2, 1, 2, 1]}
+        ],
         "transformer_mva": 5.0,
     }
     sld_inputs = {
@@ -39,9 +42,9 @@ def _legacy_payload():
         "mv_labels": {"to_switchgear": "To Switchgear", "to_other_rmu": "To Other RMU"},
         "rmu": {"rated_kv": 36.0, "rated_a": 630.0, "short_circuit_ka_3s": 25.0, "ct_ratio": "200/1", "ct_class": "5P20", "ct_va": 10.0},
         "transformer": {"vector_group": "Dyn11", "uk_percent": 7.0, "cooling": "ONAN"},
-        "lv_busbar": {"rated_a": 2500.0, "short_circuit_ka": 25.0},
+        "lv_busbar": {"rated_a": 6300.0, "short_circuit_ka": 25.0},
         "cables": {"mv_cable_spec": "TBD", "lv_cable_spec": "TBD", "dc_cable_spec": "TBD"},
-        "dc_fuse": {"fuse_spec": "TBD"},
+        "dc_fuse": {"fuse_spec": "DC isolator/fuse"},
     }
     return stage13_output, ac_output, {}, sld_inputs
 
@@ -76,6 +79,7 @@ def test_legacy_builders_do_not_guess_missing_feeder_allocation():
     stage13_output, ac_output, dc_summary, sld_inputs = _legacy_payload()
     ac_output.pop("dc_blocks_per_feeder_by_block", None)
     ac_output.pop("dc_blocks_total_by_block", None)
+    ac_output.pop("dc_allocation_plan", None)
     sld_inputs.pop("dc_blocks_per_feeder", None)
 
     with pytest.raises(ValueError, match="dc_allocation_plan is required"):

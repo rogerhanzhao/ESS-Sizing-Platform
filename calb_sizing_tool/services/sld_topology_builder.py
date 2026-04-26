@@ -293,14 +293,11 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
 
     add_node(
         SldNode(
-            node_id=f"{group_token}-MV-BUS",
-            node_type="mv_bus",
-            display_name="MV Bus",
-            labels=mv_labels,
-            attributes={
-                "mv_voltage_kv": canonical_input.mv_voltage_kv,
-                "group_index": canonical_input.group_index,
-            },
+            node_id=f"{group_token}-MV-RING-IN",
+            node_type="mv_ring_in",
+            display_name="Ring In",
+            labels=[mv_labels[0]],
+            attributes={"mv_voltage_kv": canonical_input.mv_voltage_kv},
         )
     )
 
@@ -308,17 +305,35 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
         SldEquipment(
             equipment_id=f"{group_token}-RMU",
             equipment_type="rmu",
-            display_name="RMU",
+            display_name="RMU / MV Switchgear",
             attributes=canonical_input.equipment_ratings.rmu.model_dump(mode="python"),
         )
     )
     add_node(
         SldNode(
             node_id=f"{group_token}-RMU-NODE",
-            node_type="rmu",
-            display_name="RMU",
+            node_type="mv_switchgear",
+            display_name="RMU / MV Switchgear",
             equipment_id=f"{group_token}-RMU",
             labels=mv_labels,
+            attributes={"mv_voltage_kv": canonical_input.mv_voltage_kv},
+        )
+    )
+    add_node(
+        SldNode(
+            node_id=f"{group_token}-MV-TX-FEEDER",
+            node_type="mv_transformer_feeder",
+            display_name="Transformer Feeder",
+            equipment_id=f"{group_token}-RMU",
+            attributes={"mv_voltage_kv": canonical_input.mv_voltage_kv},
+        )
+    )
+    add_node(
+        SldNode(
+            node_id=f"{group_token}-MV-RING-OUT",
+            node_type="mv_ring_out",
+            display_name="Ring Out",
+            labels=[mv_labels[1]],
             attributes={"mv_voltage_kv": canonical_input.mv_voltage_kv},
         )
     )
@@ -373,19 +388,35 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
 
     add_edge(
         SldEdge(
-            edge_id=f"{group_token}-EDGE-MV-RMU",
-            edge_type="mv_link",
-            source_node_id=f"{group_token}-MV-BUS",
+            edge_id=f"{group_token}-EDGE-RINGIN-RMU",
+            edge_type="ring_in_to_switchgear",
+            source_node_id=f"{group_token}-MV-RING-IN",
             target_node_id=f"{group_token}-RMU-NODE",
             labels=mv_labels,
         )
     )
     add_edge(
         SldEdge(
-            edge_id=f"{group_token}-EDGE-RMU-TX",
-            edge_type="rmu_to_transformer",
+            edge_id=f"{group_token}-EDGE-RMU-TXFEEDER",
+            edge_type="switchgear_to_transformer_feeder",
             source_node_id=f"{group_token}-RMU-NODE",
+            target_node_id=f"{group_token}-MV-TX-FEEDER",
+        )
+    )
+    add_edge(
+        SldEdge(
+            edge_id=f"{group_token}-EDGE-TXFEEDER-TX",
+            edge_type="transformer_feeder_to_transformer",
+            source_node_id=f"{group_token}-MV-TX-FEEDER",
             target_node_id=f"{group_token}-TX-NODE",
+        )
+    )
+    add_edge(
+        SldEdge(
+            edge_id=f"{group_token}-EDGE-RMU-RINGOUT",
+            edge_type="switchgear_to_ring_out",
+            source_node_id=f"{group_token}-RMU-NODE",
+            target_node_id=f"{group_token}-MV-RING-OUT",
         )
     )
     add_edge(
@@ -404,7 +435,7 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
     ):
         feeder_token = f"{group_token}-F{feeder_index:02d}"
         pcs_equipment_id = f"{feeder_token}-PCS"
-        dc_busbar_equipment_id = f"{feeder_token}-DC-BUSBAR"
+        dc_interface_equipment_id = f"{feeder_token}-DC-INTERFACE"
 
         add_equipment(
             SldEquipment(
@@ -439,29 +470,30 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
 
         add_equipment(
             SldEquipment(
-                equipment_id=dc_busbar_equipment_id,
-                equipment_type="dc_busbar",
-                display_name=f"DC Busbar {feeder_index}",
+                equipment_id=dc_interface_equipment_id,
+                equipment_type="dc_interface",
+                display_name=f"DC Interface {feeder_index}",
                 feeder_index=feeder_index,
                 attributes={
                     "dc_block_count": dc_block_count,
                     "dc_block_voltage_v": canonical_input.dc_block_voltage_v,
+                    "fuse_spec": canonical_input.equipment_ratings.dc_fuse.fuse_spec,
                 },
             )
         )
         add_node(
             SldNode(
-                node_id=f"{feeder_token}-DC-BUSBAR-NODE",
-                node_type="dc_busbar",
-                display_name=f"DC Busbar {feeder_index}",
-                equipment_id=dc_busbar_equipment_id,
+                node_id=f"{feeder_token}-DC-INTERFACE-NODE",
+                node_type="dc_interface",
+                display_name=f"DC Interface {feeder_index}",
+                equipment_id=dc_interface_equipment_id,
                 feeder_index=feeder_index,
                 labels=[
                     SldLabel(
-                        label_id=f"{feeder_token}-DC-BUSBAR-LABEL",
+                        label_id=f"{feeder_token}-DC-INTERFACE-LABEL",
                         semantic_key="dc_blocks_per_feeder",
                         text=f"{dc_block_count} DC blocks",
-                        scope="dc_busbar",
+                        scope="dc_interface",
                     )
                 ],
                 attributes={"dc_block_count": dc_block_count},
@@ -479,10 +511,10 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
         )
         add_edge(
             SldEdge(
-                edge_id=f"{feeder_token}-EDGE-PCS-DCBUS",
-                edge_type="pcs_to_dc_busbar",
+                edge_id=f"{feeder_token}-EDGE-PCS-DCIF",
+                edge_type="pcs_to_dc_interface",
                 source_node_id=f"{feeder_token}-PCS-NODE",
-                target_node_id=f"{feeder_token}-DC-BUSBAR-NODE",
+                target_node_id=f"{feeder_token}-DC-INTERFACE-NODE",
                 feeder_index=feeder_index,
             )
         )
@@ -528,8 +560,8 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
             add_edge(
                 SldEdge(
                     edge_id=f"{dc_block_equipment_id}-EDGE",
-                    edge_type="dc_busbar_to_dc_block",
-                    source_node_id=f"{feeder_token}-DC-BUSBAR-NODE",
+                    edge_type="dc_interface_to_dc_block",
+                    source_node_id=f"{feeder_token}-DC-INTERFACE-NODE",
                     target_node_id=f"{dc_block_equipment_id}-NODE",
                     feeder_index=feeder_index,
                     attributes={"local_block_index": local_block_index},

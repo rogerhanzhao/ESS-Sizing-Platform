@@ -29,12 +29,24 @@ except Exception:  # pragma: no cover
     render_sld_pro_svg = None
     render_sld_svg = None
 
+try:  # pragma: no cover - optional dependency
+    from calb_diagrams.sld_engineering_v2_renderer import render_sld_engineering_v2_svg
+except Exception:  # pragma: no cover
+    render_sld_engineering_v2_svg = None
+
+try:  # pragma: no cover - optional dependency
+    from calb_diagrams.sld_engineering_v2_validation import assert_sld_engineering_v2_layout_acceptance
+except Exception:  # pragma: no cover
+    assert_sld_engineering_v2_layout_acceptance = None
+
 __all__ = [
     "LayoutBlockSpec",
     "SldGroupSpec",
     "build_layout_block_spec",
     "build_sld_group_spec",
+    "assert_sld_engineering_v2_layout_acceptance",
     "render_layout_block_svg",
+    "render_sld_engineering_v2_svg",
     "render_sld_pro_svg",
     "render_sld_svg",
 ]

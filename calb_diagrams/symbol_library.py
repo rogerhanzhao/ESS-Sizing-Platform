@@ -45,11 +45,14 @@ def symbol_registry() -> dict[str, callable]:
         "section_frame": draw_section_frame,
         "busbar_horizontal": draw_busbar_horizontal,
         "external_feeder_arrow": draw_external_feeder_arrow,
+        "mv_switchgear": draw_mv_switchgear_symbol,
         "rmu": draw_rmu_symbol,
         "transformer": draw_transformer_symbol,
         "pcs": draw_pcs_symbol,
+        "dc_interface": draw_dc_interface_symbol,
         "dc_busbar_single": draw_dc_busbar_single,
         "dc_busbar_pair": draw_dc_busbar_pair,
+        "dc_feeder_label": draw_dc_feeder_label,
         "dc_block": draw_dc_block_symbol,
     }
 
@@ -99,6 +102,51 @@ def draw_external_feeder_arrow(dwg, symbol, palette: SldThemePalette) -> None:
         dwg.add(dwg.text(symbol.text_lines[0], insert=(text_x, y + 4), class_="small", text_anchor=align))
 
 
+def draw_mv_switchgear_symbol(dwg, symbol, palette: SldThemePalette) -> None:
+    dwg.add(dwg.rect(insert=(symbol.x, symbol.y), size=(symbol.width, symbol.height), class_="outline"))
+    title = symbol.text_lines[0] if symbol.text_lines else "RMU / MV Switchgear"
+    dwg.add(
+        dwg.text(
+            title,
+            insert=(symbol.x + symbol.width / 2, symbol.y + 16),
+            class_="small",
+            text_anchor="middle",
+        )
+    )
+
+    cubicle_labels = list(symbol.text_lines[1:4]) or ["Ring In", "Transformer Feeder", "Ring Out"]
+    cell_width = symbol.width / 3.0
+    cell_top = symbol.y + 24.0
+    bus_y = symbol.y + symbol.height * 0.58
+    top_port_y = symbol.y
+    bottom_port_y = symbol.y + symbol.height
+    dwg.add(dwg.line((symbol.x + 12.0, bus_y), (symbol.x + symbol.width - 12.0, bus_y), class_="busbar"))
+    for index, label in enumerate(cubicle_labels):
+        cell_x = symbol.x + cell_width * index
+        center_x = cell_x + cell_width / 2.0
+        if index > 0:
+            dwg.add(dwg.line((cell_x, cell_top), (cell_x, symbol.y + symbol.height), class_="thin"))
+        dwg.add(dwg.text(label, insert=(center_x, symbol.y + 38), class_="small", text_anchor="middle"))
+        if index == 1:
+            dwg.add(dwg.line((center_x, bus_y), (center_x, bottom_port_y), class_="thin"))
+            switch_y = bus_y + 16.0
+            dwg.add(dwg.line((center_x - 10.0, switch_y - 8.0), (center_x + 10.0, switch_y + 8.0), class_="thin"))
+        else:
+            dwg.add(dwg.line((center_x, top_port_y), (center_x, bus_y), class_="thin"))
+            switch_y = bus_y - 16.0
+            dwg.add(dwg.line((center_x - 10.0, switch_y - 8.0), (center_x + 10.0, switch_y + 8.0), class_="thin"))
+
+    if len(symbol.text_lines) >= 5:
+        dwg.add(
+            dwg.text(
+                symbol.text_lines[4],
+                insert=(symbol.x + symbol.width - 8.0, symbol.y + symbol.height - 8.0),
+                class_="small",
+                text_anchor="end",
+            )
+        )
+
+
 def draw_rmu_symbol(dwg, symbol, palette: SldThemePalette) -> None:
     dwg.add(dwg.rect(insert=(symbol.x - symbol.width / 2, symbol.y), size=(symbol.width, symbol.height), class_="outline"))
     switch_y = symbol.y + symbol.height * 0.4
@@ -120,8 +168,9 @@ def draw_transformer_symbol(dwg, symbol, palette: SldThemePalette) -> None:
     ]
     for cx, cy in centers:
         dwg.add(dwg.circle(center=(cx, cy), r=radius, class_="outline"))
+    label_x = center_x + max(50.0, symbol.width * 0.38)
     for idx, line in enumerate(symbol.text_lines):
-        dwg.add(dwg.text(line, insert=(center_x + symbol.width * 0.2, top_y + 12 + idx * 14), class_="small"))
+        dwg.add(dwg.text(line, insert=(label_x, top_y + 12 + idx * 14), class_="small"))
 
 
 def draw_pcs_symbol(dwg, symbol, palette: SldThemePalette) -> None:
@@ -140,6 +189,25 @@ def draw_pcs_symbol(dwg, symbol, palette: SldThemePalette) -> None:
         dwg.add(dwg.text(line, insert=(symbol.x + symbol.width * 0.55, symbol.y + 18 + idx * 16), class_="small"))
 
 
+def draw_dc_interface_symbol(dwg, symbol, palette: SldThemePalette) -> None:
+    center_x = symbol.x + symbol.width / 2
+    top_y = symbol.y
+    bottom_y = symbol.y + symbol.height
+    center_y = top_y + symbol.height / 2
+    dwg.add(dwg.line((center_x, top_y), (center_x, bottom_y), class_="thin"))
+    dwg.add(dwg.line((center_x - 12, center_y - 9), (center_x + 12, center_y + 9), class_="thin"))
+    dwg.add(dwg.rect(insert=(center_x - 5, center_y - 15), size=(10, 8), class_="outline"))
+    for idx, line in enumerate(symbol.text_lines):
+        dwg.add(
+            dwg.text(
+                line,
+                insert=(center_x + 14.0, center_y - 2 + idx * 12),
+                class_="small",
+                text_anchor="start",
+            )
+        )
+
+
 def draw_dc_busbar_single(dwg, symbol, palette: SldThemePalette) -> None:
     dwg.add(dwg.line((symbol.x, symbol.y), (symbol.x + symbol.width, symbol.y), class_="busbar"))
     label = symbol.text_lines[0] if symbol.text_lines else "DC BUSBAR"
@@ -147,22 +215,42 @@ def draw_dc_busbar_single(dwg, symbol, palette: SldThemePalette) -> None:
 
 
 def draw_dc_busbar_pair(dwg, symbol, palette: SldThemePalette) -> None:
-    gap = symbol.height or 22.0
-    dwg.add(dwg.line((symbol.x, symbol.y), (symbol.x + symbol.width, symbol.y), class_="busbar"))
-    dwg.add(dwg.line((symbol.x, symbol.y + gap), (symbol.x + symbol.width, symbol.y + gap), class_="busbar"))
-    label_a = symbol.text_lines[0] if len(symbol.text_lines) >= 1 else "DC BUSBAR A"
-    label_b = symbol.text_lines[1] if len(symbol.text_lines) >= 2 else "DC BUSBAR B"
-    dwg.add(dwg.text(label_a, insert=(symbol.x, symbol.y - 8), class_="small"))
-    dwg.add(dwg.text(label_b, insert=(symbol.x, symbol.y + gap - 8), class_="small"))
+    height = max(symbol.height or 72.0, 44.0)
+    center_x = symbol.x + symbol.width / 2
+    rail_offset = min(14.0, max(10.0, symbol.width * 0.18))
+    positive_x = center_x - rail_offset
+    negative_x = center_x + rail_offset
+    y1 = symbol.y
+    y2 = symbol.y + height
+
+    dwg.add(dwg.line((positive_x, y1), (positive_x, y2), class_="busbar"))
+    dwg.add(dwg.line((negative_x, y1), (negative_x, y2), class_="busbar"))
+    label_a = symbol.text_lines[0] if len(symbol.text_lines) >= 1 else "DC+"
+    label_b = symbol.text_lines[1] if len(symbol.text_lines) >= 2 else "DC-"
+    dwg.add(dwg.text(label_a, insert=(positive_x - 4, y1 - 8), class_="small", text_anchor="end"))
+    dwg.add(dwg.text(label_b, insert=(negative_x + 4, y1 - 8), class_="small", text_anchor="start"))
+
+
+def draw_dc_feeder_label(dwg, symbol, palette: SldThemePalette) -> None:
+    if not symbol.text_lines:
+        return
+    dwg.add(
+        dwg.text(
+            symbol.text_lines[0],
+            insert=(symbol.x + 6, symbol.y + 4),
+            class_="small",
+            text_anchor="start",
+        )
+    )
 
 
 def draw_dc_block_symbol(dwg, symbol, palette: SldThemePalette) -> None:
     dwg.add(dwg.rect(insert=(symbol.x, symbol.y), size=(symbol.width, symbol.height), class_="outline"))
-    mid_x = symbol.x + symbol.width / 2
-    top_y = symbol.y + 10
-    dwg.add(dwg.line((mid_x, top_y), (mid_x, symbol.y + symbol.height - 10), class_="thin"))
+    battery_x = symbol.x + symbol.width - max(24.0, symbol.width * 0.22)
+    top_y = symbol.y + 13
+    dwg.add(dwg.line((battery_x, top_y), (battery_x, symbol.y + symbol.height - 8), class_="thin"))
     for row in range(6):
         row_y = symbol.y + 12 + row * max(6.0, symbol.height / 8.0)
-        dwg.add(dwg.line((mid_x - 14, row_y), (mid_x + 14, row_y), class_="thin"))
+        dwg.add(dwg.line((battery_x - 10, row_y), (battery_x + 10, row_y), class_="thin"))
     for idx, line in enumerate(symbol.text_lines):
         dwg.add(dwg.text(line, insert=(symbol.x + 8, symbol.y + 18 + idx * 14), class_="small"))

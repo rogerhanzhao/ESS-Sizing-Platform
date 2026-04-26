@@ -69,3 +69,23 @@ def test_transformer_mv_lv_values_must_be_positive():
         SldCanonicalInput.model_validate(payload)
 
     assert "value must be > 0" in str(exc_info.value)
+
+
+def test_lv_busbar_current_must_cover_transformer_lv_current():
+    payload = _base_payload()
+    payload["equipment_ratings"]["lv_busbar"]["rated_a"] = 2500.0
+
+    with pytest.raises(ValidationError) as exc_info:
+        SldCanonicalInput.model_validate(payload)
+
+    assert "lv_busbar.rated_a is below the required LV current" in str(exc_info.value)
+
+
+def test_strict_mode_rejects_tbd_dc_fuse_spec():
+    payload = _base_payload()
+    payload["equipment_ratings"]["dc_fuse"]["fuse_spec"] = "TBD"
+
+    with pytest.raises(ValidationError) as exc_info:
+        SldCanonicalInput.model_validate(payload)
+
+    assert "dc_fuse.fuse_spec must be explicit in strict SLD mode" in str(exc_info.value)

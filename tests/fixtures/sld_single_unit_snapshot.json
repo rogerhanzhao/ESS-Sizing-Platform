@@ -33,13 +33,15 @@
   "ac_block": {
     "group_index": 1,
     "pcs_count": 2,
+    "pcs_rating_each_kw": 2500.0,
+    "pcs_rating_kw_list": [2500.0, 2500.0],
     "pcs_rating_each_kva": 2500.0,
     "pcs_rating_kva_list": [2500.0, 2500.0],
     "pcs_lv_voltage_v_ll": 690.0
   },
   "feeders": [
-    {"feeder_id": "FDR-01", "pcs_id": "PCS-01", "pcs_rating_kva": 2500.0},
-    {"feeder_id": "FDR-02", "pcs_id": "PCS-02", "pcs_rating_kva": 2500.0}
+    {"feeder_id": "FDR-01", "pcs_id": "PCS-01", "pcs_rating_kw": 2500.0, "pcs_rating_kva": 2500.0},
+    {"feeder_id": "FDR-02", "pcs_id": "PCS-02", "pcs_rating_kw": 2500.0, "pcs_rating_kva": 2500.0}
   ],
   "dc_block_energy_mwh": 5.106,
   "dc_blocks_by_feeder": [

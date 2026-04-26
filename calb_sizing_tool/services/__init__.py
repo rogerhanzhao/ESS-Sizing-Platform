@@ -21,6 +21,7 @@ from calb_sizing_tool.services.external_layout_service import (
 )
 from calb_sizing_tool.services.layout_service import render_layout_from_run_bundle
 from calb_sizing_tool.services.sld_input_builder import SldInputValidationError, build_sld_canonical_input
+from calb_sizing_tool.services.sld_engineering_v2_builder import build_sld_engineering_v2_graph
 from calb_sizing_tool.services.sld_pipeline_service import (
     normalize_sld_render_output,
     normalize_sld_svg,
@@ -63,6 +64,7 @@ __all__ = [
     "list_external_submissions",
     "run_dc_pipeline",
     "build_sld_canonical_input",
+    "build_sld_engineering_v2_graph",
     "build_legacy_sld_canonical_input",
     "build_legacy_sld_topology",
     "build_sld_topology",

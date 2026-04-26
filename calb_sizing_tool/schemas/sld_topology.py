@@ -8,16 +8,28 @@ from calb_sizing_tool.schemas.common import CanonicalBaseModel
 from calb_sizing_tool.schemas.sld_render_input import SldEquipmentRatings, SldLabels
 
 
-SldNodeType = Literal["mv_bus", "rmu", "transformer", "lv_busbar", "pcs", "dc_busbar", "dc_block"]
+SldNodeType = Literal[
+    "mv_ring_in",
+    "mv_switchgear",
+    "mv_transformer_feeder",
+    "mv_ring_out",
+    "transformer",
+    "lv_busbar",
+    "pcs",
+    "dc_interface",
+    "dc_block",
+]
 SldEdgeType = Literal[
-    "mv_link",
-    "rmu_to_transformer",
+    "ring_in_to_switchgear",
+    "switchgear_to_transformer_feeder",
+    "transformer_feeder_to_transformer",
+    "switchgear_to_ring_out",
     "transformer_to_lv_busbar",
     "lv_busbar_to_pcs",
-    "pcs_to_dc_busbar",
-    "dc_busbar_to_dc_block",
+    "pcs_to_dc_interface",
+    "dc_interface_to_dc_block",
 ]
-SldEquipmentType = Literal["rmu", "transformer", "lv_busbar", "pcs", "dc_busbar", "dc_block"]
+SldEquipmentType = Literal["rmu", "transformer", "lv_busbar", "pcs", "dc_interface", "dc_block"]
 
 
 class SldLabel(CanonicalBaseModel):

@@ -141,3 +141,19 @@ def test_sld_prefers_persisted_ac_snapshot_over_session_cache(sample_excel_path,
     assert resolution.snapshot is not None
     assert resolution.snapshot.output["num_blocks"] == 3
     assert resolution.snapshot.inputs["grid_kv"] == 33.0
+
+    status = single_line_diagram_view._resolve_sld_runtime_source_status(resolution)
+    options = single_line_diagram_view._build_sld_render_options(
+        group_index=1,
+        theme="dark",
+        compact_mode=False,
+        draw_summary=False,
+        user_override_mode=False,
+        overrides=None,
+        runtime_status=status,
+    )
+
+    assert status.mode == "authoritative_persisted"
+    assert status.is_authoritative is True
+    assert status.force_draft is False
+    assert options.override_mode is False

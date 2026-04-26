@@ -96,6 +96,23 @@ def test_ac_to_sld_authoritative_field_map_rejects_missing_allocation():
     assert "dc_allocation_plan is required" in str(exc_info.value)
 
 
+def test_ac_to_sld_authoritative_field_map_rejects_missing_block_size():
+    with pytest.raises(AcToSldAdapterError) as exc_info:
+        normalize_ac_output_for_sld(
+            {
+                "num_blocks": 1,
+                "pcs_per_block": 4,
+                "pcs_kw": 1250.0,
+                "transformer_mva": 6.0,
+                "dc_allocation_plan": [
+                    {"ac_block_index": 1, "dc_blocks_total": 4, "feeder_allocations": [1, 1, 1, 1]}
+                ],
+            }
+        )
+
+    assert "block_size_mw is required" in str(exc_info.value)
+
+
 def test_ac_to_sld_authoritative_field_map_does_not_evenly_distribute_totals():
     with pytest.raises(AcToSldAdapterError) as exc_info:
         normalize_ac_output_for_sld(
@@ -110,6 +127,25 @@ def test_ac_to_sld_authoritative_field_map_does_not_evenly_distribute_totals():
         )
 
     assert "dc_allocation_plan is required" in str(exc_info.value)
+
+
+def test_ac_to_sld_authoritative_field_map_rejects_feeder_matrix_as_primary_plan():
+    with pytest.raises(AcToSldAdapterError) as exc_info:
+        normalize_ac_output_for_sld(
+            {
+                "num_blocks": 1,
+                "pcs_per_block": 4,
+                "pcs_kw": 1250.0,
+                "block_size_mw": 5.0,
+                "transformer_mva": 6.0,
+                "dc_blocks_total_by_block": [4],
+                "dc_blocks_per_feeder_by_block": [[1, 1, 1, 1]],
+            }
+        )
+
+    message = str(exc_info.value)
+    assert "dc_allocation_plan is required" in message
+    assert "derived mirrors and cannot replace it" in message
 
 
 def test_ac_to_sld_authoritative_field_map_rejects_conflicting_mirror_fields():
@@ -129,3 +165,22 @@ def test_ac_to_sld_authoritative_field_map_rejects_conflicting_mirror_fields():
         )
 
     assert "dc_blocks_total_by_block conflicts" in str(exc_info.value)
+
+
+def test_ac_to_sld_authoritative_field_map_wraps_allocation_validation_errors():
+    with pytest.raises(AcToSldAdapterError) as exc_info:
+        normalize_ac_output_for_sld(
+            {
+                "num_blocks": 1,
+                "pcs_per_block": 4,
+                "pcs_kw": 1250.0,
+                "block_size_mw": 5.0,
+                "transformer_mva": 6.0,
+                "dc_allocation_plan": [
+                    {"ac_block_index": 1, "dc_blocks_total": 5, "feeder_allocations": [1, 1, 1, 1]}
+                ],
+            }
+        )
+
+    assert "dc_allocation_plan[0]" in str(exc_info.value)
+    assert "dc_blocks_total must equal sum" in str(exc_info.value)

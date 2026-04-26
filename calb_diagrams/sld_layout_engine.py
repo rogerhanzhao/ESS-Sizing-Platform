@@ -69,6 +69,10 @@ def _fmt_int(value: int, suffix: str) -> str:
     return f"{int(value)} {suffix}"
 
 
+def _fmt_lv_kv(value_v: float) -> str:
+    return f"{float(value_v) / 1000.0:.3f} kV"
+
+
 def _equipment_rows(topology: SldTopology) -> tuple[SldLayoutPanelRow, ...]:
     summary = topology.summary
     equipment = topology.equipment_ratings
@@ -76,6 +80,7 @@ def _equipment_rows(topology: SldTopology) -> tuple[SldLayoutPanelRow, ...]:
         f"F{index}={count}" for index, count in enumerate(summary.dc_blocks_per_feeder, start=1)
     ) or "TBD"
     transformer_bits = [
+        f"{summary.mv_voltage_kv:.1f}/{_fmt_lv_kv(summary.lv_voltage_v_ll)}",
         _fmt_float(summary.transformer_rating_mva, "MVA"),
         f"{summary.transformer_vector_group}",
         f"Uk={summary.transformer_uk_percent:.1f}%",
@@ -85,18 +90,19 @@ def _equipment_rows(topology: SldTopology) -> tuple[SldLayoutPanelRow, ...]:
     return (
         SldLayoutPanelRow("MV System", f"{summary.mv_voltage_kv:.1f} kV"),
         SldLayoutPanelRow(
-            "RMU",
+            "MV Switchgear / RMU",
             f"{equipment.rmu.rated_kv:.0f} kV, {equipment.rmu.rated_a:.0f} A, {equipment.rmu.short_circuit_ka_3s:.1f} kA/3s",
         ),
         SldLayoutPanelRow("Transformer", ", ".join(transformer_bits)),
         SldLayoutPanelRow(
             "LV Busbar",
-            f"{equipment.lv_busbar.rated_a:.0f} A, {equipment.lv_busbar.short_circuit_ka:.1f} kA",
+            f"{summary.lv_voltage_v_ll:.0f} V, {equipment.lv_busbar.rated_a:.0f} A, {equipment.lv_busbar.short_circuit_ka:.1f} kA",
         ),
         SldLayoutPanelRow(
             "PCS",
             f"{summary.pcs_count} x {summary.pcs_rating_kw_list[0]:.0f} kW @ {summary.lv_voltage_v_ll:.0f} V",
         ),
+        SldLayoutPanelRow("DC Interface", equipment.dc_fuse.fuse_spec),
         SldLayoutPanelRow(
             "Battery Storage Bank",
             f"{summary.dc_blocks_total_in_group} x {summary.dc_block_energy_mwh:.3f} MWh",
@@ -127,6 +133,8 @@ def _profile_config(layout_profile: LayoutProfileId) -> dict[str, float]:
             "battery_height": 220.0,
             "pcs_width": 92.0,
             "pcs_height": 68.0,
+            "mv_switchgear_width": 500.0,
+            "mv_switchgear_height": 82.0,
             "dc_block_width": 92.0,
             "dc_block_height": 92.0,
             "busbar_gap": 56.0,
@@ -138,6 +146,8 @@ def _profile_config(layout_profile: LayoutProfileId) -> dict[str, float]:
         "battery_height": 260.0,
         "pcs_width": 118.0,
         "pcs_height": 74.0,
+        "mv_switchgear_width": 620.0,
+        "mv_switchgear_height": 88.0,
         "dc_block_width": 126.0,
         "dc_block_height": 56.0,
         "busbar_gap": 72.0,
@@ -160,10 +170,15 @@ def _symbol_bottom_y(symbol: SldLayoutSymbol) -> float:
     return symbol.y + symbol.height
 
 
-def _dc_bus_connection_y(symbol: SldLayoutSymbol) -> float:
-    if symbol.symbol_type == "dc_busbar_pair":
-        return symbol.y + max(symbol.height, 22.0)
-    return symbol.y
+def _orthogonal_points(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    *,
+    bend_y: float,
+) -> tuple[tuple[float, float], ...]:
+    if abs(start[0] - end[0]) < 1e-6:
+        return (start, end)
+    return (start, (start[0], bend_y), (end[0], bend_y), end)
 
 
 def build_sld_layout_plan(
@@ -190,10 +205,25 @@ def build_sld_layout_plan(
     ac_frame_x = diagram_x
     ac_frame_y = 40.0
     ac_frame_width = diagram_width
-    ac_frame_height = config["ac_height"]
 
+    mv_switchgear_width = min(config["mv_switchgear_width"], ac_frame_width - 180.0)
+    mv_switchgear_height = config["mv_switchgear_height"]
+    mv_switchgear_x = ac_frame_x + ac_frame_width / 2 - mv_switchgear_width / 2
+    mv_switchgear_y = ac_frame_y + 54.0
+    ring_in_x = mv_switchgear_x + mv_switchgear_width / 6.0
+    transformer_feeder_x = mv_switchgear_x + mv_switchgear_width / 2.0
+    ring_out_x = mv_switchgear_x + mv_switchgear_width * 5.0 / 6.0
+    tx_x = transformer_feeder_x
+    tx_y = mv_switchgear_y + mv_switchgear_height + 70.0
+    lv_bus_y = tx_y + 104.0
+    lv_bus_x1 = ac_frame_x + 80.0
+    lv_bus_x2 = ac_frame_x + ac_frame_width - 80.0
+    pcs_y = lv_bus_y + 54.0
+    pcs_bottom_y = pcs_y + config["pcs_height"]
+
+    ac_frame_height = max(config["ac_height"], pcs_bottom_y - ac_frame_y + 34.0)
     battery_frame_x = diagram_x
-    battery_frame_y = ac_frame_y + ac_frame_height + 48.0
+    battery_frame_y = ac_frame_y + ac_frame_height + 32.0
     battery_frame_width = diagram_width
     max_blocks_per_feeder = max(summary.dc_blocks_per_feeder or [1])
     max_grid_cols = 1 if max_blocks_per_feeder <= 4 else 2
@@ -231,64 +261,63 @@ def build_sld_layout_plan(
     ]
     connectors: list[SldLayoutConnector] = []
 
-    mv_bus_y = ac_frame_y + 72.0
-    mv_bus_x1 = ac_frame_x + 110.0
-    mv_bus_x2 = ac_frame_x + ac_frame_width - 110.0
-    symbols.append(
-        SldLayoutSymbol(
-            symbol_id="mv-busbar",
-            symbol_type="busbar_horizontal",
-            x=mv_bus_x1,
-            y=mv_bus_y,
-            width=mv_bus_x2 - mv_bus_x1,
-            text_lines=("MV BUS",),
-            anchor_node_id=next(node.node_id for node in topology.nodes if node.node_type == "mv_bus"),
-        )
-    )
+    ring_in_node = next(node for node in topology.nodes if node.node_type == "mv_ring_in")
+    rmu_node = next(node for node in topology.nodes if node.node_type == "mv_switchgear")
+    transformer_feeder_node = next(node for node in topology.nodes if node.node_type == "mv_transformer_feeder")
+    ring_out_node = next(node for node in topology.nodes if node.node_type == "mv_ring_out")
+    tx_node = next(node for node in topology.nodes if node.node_type == "transformer")
+    lv_node = next(node for node in topology.nodes if node.node_type == "lv_busbar")
 
     symbols.append(
         SldLayoutSymbol(
-            symbol_id="mv-feeder-left",
+            symbol_id="mv-switchgear",
+            symbol_type="mv_switchgear",
+            x=mv_switchgear_x,
+            y=mv_switchgear_y,
+            width=mv_switchgear_width,
+            height=mv_switchgear_height,
+            text_lines=(
+                "RMU / MV Switchgear",
+                "Ring In",
+                "Transformer Feeder",
+                "Ring Out",
+                f"{topology.equipment_ratings.rmu.rated_kv:.0f} kV",
+            ),
+            anchor_node_id=rmu_node.node_id,
+            meta={
+                "ring_in_x": ring_in_x,
+                "transformer_feeder_x": transformer_feeder_x,
+                "ring_out_x": ring_out_x,
+            },
+        )
+    )
+
+    feeder_arrow_y = ac_frame_y + 18.0
+    feeder_arrow_height = max(28.0, mv_switchgear_y - feeder_arrow_y - 6.0)
+    symbols.append(
+        SldLayoutSymbol(
+            symbol_id="ring-in-feeder",
             symbol_type="external_feeder_arrow",
-            x=mv_bus_x1,
-            y=ac_frame_y + 18.0,
-            height=44.0,
+            x=ring_in_x,
+            y=feeder_arrow_y,
+            height=feeder_arrow_height + 6.0,
             text_lines=(topology.labels.to_switchgear,),
+            anchor_node_id=ring_in_node.node_id,
         )
     )
     symbols.append(
         SldLayoutSymbol(
-            symbol_id="mv-feeder-right",
+            symbol_id="ring-out-feeder",
             symbol_type="external_feeder_arrow",
-            x=mv_bus_x2,
-            y=ac_frame_y + 18.0,
-            height=44.0,
+            x=ring_out_x,
+            y=feeder_arrow_y,
+            height=feeder_arrow_height + 6.0,
             text_lines=(topology.labels.to_other_rmu,),
+            anchor_node_id=ring_out_node.node_id,
             meta={"align": "right"},
         )
     )
 
-    rmu_node = next(node for node in topology.nodes if node.node_type == "rmu")
-    tx_node = next(node for node in topology.nodes if node.node_type == "transformer")
-    lv_node = next(node for node in topology.nodes if node.node_type == "lv_busbar")
-
-    rmu_x = ac_frame_x + ac_frame_width / 2
-    rmu_y = mv_bus_y + 36.0
-    symbols.append(
-        SldLayoutSymbol(
-            symbol_id="rmu",
-            symbol_type="rmu",
-            x=rmu_x,
-            y=rmu_y,
-            width=92.0,
-            height=58.0,
-            text_lines=("RMU", f"{topology.equipment_ratings.rmu.rated_kv:.0f} kV"),
-            anchor_node_id=rmu_node.node_id,
-        )
-    )
-
-    tx_x = ac_frame_x + ac_frame_width / 2
-    tx_y = rmu_y + 122.0
     symbols.append(
         SldLayoutSymbol(
             symbol_id="transformer",
@@ -299,16 +328,15 @@ def build_sld_layout_plan(
             height=62.0,
             text_lines=(
                 "Transformer",
+                f"{summary.mv_voltage_kv:.1f}/{_fmt_lv_kv(summary.lv_voltage_v_ll)}",
                 f"{summary.transformer_rating_mva:.1f} MVA",
                 f"{summary.transformer_vector_group}, Uk={summary.transformer_uk_percent:.1f}%",
+                *((topology.equipment_ratings.transformer_cooling,) if topology.equipment_ratings.transformer_cooling else ()),
             ),
             anchor_node_id=tx_node.node_id,
         )
     )
 
-    lv_bus_y = tx_y + 94.0
-    lv_bus_x1 = ac_frame_x + 80.0
-    lv_bus_x2 = ac_frame_x + ac_frame_width - 80.0
     symbols.append(
         SldLayoutSymbol(
             symbol_id="lv-busbar",
@@ -316,14 +344,14 @@ def build_sld_layout_plan(
             x=lv_bus_x1,
             y=lv_bus_y,
             width=lv_bus_x2 - lv_bus_x1,
-            text_lines=("LV Busbar",),
+            text_lines=(f"LV Busbar {summary.lv_voltage_v_ll:.0f} V",),
             anchor_node_id=lv_node.node_id,
         )
     )
 
     pcs_nodes = sorted([node for node in topology.nodes if node.node_type == "pcs"], key=lambda item: item.feeder_index or 0)
-    dc_bus_nodes = sorted(
-        [node for node in topology.nodes if node.node_type == "dc_busbar"],
+    dc_interface_nodes = sorted(
+        [node for node in topology.nodes if node.node_type == "dc_interface"],
         key=lambda item: item.feeder_index or 0,
     )
     dc_block_nodes = sorted(
@@ -333,10 +361,9 @@ def build_sld_layout_plan(
 
     pcs_count = max(1, len(pcs_nodes))
     slot_width = (lv_bus_x2 - lv_bus_x1) / pcs_count
-    pcs_y = lv_bus_y + 54.0
 
-    busbar_pair_gap = config["busbar_gap"]
-    battery_bus_y = battery_frame_y + 84.0
+    interface_block_gap = config["busbar_gap"]
+    dc_interface_y = battery_frame_y + 84.0
     feeder_column_gap = min(28.0, slot_width * 0.16)
     dc_blocks_by_feeder: dict[int, list] = {}
     for dc_block in dc_block_nodes:
@@ -361,6 +388,7 @@ def build_sld_layout_plan(
                 height=config["pcs_height"],
                 text_lines=(
                     f"PCS-{index + 1}",
+                    f"F{index + 1}",
                     f"{summary.pcs_rating_kw_list[index]:.0f} kW",
                 ),
                 anchor_node_id=pcs_node.node_id,
@@ -371,37 +399,22 @@ def build_sld_layout_plan(
         feeder_left = lv_bus_x1 + slot_width * index + feeder_column_gap / 2
         feeder_right = lv_bus_x1 + slot_width * (index + 1) - feeder_column_gap / 2
         feeder_width = max(140.0, feeder_right - feeder_left)
-        dc_bus_node = dc_bus_nodes[index]
-        feeder_index = int(dc_bus_node.feeder_index or (index + 1))
-        if layout_profile == "compact":
-            dc_bus_width = min(feeder_width * 0.78, 180.0)
-            symbols.append(
-                SldLayoutSymbol(
-                    symbol_id=f"dc-busbar-{index + 1}",
-                    symbol_type="dc_busbar_single",
-                    x=center_x - dc_bus_width / 2,
-                    y=battery_bus_y,
-                    width=dc_bus_width,
-                    text_lines=("DC BUSBAR",),
-                    anchor_node_id=dc_bus_node.node_id,
-                    meta={"feeder_index": feeder_index},
-                )
+        dc_interface_node = dc_interface_nodes[index]
+        feeder_index = int(dc_interface_node.feeder_index or (index + 1))
+        interface_width = min(96.0, max(76.0, feeder_width * 0.46))
+        symbols.append(
+            SldLayoutSymbol(
+                symbol_id=f"dc-interface-{index + 1}",
+                symbol_type="dc_interface",
+                x=center_x - interface_width / 2,
+                y=dc_interface_y,
+                width=interface_width,
+                height=42.0,
+                text_lines=("DC Isolator/Fuse", f"F{feeder_index}"),
+                anchor_node_id=dc_interface_node.node_id,
+                meta={"feeder_index": feeder_index},
             )
-        else:
-            dc_bus_width = min(feeder_width * 0.78, 220.0)
-            symbols.append(
-                SldLayoutSymbol(
-                    symbol_id=f"dc-busbar-{index + 1}",
-                    symbol_type="dc_busbar_pair",
-                    x=center_x - dc_bus_width / 2,
-                    y=battery_bus_y,
-                    width=dc_bus_width,
-                    height=busbar_pair_gap,
-                    text_lines=("DC BUSBAR A", "DC BUSBAR B"),
-                    anchor_node_id=dc_bus_node.node_id,
-                    meta={"feeder_index": feeder_index},
-                )
-            )
+        )
 
         feeder_blocks = dc_blocks_by_feeder.get(feeder_index, [])
         local_count = len(feeder_blocks)
@@ -427,7 +440,7 @@ def build_sld_layout_plan(
         if grid_left + total_grid_width > grid_right_limit:
             grid_left = max(feeder_left + inner_padding, grid_right_limit - total_grid_width)
 
-        block_top = battery_bus_y + (42.0 if layout_profile == "compact" else busbar_pair_gap + 36.0)
+        block_top = dc_interface_y + 42.0 + interface_block_gap + 18.0
         for local_index, dc_block in enumerate(feeder_blocks):
             row = local_index // grid_cols
             col = local_index % grid_cols
@@ -454,14 +467,10 @@ def build_sld_layout_plan(
 
     connectors.append(
         SldLayoutConnector(
-            connector_id="mv-to-rmu",
-            points=((rmu_x, mv_bus_y), (rmu_x, rmu_y)),
-        )
-    )
-    connectors.append(
-        SldLayoutConnector(
-            connector_id="rmu-to-transformer",
-            points=((rmu_x, rmu_y + 58.0), (tx_x, tx_y)),
+            connector_id="mv-transformer-feeder",
+            points=((transformer_feeder_x, mv_switchgear_y + mv_switchgear_height), (tx_x, tx_y)),
+            style="thick",
+            label=transformer_feeder_node.display_name,
         )
     )
     connectors.append(
@@ -486,25 +495,28 @@ def build_sld_layout_plan(
                         (_symbol_center_x(target_symbol), _symbol_top_y(source_symbol)),
                         (_symbol_center_x(target_symbol), _symbol_top_y(target_symbol)),
                     ),
+                    label=f"F{edge.feeder_index}",
                 )
             )
-        elif edge.edge_type == "pcs_to_dc_busbar":
+        elif edge.edge_type == "pcs_to_dc_interface":
             connectors.append(
                 SldLayoutConnector(
                     connector_id=edge.edge_id,
                     points=(
                         (_symbol_center_x(source_symbol), _symbol_bottom_y(source_symbol)),
-                        (_symbol_center_x(source_symbol), _symbol_top_y(target_symbol)),
+                        (_symbol_center_x(target_symbol), _symbol_top_y(target_symbol)),
                     ),
                 )
             )
-        elif edge.edge_type == "dc_busbar_to_dc_block":
+        elif edge.edge_type == "dc_interface_to_dc_block":
+            source_y = _symbol_bottom_y(source_symbol) if source_symbol.symbol_type == "dc_interface" else _symbol_top_y(source_symbol)
             connectors.append(
                 SldLayoutConnector(
                     connector_id=edge.edge_id,
-                    points=(
-                        (_symbol_center_x(target_symbol), _dc_bus_connection_y(source_symbol)),
+                    points=_orthogonal_points(
+                        (_symbol_center_x(source_symbol), source_y),
                         (_symbol_center_x(target_symbol), _symbol_top_y(target_symbol)),
+                        bend_y=_symbol_top_y(target_symbol) - 18.0,
                     ),
                 )
             )

@@ -32,6 +32,7 @@
       "num_blocks": 1,
       "pcs_per_block": 4,
       "pcs_kw": 1250.0,
+      "block_size_mw": 5.0,
       "transformer_mva": 6.0,
       "dc_allocation_plan": [
         {
@@ -70,7 +71,7 @@
         "ct_va": 10.0
       },
       "lv_busbar": {
-        "rated_a": 2500.0,
+        "rated_a": 6300.0,
         "short_circuit_ka": 25.0
       },
       "cables": {
@@ -79,7 +80,7 @@
         "dc_cable_spec": "TBD"
       },
       "dc_fuse": {
-        "fuse_spec": "TBD"
+        "fuse_spec": "DC isolator/fuse"
       },
       "transformer_tap_range": "+/-2x2.5%",
       "transformer_cooling": "ONAN"

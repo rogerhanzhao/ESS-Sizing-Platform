@@ -29,7 +29,7 @@ def _project_settings() -> dict:
                 "ct_va": 10.0,
             },
             "lv_busbar": {
-                "rated_a": 2500.0,
+                "rated_a": 6300.0,
                 "short_circuit_ka": 25.0,
             },
             "cables": {
@@ -38,7 +38,7 @@ def _project_settings() -> dict:
                 "dc_cable_spec": "TBD",
             },
             "dc_fuse": {
-                "fuse_spec": "TBD",
+                "fuse_spec": "DC isolator/fuse",
             },
             "transformer_tap_range": "+/-2x2.5%",
             "transformer_cooling": "ONAN",
@@ -84,3 +84,24 @@ def test_sld_authoritative_builder_rejects_missing_project_engineering_inputs(sa
     assert "transformer_uk_percent" in message
     assert "dc_block_voltage_v" in message
     assert "equipment_ratings" in message
+
+
+def test_sld_authoritative_builder_rejects_missing_authoritative_ac_allocation(sample_excel_path):
+    ac_snapshot = _make_ac_snapshot(
+        output_overrides={
+            "dc_allocation_plan": None,
+            "dc_blocks_total_by_block": [4],
+            "dc_blocks_per_feeder_by_block": [[1, 1, 1, 1]],
+        }
+    )
+
+    with pytest.raises(SldInputValidationError) as exc_info:
+        build_sld_authoritative_result(
+            run_bundle=_build_run_bundle(sample_excel_path),
+            ac_snapshot=ac_snapshot,
+            options=SldRenderOptions(group_index=1),
+            project_settings=_project_settings(),
+            validation_mode="strict",
+        )
+
+    assert "dc_allocation_plan is required" in str(exc_info.value)

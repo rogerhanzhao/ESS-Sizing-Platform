@@ -65,9 +65,9 @@ def test_sld_busbar_groups_smoke(tmp_path: Path):
             "ct_va": 10.0,
         },
         "transformer": {"vector_group": "Dyn11", "uk_percent": 7.0, "cooling": "ONAN"},
-        "lv_busbar": {"rated_a": 2500.0, "short_circuit_ka": 25.0},
+        "lv_busbar": {"rated_a": 6300.0, "short_circuit_ka": 25.0},
         "cables": {"mv_cable_spec": "TBD", "lv_cable_spec": "TBD", "dc_cable_spec": "TBD"},
-        "dc_fuse": {"fuse_spec": "TBD"},
+        "dc_fuse": {"fuse_spec": "DC isolator/fuse"},
     }
 
     spec = build_sld_group_spec(stage13_output, ac_output, {}, sld_inputs, group_index=1)
@@ -77,6 +77,9 @@ def test_sld_busbar_groups_smoke(tmp_path: Path):
     assert warning is None or isinstance(warning, str)
 
     svg_text = svg_path.read_text(encoding="utf-8")
-    assert "DC BUSBAR A" in svg_text
-    assert "DC BUSBAR B" in svg_text
+    assert "RMU / MV Switchgear" in svg_text
+    assert "Transformer Feeder" in svg_text
+    assert "DC Interface" in svg_text
+    assert "DC Isolator/Fuse" in svg_text
+    assert "DC BUSBAR" not in svg_text
     assert "DC Combiner" not in svg_text

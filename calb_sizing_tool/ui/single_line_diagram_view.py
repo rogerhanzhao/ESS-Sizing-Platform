@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import streamlit as st
@@ -36,11 +37,27 @@ from calb_sizing_tool.services.sld_engineering_settings_service import (
     save_case_sld_project_settings,
 )
 from calb_sizing_tool.services.sld_pipeline_service import run_sld_pipeline_from_run_bundle
+from calb_sizing_tool.services.sld_renderer_mode_service import (
+    AVAILABLE_SLD_RENDERER_MODES,
+    sld_renderer_mode_label,
+)
 from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.state.project_state import get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state
 from calb_sizing_tool.state.workspace_state import get_workspace_context
 from calb_sizing_tool.ui.sld_inputs import render_electrical_inputs
+
+
+@dataclass(frozen=True)
+class SldRuntimeSourceStatus:
+    source: str
+    mode: str
+    is_authoritative: bool
+    force_draft: bool
+    message: str
+
+
+SLD_PREVIEW_CONTROL_SIGNATURE_KEY = "sld_preview_control_signature"
 
 
 def _resolve_ac_snapshot(
@@ -59,22 +76,111 @@ def _resolve_ac_snapshot(
     )
 
 
+def _positive_float(value: Any) -> float | None:
+    try:
+        resolved = float(value)
+    except Exception:
+        return None
+    if resolved <= 0:
+        return None
+    return resolved
+
+
 def _resolve_mv_nominal_voltage_kv(state, project_state, ac_snapshot: AcSnapshot | None) -> float | None:
+    """Resolve the single visible MV voltage used by SLD settings.
+
+    The resolved AC snapshot already carries the runtime source priority. Keep
+    that value ahead of Streamlit/session fallbacks so stale page state cannot
+    make RMU rated voltage drift away from the active MV value.
+    """
     candidates = [
-        st.session_state.get("poi_nominal_voltage_kv"),
+        ac_snapshot.output.get("mv_voltage_kv") if ac_snapshot and isinstance(ac_snapshot.output, dict) else None,
+        ac_snapshot.output.get("grid_kv") if ac_snapshot and isinstance(ac_snapshot.output, dict) else None,
+        ac_snapshot.output.get("mv_kv") if ac_snapshot and isinstance(ac_snapshot.output, dict) else None,
+        ac_snapshot.output.get("source_poi_nominal_voltage_kv") if ac_snapshot and isinstance(ac_snapshot.output, dict) else None,
+        ac_snapshot.inputs.get("grid_kv") if ac_snapshot and isinstance(ac_snapshot.inputs, dict) else None,
+        ac_snapshot.inputs.get("mv_kv") if ac_snapshot and isinstance(ac_snapshot.inputs, dict) else None,
+        ac_snapshot.inputs.get("poi_nominal_voltage_kv") if ac_snapshot and isinstance(ac_snapshot.inputs, dict) else None,
         (project_state.get("dc_inputs") or {}).get("poi_nominal_voltage_kv") if isinstance(project_state, dict) else None,
         getattr(state, "dc_inputs", {}).get("poi_nominal_voltage_kv") if hasattr(state, "dc_inputs") else None,
-        ac_snapshot.output.get("mv_voltage_kv") if ac_snapshot and isinstance(ac_snapshot.output, dict) else None,
-        ac_snapshot.inputs.get("grid_kv") if ac_snapshot and isinstance(ac_snapshot.inputs, dict) else None,
+        st.session_state.get("poi_nominal_voltage_kv"),
     ]
     for raw in candidates:
-        try:
-            value = float(raw)
-        except Exception:
-            continue
-        if value > 0:
+        value = _positive_float(raw)
+        if value is not None:
             return value
     return None
+
+
+def _resolve_sld_runtime_source_status(ac_resolution: AcSnapshotResolution) -> SldRuntimeSourceStatus:
+    source = str(ac_resolution.source or "none").strip() or "none"
+    if ac_resolution.snapshot is None:
+        return SldRuntimeSourceStatus(
+            source="none",
+            mode="unavailable",
+            is_authoritative=False,
+            force_draft=False,
+            message="SLD runtime data source: unavailable. Generate or restore run data before creating SLD.",
+        )
+    if source == "persisted_run_snapshot":
+        return SldRuntimeSourceStatus(
+            source=source,
+            mode="authoritative_persisted",
+            is_authoritative=True,
+            force_draft=False,
+            message="SLD runtime data source: authoritative persisted mode (persisted run AC snapshot).",
+        )
+    if source == "compatibility_adapter":
+        return SldRuntimeSourceStatus(
+            source=source,
+            mode="draft_session",
+            is_authoritative=False,
+            force_draft=True,
+            message=(
+                "SLD runtime data source: draft/session mode (compatibility adapter). "
+                "No persisted AC runtime snapshot was found for this run."
+            ),
+        )
+    if source == "session_cache":
+        return SldRuntimeSourceStatus(
+            source=source,
+            mode="draft_session",
+            is_authoritative=False,
+            force_draft=True,
+            message=(
+                "SLD runtime data source: draft/session mode (session cache fallback). "
+                "Persist the AC runtime snapshot before using formal SLD output."
+            ),
+        )
+    return SldRuntimeSourceStatus(
+        source=source,
+        mode="draft_session",
+        is_authoritative=False,
+        force_draft=True,
+        message=f"SLD runtime data source: draft/session mode ({source}).",
+    )
+
+
+def _build_sld_render_options(
+    *,
+    group_index: int,
+    theme: str,
+    compact_mode: bool,
+    draw_summary: bool,
+    user_override_mode: bool,
+    overrides,
+    runtime_status: SldRuntimeSourceStatus,
+    renderer_mode: str = "engineering_v2",
+) -> SldRenderOptions:
+    return SldRenderOptions(
+        group_index=group_index,
+        theme=theme,
+        compact_mode=compact_mode,
+        draw_summary=draw_summary,
+        override_mode=bool(user_override_mode or runtime_status.force_draft),
+        renderer_mode=renderer_mode,
+        overrides=overrides,
+    )
 
 
 def _validate_ac_snapshot_context(
@@ -128,7 +234,15 @@ def _resolve_ac_blocks_total(ac_output: dict) -> int:
     return max(0, value)
 
 
-def _execute_sld_pipeline(*, bundle, ac_snapshot, options, plugin_id: str, actor: str, project_settings: dict[str, Any] | None):
+def _execute_sld_pipeline(
+    *,
+    bundle,
+    ac_snapshot,
+    options,
+    plugin_id: str,
+    actor: str,
+    project_settings: dict[str, Any] | None = None,
+):
     return run_sld_pipeline_from_run_bundle(
         bundle,
         ac_snapshot=ac_snapshot,
@@ -142,6 +256,38 @@ def _execute_sld_pipeline(*, bundle, ac_snapshot, options, plugin_id: str, actor
 def _clear_sld_preview() -> None:
     st.session_state.pop("sld_artifacts", None)
     st.session_state.pop("sld_pipeline_meta", None)
+
+
+def _build_sld_preview_control_signature(
+    *,
+    run_id: str | None,
+    group_index: int,
+    theme: str,
+    compact_mode: bool,
+    draw_summary: bool,
+    renderer_mode: str,
+    plugin_id: str,
+) -> dict[str, Any]:
+    return {
+        "run_id": str(run_id or "").strip(),
+        "group_index": int(group_index),
+        "theme": str(theme or "").strip(),
+        "compact_mode": bool(compact_mode),
+        "draw_summary": bool(draw_summary),
+        "renderer_mode": str(renderer_mode or "").strip(),
+        "plugin_id": str(plugin_id or "").strip(),
+    }
+
+
+def _sync_sld_preview_control_signature(signature: dict[str, Any]) -> bool:
+    previous = st.session_state.get(SLD_PREVIEW_CONTROL_SIGNATURE_KEY)
+    st.session_state[SLD_PREVIEW_CONTROL_SIGNATURE_KEY] = dict(signature)
+    if previous is None or previous == signature:
+        return False
+    had_preview = bool(st.session_state.get("sld_artifacts") or st.session_state.get("sld_pipeline_meta"))
+    if had_preview:
+        _clear_sld_preview()
+    return had_preview
 
 
 def show() -> None:
@@ -190,12 +336,15 @@ def show() -> None:
     if ac_snapshot_issue:
         st.warning(ac_snapshot_issue)
         ac_snapshot = None
-    elif ac_resolution.source == "persisted_run_snapshot":
-        st.caption("AC runtime source: persisted run snapshot")
-    elif ac_resolution.source == "compatibility_adapter":
-        st.caption("AC runtime source: compatibility adapter")
-    elif ac_resolution.source == "session_cache":
-        st.caption("AC runtime source: session cache fallback")
+        ac_resolution = AcSnapshotResolution(snapshot=None, source="none")
+
+    runtime_status = _resolve_sld_runtime_source_status(ac_resolution)
+    if runtime_status.is_authoritative:
+        st.caption(runtime_status.message)
+    elif runtime_status.mode == "draft_session":
+        st.warning(runtime_status.message)
+    else:
+        st.warning(runtime_status.message)
 
     ac_blocks_total = _resolve_ac_blocks_total(ac_snapshot.output if ac_snapshot else {})
     mv_nominal_voltage_kv = _resolve_mv_nominal_voltage_kv(state, project_state, ac_snapshot)
@@ -212,6 +361,25 @@ def show() -> None:
     theme = display_col1.selectbox("Theme", ["dark", "light"], index=0)
     compact_mode = display_col2.checkbox("Compact Mode", value=False)
     draw_summary = display_col3.checkbox("Draw Summary", value=False)
+    renderer_mode_choices = list(AVAILABLE_SLD_RENDERER_MODES)
+    renderer_mode_default_index = 0
+    renderer_mode = st.selectbox(
+        "SLD Renderer Mode",
+        renderer_mode_choices,
+        index=renderer_mode_default_index,
+        format_func=sld_renderer_mode_label,
+        key="sld_renderer_mode_public_v2",
+        help=(
+            "Engineering V2 is the professional SLD candidate. Legacy compatibility "
+            "is kept only as an old-style comparison path."
+        ),
+    )
+    if renderer_mode == "legacy_server":
+        st.warning("Renderer mode: legacy compatibility path; this is an old-style comparison drawing.")
+    elif renderer_mode == "engineering_v2":
+        st.caption("Renderer mode: engineering_v2 professional SLD candidate.")
+    else:
+        st.warning("Renderer mode is retired and should only be used for internal compatibility checks.")
 
     if workspace.get("case_id"):
         if persisted_project_settings:
@@ -269,7 +437,13 @@ def show() -> None:
                 mv_nominal_voltage_kv=mv_nominal_voltage_kv,
             )
     else:
-        st.info("Formal mode uses strict runtime inputs only. Missing required engineering inputs will fail fast.")
+        if runtime_status.force_draft:
+            st.warning(
+                "Formal / strict generation is disabled for the current AC source. "
+                "Generate SLD will force draft/session mode until a persisted AC runtime snapshot exists."
+            )
+        else:
+            st.info("Formal mode uses strict runtime inputs only. Missing required engineering inputs will fail fast.")
 
     registry = get_plugin_registry()
     plugins = registry.list_by_artifact("sld_svg")
@@ -280,6 +454,17 @@ def show() -> None:
         index=0,
         format_func=lambda pid: registry.get(pid).metadata.plugin_name if registry.get(pid) else pid,
     )
+    preview_control_signature = _build_sld_preview_control_signature(
+        run_id=run_id,
+        group_index=group_index,
+        theme=theme,
+        compact_mode=compact_mode,
+        draw_summary=draw_summary,
+        renderer_mode=renderer_mode,
+        plugin_id=selected_plugin,
+    )
+    if _sync_sld_preview_control_signature(preview_control_signature):
+        st.info("SLD preview cleared because run, group, theme, renderer mode, or renderer plugin changed.")
 
     action_col1, action_col2 = st.columns([1.3, 1.0])
     generate_sld = action_col1.button("Generate SLD", disabled=not run_id or not ac_snapshot, use_container_width=True)
@@ -314,13 +499,15 @@ def show() -> None:
             return
         persisted_project_settings = load_run_sld_project_settings(bundle.run_id)
 
-        options = SldRenderOptions(
+        options = _build_sld_render_options(
             group_index=group_index,
             theme=theme,
             compact_mode=compact_mode,
             draw_summary=draw_summary,
-            override_mode=override_mode,
+            user_override_mode=override_mode,
+            renderer_mode=renderer_mode,
             overrides=overrides,
+            runtime_status=runtime_status,
         )
         try:
             execution = _execute_sld_pipeline(
@@ -350,11 +537,20 @@ def show() -> None:
             "topology_edges": len(execution.prepared.topology.edges),
             "run_id": bundle.run_id,
             "renderer_version": artifact_bundle.metadata.get("renderer_version"),
+            "renderer_mode": artifact_bundle.metadata.get("renderer_mode"),
+            "renderer_lineage": artifact_bundle.metadata.get("renderer_lineage"),
+            "preview_control_signature": preview_control_signature,
+            "formal_readiness": artifact_bundle.metadata.get("formal_readiness"),
+            "engineering_v2_graph_hash": artifact_bundle.metadata.get("engineering_v2_graph_hash"),
+            "engineering_v2_layout_hash": artifact_bundle.metadata.get("engineering_v2_layout_hash"),
             "artifact_mode": artifact_bundle.metadata.get("artifact_mode"),
             "input_hash": artifact_bundle.metadata.get("input_hash"),
             "topology_hash": artifact_bundle.metadata.get("topology_hash"),
             "render_spec_hash": artifact_bundle.metadata.get("render_spec_hash"),
             "artifact_hashes": artifact_hashes,
+            "ac_runtime_source": runtime_status.source,
+            "runtime_source_mode": runtime_status.mode,
+            "forced_draft_by_source": bool(runtime_status.force_draft),
         }
         if execution.prepared.validation_mode == "draft":
             st.warning("SLD draft generated and artifacts registered.")
@@ -370,15 +566,36 @@ def show() -> None:
             f"Run `{pipeline_meta.get('run_id')}` | Group {pipeline_meta.get('group_index')} | "
             f"Mode: {mode_label} | Topology {pipeline_meta.get('topology_nodes')} nodes / {pipeline_meta.get('topology_edges')} edges"
         )
+        if pipeline_meta.get("runtime_source_mode"):
+            st.caption(
+                f"Runtime source `{pipeline_meta.get('ac_runtime_source')}` | "
+                f"Source mode `{pipeline_meta.get('runtime_source_mode')}`"
+            )
         renderer_version = pipeline_meta.get("renderer_version") or "n/a"
+        renderer_mode = pipeline_meta.get("renderer_mode") or "n/a"
         st.caption(
-            f"Renderer `{renderer_version}` | Input hash `{pipeline_meta.get('input_hash')}` | "
+            f"Renderer `{renderer_version}` | Mode `{renderer_mode}` | Input hash `{pipeline_meta.get('input_hash')}` | "
             f"Topology hash `{pipeline_meta.get('topology_hash')}`"
         )
+        if renderer_mode == "engineering_v2":
+            st.caption(
+                f"Engineering V2 graph `{pipeline_meta.get('engineering_v2_graph_hash')}` | "
+                f"layout `{pipeline_meta.get('engineering_v2_layout_hash')}`"
+            )
         if pipeline_meta.get("validation_mode") == "draft":
             st.warning("This SLD was produced in draft mode and must not replace the formal baseline result.")
         elif pipeline_meta.get("draft_warnings"):
             st.info("No draft fallback was applied in formal mode.")
+        formal_readiness = pipeline_meta.get("formal_readiness") or {}
+        if formal_readiness:
+            if formal_readiness.get("ready"):
+                st.caption("Formal SLD readiness: passed.")
+            else:
+                st.warning(
+                    "Formal SLD readiness: not passed. "
+                    f"{formal_readiness.get('error_count', 0)} error(s), "
+                    f"{formal_readiness.get('warning_count', 0)} warning(s)."
+                )
         preview_run_id = str(pipeline_meta.get("run_id") or "").strip()
         if run_id and preview_run_id and preview_run_id != run_id:
             st.warning(

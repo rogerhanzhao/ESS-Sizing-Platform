@@ -66,9 +66,9 @@ def test_sld_pro_template_smoke(tmp_path: Path):
             "ct_va": 10.0,
         },
         "transformer": {"vector_group": "Dyn11", "uk_percent": 7.0, "cooling": "ONAN"},
-        "lv_busbar": {"rated_a": 2500.0, "short_circuit_ka": 25.0},
+        "lv_busbar": {"rated_a": 6300.0, "short_circuit_ka": 25.0},
         "cables": {"mv_cable_spec": "TBD", "lv_cable_spec": "TBD", "dc_cable_spec": "TBD"},
-        "dc_fuse": {"fuse_spec": "TBD"},
+        "dc_fuse": {"fuse_spec": "DC isolator/fuse"},
     }
 
     spec = build_sld_group_spec(stage13_output, ac_output, {}, sld_inputs, group_index=1)
@@ -81,6 +81,12 @@ def test_sld_pro_template_smoke(tmp_path: Path):
     assert svg_text.strip()
     assert "PCS&amp;MVT SKID (AC Block)" in svg_text
     assert "Battery Storage Bank" in svg_text
-    assert "DC BUSBAR" in svg_text
+    assert "RMU / MV Switchgear" in svg_text
+    assert "Ring In" in svg_text
+    assert "Transformer Feeder" in svg_text
+    assert "Ring Out" in svg_text
+    assert "DC Interface" in svg_text
+    assert "DC Isolator/Fuse" in svg_text
     assert "DC Block Allocation" in svg_text
+    assert "DC BUSBAR" not in svg_text
     assert "DC Combiner" not in svg_text

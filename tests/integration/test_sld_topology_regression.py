@@ -36,3 +36,12 @@ def test_sld_topology_regression():
     assert normalized_a["summary"]["feeder_count"] == 4
     assert normalized_a["summary"]["pcs_count"] == 4
     assert normalized_a["summary"]["dc_blocks_per_feeder"] == [1, 1, 1, 1]
+    node_types = {node["node_type"] for node in normalized_a["nodes"]}
+    edge_types = {edge["edge_type"] for edge in normalized_a["edges"]}
+    assert {"mv_ring_in", "mv_switchgear", "mv_transformer_feeder", "mv_ring_out"} <= node_types
+    assert "mv_bus" not in node_types
+    assert "dc_busbar" not in node_types
+    assert "pcs_to_dc_interface" in edge_types
+    assert "dc_interface_to_dc_block" in edge_types
+    assert "pcs_to_dc_busbar" not in edge_types
+    assert "dc_busbar_to_dc_block" not in edge_types

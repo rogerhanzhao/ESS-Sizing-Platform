@@ -20,11 +20,12 @@ from tests.integration.sld_regression_support import build_case_inputs, load_cas
 
 def generate_case_baselines(case_dir: Path) -> None:
     case_definition = load_case_definition(case_dir)
-    run_bundle, ac_snapshot, options = build_case_inputs(case_definition)
+    run_bundle, ac_snapshot, options, project_settings = build_case_inputs(case_definition)
     prepared = prepare_sld_pipeline_from_run_bundle(
         run_bundle,
         ac_snapshot=ac_snapshot,
         options=options,
+        project_settings=project_settings,
     )
     render_output = render_prepared_sld_pipeline(prepared)
     write_normalized_json(case_dir / "topology_baseline.json", normalize_sld_topology(prepared.topology))

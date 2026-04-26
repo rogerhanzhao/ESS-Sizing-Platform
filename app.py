@@ -22,7 +22,7 @@ import streamlit as st
 
 import calb_sizing_tool.config as config  # noqa: F401
 from calb_sizing_tool.state.auth_state import clear_auth_context, get_auth_context
-from calb_sizing_tool.state.workspace_state import get_workspace_context
+from calb_sizing_tool.state.workspace_state import apply_pending_navigation, get_workspace_context
 from calb_sizing_tool.ui.login_view import show as show_login
 
 
@@ -48,8 +48,7 @@ NAV_OPTIONS = [
     "Case Directory",
     "Run Registry",
 ]
-if st.session_state.get("main_nav") not in NAV_OPTIONS:
-    st.session_state["main_nav"] = "Workbench"
+apply_pending_navigation(NAV_OPTIONS, default_page="Workbench")
 
 with st.sidebar:
     logo_path = Path("calb_logo.png")

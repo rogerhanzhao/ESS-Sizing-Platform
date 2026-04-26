@@ -96,6 +96,7 @@ def render_electrical_inputs(
         contract = resolve_mv_rmu_voltage_contract(mv_nominal_voltage_kv=mv_nominal_voltage_kv)
     except ValueError:
         contract = None
+    visible_mv_kv = contract.authoritative_mv_voltage_kv if contract else None
     derived_rmu_kv = contract.rmu_rated_voltage_kv if contract else _safe_float(rmu_defaults.get("rated_kv"), 24.0)
 
     for stale_key in (
@@ -111,9 +112,9 @@ def render_electrical_inputs(
     st.session_state[rmu_derived_value_key] = derived_rmu_kv
 
     st.markdown("**RMU**")
-    if mv_nominal_voltage_kv is not None and float(mv_nominal_voltage_kv) > 0:
+    if visible_mv_kv is not None:
         st.caption(
-            f"RMU rated voltage follows POI / MV Voltage (kV): {float(mv_nominal_voltage_kv):.1f} kV. "
+            f"RMU rated voltage follows POI / MV Voltage (kV): {visible_mv_kv:.1f} kV. "
             "This page does not redefine a second RMU voltage input."
         )
     else:
@@ -235,8 +236,16 @@ def render_electrical_inputs(
     st.markdown("**DC Fuse**")
     fuse_spec = st.text_input(
         "Fuse spec",
-        value=fuse_defaults.get("fuse_spec") or "TBD",
+        value=fuse_defaults.get("fuse_spec") or "DC isolator/fuse",
         key=_key("dc_fuse_spec"),
+    )
+
+    st.markdown("**BESS**")
+    battery_cell_spec = st.text_input(
+        "BESS cell spec",
+        value=equipment_defaults.get("battery_cell_spec") or "",
+        key=_key("battery_cell_spec"),
+        help="Optional professional note field for the SLD left-side equipment list.",
     )
 
     return SldInputOverride(
@@ -270,5 +279,6 @@ def render_electrical_inputs(
             ),
             transformer_tap_range=tr_tap_range,
             transformer_cooling=tr_cooling,
+            battery_cell_spec=battery_cell_spec.strip() or None,
         ),
     )

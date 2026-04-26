@@ -119,6 +119,64 @@ def test_runtime_priority_prefers_compatibility_adapter_before_session_cache(mon
     assert resolution.snapshot.output["num_blocks"] == 2
     assert resolution.snapshot.inputs["grid_kv"] == 33.0
 
+    status = single_line_diagram_view._resolve_sld_runtime_source_status(resolution)
+    options = single_line_diagram_view._build_sld_render_options(
+        group_index=1,
+        theme="dark",
+        compact_mode=False,
+        draw_summary=False,
+        user_override_mode=False,
+        overrides=None,
+        runtime_status=status,
+    )
+
+    assert status.mode == "draft_session"
+    assert status.is_authoritative is False
+    assert status.force_draft is True
+    assert options.override_mode is True
+
+
+def test_runtime_priority_marks_session_cache_as_draft_when_only_session_is_available(monkeypatch, tmp_path):
+    db_url = f"sqlite:///{(tmp_path / 'session_priority.sqlite').as_posix()}"
+    run_id = "run-session-only"
+
+    session_state = {
+        "ac_inputs": {"grid_kv": 11.0},
+        "ac_output": {
+            "source_run_id": run_id,
+            "num_blocks": 1,
+            "pcs_per_block": 2,
+            "pcs_kw": 1250.0,
+        },
+    }
+    monkeypatch.setattr(single_line_diagram_view, "st", SimpleNamespace(session_state=session_state))
+
+    state = SimpleNamespace(ac_inputs={}, ac_results={})
+    project_state = {"ac_inputs": {}, "ac_results": {}}
+
+    resolution = single_line_diagram_view._resolve_ac_snapshot(
+        state,
+        project_state,
+        run_id=run_id,
+        db_url=db_url,
+    )
+    status = single_line_diagram_view._resolve_sld_runtime_source_status(resolution)
+    options = single_line_diagram_view._build_sld_render_options(
+        group_index=1,
+        theme="dark",
+        compact_mode=False,
+        draw_summary=False,
+        user_override_mode=False,
+        overrides=None,
+        runtime_status=status,
+    )
+
+    assert resolution.source == "session_cache"
+    assert status.mode == "draft_session"
+    assert status.is_authoritative is False
+    assert status.force_draft is True
+    assert options.override_mode is True
+
 
 def test_load_dc_run_bundle_ignores_ac_runtime_output_snapshots(sample_excel_path, tmp_path):
     db_url = f"sqlite:///{(tmp_path / 'dc_bundle_priority.sqlite').as_posix()}"

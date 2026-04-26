@@ -247,14 +247,14 @@ def build_topology_from_legacy_sld_group_spec(spec: SldGroupSpec) -> SldTopology
         "equipment_list.dc_block_voltage_v",
     )
 
-    dc_bus_nodes: list[dict[str, Any]] = []
+    dc_interface_nodes: list[dict[str, Any]] = []
     pcs_nodes: list[dict[str, Any]] = []
     dc_block_nodes: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
 
     for feeder_index, rating in enumerate(spec.pcs_rating_kw_list, start=1):
         pcs_node_id = f"G{spec.group_index:02d}-F{feeder_index:02d}-PCS-NODE"
-        dc_bus_node_id = f"G{spec.group_index:02d}-F{feeder_index:02d}-DC-BUSBAR-NODE"
+        dc_interface_node_id = f"G{spec.group_index:02d}-F{feeder_index:02d}-DC-INTERFACE-NODE"
         pcs_nodes.append(
             {
                 "node_id": pcs_node_id,
@@ -265,12 +265,12 @@ def build_topology_from_legacy_sld_group_spec(spec: SldGroupSpec) -> SldTopology
                 "attributes": {"pcs_rating_kw": rating},
             }
         )
-        dc_bus_nodes.append(
+        dc_interface_nodes.append(
             {
-                "node_id": dc_bus_node_id,
-                "node_type": "dc_busbar",
-                "display_name": f"DC Busbar {feeder_index}",
-                "equipment_id": f"G{spec.group_index:02d}-F{feeder_index:02d}-DC-BUSBAR",
+                "node_id": dc_interface_node_id,
+                "node_type": "dc_interface",
+                "display_name": f"DC Interface {feeder_index}",
+                "equipment_id": f"G{spec.group_index:02d}-F{feeder_index:02d}-DC-INTERFACE",
                 "feeder_index": feeder_index,
                 "attributes": {"dc_block_count": spec.dc_blocks_per_feeder[feeder_index - 1]},
             }
@@ -286,10 +286,10 @@ def build_topology_from_legacy_sld_group_spec(spec: SldGroupSpec) -> SldTopology
         )
         edges.append(
             {
-                "edge_id": f"G{spec.group_index:02d}-EDGE-PCS-DCBUS-{feeder_index:02d}",
-                "edge_type": "pcs_to_dc_busbar",
+                "edge_id": f"G{spec.group_index:02d}-EDGE-PCS-DCIF-{feeder_index:02d}",
+                "edge_type": "pcs_to_dc_interface",
                 "source_node_id": pcs_node_id,
-                "target_node_id": dc_bus_node_id,
+                "target_node_id": dc_interface_node_id,
                 "feeder_index": feeder_index,
             }
         )
@@ -315,9 +315,9 @@ def build_topology_from_legacy_sld_group_spec(spec: SldGroupSpec) -> SldTopology
             )
             edges.append(
                 {
-                    "edge_id": f"G{spec.group_index:02d}-EDGE-DCBUS-BLOCK-{dc_block_index:02d}",
-                    "edge_type": "dc_busbar_to_dc_block",
-                    "source_node_id": f"G{spec.group_index:02d}-F{feeder_index:02d}-DC-BUSBAR-NODE",
+                    "edge_id": f"G{spec.group_index:02d}-EDGE-DCIF-BLOCK-{dc_block_index:02d}",
+                    "edge_type": "dc_interface_to_dc_block",
+                    "source_node_id": f"G{spec.group_index:02d}-F{feeder_index:02d}-DC-INTERFACE-NODE",
                     "target_node_id": node_id,
                     "feeder_index": feeder_index,
                 }
@@ -357,16 +357,28 @@ def build_topology_from_legacy_sld_group_spec(spec: SldGroupSpec) -> SldTopology
         },
         "nodes": [
             {
-                "node_id": f"G{spec.group_index:02d}-MV-BUS",
-                "node_type": "mv_bus",
-                "display_name": "MV Bus",
+                "node_id": f"G{spec.group_index:02d}-MV-RING-IN",
+                "node_type": "mv_ring_in",
+                "display_name": "Ring In",
                 "attributes": {"mv_voltage_kv": spec.mv_voltage_kv},
             },
             {
                 "node_id": f"G{spec.group_index:02d}-RMU-NODE",
-                "node_type": "rmu",
-                "display_name": "RMU",
+                "node_type": "mv_switchgear",
+                "display_name": "RMU / MV Switchgear",
                 "equipment_id": f"G{spec.group_index:02d}-RMU",
+            },
+            {
+                "node_id": f"G{spec.group_index:02d}-MV-TX-FEEDER",
+                "node_type": "mv_transformer_feeder",
+                "display_name": "Transformer Feeder",
+                "equipment_id": f"G{spec.group_index:02d}-RMU",
+            },
+            {
+                "node_id": f"G{spec.group_index:02d}-MV-RING-OUT",
+                "node_type": "mv_ring_out",
+                "display_name": "Ring Out",
+                "attributes": {"mv_voltage_kv": spec.mv_voltage_kv},
             },
             {
                 "node_id": f"G{spec.group_index:02d}-TX-NODE",
@@ -381,11 +393,11 @@ def build_topology_from_legacy_sld_group_spec(spec: SldGroupSpec) -> SldTopology
                 "equipment_id": f"G{spec.group_index:02d}-LV-BUSBAR",
             },
             *pcs_nodes,
-            *dc_bus_nodes,
+            *dc_interface_nodes,
             *dc_block_nodes,
         ],
         "equipment": [
-            {"equipment_id": f"G{spec.group_index:02d}-RMU", "equipment_type": "rmu", "display_name": "RMU"},
+            {"equipment_id": f"G{spec.group_index:02d}-RMU", "equipment_type": "rmu", "display_name": "RMU / MV Switchgear"},
             {"equipment_id": f"G{spec.group_index:02d}-TX", "equipment_type": "transformer", "display_name": "Transformer"},
             {"equipment_id": f"G{spec.group_index:02d}-LV-BUSBAR", "equipment_type": "lv_busbar", "display_name": "LV Busbar"},
             *[
@@ -399,9 +411,9 @@ def build_topology_from_legacy_sld_group_spec(spec: SldGroupSpec) -> SldTopology
             ],
             *[
                 {
-                    "equipment_id": f"G{spec.group_index:02d}-F{feeder_index:02d}-DC-BUSBAR",
-                    "equipment_type": "dc_busbar",
-                    "display_name": f"DC Busbar {feeder_index}",
+                    "equipment_id": f"G{spec.group_index:02d}-F{feeder_index:02d}-DC-INTERFACE",
+                    "equipment_type": "dc_interface",
+                    "display_name": f"DC Interface {feeder_index}",
                     "feeder_index": feeder_index,
                 }
                 for feeder_index in range(1, spec.pcs_count + 1)
@@ -419,16 +431,28 @@ def build_topology_from_legacy_sld_group_spec(spec: SldGroupSpec) -> SldTopology
         ],
         "edges": [
             {
-                "edge_id": f"G{spec.group_index:02d}-EDGE-MV-RMU",
-                "edge_type": "mv_link",
-                "source_node_id": f"G{spec.group_index:02d}-MV-BUS",
+                "edge_id": f"G{spec.group_index:02d}-EDGE-RINGIN-RMU",
+                "edge_type": "ring_in_to_switchgear",
+                "source_node_id": f"G{spec.group_index:02d}-MV-RING-IN",
                 "target_node_id": f"G{spec.group_index:02d}-RMU-NODE",
             },
             {
-                "edge_id": f"G{spec.group_index:02d}-EDGE-RMU-TX",
-                "edge_type": "rmu_to_transformer",
+                "edge_id": f"G{spec.group_index:02d}-EDGE-RMU-TXFEEDER",
+                "edge_type": "switchgear_to_transformer_feeder",
                 "source_node_id": f"G{spec.group_index:02d}-RMU-NODE",
+                "target_node_id": f"G{spec.group_index:02d}-MV-TX-FEEDER",
+            },
+            {
+                "edge_id": f"G{spec.group_index:02d}-EDGE-TXFEEDER-TX",
+                "edge_type": "transformer_feeder_to_transformer",
+                "source_node_id": f"G{spec.group_index:02d}-MV-TX-FEEDER",
                 "target_node_id": f"G{spec.group_index:02d}-TX-NODE",
+            },
+            {
+                "edge_id": f"G{spec.group_index:02d}-EDGE-RMU-RINGOUT",
+                "edge_type": "switchgear_to_ring_out",
+                "source_node_id": f"G{spec.group_index:02d}-RMU-NODE",
+                "target_node_id": f"G{spec.group_index:02d}-MV-RING-OUT",
             },
             {
                 "edge_id": f"G{spec.group_index:02d}-EDGE-TX-LVBUS",

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 
 from calb_sizing_tool.schemas.common import CanonicalBaseModel
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
 from calb_sizing_tool.schemas.sld_render_input import SldCanonicalInput, SldInputOverride
+
+SldRendererMode = Literal["legacy_server", "topology_v1", "engineering_v2"]
 
 
 class AcSnapshot(CanonicalBaseModel):
@@ -29,6 +31,7 @@ class SldRenderOptions(CanonicalBaseModel):
     draw_summary: bool = False
     compact_mode: bool = False
     override_mode: bool = False
+    renderer_mode: SldRendererMode = "engineering_v2"
     overrides: SldInputOverride | None = None
 
 

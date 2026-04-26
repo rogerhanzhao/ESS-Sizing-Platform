@@ -2,8 +2,8 @@
   "edges": [
     {
       "attributes": {},
-      "edge_id": "G01-EDGE-MV-RMU",
-      "edge_type": "mv_link",
+      "edge_id": "G01-EDGE-RINGIN-RMU",
+      "edge_type": "ring_in_to_switchgear",
       "feeder_index": null,
       "labels": [
         {
@@ -19,17 +19,35 @@
           "text": "To Other RMU"
         }
       ],
-      "source_node_id": "G01-MV-BUS",
+      "source_node_id": "G01-MV-RING-IN",
       "target_node_id": "G01-RMU-NODE"
     },
     {
       "attributes": {},
-      "edge_id": "G01-EDGE-RMU-TX",
-      "edge_type": "rmu_to_transformer",
+      "edge_id": "G01-EDGE-RMU-TXFEEDER",
+      "edge_type": "switchgear_to_transformer_feeder",
       "feeder_index": null,
       "labels": [],
       "source_node_id": "G01-RMU-NODE",
+      "target_node_id": "G01-MV-TX-FEEDER"
+    },
+    {
+      "attributes": {},
+      "edge_id": "G01-EDGE-TXFEEDER-TX",
+      "edge_type": "transformer_feeder_to_transformer",
+      "feeder_index": null,
+      "labels": [],
+      "source_node_id": "G01-MV-TX-FEEDER",
       "target_node_id": "G01-TX-NODE"
+    },
+    {
+      "attributes": {},
+      "edge_id": "G01-EDGE-RMU-RINGOUT",
+      "edge_type": "switchgear_to_ring_out",
+      "feeder_index": null,
+      "labels": [],
+      "source_node_id": "G01-RMU-NODE",
+      "target_node_id": "G01-MV-RING-OUT"
     },
     {
       "attributes": {},
@@ -51,22 +69,22 @@
     },
     {
       "attributes": {},
-      "edge_id": "G01-F01-EDGE-PCS-DCBUS",
-      "edge_type": "pcs_to_dc_busbar",
+      "edge_id": "G01-F01-EDGE-PCS-DCIF",
+      "edge_type": "pcs_to_dc_interface",
       "feeder_index": 1,
       "labels": [],
       "source_node_id": "G01-F01-PCS-NODE",
-      "target_node_id": "G01-F01-DC-BUSBAR-NODE"
+      "target_node_id": "G01-F01-DC-INTERFACE-NODE"
     },
     {
       "attributes": {
         "local_block_index": 1
       },
       "edge_id": "G01-F01-DC-BLOCK-01-EDGE",
-      "edge_type": "dc_busbar_to_dc_block",
+      "edge_type": "dc_interface_to_dc_block",
       "feeder_index": 1,
       "labels": [],
-      "source_node_id": "G01-F01-DC-BUSBAR-NODE",
+      "source_node_id": "G01-F01-DC-INTERFACE-NODE",
       "target_node_id": "G01-F01-DC-BLOCK-01-NODE"
     },
     {
@@ -80,22 +98,22 @@
     },
     {
       "attributes": {},
-      "edge_id": "G01-F02-EDGE-PCS-DCBUS",
-      "edge_type": "pcs_to_dc_busbar",
+      "edge_id": "G01-F02-EDGE-PCS-DCIF",
+      "edge_type": "pcs_to_dc_interface",
       "feeder_index": 2,
       "labels": [],
       "source_node_id": "G01-F02-PCS-NODE",
-      "target_node_id": "G01-F02-DC-BUSBAR-NODE"
+      "target_node_id": "G01-F02-DC-INTERFACE-NODE"
     },
     {
       "attributes": {
         "local_block_index": 1
       },
       "edge_id": "G01-F02-DC-BLOCK-01-EDGE",
-      "edge_type": "dc_busbar_to_dc_block",
+      "edge_type": "dc_interface_to_dc_block",
       "feeder_index": 2,
       "labels": [],
-      "source_node_id": "G01-F02-DC-BUSBAR-NODE",
+      "source_node_id": "G01-F02-DC-INTERFACE-NODE",
       "target_node_id": "G01-F02-DC-BLOCK-01-NODE"
     },
     {
@@ -109,22 +127,22 @@
     },
     {
       "attributes": {},
-      "edge_id": "G01-F03-EDGE-PCS-DCBUS",
-      "edge_type": "pcs_to_dc_busbar",
+      "edge_id": "G01-F03-EDGE-PCS-DCIF",
+      "edge_type": "pcs_to_dc_interface",
       "feeder_index": 3,
       "labels": [],
       "source_node_id": "G01-F03-PCS-NODE",
-      "target_node_id": "G01-F03-DC-BUSBAR-NODE"
+      "target_node_id": "G01-F03-DC-INTERFACE-NODE"
     },
     {
       "attributes": {
         "local_block_index": 1
       },
       "edge_id": "G01-F03-DC-BLOCK-01-EDGE",
-      "edge_type": "dc_busbar_to_dc_block",
+      "edge_type": "dc_interface_to_dc_block",
       "feeder_index": 3,
       "labels": [],
-      "source_node_id": "G01-F03-DC-BUSBAR-NODE",
+      "source_node_id": "G01-F03-DC-INTERFACE-NODE",
       "target_node_id": "G01-F03-DC-BLOCK-01-NODE"
     },
     {
@@ -138,22 +156,22 @@
     },
     {
       "attributes": {},
-      "edge_id": "G01-F04-EDGE-PCS-DCBUS",
-      "edge_type": "pcs_to_dc_busbar",
+      "edge_id": "G01-F04-EDGE-PCS-DCIF",
+      "edge_type": "pcs_to_dc_interface",
       "feeder_index": 4,
       "labels": [],
       "source_node_id": "G01-F04-PCS-NODE",
-      "target_node_id": "G01-F04-DC-BUSBAR-NODE"
+      "target_node_id": "G01-F04-DC-INTERFACE-NODE"
     },
     {
       "attributes": {
         "local_block_index": 1
       },
       "edge_id": "G01-F04-DC-BLOCK-01-EDGE",
-      "edge_type": "dc_busbar_to_dc_block",
+      "edge_type": "dc_interface_to_dc_block",
       "feeder_index": 4,
       "labels": [],
-      "source_node_id": "G01-F04-DC-BUSBAR-NODE",
+      "source_node_id": "G01-F04-DC-INTERFACE-NODE",
       "target_node_id": "G01-F04-DC-BLOCK-01-NODE"
     }
   ],
@@ -168,7 +186,7 @@
         "short_circuit_ka_3s": 25.0
       },
       "dc_block_index": null,
-      "display_name": "RMU",
+      "display_name": "RMU / MV Switchgear",
       "equipment_id": "G01-RMU",
       "equipment_type": "rmu",
       "feeder_index": null
@@ -191,7 +209,7 @@
     },
     {
       "attributes": {
-        "rated_a": 2500.0,
+        "rated_a": 6300.0,
         "short_circuit_ka": 25.0
       },
       "dc_block_index": null,
@@ -214,12 +232,13 @@
     {
       "attributes": {
         "dc_block_count": 1,
-        "dc_block_voltage_v": 1500.0
+        "dc_block_voltage_v": 1500.0,
+        "fuse_spec": "DC isolator/fuse"
       },
       "dc_block_index": null,
-      "display_name": "DC Busbar 1",
-      "equipment_id": "G01-F01-DC-BUSBAR",
-      "equipment_type": "dc_busbar",
+      "display_name": "DC Interface 1",
+      "equipment_id": "G01-F01-DC-INTERFACE",
+      "equipment_type": "dc_interface",
       "feeder_index": 1
     },
     {
@@ -247,12 +266,13 @@
     {
       "attributes": {
         "dc_block_count": 1,
-        "dc_block_voltage_v": 1500.0
+        "dc_block_voltage_v": 1500.0,
+        "fuse_spec": "DC isolator/fuse"
       },
       "dc_block_index": null,
-      "display_name": "DC Busbar 2",
-      "equipment_id": "G01-F02-DC-BUSBAR",
-      "equipment_type": "dc_busbar",
+      "display_name": "DC Interface 2",
+      "equipment_id": "G01-F02-DC-INTERFACE",
+      "equipment_type": "dc_interface",
       "feeder_index": 2
     },
     {
@@ -280,12 +300,13 @@
     {
       "attributes": {
         "dc_block_count": 1,
-        "dc_block_voltage_v": 1500.0
+        "dc_block_voltage_v": 1500.0,
+        "fuse_spec": "DC isolator/fuse"
       },
       "dc_block_index": null,
-      "display_name": "DC Busbar 3",
-      "equipment_id": "G01-F03-DC-BUSBAR",
-      "equipment_type": "dc_busbar",
+      "display_name": "DC Interface 3",
+      "equipment_id": "G01-F03-DC-INTERFACE",
+      "equipment_type": "dc_interface",
       "feeder_index": 3
     },
     {
@@ -313,12 +334,13 @@
     {
       "attributes": {
         "dc_block_count": 1,
-        "dc_block_voltage_v": 1500.0
+        "dc_block_voltage_v": 1500.0,
+        "fuse_spec": "DC isolator/fuse"
       },
       "dc_block_index": null,
-      "display_name": "DC Busbar 4",
-      "equipment_id": "G01-F04-DC-BUSBAR",
-      "equipment_type": "dc_busbar",
+      "display_name": "DC Interface 4",
+      "equipment_id": "G01-F04-DC-INTERFACE",
+      "equipment_type": "dc_interface",
       "feeder_index": 4
     },
     {
@@ -334,16 +356,17 @@
     }
   ],
   "equipment_ratings": {
+    "battery_cell_spec": null,
     "cables": {
       "dc_cable_spec": "TBD",
       "lv_cable_spec": "TBD",
       "mv_cable_spec": "TBD"
     },
     "dc_fuse": {
-      "fuse_spec": "TBD"
+      "fuse_spec": "DC isolator/fuse"
     },
     "lv_busbar": {
-      "rated_a": 2500.0,
+      "rated_a": 6300.0,
       "short_circuit_ka": 25.0
     },
     "rmu": {
@@ -364,11 +387,10 @@
   "nodes": [
     {
       "attributes": {
-        "group_index": 1,
         "mv_voltage_kv": 33.0
       },
       "dc_block_index": null,
-      "display_name": "MV Bus",
+      "display_name": "Ring In",
       "equipment_id": null,
       "feeder_index": null,
       "labels": [
@@ -377,23 +399,17 @@
           "scope": "mv",
           "semantic_key": "to_switchgear",
           "text": "To Switchgear"
-        },
-        {
-          "label_id": "G01-LABEL-TO-OTHER-RMU",
-          "scope": "mv",
-          "semantic_key": "to_other_rmu",
-          "text": "To Other RMU"
         }
       ],
-      "node_id": "G01-MV-BUS",
-      "node_type": "mv_bus"
+      "node_id": "G01-MV-RING-IN",
+      "node_type": "mv_ring_in"
     },
     {
       "attributes": {
         "mv_voltage_kv": 33.0
       },
       "dc_block_index": null,
-      "display_name": "RMU",
+      "display_name": "RMU / MV Switchgear",
       "equipment_id": "G01-RMU",
       "feeder_index": null,
       "labels": [
@@ -411,7 +427,38 @@
         }
       ],
       "node_id": "G01-RMU-NODE",
-      "node_type": "rmu"
+      "node_type": "mv_switchgear"
+    },
+    {
+      "attributes": {
+        "mv_voltage_kv": 33.0
+      },
+      "dc_block_index": null,
+      "display_name": "Transformer Feeder",
+      "equipment_id": "G01-RMU",
+      "feeder_index": null,
+      "labels": [],
+      "node_id": "G01-MV-TX-FEEDER",
+      "node_type": "mv_transformer_feeder"
+    },
+    {
+      "attributes": {
+        "mv_voltage_kv": 33.0
+      },
+      "dc_block_index": null,
+      "display_name": "Ring Out",
+      "equipment_id": null,
+      "feeder_index": null,
+      "labels": [
+        {
+          "label_id": "G01-LABEL-TO-OTHER-RMU",
+          "scope": "mv",
+          "semantic_key": "to_other_rmu",
+          "text": "To Other RMU"
+        }
+      ],
+      "node_id": "G01-MV-RING-OUT",
+      "node_type": "mv_ring_out"
     },
     {
       "attributes": {
@@ -463,19 +510,19 @@
         "dc_block_count": 1
       },
       "dc_block_index": null,
-      "display_name": "DC Busbar 1",
-      "equipment_id": "G01-F01-DC-BUSBAR",
+      "display_name": "DC Interface 1",
+      "equipment_id": "G01-F01-DC-INTERFACE",
       "feeder_index": 1,
       "labels": [
         {
-          "label_id": "G01-F01-DC-BUSBAR-LABEL",
-          "scope": "dc_busbar",
+          "label_id": "G01-F01-DC-INTERFACE-LABEL",
+          "scope": "dc_interface",
           "semantic_key": "dc_blocks_per_feeder",
           "text": "1 DC blocks"
         }
       ],
-      "node_id": "G01-F01-DC-BUSBAR-NODE",
-      "node_type": "dc_busbar"
+      "node_id": "G01-F01-DC-INTERFACE-NODE",
+      "node_type": "dc_interface"
     },
     {
       "attributes": {
@@ -521,19 +568,19 @@
         "dc_block_count": 1
       },
       "dc_block_index": null,
-      "display_name": "DC Busbar 2",
-      "equipment_id": "G01-F02-DC-BUSBAR",
+      "display_name": "DC Interface 2",
+      "equipment_id": "G01-F02-DC-INTERFACE",
       "feeder_index": 2,
       "labels": [
         {
-          "label_id": "G01-F02-DC-BUSBAR-LABEL",
-          "scope": "dc_busbar",
+          "label_id": "G01-F02-DC-INTERFACE-LABEL",
+          "scope": "dc_interface",
           "semantic_key": "dc_blocks_per_feeder",
           "text": "1 DC blocks"
         }
       ],
-      "node_id": "G01-F02-DC-BUSBAR-NODE",
-      "node_type": "dc_busbar"
+      "node_id": "G01-F02-DC-INTERFACE-NODE",
+      "node_type": "dc_interface"
     },
     {
       "attributes": {
@@ -579,19 +626,19 @@
         "dc_block_count": 1
       },
       "dc_block_index": null,
-      "display_name": "DC Busbar 3",
-      "equipment_id": "G01-F03-DC-BUSBAR",
+      "display_name": "DC Interface 3",
+      "equipment_id": "G01-F03-DC-INTERFACE",
       "feeder_index": 3,
       "labels": [
         {
-          "label_id": "G01-F03-DC-BUSBAR-LABEL",
-          "scope": "dc_busbar",
+          "label_id": "G01-F03-DC-INTERFACE-LABEL",
+          "scope": "dc_interface",
           "semantic_key": "dc_blocks_per_feeder",
           "text": "1 DC blocks"
         }
       ],
-      "node_id": "G01-F03-DC-BUSBAR-NODE",
-      "node_type": "dc_busbar"
+      "node_id": "G01-F03-DC-INTERFACE-NODE",
+      "node_type": "dc_interface"
     },
     {
       "attributes": {
@@ -637,19 +684,19 @@
         "dc_block_count": 1
       },
       "dc_block_index": null,
-      "display_name": "DC Busbar 4",
-      "equipment_id": "G01-F04-DC-BUSBAR",
+      "display_name": "DC Interface 4",
+      "equipment_id": "G01-F04-DC-INTERFACE",
       "feeder_index": 4,
       "labels": [
         {
-          "label_id": "G01-F04-DC-BUSBAR-LABEL",
-          "scope": "dc_busbar",
+          "label_id": "G01-F04-DC-INTERFACE-LABEL",
+          "scope": "dc_interface",
           "semantic_key": "dc_blocks_per_feeder",
           "text": "1 DC blocks"
         }
       ],
-      "node_id": "G01-F04-DC-BUSBAR-NODE",
-      "node_type": "dc_busbar"
+      "node_id": "G01-F04-DC-INTERFACE-NODE",
+      "node_type": "dc_interface"
     },
     {
       "attributes": {
