@@ -124,5 +124,7 @@ def run_stage3(stage1: Stage1Result, stage2: Stage2Result, bundle: DcExcelMaster
         chosen_rte_c_rate=chosen_rte_c_rate,
         rte_adjust_pp=stage1.rte_curve_adjust_pp,
         rte_monotonic_enforce=rte_monotonic_enforce,
+        dc_usable_bol_mwh=dc_usable_bol_mwh or 0.0,
+        dc_usable_cod_mwh=dc_usable_cod_mwh or 0.0,
     )
     return Stage3Result(rows=rows, meta=meta)

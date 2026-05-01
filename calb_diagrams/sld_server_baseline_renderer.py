@@ -494,8 +494,7 @@ def _draw_dc_switch(
         end_anchor=(x, upper_contact_y),
     )
     dwg.add(dwg.circle(center=(x, upper_contact_y), r=contact_r, class_="outline"))
-    dwg.add(dwg.circle(center=(x, lower_contact_y), r=contact_r, class_="outline"))
-    dwg.add(dwg.line((x, upper_contact_y), (x + blade_dx, lower_contact_y - contact_r), class_="thin"))
+    dwg.add(dwg.line((x, upper_contact_y), (x + blade_dx, lower_contact_y), class_="thin"))
     dwg.add(dwg.line((x - 5.0, lower_contact_y), (x + 5.0, lower_contact_y), class_="thin"))
     _draw_line_anchored(
         dwg,

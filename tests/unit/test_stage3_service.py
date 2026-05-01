@@ -18,3 +18,6 @@ def test_stage3_service_selects_profiles_and_returns_full_life_curve():
     assert stage3.meta.soh_profile_id > 0
     assert stage3.meta.rte_profile_id > 0
     assert stage3.rows[0].poi_usable_energy_mwh > 0
+    assert stage3.meta.dc_usable_bol_mwh > 0
+    assert stage3.meta.dc_usable_cod_mwh > 0
+    assert stage3.meta.dc_usable_cod_mwh < stage3.meta.dc_usable_bol_mwh

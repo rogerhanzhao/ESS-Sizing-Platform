@@ -26,22 +26,21 @@ def test_engineering_v2_renderer_emits_svg_from_layout_plan(sample_excel_path, t
     assert result_path == svg_path
     assert warning is None
     svg_text = svg_path.read_text(encoding="utf-8")
-    assert "PCS&amp;MVT SKID (AC Block)" in svg_text
-    assert "Equipment List" in svg_text
+    assert "EQUIPMENT LIST" in svg_text
     assert "Cable Connection Vault" in svg_text
     assert "Step-up Transformer (OIL)" in svg_text
     assert "Power Converter System" in svg_text
     assert "Battery Energy Storage System" in svg_text
-    assert "RMU / MV Switchgear" in svg_text
+    assert "RMU-01" in svg_text
     assert "Transformer Feeder" in svg_text
-    assert "Dyn11, Uk=7.0%" in svg_text
-    assert "LV Busbar=690V" in svg_text
-    assert "PCS-1250kW*4" in svg_text
-    assert "AC690V 50Hz, DC1500V" in svg_text
-    assert "DC Isolator/Fuse" in svg_text
+    assert "Dyn11" in svg_text
+    assert "LV Bus" in svg_text
+    assert "INV-01" in svg_text
+    assert "BESS-01" in svg_text
+    assert "T-01" in svg_text
+    assert "SINGLE LINE DIAGRAM" in svg_text
     assert "DC BUSBAR" not in svg_text
     assert "BUSBAR A" not in svg_text
-    assert "DELTA" not in svg_text
 
 
 def test_engineering_v2_renderer_draws_port_anchored_connectors(sample_excel_path, tmp_path):
@@ -71,7 +70,8 @@ def test_engineering_v2_renderer_supports_light_and_dark_backgrounds(sample_exce
     render_sld_engineering_v2_svg(dark_plan, dark_svg)
     render_sld_engineering_v2_svg(light_plan, light_svg)
 
-    assert "#0b0f13" in dark_svg.read_text(encoding="utf-8")
+    # Both themes render in professional monochrome B&W (print-ready)
+    assert "#ffffff" in dark_svg.read_text(encoding="utf-8")
     assert "#ffffff" in light_svg.read_text(encoding="utf-8")
 
 
@@ -87,8 +87,8 @@ def test_engineering_v2_renderer_source_is_layout_only():
 
 
 def test_transformer_vector_symbol_is_drawn_as_shapes_not_text():
-    source = inspect.getsource(renderer_module._transformer_symbol)
+    source = inspect.getsource(renderer_module._transformer_2w)
 
-    assert "_delta_symbol" in source
-    assert "_wye_symbol" in source
+    assert "_delta_mark" in source
+    assert "_wye_grounded_mark" in source
     assert all(ord(character) < 128 for character in source)

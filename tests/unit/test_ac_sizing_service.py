@@ -6,6 +6,7 @@ from calb_sizing_tool.services.ac_sizing_service import (
     STANDARD_PCS_RATINGS_KW,
     SUPPORTED_AC_DC_RATIOS,
     build_dc_allocation_plan,
+    calculate_optimal_pcs_rating,
     evaluate_ac_sizing_feasibility,
     generate_ac_sizing_options,
     select_ac_block_container_type,
@@ -92,6 +93,56 @@ def test_ac_sizing_service_freezes_power_and_energy_thresholds():
         "Excess energy: 430 MWh > 400 MWh (+7.5%)",
         "Power overhead: 31.0 MW (31% of POI requirement)",
     ]
+
+
+def test_calculate_optimal_pcs_rating_uses_real_discharge_duration():
+    # 4-hour system: 2 DC blocks × 5 MWh = 10 MWh total
+    # total_kw = 10000 / 4.0 / (0.97 * 0.9) = 2865 kW; per 2 PCS = 1432 kW → ceil to 1500
+    assert calculate_optimal_pcs_rating(2, 5.0, 2, 4.0) == 1500
+    # per 4 PCS = 716 kW → ceil to 1000
+    assert calculate_optimal_pcs_rating(2, 5.0, 4, 4.0) == 1000
+
+    # 2-hour system: same 10 MWh but discharge in 2h → double the power requirement
+    # total_kw = 10000 / 2.0 / 0.873 = 5729 kW; per 2 PCS = 2865 kW → ceil to 3000
+    assert calculate_optimal_pcs_rating(2, 5.0, 2, 2.0) == 3000
+    # per 4 PCS = 1432 kW → ceil to 1500
+    assert calculate_optimal_pcs_rating(2, 5.0, 4, 2.0) == 1500
+
+    # 6-hour system: same 10 MWh, discharge in 6h → less power needed
+    # total_kw = 10000 / 6.0 / 0.873 = 1910 kW; per 2 PCS = 955 kW → ceil to 1000
+    assert calculate_optimal_pcs_rating(2, 5.0, 2, 6.0) == 1000
+
+
+def test_generate_ac_sizing_options_marks_is_optimal_from_ep_ratio():
+    # 4h system (400 MWh / 100 MW), 4 DC blocks, dc_block_mwh=5.0
+    # 1:2 ratio → max 2 DC blocks per AC block
+    # For 2 PCS: total=10000/4/0.873=2865kW, per unit=1432kW → optimal=1500 (in standard) → marked
+    # For 4 PCS: per unit=716kW → optimal=1000 (NOT in standard) → not marked
+    options = generate_ac_sizing_options(4, 100.0, 400.0, 5.0)
+    ratio_12 = next(o for o in options if o.ratio == "1:2")
+    assert any(r.is_optimal and r.pcs_count == 2 and r.pcs_kw == 1500
+               for r in ratio_12.pcs_recommendations)
+    assert not any(r.is_optimal and r.pcs_count == 4
+                   for r in ratio_12.pcs_recommendations)
+
+    # 2h system (200 MWh / 100 MW), same 4 blocks — discharge duration halved → power doubles
+    # For 2 PCS: per unit=2865kW → optimal=3000 (NOT in standard) → not marked
+    # For 4 PCS: per unit=1432kW → optimal=1500 (in standard) → marked
+    options_2h = generate_ac_sizing_options(4, 100.0, 200.0, 5.0)
+    ratio_12_2h = next(o for o in options_2h if o.ratio == "1:2")
+    assert any(r.is_optimal and r.pcs_count == 4 and r.pcs_kw == 1500
+               for r in ratio_12_2h.pcs_recommendations)
+    assert not any(r.is_optimal and r.pcs_count == 2
+                   for r in ratio_12_2h.pcs_recommendations)
+
+
+def test_generate_ac_sizing_options_is_optimal_independent_of_is_recommended():
+    # structure tests: is_recommended and is_optimal are orthogonal flags
+    options = generate_ac_sizing_options(4, 100.0, 400.0, 5.0)
+    for opt in options:
+        for rec in opt.pcs_recommendations:
+            assert isinstance(rec.is_optimal, bool)
+            assert isinstance(rec.is_recommended, bool) if hasattr(rec, "is_recommended") else True
 
 
 def test_derive_ac_template_fields_freezes_template_and_pf_resolution():

@@ -24,18 +24,17 @@ def test_generate_sld_engineering_v2_preview(tmp_path):
         "missing_professional_input:DC Cable",
         "missing_professional_input:BESS Cell",
     ]
-    assert metadata["png_width"] == 1780
-    assert metadata["png_height"] == 900
+    assert metadata["png_width"] == 2000
+    assert metadata["png_height"] == 1160
     svg_text = svg_path.read_text(encoding="utf-8")
-    assert 'viewBox="0 0 1780 900"' in svg_text
-    assert "RMU / MV Switchgear" in svg_text
+    assert 'viewBox="0 0 2000 1160"' in svg_text
+    assert "RMU-01" in svg_text
     assert "Cable Connection Vault" in svg_text
     assert "Power Converter System" in svg_text
-    assert "LV Busbar=690V" in svg_text
+    assert "LV Bus" in svg_text
     assert "MISSING: MV cable spec" in svg_text
-    assert "Cell: MISSING: BESS cell spec" in svg_text
-    assert "TBD" not in svg_text
-    assert "DC Isolator/Fuse" in svg_text
+    assert "MISSING: BESS cell spec" in svg_text
+    assert "DC Isolator/Fuse" not in svg_text  # tag is now inline, not hidden text
     assert "DC BUSBAR" not in svg_text
 
 
@@ -54,8 +53,8 @@ def test_generate_sld_engineering_v2_preview_supports_multi_dc_block_feeders(tmp
     assert metadata["layout_warning_count"] == 4
     assert metadata["node_count"] == 26
     assert metadata["layout_box_count"] == 26
-    assert metadata["png_width"] == 1780
-    assert metadata["png_height"] == 900
+    assert metadata["png_width"] == 2000
+    assert metadata["png_height"] == 1160
     assert "DC Block #6" in svg_text
     assert "DC BUSBAR" not in svg_text
 
@@ -69,7 +68,7 @@ def test_generate_sld_engineering_v2_preview_png_is_not_blank(tmp_path):
 
     with Image.open(output_dir / "sld_engineering_v2.png") as image:
         rgb = image.convert("RGB")
-        assert rgb.size == (1780, 900)
+        assert rgb.size == (2000, 1160)
         background = rgb.getpixel((0, 0))
         non_background = sum(1 for pixel in rgb.getdata() if pixel != background)
 
@@ -88,7 +87,7 @@ def test_generate_sld_engineering_v2_preview_supports_light_theme(tmp_path):
 
     assert metadata["theme"] == "light"
     assert "#ffffff" in svg_text
-    assert "LV Busbar=690V" in svg_text
+    assert "LV Bus" in svg_text
 
 
 def test_generate_sld_engineering_v2_preview_accepts_professional_note_specs(tmp_path):

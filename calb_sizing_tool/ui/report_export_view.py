@@ -27,6 +27,9 @@ from calb_sizing_tool.reporting.report_v2 import export_report_v2_1
 from calb_sizing_tool.runtime_paths import get_outputs_dir
 from calb_sizing_tool.state.project_state import init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state
+from calb_sizing_tool.state.workspace_state import get_workspace_context
+from calb_sizing_tool.services.sld_data_source_service import load_persisted_ac_snapshot
+from calb_sizing_tool.services.artifact_service import load_artifact_bytes_from_db
 
 
 def _extract_block_identity(stage2_raw):
@@ -40,64 +43,111 @@ def _extract_block_identity(stage2_raw):
     return block_code, block_name
 
 
+def _extract_artifact_bytes(artifact_bundle) -> tuple[bytes | None, bytes | None]:
+    """Extract (png_bytes, svg_bytes) from a DiagramArtifactBundle stored in session state.
+
+    The bundle's .artifacts is a list[dict] with keys artifact_kind / content / file_name.
+    Returns (None, None) if the bundle is absent or has no matching items.
+    """
+    png_bytes = svg_bytes = None
+    if artifact_bundle is None:
+        return png_bytes, svg_bytes
+    artifact_list = getattr(artifact_bundle, "artifacts", None)
+    if not isinstance(artifact_list, list):
+        return png_bytes, svg_bytes
+    for item in artifact_list:
+        if not isinstance(item, dict):
+            continue
+        kind = item.get("artifact_kind", "")
+        content = item.get("content")
+        if not content:
+            continue
+        if kind.endswith("_png") and png_bytes is None:
+            png_bytes = content
+        elif kind.endswith("_svg") and svg_bytes is None:
+            svg_bytes = content
+    return png_bytes, svg_bytes
+
+
 def show():
     state = init_shared_state()
     init_project_state()
     dc_results = state.dc_results or {}
     ac_results = state.ac_results or {}
-    diagram_results = st.session_state.get("diagram_results", {}) or {}
-    layout_results = st.session_state.get("layout_results", {}) or {}
     artifacts = state.artifacts
-    sld_entry = None
-    if isinstance(diagram_results, dict) and diagram_results:
-        preferred = diagram_results.get("last_style")
-        if preferred and isinstance(diagram_results.get(preferred), dict):
-            sld_entry = diagram_results.get(preferred)
-        if sld_entry is None:
-            for style_key in ("raw_v05", "pro_v10", "jp_v08"):
-                entry = diagram_results.get(style_key)
-                if isinstance(entry, dict) and (entry.get("png") or entry.get("svg")):
-                    sld_entry = entry
-                    break
-    sld_png = artifacts.get("sld_png_bytes") or (sld_entry.get("png") if sld_entry else None)
-    sld_svg = artifacts.get("sld_svg_bytes") or (sld_entry.get("svg") if sld_entry else None)
     outputs_dir = get_outputs_dir()
+    _active_run_id = (
+        st.session_state.get("active_run_id")
+        or st.session_state.get("dc_last_run_id")
+    )
+
+    # --- SLD bytes: new plugin bundle → old artifacts dict → old diagram_results → file → DB ---
+    sld_png, sld_svg = _extract_artifact_bytes(st.session_state.get("sld_artifacts"))
+    if sld_png is None:
+        sld_png = artifacts.get("sld_png_bytes")
+    if sld_svg is None:
+        sld_svg = artifacts.get("sld_svg_bytes")
+    if sld_png is None:
+        # legacy diagram_results structure (older sessions)
+        diagram_results = st.session_state.get("diagram_results") or {}
+        for style_key in (diagram_results.get("last_style"), "raw_v05", "pro_v10", "jp_v08"):
+            entry = diagram_results.get(style_key) if style_key else None
+            if isinstance(entry, dict):
+                sld_png = sld_png or entry.get("png")
+                sld_svg = sld_svg or entry.get("svg")
+                if sld_png:
+                    break
     if sld_png is None:
         candidate = outputs_dir / "sld_latest.png"
         if candidate.exists():
             sld_png = candidate.read_bytes()
-            artifacts["sld_png_bytes"] = sld_png
     if sld_svg is None:
         candidate = outputs_dir / "sld_latest.svg"
         if candidate.exists():
             sld_svg = candidate.read_bytes()
-            artifacts["sld_svg_bytes"] = sld_svg
+    # DB fallback: recover from artifact_registry after run restore
+    if sld_png is None and _active_run_id:
+        _db_sld = load_artifact_bytes_from_db(_active_run_id, ["sld_png", "sld_svg"])
+        sld_png = sld_png or _db_sld.get("sld_png")
+        sld_svg = sld_svg or _db_sld.get("sld_svg")
 
-    layout_entry = None
-    if isinstance(layout_results, dict) and layout_results:
-        preferred = layout_results.get("last_style")
-        if preferred and isinstance(layout_results.get(preferred), dict):
-            layout_entry = layout_results.get(preferred)
-        if layout_entry is None:
-            entry = layout_results.get("raw_v05")
-            if isinstance(entry, dict) and (entry.get("png") or entry.get("svg")):
-                layout_entry = entry
-    layout_png = artifacts.get("layout_png_bytes") or (layout_entry.get("png") if layout_entry else None)
-    layout_svg = artifacts.get("layout_svg_bytes") or (layout_entry.get("svg") if layout_entry else None)
+    # --- Layout bytes: same priority chain ---
+    layout_png, layout_svg = _extract_artifact_bytes(st.session_state.get("layout_artifacts"))
     if layout_png is None:
-        layout_png = st.session_state.get("layout_png_bytes")
+        layout_png = artifacts.get("layout_png_bytes") or st.session_state.get("layout_png_bytes")
     if layout_svg is None:
-        layout_svg = st.session_state.get("layout_svg_bytes")
+        layout_svg = artifacts.get("layout_svg_bytes") or st.session_state.get("layout_svg_bytes")
+    if layout_png is None:
+        layout_results = st.session_state.get("layout_results") or {}
+        for style_key in (layout_results.get("last_style"), "raw_v05"):
+            entry = layout_results.get(style_key) if style_key else None
+            if isinstance(entry, dict):
+                layout_png = layout_png or entry.get("png")
+                layout_svg = layout_svg or entry.get("svg")
+                if layout_png:
+                    break
     if layout_png is None:
         candidate = outputs_dir / "layout_latest.png"
         if candidate.exists():
             layout_png = candidate.read_bytes()
-            artifacts["layout_png_bytes"] = layout_png
     if layout_svg is None:
         candidate = outputs_dir / "layout_latest.svg"
         if candidate.exists():
             layout_svg = candidate.read_bytes()
-            artifacts["layout_svg_bytes"] = layout_svg
+    if layout_png is None and _active_run_id:
+        _db_layout = load_artifact_bytes_from_db(_active_run_id, ["layout_png", "layout_svg"])
+        layout_png = layout_png or _db_layout.get("layout_png")
+        layout_svg = layout_svg or _db_layout.get("layout_svg")
+
+    # Write resolved bytes back into the artifacts dict so build_report_context() picks them up
+    if sld_png:
+        artifacts["sld_png_bytes"] = sld_png
+    if sld_svg:
+        artifacts["sld_svg_bytes"] = sld_svg
+    if layout_png:
+        artifacts["layout_png_bytes"] = layout_png
+    if layout_svg:
+        artifacts["layout_svg_bytes"] = layout_svg
 
     st.header("Report Export")
     st.caption("Generate unified V2.1 DOCX report with full AC and DC analysis.")
@@ -114,8 +164,29 @@ def show():
     if isinstance(ss_ac_output, dict):
         ac_output.update(ss_ac_output)
 
+    # Fallback: if AC output is absent from session (e.g. after a run restore),
+    # attempt to reload the persisted AC snapshot from DB using the active run ID.
+    if not ac_output:
+        _active_run_id = (
+            st.session_state.get("active_run_id")
+            or st.session_state.get("dc_last_run_id")
+        )
+        if _active_run_id:
+            try:
+                _ac_snap = load_persisted_ac_snapshot(_active_run_id)
+                if _ac_snap is not None and isinstance(_ac_snap.output, dict) and _ac_snap.output:
+                    ac_output = _ac_snap.output
+                    st.session_state["ac_output"] = ac_output
+            except Exception:
+                pass
+
     if not stage13_output or not ac_output:
         st.warning("Run DC sizing and AC sizing first to enable report export.")
+        if stage13_output and not ac_output:
+            st.info(
+                "DC results found but AC sizing is missing. "
+                "Run AC Sizing on this project/case, or restore a run that includes AC results."
+            )
         return
 
     project_name = None
@@ -159,6 +230,58 @@ def show():
         "layout_png_bytes": layout_png,
         "layout_svg_bytes": layout_svg,
     }
+
+    st.subheader("Report Content Preview")
+    rc1, rc2, rc3, rc4 = st.columns(4)
+    rc1.success("✓  DC Sizing")
+    rc2.success("✓  AC Sizing")
+    if sld_png or sld_svg:
+        rc3.success("✓  SLD Image")
+    else:
+        rc3.info("○  SLD (not generated)")
+    if layout_png or layout_svg:
+        rc4.success("✓  Site Layout")
+    else:
+        rc4.info("○  Layout (not generated)")
+
+    # --- Database Provenance Panel ---
+    workspace = get_workspace_context()
+    active_run_id = workspace.get("run_id")
+    active_project_code = workspace.get("project_code")
+    active_case_code = workspace.get("case_code")
+    active_case_name = workspace.get("case_name")
+    active_project_name = workspace.get("project_name")
+
+    with st.expander("Database Provenance", expanded=True):
+        p1, p2 = st.columns(2)
+        with p1:
+            st.caption("Project")
+            st.write(active_project_name or project_name)
+            st.caption("Project Code")
+            st.write(active_project_code or "—")
+        with p2:
+            st.caption("Case")
+            st.write(active_case_name or "—")
+            st.caption("Case Code")
+            st.write(active_case_code or "—")
+
+        if active_run_id:
+            st.success(f"DC Run ID: `{active_run_id}`  — linked to database")
+            # Show AC snapshot linkage
+            _ac_run_id = ac_output.get("source_ac_run_id") if ac_output else None
+            if _ac_run_id:
+                st.success(f"AC Run ID: `{_ac_run_id}`  — AC sizing persisted")
+            elif ac_output:
+                st.info("AC results loaded from snapshot attached to DC run (fully traceable).")
+            else:
+                st.warning("AC sizing not yet performed for this run.")
+        else:
+            st.warning(
+                "No database run linked. Run DC Sizing and persist the run first. "
+                "The report will be generated from the current session only and will "
+                "carry a provenance warning."
+            )
+    st.divider()
 
     st.subheader("Downloads")
 

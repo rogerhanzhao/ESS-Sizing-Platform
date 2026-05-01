@@ -27,6 +27,7 @@ class PCSRecommendation:
     pcs_kw: int
     total_kw: int
     is_custom: bool = False
+    is_optimal: bool = False
 
     @property
     def readable(self) -> str:
@@ -72,70 +73,112 @@ def standard_pcs_recommendations() -> List[PCSRecommendation]:
     return recommendations
 
 
+def calculate_optimal_pcs_rating(
+    dc_blocks_in_ac_block: int,
+    dc_block_mwh: float,
+    pcs_per_ac_block: int,
+    discharge_duration_h: float,
+    transformer_efficiency: float = 0.9,
+    pcs_efficiency: float = 0.97,
+) -> int:
+    """Return the minimum standard PCS unit rating (kW) that satisfies the power requirement.
+
+    Uses the real discharge duration (poi_energy_req_mwh / poi_power_req_mw) rather than
+    a hardcoded assumption, so 2-hour and 6-hour systems are sized correctly.
+    """
+    dc_total_mwh = dc_blocks_in_ac_block * dc_block_mwh
+    total_required_kw = dc_total_mwh / discharge_duration_h / (pcs_efficiency * transformer_efficiency) * 1000
+    per_pcs_required_kw = total_required_kw / pcs_per_ac_block
+    candidates = [r for r in OPTIMAL_PCS_RATINGS_KW if r >= per_pcs_required_kw]
+    return int(min(candidates)) if candidates else int(OPTIMAL_PCS_RATINGS_KW[-1])
+
+
+def _mark_optimal_recommendations(
+    recommendations: List[PCSRecommendation],
+    max_dc_blocks: int,
+    dc_block_mwh: float,
+    discharge_duration_h: float,
+) -> List[PCSRecommendation]:
+    """Return a new list with is_optimal=True on the energy/power-derived best choice per pcs_count."""
+    optimal_kw_by_count = {
+        pcs_count: calculate_optimal_pcs_rating(
+            max_dc_blocks, dc_block_mwh, pcs_count, discharge_duration_h
+        )
+        for pcs_count in STANDARD_PCS_COUNTS
+    }
+    return [
+        PCSRecommendation(
+            pcs_count=rec.pcs_count,
+            pcs_kw=rec.pcs_kw,
+            total_kw=rec.total_kw,
+            is_custom=rec.is_custom,
+            is_optimal=(rec.pcs_kw == optimal_kw_by_count.get(rec.pcs_count)),
+        )
+        for rec in recommendations
+    ]
+
+
 def generate_ac_sizing_options(
     dc_blocks_total: int,
     target_mw: float,
     target_mwh: float,
     dc_block_mwh: float = 5.0,
 ) -> List[ACBlockRatioOption]:
-    """Generate the frozen AC:DC ratio set used by the current product."""
-    del target_mw, target_mwh, dc_block_mwh
+    """Generate the frozen AC:DC ratio set used by the current product.
 
+    discharge_duration_h is derived from the real POI E/P ratio (target_mwh / target_mw)
+    so PCS optimal markers are correct for any system duration, not just 4-hour systems.
+    """
+    discharge_duration_h = target_mwh / target_mw if target_mw > 0 else 4.0
+
+    base_recommendations = standard_pcs_recommendations()
     options: List[ACBlockRatioOption] = []
-    recommendation_library = standard_pcs_recommendations()
 
+    dc_per_ac_11 = [1] * dc_blocks_total if dc_blocks_total > 0 else []
     options.append(
         ACBlockRatioOption(
             ratio="1:1",
             ac_block_count=dc_blocks_total,
-            dc_blocks_per_ac=[1] * dc_blocks_total if dc_blocks_total > 0 else [],
-            pcs_recommendations=list(recommendation_library),
+            dc_blocks_per_ac=dc_per_ac_11,
+            pcs_recommendations=_mark_optimal_recommendations(
+                base_recommendations, max(dc_per_ac_11, default=1), dc_block_mwh, discharge_duration_h
+            ),
             description="1 AC Block per 1 DC Block. Maximum flexibility and modularity.",
             is_recommended=dc_blocks_total <= SMALL_SYSTEM_MAX_DC_BLOCKS,
         )
     )
 
     ac_blocks_b = math.ceil(dc_blocks_total / 2) if dc_blocks_total > 0 else 0
+    dc_per_ac_12 = evenly_distribute(dc_blocks_total, ac_blocks_b)
     options.append(
         ACBlockRatioOption(
             ratio="1:2",
             ac_block_count=ac_blocks_b,
-            dc_blocks_per_ac=evenly_distribute(dc_blocks_total, ac_blocks_b),
-            pcs_recommendations=list(recommendation_library),
+            dc_blocks_per_ac=dc_per_ac_12,
+            pcs_recommendations=_mark_optimal_recommendations(
+                base_recommendations, max(dc_per_ac_12, default=1), dc_block_mwh, discharge_duration_h
+            ),
             description="1 AC Block per 2 DC Blocks. Balanced approach for most projects.",
             is_recommended=True,
         )
     )
 
     ac_blocks_c = math.ceil(dc_blocks_total / 4) if dc_blocks_total > 0 else 0
+    dc_per_ac_14 = evenly_distribute(dc_blocks_total, ac_blocks_c)
     options.append(
         ACBlockRatioOption(
             ratio="1:4",
             ac_block_count=ac_blocks_c,
-            dc_blocks_per_ac=evenly_distribute(dc_blocks_total, ac_blocks_c),
-            pcs_recommendations=list(recommendation_library),
+            dc_blocks_per_ac=dc_per_ac_14,
+            pcs_recommendations=_mark_optimal_recommendations(
+                base_recommendations, max(dc_per_ac_14, default=1), dc_block_mwh, discharge_duration_h
+            ),
             description="1 AC Block per 4 DC Blocks. Compact design for large-scale projects.",
             is_recommended=dc_blocks_total >= LARGE_SYSTEM_MIN_DC_BLOCKS,
         )
     )
 
     return options
-
-
-def calculate_optimal_pcs_rating(
-    dc_blocks_in_ac_block: int,
-    dc_block_mwh: float,
-    pcs_per_ac_block: int,
-    transformer_efficiency: float = 0.9,
-    pcs_efficiency: float = 0.97,
-) -> float:
-    del pcs_per_ac_block
-
-    dc_total_mwh = dc_blocks_in_ac_block * dc_block_mwh
-    discharge_hours = 4.0
-    required_power_mw = dc_total_mwh / discharge_hours / (pcs_efficiency * transformer_efficiency)
-    required_power_kw = required_power_mw * 1000
-    return min(rating for rating in OPTIMAL_PCS_RATINGS_KW if rating >= required_power_kw)
 
 
 def suggest_pcs_count_and_rating(

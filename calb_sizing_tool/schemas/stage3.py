@@ -53,6 +53,8 @@ class Stage3Meta(CanonicalBaseModel):
     chosen_rte_c_rate: float
     rte_adjust_pp: float
     rte_monotonic_enforce: bool
+    dc_usable_bol_mwh: float  # DC usable capacity at BOL (year 0, before standby loss)
+    dc_usable_cod_mwh: float  # DC usable capacity at COD (after standby/self-charge loss)
 
     def to_legacy_dict(self) -> dict:
         return self.model_dump()

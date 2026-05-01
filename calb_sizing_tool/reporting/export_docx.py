@@ -158,15 +158,46 @@ def _format_float(value, decimals):
         return str(value)
 
 
-def _add_table(doc: Document, rows, headers):
+def _cant_split_row(row) -> None:
+    """Prevent a table row from splitting across a page boundary."""
+    from docx.oxml import OxmlElement
+    trPr = row._tr.get_or_add_trPr()
+    trPr.append(OxmlElement("w:cantSplit"))
+
+
+def _repeat_header_row(row) -> None:
+    """Mark a row as a repeating table header (shown at the top of each page)."""
+    from docx.oxml import OxmlElement
+    trPr = row._tr.get_or_add_trPr()
+    trPr.append(OxmlElement("w:tblHeader"))
+
+
+def _keep_next_para(para):
+    """Keep this paragraph on the same page as the following element. Returns para."""
+    from docx.oxml import OxmlElement
+    pPr = para._p.get_or_add_pPr()
+    pPr.append(OxmlElement("w:keepNext"))
+    return para
+
+
+def _keep_lines_para(para):
+    """Keep all lines of this paragraph together on one page. Returns para."""
+    from docx.oxml import OxmlElement
+    pPr = para._p.get_or_add_pPr()
+    pPr.append(OxmlElement("w:keepLines"))
+    return para
+
+
+def _add_table(doc: Document, rows, headers, *, keep_together: bool | None = None):
     if not rows:
         doc.add_paragraph("No data available.")
-        return
+        return None
 
     tbl = doc.add_table(rows=1, cols=len(headers))
     tbl.style = "Table Grid"
 
-    hdr = tbl.rows[0].cells
+    hdr_row = tbl.rows[0]
+    hdr = hdr_row.cells
     for j, col in enumerate(headers):
         hdr[j].text = str(col)
     for cell in hdr:
@@ -178,6 +209,28 @@ def _add_table(doc: Document, rows, headers):
         rc = tbl.add_row().cells
         for j, val in enumerate(row):
             rc[j].text = "" if val is None else str(val)
+
+    # Prevent any row from splitting mid-row across a page boundary
+    for row in tbl.rows:
+        _cant_split_row(row)
+
+    # Repeat the header row at the top of each page when table is long
+    _repeat_header_row(hdr_row)
+
+    # Small tables (≤ 20 data rows): keep the whole table on one page.
+    # Large tables: at minimum keep the header row with the first data row.
+    should_keep = keep_together if keep_together is not None else (len(rows) <= 20)
+    if should_keep:
+        for row in tbl.rows:
+            for cell in row.cells:
+                for para in cell.paragraphs:
+                    _keep_next_para(para)
+    elif len(tbl.rows) >= 2:
+        for cell in hdr_row.cells:
+            for para in cell.paragraphs:
+                _keep_next_para(para)
+
+    return tbl
 
 
 def _doc_to_bytes(doc: Document) -> bytes:
@@ -241,18 +294,13 @@ def _resolve_tool_version(ctx: dict):
 
 def _add_cover_page(doc: Document, title: str, project_name: str, ctx: dict):
     tool_version = _resolve_tool_version(ctx)
-    commit_hash = ctx.get("commit_hash") if ctx else None
-    if not commit_hash:
-        commit_hash = _get_commit_hash()
 
-    doc.add_paragraph("")
     heading = doc.add_heading(title, level=1)
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p = doc.add_paragraph(
         f"Project: {project_name}\n"
         f"Date: {datetime.datetime.now().strftime('%Y-%m-%d')}\n"
-        f"Tool Version: {tool_version}\n"
-        f"Commit: {commit_hash}"
+        f"Tool Version: {tool_version}"
     )
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_page_break()

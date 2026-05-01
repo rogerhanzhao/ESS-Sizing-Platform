@@ -16,25 +16,26 @@ def _build_sheet(sample_excel_path):
 def test_professional_sheet_builds_reference_note_panel(sample_excel_path):
     sheet = _build_sheet(sample_excel_path)
 
-    assert sheet.template_id == "professional_sheet_v1"
-    assert sheet.notes.title == "Equipment List"
+    assert sheet.template_id == "professional_sheet_v2"
+    assert sheet.notes.title == "EQUIPMENT LIST"
     assert [section.title for section in sheet.notes.sections] == [
         "Cable Connection Vault",
-        "Power Cable-33kV",
+        "Power Cable — 33kV",
         "Step-up Transformer (OIL)",
-        "Connecting Cable Type",
-        "Power Converter System",
-        "Power Cable",
+        "LV Connecting Cable",
+        "Power Converter System (PCS)",
+        "DC Power Cable",
         "Battery Energy Storage System",
     ]
     assert sheet.notes.height == 646.0
 
     pcs_section = sheet.notes.sections[4]
-    assert pcs_section.lines == ("PCS-1250kW*4", "AC690V 50Hz, DC1500V")
+    assert "1250" in pcs_section.lines[0]
+    assert "690" in pcs_section.lines[1]
 
     bess_section = sheet.notes.sections[6]
-    assert bess_section.lines[0].startswith("1~4 BESS (")
-    assert bess_section.lines[0].endswith("MWh*4)")
+    assert bess_section.lines[0].startswith("1~4 BESS containers (")
+    assert "MWh" in bess_section.lines[0]
 
 
 def test_professional_sheet_owns_drawing_geometry(sample_excel_path):

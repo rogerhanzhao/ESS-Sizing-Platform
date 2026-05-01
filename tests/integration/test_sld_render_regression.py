@@ -45,13 +45,16 @@ def test_sld_render_regression():
     assert normalized_a["spec"]["pcs_count"] == 4
     assert normalized_a["spec"]["dc_blocks_per_feeder"] == [1, 1, 1, 1]
     text_nodes = normalized_a["svg"]["text_nodes"]
-    assert "PCS&MVT SKID (AC Block)" in text_nodes
-    assert "RMU / MV Switchgear" in text_nodes
+    assert "PCS & MVT SKID (AC BLOCK)" in text_nodes
+    assert "RMU-01 / MV Switchgear" in text_nodes
     assert "Ring In" in text_nodes
     assert "Transformer Feeder" in text_nodes
     assert "Ring Out" in text_nodes
-    assert "DC Interface" in text_nodes
-    assert "DC Isolator/Fuse" in text_nodes
+    assert "BATTERY STORAGE BANK" in text_nodes
+    assert "INV-01" in text_nodes
+    assert "BESS-01" in text_nodes
+    assert "T-01" in text_nodes
+    assert any("SINGLE LINE DIAGRAM" in t for t in text_nodes)
     assert "TBD" not in text_nodes
     assert "DC BUSBAR" not in text_nodes
     assert "MV BUS" not in text_nodes

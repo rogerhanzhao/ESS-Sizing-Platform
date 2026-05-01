@@ -1,5 +1,16 @@
-﻿from __future__ import annotations
+"""BESS Single Line Diagram renderer — ANSI/IEEE 315 compliant symbols.
 
+Rendering conventions:
+- Black-on-white monochrome (print-ready).
+- All electrical symbols follow ANSI/IEEE Std 315-1975 (R1993).
+- Transformer shown as two-winding interlocked circles with Dyn11 vector group.
+- Equipment tags follow NEMA/industry convention: T-01, INV-01, BESS-01, RMU-01.
+- Title block per ANSI Y14.1 (no company / logo — added at report-generation time).
+"""
+from __future__ import annotations
+
+import datetime
+import math
 from pathlib import Path
 from typing import Iterable
 
@@ -16,6 +27,7 @@ except Exception:  # pragma: no cover
 from calb_diagrams.sld_engineering_v2_layout import SldV2LayoutBox, SldV2LayoutPlan
 from calb_diagrams.sld_professional_sheet import (
     ProfessionalSldSheet,
+    ProfessionalTitleBlock,
     boxes_by_type as _boxes_by_type,
     build_professional_sld_sheet,
     compact_voltage_label as _compact_voltage_label,
@@ -27,6 +39,10 @@ from calb_diagrams.specs import SLD_FONT_FAMILY
 from calb_diagrams.symbol_library import resolve_palette
 
 
+# ---------------------------------------------------------------------------
+# SVG setup
+# ---------------------------------------------------------------------------
+
 def _write_png(svg_path: Path, png_path: Path) -> None:
     if cairosvg is None:
         raise ImportError("cairosvg is required to export PNG from SVG.")
@@ -34,300 +50,704 @@ def _write_png(svg_path: Path, png_path: Path) -> None:
 
 
 def _build_drawing(plan: SldV2LayoutPlan):
-    palette = resolve_palette(plan.theme)
     dwg = svgwrite.Drawing(
         size=(f"{plan.width}px", f"{plan.height}px"),
         viewBox=f"0 0 {plan.width} {plan.height}",
     )
-    dwg.add(
-        dwg.style(
-            f"""
-svg {{ font-family: {SLD_FONT_FAMILY}; font-size: 12px; }}
-.background {{ fill: {palette.background}; }}
-.wire {{ stroke: {palette.thick}; stroke-width: 2.0; fill: none; stroke-linecap: square; stroke-linejoin: miter; }}
-.thin {{ stroke: {palette.thin}; stroke-width: 1.4; fill: none; stroke-linecap: square; stroke-linejoin: miter; }}
-.busbar {{ stroke: {palette.busbar}; stroke-width: 2.6; fill: none; stroke-linecap: square; }}
-.outline {{ stroke: {palette.outline}; stroke-width: 1.8; fill: none; }}
-.symbol-fill {{ fill: {palette.background}; stroke: {palette.outline}; stroke-width: 1.6; }}
-.text {{ fill: {palette.text}; }}
-.title {{ fill: {palette.title}; font-size: 13px; font-weight: bold; }}
-.small {{ fill: {palette.text}; font-size: 10px; }}
-.notes {{ fill: {palette.text}; font-size: 12px; font-family: Consolas, 'Courier New', monospace; }}
-.notes-title {{ fill: {palette.title}; font-size: 13px; font-weight: bold; font-family: Consolas, 'Courier New', monospace; }}
-.debug {{ stroke: {palette.dash}; stroke-width: 1.0; fill: none; opacity: 0.55; }}
-.port {{ stroke: {palette.outline}; stroke-width: 1.2; fill: {palette.background}; }}
-"""
-        )
-    )
-    dwg.add(dwg.rect(insert=(0, 0), size=(plan.width, plan.height), class_="background"))
+    dwg.add(dwg.style(f"""
+svg {{ font-family: {SLD_FONT_FAMILY}; font-size: 11px; }}
+.bg      {{ fill: #ffffff; }}
+.wire    {{ stroke: #1a1a1a; stroke-width: 1.8; fill: none;
+            stroke-linecap: square; stroke-linejoin: miter; }}
+.thin    {{ stroke: #1a1a1a; stroke-width: 1.2; fill: none;
+            stroke-linecap: round; stroke-linejoin: round; }}
+.busbar  {{ stroke: #1a1a1a; stroke-width: 3.2; fill: none; stroke-linecap: square; }}
+.outline {{ stroke: #1a1a1a; stroke-width: 1.6; fill: none; }}
+.sfill   {{ stroke: #1a1a1a; stroke-width: 1.6; fill: #ffffff; }}
+.text    {{ fill: #1a1a1a; }}
+.title   {{ fill: #1a1a1a; font-size: 12px; font-weight: bold; }}
+.label   {{ fill: #1a1a1a; font-size: 10px; }}
+.tag     {{ fill: #1a1a1a; font-size: 9px; font-style: italic; }}
+.notes   {{ fill: #1a1a1a; font-size: 10.5px; font-family: Consolas, 'Courier New', monospace; }}
+.ntitle  {{ fill: #1a1a1a; font-size: 11px; font-weight: bold; }}
+.tb      {{ fill: #1a1a1a; font-size: 10px; }}
+.tbh     {{ fill: #1a1a1a; font-size: 11px; font-weight: bold; }}
+.tbtitle {{ fill: #1a1a1a; font-size: 13px; font-weight: bold; }}
+.dot     {{ fill: #1a1a1a; stroke: none; }}
+"""))
+    dwg.add(dwg.rect(insert=(0, 0), size=(plan.width, plan.height), class_="bg"))
     return dwg
 
 
-def _line(dwg, start: tuple[float, float], end: tuple[float, float], class_name: str = "wire", **kwargs) -> None:
-    dwg.add(dwg.line(start, end, class_=class_name, **kwargs))
+# ---------------------------------------------------------------------------
+# Low-level drawing helpers
+# ---------------------------------------------------------------------------
+
+def _line(dwg, start: tuple[float, float], end: tuple[float, float],
+          cls: str = "wire", **kw) -> None:
+    dwg.add(dwg.line(start, end, class_=cls, **kw))
 
 
-def _polyline(dwg, points: Iterable[tuple[float, float]], class_name: str = "wire", **kwargs) -> None:
-    dwg.add(dwg.polyline(points=list(points), class_=class_name, fill="none", **kwargs))
+def _poly(dwg, pts: Iterable[tuple[float, float]], cls: str = "wire", **kw) -> None:
+    dwg.add(dwg.polyline(points=list(pts), class_=cls, fill="none", **kw))
 
 
-def _open_triangle(dwg, x: float, y: float, size: float = 12.0) -> None:
-    dwg.add(
-        dwg.polygon(
-            points=[(x, y), (x - size / 2.0, y + size), (x + size / 2.0, y + size)],
-            class_="outline",
-            fill="none",
-        )
-    )
+def _rect(dwg, x: float, y: float, w: float, h: float, cls: str = "sfill") -> None:
+    dwg.add(dwg.rect(insert=(x, y), size=(w, h), class_=cls))
 
 
-def _disconnector(dwg, x: float, y: float, *, side: str = "right") -> None:
-    _line(dwg, (x, y - 14.0), (x, y - 4.0), "wire")
-    _line(dwg, (x, y + 8.0), (x, y + 18.0), "wire")
-    offset = 18.0 if side == "right" else -18.0
-    _line(dwg, (x, y - 4.0), (x + offset, y + 10.0), "thin")
-    dwg.add(dwg.circle(center=(x, y + 8.0), r=2.2, class_="symbol-fill"))
+def _text(dwg, s: str, x: float, y: float, cls: str = "text",
+          anchor: str = "start", **kw) -> None:
+    dwg.add(dwg.text(s, insert=(x, y), class_=cls, text_anchor=anchor, **kw))
 
 
-def _breaker_box(dwg, x: float, y: float) -> None:
-    dwg.add(dwg.rect(insert=(x - 7.0, y - 12.0), size=(14.0, 24.0), class_="outline"))
-    _line(dwg, (x, y - 12.0), (x, y + 12.0), "thin")
+def _junction(dwg, x: float, y: float, r: float = 3.5) -> None:
+    """Filled dot at a T-junction on a busbar or wire."""
+    dwg.add(dwg.circle(center=(x, y), r=r, class_="dot"))
 
 
-def _earth_switch(dwg, x: float, y: float, *, side: str = "left") -> None:
-    direction = -1.0 if side == "left" else 1.0
-    _line(dwg, (x, y), (x + direction * 26.0, y), "thin")
-    dwg.add(dwg.circle(center=(x + direction * 12.0, y), r=4.0, class_="outline"))
-    _line(dwg, (x + direction * 28.0, y - 7.0), (x + direction * 28.0, y + 7.0), "thin")
-    _line(dwg, (x + direction * 33.0, y - 5.0), (x + direction * 33.0, y + 5.0), "thin")
+# ---------------------------------------------------------------------------
+# ANSI/IEEE 315 electrical symbols
+# ---------------------------------------------------------------------------
+
+def _ground(dwg, x: float, y: float) -> None:
+    """ANSI ground symbol — three tapered horizontal lines below a stem."""
+    _line(dwg, (x, y), (x, y + 8.0), "thin")
+    for i, half in enumerate((10.0, 6.5, 3.0)):
+        gy = y + 8.0 + i * 5.0
+        _line(dwg, (x - half, gy), (x + half, gy), "thin")
 
 
-def _ct_group(dwg, x: float, y: float) -> None:
-    for index in range(3):
-        dwg.add(dwg.circle(center=(x - 14.0 + index * 14.0, y), r=6.0, class_="outline"))
-        dwg.add(dwg.circle(center=(x - 14.0 + index * 14.0, y + 13.0), r=6.0, class_="outline"))
+def _disconnect_switch(dwg, x: float, y: float, *, blade_right: bool = True) -> None:
+    """ANSI disconnect switch (isolator) — open blade symbol.
+
+    IEEE 315 Fig 2.14.1: pivot (moving) contact = filled circle; fixed contact = horizontal bar.
+    blade_right=True puts the blade tip to the right of the conductor.
+    """
+    off = 16.0 if blade_right else -16.0
+    pivot_y = y - 8.0
+    fixed_y = y + 8.0
+    # Pivot / moving contact — small filled circle at hinge
+    dwg.add(dwg.circle(center=(x, pivot_y), r=2.5, class_="sfill"))
+    # Open blade from pivot toward (but not touching) fixed contact — OPEN position
+    _line(dwg, (x, pivot_y), (x + off, fixed_y - 5.0), "thin")
+    # Fixed contact — horizontal bar (IEEE 315 standard, not a circle)
+    _line(dwg, (x - 6.0, fixed_y), (x + 6.0, fixed_y), "thin")
 
 
-def _cable_slashes(dwg, x: float, y: float) -> None:
-    for index in range(3):
-        _line(dwg, (x - 13.0, y + index * 7.0), (x + 13.0, y - 8.0 + index * 7.0), "wire")
+def _circuit_breaker(dwg, x: float, y: float) -> None:
+    """ANSI circuit breaker — rectangle with diagonal slash (IEEE 315 Fig 2.12.1)."""
+    hw, hh = 8.0, 12.0
+    _rect(dwg, x - hw, y - hh, hw * 2, hh * 2, "sfill")
+    # Diagonal slash top-right → bottom-left (ANSI convention for CB open position)
+    _line(dwg, (x + hw, y - hh), (x - hw, y + hh), "thin")
 
 
-def _converter_symbol(dwg, x: float, y: float, width: float, height: float, label: str, subtitle: str = "") -> None:
-    dwg.add(dwg.rect(insert=(x - width / 2.0, y), size=(width, height), class_="outline"))
-    _line(dwg, (x - width * 0.28, y + height * 0.24), (x + width * 0.20, y + height * 0.70), "thin")
-    _polyline(
-        dwg,
-        [
-            (x - width * 0.18, y + height * 0.30),
-            (x - width * 0.08, y + height * 0.25),
-            (x + width * 0.02, y + height * 0.35),
-            (x + width * 0.16, y + height * 0.30),
-        ],
-        "thin",
-    )
-    _line(dwg, (x - width * 0.22, y + height * 0.76), (x + width * 0.22, y + height * 0.76), "thin")
-    _line(dwg, (x - width * 0.16, y + height * 0.86), (x + width * 0.16, y + height * 0.86), "thin")
-    label_x = x + width / 2.0 + 10.0
-    dwg.add(dwg.text(label, insert=(label_x, y + height * 0.46), class_="small text"))
+def _fuse(dwg, x: float, y: float, height: float = 18.0) -> None:
+    """ANSI cartridge fuse — rectangle with center conductor (IEEE 315 Fig 2.30)."""
+    hw = 5.0
+    _rect(dwg, x - hw, y - height / 2.0, hw * 2, height, "sfill")
+    _line(dwg, (x, y - height / 2.0), (x, y + height / 2.0), "thin")
+
+
+def _ct_symbol(dwg, x: float, y: float) -> None:
+    """ANSI current transformer — circle with primary conductor through it (IEEE 315 Fig 5.2.1)."""
+    r = 7.0
+    dwg.add(dwg.circle(center=(x, y), r=r, class_="sfill"))
+    # Primary conductor passes through (drawn as part of connecting wire externally;
+    # here we add a short emphasising tick on the CT circle)
+    _line(dwg, (x - r - 4.0, y), (x + r + 4.0, y), "thin")
+
+
+def _ct_group_vertical(dwg, x: float, y: float) -> None:
+    """Three CTs stacked vertically on the feeder conductor (3-phase indication)."""
+    for i in range(3):
+        _ct_symbol(dwg, x, y + i * 18.0)
+
+
+def _cable_3phase(dwg, x: float, y: float) -> None:
+    """Three diagonal hash marks indicating a 3-phase cable run (per ANSI practice)."""
+    for i in range(3):
+        ox = -10.0 + i * 10.0
+        _line(dwg, (x + ox - 8.0, y + 8.0), (x + ox + 8.0, y - 8.0), "thin")
+
+
+def _delta_mark(dwg, x: float, y: float, size: float = 14.0) -> None:
+    """Delta (Δ) triangle for transformer HV winding annotation."""
+    top = (x, y - size * 0.60)
+    bl  = (x - size * 0.55, y + size * 0.40)
+    br  = (x + size * 0.55, y + size * 0.40)
+    _line(dwg, top, bl, "thin")
+    _line(dwg, bl, br, "thin")
+    _line(dwg, br, top, "thin")
+
+
+def _wye_grounded_mark(dwg, x: float, y: float, size: float = 14.0) -> None:
+    """Grounded-wye (Yg) for transformer LV winding annotation."""
+    ctr = (x, y)
+    _line(dwg, ctr, (x, y - size * 0.55), "thin")
+    _line(dwg, ctr, (x - size * 0.50, y + size * 0.38), "thin")
+    _line(dwg, ctr, (x + size * 0.50, y + size * 0.38), "thin")
+    # Ground symbol below Y centre
+    _ground(dwg, x, y + 4.0)
+
+
+def _transformer_2w(dwg, x: float, y: float,
+                    vector_group: str, text_lines: tuple[str, ...]) -> None:
+    """ANSI two-winding transformer: two interlocked circles with vector group annotation.
+
+    HV (primary) circle on top with delta mark; LV (secondary) below with grounded-wye mark.
+    Wire entry at top of HV circle, exit at bottom of LV circle.
+    """
+    r = 28.0
+    gap = 4.0          # overlap between circles
+    hv_cy = y + r
+    lv_cy = hv_cy + 2 * r - gap
+
+    dwg.add(dwg.circle(center=(x, hv_cy), r=r, class_="sfill"))
+    dwg.add(dwg.circle(center=(x, lv_cy), r=r, class_="sfill"))
+
+    # Winding type marks inside each circle
+    vg = str(vector_group or "Dyn11").strip()
+    hv_type = "D" if vg and vg[0].upper() in ("D",) else "Y"
+    lv_type = "yn" if "yn" in vg.lower() else ("d" if "d" in vg[1:].lower() else "y")
+
+    if hv_type == "D":
+        _delta_mark(dwg, x, hv_cy, size=13.0)
+    else:
+        _wye_grounded_mark(dwg, x, hv_cy, size=12.0)
+
+    if "yn" in lv_type.lower() or "y" in lv_type.lower():
+        _wye_grounded_mark(dwg, x, lv_cy, size=12.0)
+    else:
+        _delta_mark(dwg, x, lv_cy, size=13.0)
+
+    # Vector group label
+    _text(dwg, vg, x + r + 8.0, hv_cy - 4.0, "label")
+
+    # Spec lines to the right
+    for idx, line in enumerate(text_lines):
+        _text(dwg, line, x + r + 8.0, hv_cy + 14.0 + idx * 14.0, "label")
+
+    # Return connection y coordinates for caller
+    return hv_cy - r, lv_cy + r   # (top connection y, bottom connection y)
+
+
+def _pcs_symbol(dwg, x: float, y: float, width: float, height: float,
+                label: str, subtitle: str = "", tag: str = "") -> None:
+    """PCS bidirectional AC/DC converter — BESS industry SLD convention.
+
+    Top half: AC side (sine-wave arc above centre line).
+    Bottom half: DC side (two horizontal parallel bars).
+    Bidirectional arrows on the vertical spine show power flow in both modes.
+    """
+    lx = x - width / 2.0
+    _rect(dwg, lx, y, width, height, "sfill")
+
+    mid_y = y + height * 0.50
+    # Horizontal centre divider (light)
+    _line(dwg, (lx + 4.0, mid_y), (lx + width - 4.0, mid_y), "thin")
+
+    # AC symbol (top half) — single-cycle sine arc
+    ac_cy = y + height * 0.26
+    ac_w  = width * 0.55
+    ac_h  = height * 0.16
+    pts = []
+    for i in range(17):
+        t = i / 16.0
+        pts.append((x - ac_w / 2.0 + t * ac_w,
+                    ac_cy - ac_h * math.sin(t * math.pi * 2.0)))
+    dwg.add(dwg.polyline(points=pts, class_="thin", fill="none"))
+
+    # DC symbol (bottom half) — two horizontal parallel bars
+    dc_cy = y + height * 0.76
+    for dy, half in ((-4.0, width * 0.25), (4.0, width * 0.18)):
+        _line(dwg, (x - half, dc_cy + dy), (x + half, dc_cy + dy), "thin")
+
+    # Bidirectional arrows on right spine — indicate reversible operation
+    spine_x = lx + width * 0.82
+    # Up arrow (discharge: DC→AC)
+    arr_y1 = mid_y - 10.0
+    _line(dwg, (spine_x, mid_y - 4.0), (spine_x, arr_y1), "thin")
+    _line(dwg, (spine_x - 4.0, arr_y1 + 5.0), (spine_x, arr_y1), "thin")
+    _line(dwg, (spine_x + 4.0, arr_y1 + 5.0), (spine_x, arr_y1), "thin")
+    # Down arrow (charge: AC→DC)
+    arr_y2 = mid_y + 10.0
+    _line(dwg, (spine_x, mid_y + 4.0), (spine_x, arr_y2), "thin")
+    _line(dwg, (spine_x - 4.0, arr_y2 - 5.0), (spine_x, arr_y2), "thin")
+    _line(dwg, (spine_x + 4.0, arr_y2 - 5.0), (spine_x, arr_y2), "thin")
+
+    # Rating label to the right
+    rx = x + width / 2.0 + 6.0
+    _text(dwg, label,    rx, y + height * 0.38, "label")
     if subtitle:
-        dwg.add(dwg.text(subtitle, insert=(label_x, y + height * 0.72), class_="small text"))
+        _text(dwg, subtitle, rx, y + height * 0.62, "label")
+    if tag:
+        _text(dwg, tag, x - width / 2.0 - 4.0, y + 8.0, "tag", anchor="end")
 
 
-def _dc_switch_fuse(dwg, x: float, y: float, height: float = 64.0) -> tuple[float, float]:
-    """Draw a vertical DC switch-disconnector plus fuse combination."""
+def _dc_isolator_fuse(dwg, x: float, y: float, height: float = 72.0,
+                      tag: str = "") -> tuple[float, float]:
+    """DC isolator-switch + fuse in series (per ANSI 315 Fig 2.14 + 2.30).
 
+    Returns (top_y, bottom_y) for wire connections.
+    """
     top_y = y - height / 2.0
     bottom_y = y + height / 2.0
-    upper_contact_y = top_y + 10.0
-    lower_contact_y = top_y + 28.0
-    fuse_top_y = top_y + 38.0
-    fuse_h = 18.0
-    fuse_bottom_y = fuse_top_y + fuse_h
+    sw_top = top_y + 4.0
+    sw_bot = top_y + 26.0
+    fuse_top = top_y + 34.0
+    fuse_bot = fuse_top + 20.0
 
-    _line(dwg, (x, top_y), (x, upper_contact_y), "wire")
-    dwg.add(dwg.circle(center=(x, upper_contact_y), r=2.2, class_="symbol-fill"))
-    dwg.add(dwg.circle(center=(x, lower_contact_y), r=2.2, class_="symbol-fill"))
-    _line(dwg, (x, upper_contact_y), (x + 15.0, lower_contact_y - 2.0), "thin")
-    _line(dwg, (x, lower_contact_y), (x, fuse_top_y), "wire")
+    # Wire stub in
+    _line(dwg, (x, top_y), (x, sw_top), "wire")
+    # Disconnect switch: upper moving contact (circle) + open blade + lower fixed contact (bar)
+    dwg.add(dwg.circle(center=(x, sw_top), r=2.5, class_="sfill"))  # moving contact
+    _line(dwg, (x, sw_top), (x + 14.0, sw_bot - 4.0), "thin")      # open blade
+    _line(dwg, (x - 6.0, sw_bot), (x + 6.0, sw_bot), "thin")       # fixed contact (horizontal bar)
+    # Wire between switch and fuse
+    _line(dwg, (x, sw_bot), (x, fuse_top), "wire")
+    # Fuse (ANSI rectangle + center line)
+    _rect(dwg, x - 5.0, fuse_top, 10.0, fuse_bot - fuse_top, "sfill")
+    _line(dwg, (x, fuse_top), (x, fuse_bot), "thin")
+    # Wire stub out
+    _line(dwg, (x, fuse_bot), (x, bottom_y), "wire")
 
-    dwg.add(dwg.rect(insert=(x - 5.0, fuse_top_y), size=(10.0, fuse_h), class_="outline"))
-    _line(dwg, (x, fuse_top_y), (x, fuse_bottom_y), "thin")
-    _line(dwg, (x, fuse_bottom_y), (x, bottom_y), "wire")
+    if tag:
+        _text(dwg, tag, x + 10.0, y + 4.0, "tag")
     return top_y, bottom_y
 
 
-def _battery_block(dwg, x: float, y: float, width: float, height: float, title: str, subtitle: str) -> None:
-    dwg.add(dwg.text(f"{title} {subtitle}".strip(), insert=(x, y), style="display:none"))
-    dwg.add(dwg.rect(insert=(x - width / 2.0, y), size=(width, height), class_="outline"))
-    stack_top_y = y + 14.0
-    stack_bottom_y = y + height - 14.0
-    _line(dwg, (x, stack_top_y - 4.0), (x, stack_bottom_y + 4.0), "thin")
-    dwg.add(dwg.text("+", insert=(x + width * 0.28, y + 15.0), class_="small text"))
-    dwg.add(dwg.text("-", insert=(x + width * 0.28, y + height - 7.0), class_="small text"))
-    for row in range(5):
-        row_y = stack_top_y + row * ((stack_bottom_y - stack_top_y) / 4.0)
-        _line(dwg, (x - 15.0, row_y), (x + 15.0, row_y), "thin")
-        _line(dwg, (x - 9.0, row_y + 5.0), (x + 9.0, row_y + 5.0), "thin")
-    dwg.add(dwg.text(title, insert=(x, y + height + 12.0), class_="small text", text_anchor="middle"))
+def _bess_block(dwg, x: float, y: float, width: float, height: float,
+                title: str, subtitle: str, tag: str = "") -> None:
+    """BESS container block — rectangle with ANSI battery symbol inside.
+
+    ANSI IEEE 315 Fig 2.18.1: alternating long/short horizontal lines.
+    """
+    lx = x - width / 2.0
+    _rect(dwg, lx, y, width, height, "sfill")
+
+    # Battery symbol (alternating long/short lines) centred in box
+    batt_cx = x
+    batt_top = y + height * 0.18
+    batt_bot = y + height * 0.72
+    n_cells = 4
+    step = (batt_bot - batt_top) / n_cells
+    for i in range(n_cells):
+        ly = batt_top + i * step
+        is_long = (i % 2 == 0)
+        half = (width * 0.30) if is_long else (width * 0.18)
+        _line(dwg, (batt_cx - half, ly), (batt_cx + half, ly), "thin")
+
+    # Polarity marks
+    _text(dwg, "+", x - width * 0.38, y + height * 0.14, "label")
+    _text(dwg, "-", x - width * 0.38, y + height * 0.80, "label")
+
+    # Labels below box
+    _text(dwg, title, x, y + height + 13.0, "label", anchor="middle")
     if subtitle:
-        dwg.add(dwg.text(subtitle, insert=(x, y + height + 25.0), class_="small text", text_anchor="middle"))
+        _text(dwg, subtitle, x, y + height + 25.0, "label", anchor="middle")
+    if tag:
+        _text(dwg, tag, x + width / 2.0 + 6.0, y + 12.0, "tag", anchor="start")
 
 
-def _delta_symbol(dwg, x: float, y: float, size: float) -> None:
-    top = (x, y - size * 0.48)
-    left = (x - size * 0.50, y + size * 0.40)
-    right = (x + size * 0.50, y + size * 0.40)
-    _line(dwg, top, left, "thin")
-    _line(dwg, left, right, "thin")
-    _line(dwg, right, top, "thin")
+def _open_triangle_terminal(dwg, x: float, y: float, size: float = 13.0) -> None:
+    """Upward-pointing open triangle = MV feeder terminal (utility supply)."""
+    dwg.add(dwg.polygon(
+        points=[(x, y), (x - size / 2.0, y + size), (x + size / 2.0, y + size)],
+        class_="sfill",
+    ))
 
 
-def _wye_symbol(dwg, x: float, y: float, size: float) -> None:
-    center = (x, y)
-    _line(dwg, center, (x, y - size * 0.52), "thin")
-    _line(dwg, center, (x - size * 0.48, y + size * 0.40), "thin")
-    _line(dwg, center, (x + size * 0.48, y + size * 0.40), "thin")
+def _feeder_terminal(dwg, x: float, y_top: float, y_bus: float,
+                     label: str, *, blade_right: bool,
+                     y_equip_start: float | None = None,
+                     tag_ds: str = "", tag_cb: str = "") -> None:
+    """MV feeder terminal: triangle (external) → DS → CB → ES → CT → bus.
+
+    y_top     : y-position of the external cable entry triangle (above switchgear box).
+    y_equip_start : y-position where the first piece of equipment (DS) is drawn.
+                    Defaults to y_top + 40 for backward compatibility.
+                    Set explicitly to place equipment below the RMU title-label band.
+    y_bus     : y-position of the internal MV bus (bottom of bay).
+    """
+    if y_equip_start is None:
+        y_equip_start = y_top + 40.0
+
+    # External cable entry triangle + feeder label
+    _open_triangle_terminal(dwg, x, y_top + 2.0)
+    label_x = x - 10.0 if blade_right else x + 10.0
+    label_anchor = "end" if blade_right else "start"
+    _text(dwg, label, label_x, y_top, "label", anchor=label_anchor)
+
+    # ── Equipment positions ────────────────────────────────────────────────
+    ds_y = y_equip_start
+    cb_y = y_equip_start + 40.0
+    es_y = y_equip_start + 80.0
+    ct_y = min(y_equip_start + 116.0, y_bus - 24.0)
+
+    # ── Segmented conductor — wire breaks at DS open gap (ANSI open-contact rule) ──
+    # Segment 1: triangle entry → DS moving contact (pivot)
+    _line(dwg, (x, y_top + 13.0), (x, ds_y - 8.0), "wire")
+
+    # DS (disconnect switch / isolator)
+    _disconnect_switch(dwg, x, ds_y, blade_right=blade_right)
+    if tag_ds:
+        tag_x = x + (10 if blade_right else -10)
+        _text(dwg, tag_ds, tag_x, ds_y - 6.0,
+              "tag", anchor="start" if blade_right else "end")
+
+    # Segment 2: DS fixed bar → CB top
+    _line(dwg, (x, ds_y + 8.0), (x, cb_y - 12.0), "wire")
+
+    # CB (circuit breaker — sfill rect covers wire through it)
+    _circuit_breaker(dwg, x, cb_y)
+    if tag_cb:
+        _text(dwg, tag_cb, x + 12.0, cb_y + 4.0, "tag")
+
+    # Segment 3: CB bottom → CT top  (passes through ES side-branch junction)
+    _line(dwg, (x, cb_y + 12.0), (x, ct_y - 7.0), "wire")
+
+    # Earthing switch — side branch off main conductor (no wire break on main line)
+    es_arm = 22.0 if blade_right else -22.0
+    arm_tip_x = x + es_arm
+    blade_tip_x = arm_tip_x + es_arm * 0.45
+    blade_tip_y = es_y + 14.0
+    _line(dwg, (x, es_y), (arm_tip_x, es_y), "thin")
+    _line(dwg, (arm_tip_x, es_y), (blade_tip_x, blade_tip_y), "thin")
+    _ground(dwg, blade_tip_x, blade_tip_y)
+
+    # CT (primary conductor passes through core — no wire break)
+    _ct_symbol(dwg, x, ct_y)
+
+    # Segment 4: CT bottom → internal MV bus
+    _line(dwg, (x, ct_y + 7.0), (x, y_bus), "wire")
 
 
-def _transformer_symbol(dwg, x: float, y: float, text_lines: tuple[str, ...]) -> None:
-    radius = 30.0
-    upper = (x, y)
-    lower_left = (x - 28.0, y + 42.0)
-    lower_right = (x + 28.0, y + 42.0)
-    for center in (upper, lower_left, lower_right):
-        dwg.add(dwg.circle(center=center, r=radius, class_="outline"))
-    _delta_symbol(dwg, upper[0], upper[1], 24.0)
-    _wye_symbol(dwg, lower_left[0], lower_left[1], 24.0)
-    _wye_symbol(dwg, lower_right[0], lower_right[1], 24.0)
-    for index, line in enumerate(text_lines):
-        dwg.add(dwg.text(line, insert=(x + 88.0, y - 10.0 + index * 14.0), class_="small text"))
-
-
-def _feeder_terminal(dwg, x: float, y_top: float, y_bus: float, label: str, *, align: str) -> None:
-    _line(dwg, (x, y_top + 18.0), (x, y_bus), "wire")
-    _open_triangle(dwg, x, y_top + 5.0, 14.0)
-    text_x = x - 10.0 if align == "right" else x + 10.0
-    text_anchor = "end" if align == "right" else "start"
-    dwg.add(dwg.text(label, insert=(text_x, y_top), class_="small text", text_anchor=text_anchor))
-    _breaker_box(dwg, x, y_top + 70.0)
-    _earth_switch(dwg, x, y_top + 120.0, side="left" if align == "left" else "right")
-    _disconnector(dwg, x, y_top + 158.0, side="right" if align == "left" else "left")
-
+# ---------------------------------------------------------------------------
+# Panel: notes / equipment list (left side)
+# ---------------------------------------------------------------------------
 
 def _draw_notes_panel(dwg, sheet: ProfessionalSldSheet) -> None:
     notes = sheet.notes
-    dwg.add(dwg.rect(insert=(notes.x, notes.y), size=(notes.width, notes.height), class_="outline"))
-    dwg.add(dwg.text(notes.title, insert=(notes.x + 10.0, notes.y + 18.0), class_="notes-title"))
-    current_y = notes.y
-    for section in notes.sections:
-        current_y += section.height
-        _line(dwg, (notes.x, current_y), (notes.x + notes.width, current_y), "thin")
-        text_y = current_y - section.height + 30.0
-        dwg.add(dwg.text(section.title, insert=(notes.x + 8.0, text_y), class_="notes-title"))
-        for index, line in enumerate(section.lines):
-            dwg.add(dwg.text(line, insert=(notes.x + 8.0, text_y + 24.0 + index * 17.0), class_="notes"))
+    panel_h = notes.height + 40.0
+    _rect(dwg, notes.x, notes.y, notes.width, panel_h, "sfill")
+    dwg.add(dwg.rect(insert=(notes.x, notes.y), size=(notes.width, panel_h), class_="outline"))
+
+    _text(dwg, notes.title,
+          notes.x + notes.width / 2.0, notes.y + 18.0, "ntitle", anchor="middle")
+    _line(dwg, (notes.x, notes.y + 26.0), (notes.x + notes.width, notes.y + 26.0), "thin")
+
+    cur_y = notes.y + 26.0
+    for sec in notes.sections:
+        sec_bot = cur_y + sec.height
+        _rect(dwg, notes.x, cur_y, notes.width, sec.height, "sfill")
+        dwg.add(dwg.rect(insert=(notes.x, cur_y), size=(notes.width, sec.height), class_="outline"))
+        _text(dwg, sec.title, notes.x + 8.0, cur_y + 18.0, "ntitle")
+        for i, line in enumerate(sec.lines):
+            _text(dwg, line, notes.x + 10.0, cur_y + 34.0 + i * 16.0, "notes")
+        cur_y = sec_bot
 
 
-def _draw_mv_rmu_and_transformer(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> tuple[float, float]:
+# ---------------------------------------------------------------------------
+# MV section: RMU + transformer
+# ---------------------------------------------------------------------------
+
+def _draw_mv_rmu_and_transformer(
+    dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet
+) -> tuple[float, float]:
     rows = _rows(plan)
     transformer = _first_box(plan, "transformer")
-    transformer_lines = transformer.text_lines if transformer else ("Transformer",)
     mv = sheet.mv
 
-    mv_system = _compact_voltage_label(rows.get("MV System", "MV"))
-    dwg.add(dwg.text("PCS&MVT SKID (AC Block)", insert=(mv.center_x, 54.0), class_="title text", text_anchor="middle"))
-    dwg.add(dwg.text("RMU / MV Switchgear", insert=(mv.center_x, 98.0), class_="title text", text_anchor="middle"))
+    mv_sys = _compact_voltage_label(rows.get("MV System", "MV"))
+    vg = rows.get("Transformer", "")
+    # Extract vector group from transformer spec string (first field)
+    vg_token = ""
+    for part in vg.split(","):
+        token = part.strip()
+        if any(c in token for c in ("D", "Y", "d", "y", "Z", "z")):
+            vg_token = token
+            break
 
-    _feeder_terminal(dwg, mv.ring_in_x, mv.top_y, mv.bus_y, f"To {mv_system} Switchgear", align="left")
-    _feeder_terminal(dwg, mv.ring_out_x, mv.top_y, mv.bus_y, "To Other RMU", align="right")
-    _line(dwg, (mv.ring_in_x, mv.bus_y), (mv.ring_out_x, mv.bus_y), "wire")
-    dwg.add(dwg.text("Ring In", insert=(mv.ring_in_x - 28.0, mv.bus_y - 112.0), class_="small text", text_anchor="end"))
-    dwg.add(dwg.text("Ring Out", insert=(mv.ring_out_x + 28.0, mv.bus_y - 112.0), class_="small text", text_anchor="start"))
-    dwg.add(dwg.text(f"{mv_system} RMU", insert=(mv.ring_out_x - 4.0, mv.bus_y - 10.0), class_="small text", text_anchor="end"))
+    # Section heading
+    _text(dwg, "PCS & MVT SKID (AC BLOCK)", mv.center_x, 44.0, "title", anchor="middle")
 
-    _line(dwg, (mv.center_x, mv.bus_y), (mv.center_x, mv.transformer_y - 92.0), "wire")
-    _disconnector(dwg, mv.center_x, mv.bus_y + 28.0, side="right")
-    _breaker_box(dwg, mv.center_x, mv.bus_y + 66.0)
-    _earth_switch(dwg, mv.center_x, mv.bus_y + 100.0, side="left")
-    _ct_group(dwg, mv.center_x, mv.bus_y + 116.0)
-    _cable_slashes(dwg, mv.center_x, mv.transformer_y - 32.0)
-    dwg.add(dwg.text("Transformer Feeder", insert=(mv.center_x + 26.0, mv.bus_y + 46.0), class_="small text"))
+    # ── RMU enclosure box ──────────────────────────────────────────────────
+    # Box spans from top_y+28 down to bus_y+16 so it contains all bay equipment.
+    # Inside: title band (top 50 px) separated by a horizontal rule from the
+    # equipment band (where DS, CB, ES, CT are drawn, starting at y_equip_start).
+    rmu_box_x  = mv.ring_in_x - 110.0
+    rmu_box_w  = mv.ring_out_x - mv.ring_in_x + 220.0
+    rmu_box_y  = mv.top_y + 28.0
+    bus_y_internal  = mv.bus_y
+    rmu_box_h  = bus_y_internal - rmu_box_y + 16.0
+    rmu_title_h = 50.0                           # height of title-label band
+    y_equip_start = rmu_box_y + rmu_title_h + 22.0  # DS pivot must clear rule (pivot=y-8)
 
-    _line(dwg, (mv.center_x, mv.transformer_y - 20.0), (mv.center_x, mv.transformer_y - 32.0), "wire")
-    _transformer_symbol(dwg, mv.center_x, mv.transformer_y, transformer_lines)
-    _line(dwg, (mv.center_x, mv.transformer_y + 72.0), (mv.center_x, mv.lv_bus_y), "wire")
+    _rect(dwg, rmu_box_x, rmu_box_y, rmu_box_w, rmu_box_h, "sfill")
+    dwg.add(dwg.rect(insert=(rmu_box_x, rmu_box_y), size=(rmu_box_w, rmu_box_h), class_="outline"))
+
+    # Title band content
+    _text(dwg, "RMU-01  /  MV Switchgear",
+          mv.center_x, rmu_box_y + 14.0, "title", anchor="middle")
+    _text(dwg, mv_sys,
+          mv.center_x, rmu_box_y + 28.0, "label", anchor="middle")
+    # Bay labels — Ring In/Out offset away from the feeder wire that runs through the title band
+    _text(dwg, "Ring In",          mv.ring_in_x  - 14.0, rmu_box_y + 38.0, "label", anchor="end")
+    _text(dwg, "Transformer Feeder", mv.center_x, rmu_box_y + 38.0, "label", anchor="middle")
+    _text(dwg, "Ring Out",         mv.ring_out_x + 14.0, rmu_box_y + 38.0, "label", anchor="start")
+
+    # Horizontal rule separating title band from equipment band
+    rule_y = rmu_box_y + rmu_title_h
+    _line(dwg, (rmu_box_x, rule_y), (rmu_box_x + rmu_box_w, rule_y), "thin")
+
+    # Bay dividers (vertical, equipment-band only — start at the rule)
+    for bx in (mv.ring_in_x + 105.0, mv.ring_out_x - 105.0):
+        _line(dwg, (bx, rule_y), (bx, rmu_box_y + rmu_box_h), "thin")
+
+    # Internal MV bus at mv.bus_y
+    _line(dwg, (mv.ring_in_x - 90.0, bus_y_internal),
+               (mv.ring_out_x + 90.0, bus_y_internal), "busbar")
+
+    # Ring In feeder terminal
+    _feeder_terminal(dwg, mv.ring_in_x, mv.top_y,
+                     bus_y_internal, f"To {mv_sys} Switchgear",
+                     blade_right=False, y_equip_start=y_equip_start,
+                     tag_ds="DS-01", tag_cb="52-01")
+    _junction(dwg, mv.ring_in_x, bus_y_internal)
+
+    # Ring Out feeder terminal
+    _feeder_terminal(dwg, mv.ring_out_x, mv.top_y,
+                     bus_y_internal, "To Other RMU",
+                     blade_right=True, y_equip_start=y_equip_start,
+                     tag_ds="DS-02", tag_cb="52-02")
+    _junction(dwg, mv.ring_out_x, bus_y_internal)
+
+    # ── Transformer feeder branch ──────────────────────────────────────────
+    # ── Transformer feeder — segmented conductor, DS open gap visible ─────────
+    _junction(dwg, mv.center_x, bus_y_internal)
+
+    # Equipment positions (DS-TX pushed 12px lower so pivot clears RMU box bottom)
+    ds_y = bus_y_internal + 40.0   # pivot at bus_y+32, RMU box bottom at bus_y+16 → 16px clear
+    cb_y = bus_y_internal + 80.0
+    ct_y = bus_y_internal + 120.0
+
+    # Segment 1: bus → DS moving contact
+    _line(dwg, (mv.center_x, bus_y_internal), (mv.center_x, ds_y - 8.0), "wire")
+    _disconnect_switch(dwg, mv.center_x, ds_y, blade_right=True)
+    _text(dwg, "DS-TX", mv.center_x + 12.0, ds_y - 6.0, "tag")
+
+    # Segment 2: DS fixed bar → CB top
+    _line(dwg, (mv.center_x, ds_y + 8.0), (mv.center_x, cb_y - 12.0), "wire")
+    _circuit_breaker(dwg, mv.center_x, cb_y)
+    _text(dwg, "52-TX", mv.center_x - 12.0, cb_y + 4.0, "tag", anchor="end")
+
+    # Segment 3: CB bottom → CT top
+    _line(dwg, (mv.center_x, cb_y + 12.0), (mv.center_x, ct_y - 7.0), "wire")
+    _ct_symbol(dwg, mv.center_x, ct_y)
+    _text(dwg, "CT-TX", mv.center_x + 12.0, ct_y + 4.0, "tag")
+
+    # Segment 4: CT bottom → cable hash / HV terminal area
+    _line(dwg, (mv.center_x, ct_y + 7.0), (mv.center_x, mv.transformer_y - 32.0), "wire")
+
+    # MV cable hash marks (above HV terminal)
+    _cable_3phase(dwg, mv.center_x, mv.transformer_y - 40.0)
+
+    # ── Transformer ────────────────────────────────────────────────────────
+    # Filter standalone vector-group token from text lines (already drawn as winding marks)
+    raw_lines = transformer.text_lines[1:] if transformer else ()
+    filtered_lines = tuple(ln for ln in raw_lines if ln.strip() != (vg_token or "Dyn11"))
+    tx_top, tx_bot = _transformer_2w(
+        dwg, mv.center_x, mv.transformer_y,
+        vg_token or "Dyn11", filtered_lines,
+    )
+    _text(dwg, "T-01", mv.center_x - 50.0, mv.transformer_y + 14.0, "tag")
+
+    # Short wire connecting feeder branch to HV terminal
+    _line(dwg, (mv.center_x, mv.transformer_y - 32.0), (mv.center_x, tx_top), "wire")
+    # Wire from LV terminal to LV bus
+    _line(dwg, (mv.center_x, tx_bot), (mv.center_x, mv.lv_bus_y), "wire")
+
     return mv.center_x, mv.lv_bus_y
 
 
+# ---------------------------------------------------------------------------
+# LV busbar + PCS + DC section
+# ---------------------------------------------------------------------------
+
 def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> None:
     pcs_boxes = _boxes_by_type(plan, "pcs")
-    dc_boxes = _boxes_by_type(plan, "dc_block")
+    dc_boxes  = _boxes_by_type(plan, "dc_block")
+
     by_feeder: dict[int, list[SldV2LayoutBox]] = {}
-    for block in dc_boxes:
-        by_feeder.setdefault(int(block.feeder_index or 0), []).append(block)
+    for blk in dc_boxes:
+        by_feeder.setdefault(int(blk.feeder_index or 0), []).append(blk)
 
     if not pcs_boxes:
         return
+
     lvdc = sheet.lvdc
-    dwg.add(dwg.text("DC Interface", insert=(lvdc.bus_x1, lvdc.dc_device_y), style="display:none"))
-    _line(dwg, (lvdc.bus_x1, sheet.mv.lv_bus_y), (lvdc.bus_x2, sheet.mv.lv_bus_y), "busbar")
-    first_pcs = pcs_boxes[0]
-    lv_voltage = _fmt_number(first_pcs.attributes.get("lv_voltage_v_ll"), decimals=0)
-    dwg.add(
-        dwg.text(
-            f"LV Busbar={lv_voltage}V",
-            insert=(lvdc.bus_x2 - 4.0, sheet.mv.lv_bus_y - 8.0),
-            class_="text",
-            text_anchor="end",
-        )
+    mv   = sheet.mv
+
+    # LV busbar
+    _line(dwg, (lvdc.bus_x1, mv.lv_bus_y), (lvdc.bus_x2, mv.lv_bus_y), "busbar")
+    lv_v = _fmt_number(
+        (pcs_boxes[0].attributes if pcs_boxes else {}).get("lv_voltage_v_ll"), decimals=0
     )
+    _text(dwg, f"LV Bus  {lv_v} V",
+          lvdc.bus_x2 + 6.0, mv.lv_bus_y + 4.0, "label")
+    _junction(dwg, mv.center_x, mv.lv_bus_y)
 
-    for pcs in pcs_boxes:
-        feeder_index = int(pcs.feeder_index or 0)
-        x = pcs.x + pcs.width / 2.0
-        label = pcs.text_lines[0] if pcs.text_lines else f"PCS-{feeder_index}"
-        subtitle = pcs.text_lines[1] if len(pcs.text_lines) > 1 else ""
-        _line(dwg, (x, sheet.mv.lv_bus_y), (x, lvdc.pcs_y), "wire")
-        _disconnector(dwg, x, sheet.mv.lv_bus_y + 22.0, side="right")
-        dwg.add(dwg.text(f"F{feeder_index}", insert=(x + 8.0, sheet.mv.lv_bus_y + 28.0), class_="small text"))
-        _converter_symbol(dwg, x, lvdc.pcs_y, lvdc.converter_width, lvdc.converter_height, label, subtitle)
-        dc_device_top_y, dc_device_bottom_y = _dc_switch_fuse(dwg, x, lvdc.dc_device_y)
-        _line(dwg, (x, lvdc.pcs_y + lvdc.converter_height), (x, dc_device_top_y), "wire")
-        _line(dwg, (x, dc_device_bottom_y), (x, lvdc.block_y - 20.0), "wire")
-        dwg.add(dwg.text("DC Isolator/Fuse", insert=(x + 16.0, lvdc.dc_device_y + 5.0), style="display:none"))
-        dwg.add(dwg.text(f"F{feeder_index}", insert=(x + 10.0, lvdc.dc_device_y + 5.0), class_="small text"))
+    # Battery bank heading — centred in the clear gap between fuse bottom and BESS box top
+    _text(dwg, "BATTERY STORAGE BANK",
+          (lvdc.bus_x1 + lvdc.bus_x2) / 2.0,
+          lvdc.block_y - 12.0, "title", anchor="middle")
 
-        blocks = sorted(by_feeder.get(feeder_index, []), key=lambda item: item.dc_block_index or 0)
-        if len(blocks) <= 1:
-            block_centers = [x]
+    for fi, pcs in enumerate(pcs_boxes, start=1):
+        fi = int(pcs.feeder_index or fi)
+        px = pcs.x + pcs.width / 2.0
+        pcs_label = pcs.text_lines[0] if pcs.text_lines else f"PCS {fi}"
+        pcs_sub   = pcs.text_lines[1] if len(pcs.text_lines) > 1 else ""
+
+        # ── LV feeder — segmented conductor, DS open gap visible ─────────────
+        _junction(dwg, px, mv.lv_bus_y)
+        ds_y = mv.lv_bus_y + 28.0
+        cb_y = mv.lv_bus_y + 56.0
+
+        # Segment 1: LV bus → DS moving contact (pivot)
+        _line(dwg, (px, mv.lv_bus_y), (px, ds_y - 8.0), "wire")
+        _disconnect_switch(dwg, px, ds_y, blade_right=True)
+        _text(dwg, f"DS-F{fi:02d}", px - 10.0, ds_y - 6.0, "tag", anchor="end")
+
+        # Segment 2: DS fixed bar → CB top
+        _line(dwg, (px, ds_y + 8.0), (px, cb_y - 12.0), "wire")
+        _circuit_breaker(dwg, px, cb_y)
+        _text(dwg, f"52-F{fi:02d}", px + 12.0, cb_y + 4.0, "tag")
+
+        # Segment 3: CB bottom → PCS top
+        _line(dwg, (px, cb_y + 12.0), (px, lvdc.pcs_y), "wire")
+
+        # PCS box
+        _pcs_symbol(dwg, px, lvdc.pcs_y,
+                    lvdc.converter_width, lvdc.converter_height,
+                    pcs_label, pcs_sub, tag=f"INV-{fi:02d}")
+
+        # Wire: PCS bottom → DC isolator/fuse
+        _line(dwg, (px, lvdc.pcs_y + lvdc.converter_height),
+                   (px, lvdc.dc_device_y - lvdc.converter_height * 0.5), "wire")
+
+        dc_top, dc_bot = _dc_isolator_fuse(
+            dwg, px, lvdc.dc_device_y, tag=f"F-{fi:02d}"
+        )
+
+        # DC blocks for this feeder
+        blocks = sorted(by_feeder.get(fi, []),
+                        key=lambda b: b.dc_block_index or 0)
+        if not blocks:
+            continue
+
+        multi = len(blocks) > 1
+        branch_y = lvdc.block_y - (30.0 if multi else 10.0)
+
+        if multi:
+            spc = min(lvdc.multi_block_spacing_max,
+                      lvdc.multi_block_spacing_base + max(0, len(blocks) - 2) * 18.0)
+            start = px - spc * (len(blocks) - 1) / 2.0
+            bx_list = [start + spc * i for i in range(len(blocks))]
+            # Horizontal branch bus + T-junction at feeder centre
+            _line(dwg, (min(bx_list), branch_y), (max(bx_list), branch_y), "wire")
+            _junction(dwg, px, branch_y)
         else:
-            spacing = min(lvdc.multi_block_spacing_max, lvdc.multi_block_spacing_base + max(0, len(blocks) - 2) * 16.0)
-            start = x - spacing * (len(blocks) - 1) / 2.0
-            block_centers = [start + spacing * index for index in range(len(blocks))]
-            branch_y = lvdc.block_y - 26.0
-            _line(dwg, (min(block_centers), branch_y), (max(block_centers), branch_y), "wire")
-            _line(dwg, (x, lvdc.block_y - 20.0), (x, branch_y), "wire")
+            bx_list = [px]
 
-        for block, block_x in zip(blocks, block_centers):
-            _line(dwg, (block_x, lvdc.block_y - 26.0), (block_x, lvdc.block_y), "wire")
-            title = block.text_lines[0] if block.text_lines else "DC Block"
-            subtitle = block.text_lines[1] if len(block.text_lines) > 1 else ""
-            _battery_block(dwg, block_x, lvdc.block_y, lvdc.battery_width, lvdc.battery_height, title, subtitle)
+        # Wire: DC fuse bottom → branch point
+        _line(dwg, (px, dc_bot), (px, branch_y), "wire")
 
+        for blk, bx in zip(blocks, bx_list):
+            _line(dwg, (bx, branch_y), (bx, lvdc.block_y), "wire")
+            # Junction only where a vertical drop meets the horizontal branch bus
+            if multi:
+                _junction(dwg, bx, branch_y)
+            b_title = blk.text_lines[0] if blk.text_lines else "BESS"
+            b_sub   = blk.text_lines[1] if len(blk.text_lines) > 1 else ""
+            gi      = int(blk.dc_block_index or 0)
+            _bess_block(dwg, bx, lvdc.block_y,
+                        lvdc.battery_width, lvdc.battery_height,
+                        b_title, b_sub, tag=f"BESS-{gi:02d}")
+
+
+# ---------------------------------------------------------------------------
+# Title block (ANSI Y14.1 style, no company/logo)
+# ---------------------------------------------------------------------------
+
+def _draw_title_block(dwg, tb: ProfessionalTitleBlock, plan: SldV2LayoutPlan) -> None:
+    x, y, w, h = tb.x, tb.y, tb.width, tb.height
+
+    # Outer border
+    dwg.add(dwg.rect(insert=(x, y), size=(w, h), class_="outline"))
+
+    # Column dividers
+    for cx in (tb.desc_col_right, tb.drg_col_right, tb.rev_col_right):
+        _line(dwg, (cx, y), (cx, y + h), "thin")
+
+    # Horizontal mid-line
+    mid_y = y + h / 2.0
+    _line(dwg, (x, mid_y), (x + w, mid_y), "thin")
+
+    # --- Main description column (left) ---
+    _text(dwg, tb.drawing_title,
+          x + 10.0, y + h * 0.30, "tbtitle")
+    _text(dwg, tb.drawing_subtitle,
+          x + 10.0, y + h * 0.65, "tb")
+
+    # --- DRG No column ---
+    drg_x = tb.desc_col_right + 8.0
+    _text(dwg, "DRG NO.", drg_x, y + 14.0, "tb")
+    _text(dwg, tb.drg_number, drg_x, mid_y - 6.0, "tbh")
+    _text(dwg, "DATE", drg_x, mid_y + 14.0, "tb")
+    date_str = tb.date or datetime.date.today().isoformat()
+    _text(dwg, date_str, drg_x, y + h - 8.0, "tb")
+
+    # --- REV column ---
+    rev_x = tb.drg_col_right + 8.0
+    _text(dwg, "REV", rev_x, y + 14.0, "tb")
+    _text(dwg, tb.revision, rev_x, mid_y - 6.0, "tbh")
+
+    # --- Scale / info column ---
+    inf_x = tb.rev_col_right + 8.0
+    _text(dwg, "SCALE", inf_x, y + 14.0, "tb")
+    _text(dwg, tb.scale, inf_x, mid_y - 6.0, "tbh")
+    _text(dwg, "UNITS: mm", inf_x, mid_y + 14.0, "tb")
+    _text(dwg, "ANSI / IEEE 315", inf_x, y + h - 8.0, "tb")
+
+
+# ---------------------------------------------------------------------------
+# Debug overlays (port anchors + connector paths)
+# ---------------------------------------------------------------------------
 
 def _draw_debug_connectors(dwg, plan: SldV2LayoutPlan) -> None:
     for connector in plan.connectors:
         if len(connector.points) == 2:
-            _line(dwg, connector.points[0], connector.points[1], "debug", id=f"edge-{connector.edge_id}")
+            _line(dwg, connector.points[0], connector.points[1],
+                  "thin", opacity="0.4", id=f"edge-{connector.edge_id}")
         else:
-            _polyline(dwg, connector.points, "debug", id=f"edge-{connector.edge_id}")
+            _poly(dwg, connector.points, "thin",
+                  opacity="0.4", id=f"edge-{connector.edge_id}")
 
 
 def _draw_port_anchors(dwg, plan: SldV2LayoutPlan) -> None:
     for anchor in plan.port_anchors:
-        dwg.add(dwg.circle(center=(anchor.x, anchor.y), r=2.4, class_="port", id=f"port-{anchor.node_id}-{anchor.port_id}"))
+        dwg.add(dwg.circle(
+            center=(anchor.x, anchor.y), r=2.4,
+            class_="sfill",
+            id=f"port-{anchor.node_id}-{anchor.port_id}",
+        ))
 
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
 
 def render_sld_engineering_v2_svg(
     plan: SldV2LayoutPlan,
@@ -336,19 +756,28 @@ def render_sld_engineering_v2_svg(
     *,
     show_port_anchors: bool = False,
 ) -> tuple[Path | None, str | None]:
-    """Render a professional electrical single-line diagram from a V2 layout plan.
+    """Render a professional ANSI/IEEE 315 BESS single-line diagram.
 
-    This renderer consumes only the resolved V2 layout plan. It does not read
-    topology, AC output dictionaries, DC snapshots, or Streamlit session state.
+    Consumes only the resolved V2 layout plan. Does not read topology,
+    AC output dicts, DC snapshots, or Streamlit session state.
     """
     if svgwrite is None:
-        return None, "Missing dependency: svgwrite. Please install: pip install svgwrite"
+        return None, "Missing dependency: svgwrite. Install: pip install svgwrite"
 
     sheet = build_professional_sld_sheet(plan)
-    dwg = _build_drawing(plan)
+    dwg   = _build_drawing(plan)
+
+    # Drawing border (outermost frame)
+    dwg.add(dwg.rect(
+        insert=(20, 20), size=(plan.width - 40, plan.height - 40),
+        class_="outline",
+    ))
+
     _draw_notes_panel(dwg, sheet)
     _draw_mv_rmu_and_transformer(dwg, plan, sheet)
     _draw_lv_pcs_dc(dwg, plan, sheet)
+    _draw_title_block(dwg, sheet.title_block, plan)
+
     if show_port_anchors:
         _draw_debug_connectors(dwg, plan)
         _draw_port_anchors(dwg, plan)
@@ -367,4 +796,5 @@ def render_sld_engineering_v2_svg(
             png_warning = "Missing dependency: cairosvg. PNG export skipped."
         except Exception:
             png_warning = "PNG export failed."
+
     return out_svg, png_warning

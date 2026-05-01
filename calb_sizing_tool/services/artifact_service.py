@@ -4,6 +4,9 @@ import hashlib
 from pathlib import Path
 from typing import Iterable
 
+from sqlalchemy.exc import OperationalError
+
+from calb_sizing_tool.infra.db.models.artifact_registry import ArtifactRegistry
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.repositories.run_repository import RunRepository
 from calb_sizing_tool.runtime_paths import ensure_outputs_dir
@@ -72,3 +75,48 @@ def persist_artifacts(
                 source_ref=source_ref or plugin_id,
             )
     return artifact_ids
+
+
+def load_artifact_bytes_from_db(
+    run_id: str,
+    artifact_kinds: list[str],
+    *,
+    db_url: str | None = None,
+) -> dict[str, bytes]:
+    """Load artifact file bytes from disk using paths recorded in artifact_registry.
+
+    Returns a dict mapping artifact_kind → file bytes for each kind found.
+    Missing or unreadable artifacts are silently omitted.
+    """
+    result: dict[str, bytes] = {}
+    if not run_id or not artifact_kinds:
+        return result
+    kinds_set = set(artifact_kinds)
+    try:
+        with session_scope(db_url) as session:
+            rows = (
+                session.query(ArtifactRegistry)
+                .filter(
+                    ArtifactRegistry.sizing_run_id == run_id,
+                    ArtifactRegistry.artifact_kind.in_(kinds_set),
+                )
+                .order_by(ArtifactRegistry.created_at.desc())
+                .all()
+            )
+        seen: set[str] = set()
+        for row in rows:
+            kind = row.artifact_kind
+            if kind in seen:
+                continue
+            seen.add(kind)
+            try:
+                file_path = Path(row.file_path)
+                if file_path.exists():
+                    result[kind] = file_path.read_bytes()
+            except Exception:
+                pass
+    except OperationalError:
+        pass
+    except Exception:
+        pass
+    return result

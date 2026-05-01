@@ -21,6 +21,13 @@ from calb_sizing_tool.state.workspace_state import (
 )
 
 
+_SCENARIO_LABELS: dict[str, str] = {
+    "container_only": "Container Only",
+    "cabinet_only": "Cabinet Only",
+    "hybrid": "Container + Cabinet",
+}
+
+
 def _slug(value: str) -> str:
     cleaned = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip()).strip("-")
     return cleaned.lower() or "item"
@@ -38,11 +45,25 @@ def _format_dt(value) -> str:
         return str(value)
 
 
-def _workspace_caption(context: dict) -> str:
+def _run_label(index: int, created_at) -> str:
+    """Human-readable run identifier: sequential index + compact timestamp."""
+    try:
+        ts = created_at.strftime("%m-%d %H:%M")
+    except Exception:
+        ts = str(created_at)
+    return f"#{index}  {ts}"
+
+
+def _workspace_caption(context: dict, run_label: str | None = None) -> str:
     project = context.get("project_name") or "No project"
     case = context.get("case_name") or "No case"
-    run_id = context.get("run_id") or "No run"
-    return f"Project: {project} | Case: {case} | Run: {run_id}"
+    if run_label and run_label != "None":
+        run = run_label
+    elif context.get("run_id"):
+        run = f"··{context['run_id'][-8:]}"
+    else:
+        run = "No run"
+    return f"Project: {project}  |  Case: {case}  |  Run: {run}"
 
 
 def show() -> None:
@@ -138,11 +159,21 @@ def show() -> None:
             except PermissionError:
                 runs = []
 
+    _active_run_id = context.get("run_id")
+    active_run_label = "None"
+    if _active_run_id:
+        _match = next((r for r in runs if r["sizing_run_id"] == _active_run_id), None)
+        _idx = next((i + 1 for i, r in enumerate(runs) if r["sizing_run_id"] == _active_run_id), None)
+        if _match and _idx:
+            active_run_label = _run_label(_idx, _match["created_at"])
+        else:
+            active_run_label = f"··{_active_run_id[-8:]}" if len(_active_run_id) >= 8 else _active_run_id
+
     ctx_col1, ctx_col2, ctx_col3 = st.columns(3)
     ctx_col1.metric("Active Project", context.get("project_name") or "None")
     ctx_col2.metric("Active Case", context.get("case_name") or "None")
-    ctx_col3.metric("Active Run", context.get("run_id") or "None")
-    st.caption(_workspace_caption(context))
+    ctx_col3.metric("Active Run", active_run_label)
+    st.caption(_workspace_caption(context, active_run_label))
 
     action_cols = st.columns(4)
     if action_cols[0].button("Continue DC Sizing", use_container_width=True, disabled=not context.get("case_id")):
@@ -256,8 +287,9 @@ def show() -> None:
                 name = st.text_input("New Case Name")
                 scenario_mode = st.selectbox(
                     "Scenario Mode",
-                    ["container_only", "cabinet_only", "hybrid"],
+                    list(_SCENARIO_LABELS.keys()),
                     index=0,
+                    format_func=lambda k: _SCENARIO_LABELS[k],
                 )
                 submitted = st.form_submit_button("Create Case", use_container_width=True)
                 if submitted:
@@ -291,9 +323,8 @@ def show() -> None:
                 st.caption("Cases under current project")
                 for item in cases[:10]:
                     prefix = "Active" if item["sizing_case_id"] == context.get("case_id") else "Open"
-                    st.write(
-                        f"{prefix}: {item['case_name']} | {item['scenario_mode']} | {_format_dt(item['created_at'])}"
-                    )
+                    scenario_label = _SCENARIO_LABELS.get(item["scenario_mode"], item["scenario_mode"])
+                    st.write(f"{prefix}: {item['case_name']}  |  {scenario_label}  |  {_format_dt(item['created_at'])}")
 
     with run_col:
         st.subheader("Run Registry")
@@ -303,12 +334,17 @@ def show() -> None:
             st.info("No runs yet. Start with DC sizing.")
         else:
             st.caption("Recent runs for the active case")
-            for item in runs[:12]:
-                row_cols = st.columns([2.5, 1.4, 1.2, 1.2, 1.0])
-                row_cols[0].write(item["sizing_run_id"])
-                row_cols[1].write(_format_dt(item["created_at"]))
-                row_cols[2].write(item["scenario_id"] or "-")
-                row_cols[3].write("Yes" if item["converged"] else "No")
+            for idx, item in enumerate(runs[:12], start=1):
+                label = _run_label(idx, item["created_at"])
+                mw = item["poi_power_req_mw"]
+                mwh = item["poi_energy_req_mwh"]
+                power_str = f"{mw}MW / {mwh}MWh" if mw else "—"
+                scenario_str = _SCENARIO_LABELS.get(item["scenario_id"], item["scenario_id"] or "—")
+                row_cols = st.columns([2.2, 2.0, 1.6, 0.8, 1.0])
+                row_cols[0].write(label)
+                row_cols[1].write(power_str)
+                row_cols[2].write(scenario_str)
+                row_cols[3].write("✓" if item["converged"] else "✗")
                 if row_cols[4].button("Restore", key=f"workbench_restore_{item['sizing_run_id']}"):
                     with session_scope() as session:
                         access = AccessControlService(session, auth_user)
@@ -317,20 +353,18 @@ def show() -> None:
                         st.error("Run not found.")
                     else:
                         restore_run_bundle_to_session(bundle, item["sizing_run_id"])
-                        st.success(f"Run restored: {item['sizing_run_id']}")
+                        st.success(f"Run {label} restored.")
                         st.rerun()
 
             latest = runs[0]
             st.markdown("---")
-            st.write("Latest run")
+            st.caption(f"Latest run · {_run_label(1, latest['created_at'])}")
             st.write(
                 {
-                    "run_id": latest["sizing_run_id"],
-                    "created_at": _format_dt(latest["created_at"]),
-                    "scenario_id": latest["scenario_id"],
-                    "poi_power_req_mw": latest["poi_power_req_mw"],
-                    "poi_energy_req_mwh": latest["poi_energy_req_mwh"],
-                    "margin_mwh": latest["margin_mwh"],
-                    "converged": latest["converged"],
+                    "Scenario": _SCENARIO_LABELS.get(latest["scenario_id"], latest["scenario_id"] or "—"),
+                    "POI Power": f"{latest['poi_power_req_mw']} MW" if latest["poi_power_req_mw"] else "—",
+                    "POI Energy": f"{latest['poi_energy_req_mwh']} MWh" if latest["poi_energy_req_mwh"] else "—",
+                    "Margin": f"{latest['margin_mwh']} MWh" if latest["margin_mwh"] is not None else "—",
+                    "Converged": "Yes" if latest["converged"] else "No",
                 }
             )

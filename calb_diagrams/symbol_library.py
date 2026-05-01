@@ -194,9 +194,16 @@ def draw_dc_interface_symbol(dwg, symbol, palette: SldThemePalette) -> None:
     top_y = symbol.y
     bottom_y = symbol.y + symbol.height
     center_y = top_y + symbol.height / 2
+    # Conductor
     dwg.add(dwg.line((center_x, top_y), (center_x, bottom_y), class_="thin"))
-    dwg.add(dwg.line((center_x - 12, center_y - 9), (center_x + 12, center_y + 9), class_="thin"))
+    # Fuse (rectangle) above the switch
     dwg.add(dwg.rect(insert=(center_x - 5, center_y - 15), size=(10, 8), class_="outline"))
+    # Disconnect switch: moving contact (upper circle) + open blade + fixed contact (lower bar)
+    upper_y = center_y - 3
+    lower_y = center_y + 9
+    dwg.add(dwg.circle(center=(center_x, upper_y), r=2.5, class_="outline"))
+    dwg.add(dwg.line((center_x, upper_y), (center_x + 12, lower_y), class_="thin"))
+    dwg.add(dwg.line((center_x - 7, lower_y), (center_x + 7, lower_y), class_="thin"))
     for idx, line in enumerate(symbol.text_lines):
         dwg.add(
             dwg.text(

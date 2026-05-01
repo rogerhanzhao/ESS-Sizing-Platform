@@ -46,6 +46,9 @@ outputs/
 var/*.sqlite
 var/*.sqlite-*
 
+# Claude Code project settings (machine/user-specific)
+.claude/
+
 # Systemd env files
 deploy/systemd/*.env
 !deploy/systemd/*.env.example

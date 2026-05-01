@@ -69,7 +69,9 @@ with st.sidebar:
     st.caption("Current Workspace")
     st.caption(f"Project: {workspace_context.get('project_name') or 'None'}")
     st.caption(f"Case: {workspace_context.get('case_name') or 'None'}")
-    st.caption(f"Run: {workspace_context.get('run_id') or 'None'}")
+    _run_id = workspace_context.get("run_id")
+    _run_short = f"··{_run_id[-8:]}" if _run_id and len(_run_id) >= 8 else (_run_id or "None")
+    st.caption(f"Run: {_run_short}")
 
     st.title("Navigation")
     st.markdown("---")

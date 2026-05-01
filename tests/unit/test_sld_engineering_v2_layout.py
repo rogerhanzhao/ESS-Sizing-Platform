@@ -61,8 +61,8 @@ def test_engineering_v2_layout_is_stable(sample_excel_path):
     plan_b = build_sld_engineering_v2_layout_plan(graph)
 
     assert asdict(plan_a) == asdict(plan_b)
-    assert plan_a.width == 1780
-    assert plan_a.height == 900
+    assert plan_a.width == 2000
+    assert plan_a.height == 1160
 
 
 def test_engineering_v2_layout_carries_equipment_rows_for_renderer(sample_excel_path):

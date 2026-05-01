@@ -14,6 +14,13 @@ from calb_sizing_tool.state.project_state import init_project_state
 from calb_sizing_tool.state.workspace_state import get_workspace_context, set_active_case
 
 
+_SCENARIO_LABELS: dict[str, str] = {
+    "container_only": "Container Only",
+    "cabinet_only": "Cabinet Only",
+    "hybrid": "Container + Cabinet",
+}
+
+
 def _slug(value: str) -> str:
     cleaned = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip()).strip("-")
     return cleaned.lower() or "case"
@@ -64,8 +71,9 @@ def show() -> None:
         name = st.text_input("Case Name")
         scenario_mode = st.selectbox(
             "Scenario Mode",
-            ["container_only", "cabinet_only", "hybrid"],
+            list(_SCENARIO_LABELS.keys()),
             index=0,
+            format_func=lambda k: _SCENARIO_LABELS[k],
         )
         submitted = st.form_submit_button("Create Case")
         if submitted:
@@ -105,6 +113,7 @@ def show() -> None:
                 "sizing_case_id": case.sizing_case_id,
                 "case_name": case.case_name,
                 "case_code": case.case_code,
+                "scenario_mode": case.scenario_mode,
                 "created_at": case.created_at,
             }
             for case in access.list_cases_by_project(project_id)
@@ -116,9 +125,9 @@ def show() -> None:
         return
 
     for case in cases:
-        cols = st.columns([3, 3, 2, 1.5])
+        cols = st.columns([3, 2.5, 2, 1.5])
         cols[0].write(case["case_name"])
-        cols[1].write(case["case_code"])
+        cols[1].write(_SCENARIO_LABELS.get(case.get("scenario_mode", ""), case.get("scenario_mode", "—")))
         cols[2].write(case["created_at"].strftime("%Y-%m-%d %H:%M"))
         if cols[3].button("Open", key=f"case_open_{case['sizing_case_id']}"):
             set_active_case(

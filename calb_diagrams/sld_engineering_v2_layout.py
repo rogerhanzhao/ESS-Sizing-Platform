@@ -211,13 +211,13 @@ def build_sld_engineering_v2_layout_plan(
     *,
     theme: str | None = None,
 ) -> SldV2LayoutPlan:
-    width = 1780
-    height = 900
+    width = 2000
+    height = 1160
     theme = theme or graph.summary.theme
 
-    equipment_section = SldV2LayoutSection("equipment_list", "Equipment List", 40.0, 40.0, 420.0, 330.0)
-    ac_section = SldV2LayoutSection("ac_block", "PCS&MVT SKID (AC Block)", 495.0, 40.0, 1245.0, 485.0)
-    battery_section = SldV2LayoutSection("battery_bank", "Battery Storage Bank", 495.0, 555.0, 1245.0, 285.0)
+    equipment_section = SldV2LayoutSection("equipment_list", "Equipment List", 40.0, 40.0, 424.0, 860.0)
+    ac_section = SldV2LayoutSection("ac_block", "PCS&MVT SKID (AC Block)", 495.0, 40.0, 1465.0, 570.0)
+    battery_section = SldV2LayoutSection("battery_bank", "Battery Storage Bank", 495.0, 630.0, 1465.0, 360.0)
     sections = (equipment_section, ac_section, battery_section)
     section_lookup = {section.section_id: section for section in sections}
 
@@ -377,7 +377,7 @@ def build_sld_engineering_v2_layout_plan(
                 node_type=node.node_type,
                 section_id="battery_bank",
                 x=center_x - 68.0,
-                y=battery_section.y + 92.0,
+                y=battery_section.y + 60.0,
                 width=136.0,
                 height=42.0,
                 text_lines=("DC Isolator/Fuse", f"F{node.feeder_index}"),
@@ -399,7 +399,7 @@ def build_sld_engineering_v2_layout_plan(
                 center_x,
                 local_index,
                 local_count,
-                battery_section.y + 186.0,
+                battery_section.y + 130.0,
             )
             boxes.append(
                 SldV2LayoutBox(

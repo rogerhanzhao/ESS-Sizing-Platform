@@ -7,6 +7,7 @@ import streamlit as st
 
 from calb_sizing_tool.adapters.session_state_adapter import build_dc_result_summary, build_stage13_output
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
+from calb_sizing_tool.services.sld_data_source_service import load_persisted_ac_snapshot
 
 MAIN_NAV_KEY = "main_nav"
 PENDING_MAIN_NAV_KEY = "_pending_main_nav"
@@ -194,3 +195,25 @@ def restore_run_bundle_to_session(bundle: DcRunBundle, run_id: str) -> None:
         inputs_state["mv_kv"] = float(poi_nominal_voltage_kv)
         if poi_frequency_hz is not None:
             inputs_state["poi_freq_hz"] = float(poi_frequency_hz)
+
+    # Restore AC snapshot persisted against this DC run (if present in DB).
+    # This allows the report export and SLD pages to work immediately after
+    # a run restore, without requiring the user to re-run AC sizing.
+    try:
+        ac_snapshot = load_persisted_ac_snapshot(run_id)
+        if ac_snapshot is not None and isinstance(ac_snapshot.output, dict) and ac_snapshot.output:
+            ac_output = ac_snapshot.output
+            st.session_state["ac_output"] = ac_output
+            ac_results = st.session_state.get("ac_results")
+            if isinstance(ac_results, dict):
+                ac_results.update(ac_output)
+            ac_inputs_restored = ac_snapshot.inputs
+            if isinstance(ac_inputs_restored, dict) and ac_inputs_restored:
+                ac_inputs_state = st.session_state.get("ac_inputs")
+                if isinstance(ac_inputs_state, dict):
+                    ac_inputs_state.update(ac_inputs_restored)
+                if isinstance(project_state, dict):
+                    project_state.setdefault("ac", {})["run_id"] = ac_output.get("source_ac_run_id")
+                    project_state["ac_results"] = ac_output
+    except Exception:
+        pass  # DB not available or snapshot absent — silent; user can re-run AC sizing

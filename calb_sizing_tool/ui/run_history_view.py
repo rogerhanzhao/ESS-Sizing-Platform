@@ -16,11 +16,26 @@ def _ensure_schema() -> None:
         Base.metadata.create_all(bind=session.get_bind())
 
 
+_SCENARIO_LABELS: dict[str, str] = {
+    "container_only": "Container Only",
+    "cabinet_only": "Cabinet Only",
+    "hybrid": "Container + Cabinet",
+}
+
+
 def _format_dt(value) -> str:
     try:
         return value.strftime("%Y-%m-%d %H:%M")
     except Exception:
         return str(value)
+
+
+def _run_label(index: int, created_at) -> str:
+    try:
+        ts = created_at.strftime("%m-%d %H:%M")
+    except Exception:
+        ts = str(created_at)
+    return f"#{index}  {ts}"
 
 
 def show() -> None:
@@ -75,52 +90,51 @@ def show() -> None:
         return
 
     st.subheader("Runs")
-    header_cols = st.columns([2.6, 2.0, 2.0, 1.6, 1.4, 1.2, 1.2, 1.4, 1.4, 1.2, 1.2])
-    header_cols[0].write("Run ID")
+    header_cols = st.columns([2.0, 2.0, 2.0, 1.4, 1.2, 1.2, 1.4, 1.4, 1.2, 1.2])
+    header_cols[0].write("Run")
     header_cols[1].write("Project")
     header_cols[2].write("Case")
-    header_cols[3].write("Created At")
-    header_cols[4].write("Scenario")
-    header_cols[5].write("POI MW")
-    header_cols[6].write("POI MWh")
-    header_cols[7].write("DC MWh Req")
-    header_cols[8].write("Guarantee MWh")
-    header_cols[9].write("Margin MWh")
-    header_cols[10].write("Converged")
+    header_cols[3].write("Scenario")
+    header_cols[4].write("POI MW")
+    header_cols[5].write("POI MWh")
+    header_cols[6].write("DC MWh Req")
+    header_cols[7].write("Guarantee MWh")
+    header_cols[8].write("Margin MWh")
+    header_cols[9].write("Converged")
 
-    for run in runs:
+    for idx, run in enumerate(runs, start=1):
+        label = _run_label(idx, run["created_at"])
         summary = run["output_summary_json"]
         input_summary = run["input_summary_json"]
-        cols = st.columns([2.6, 2.0, 2.0, 1.6, 1.4, 1.2, 1.2, 1.4, 1.4, 1.2, 1.2])
-        cols[0].write(run["sizing_run_id"])
-        cols[1].write(input_summary.get("project_name"))
-        cols[2].write(input_summary.get("case_name"))
-        cols[3].write(_format_dt(run["created_at"]))
-        cols[4].write(input_summary.get("scenario_id"))
-        cols[5].write(input_summary.get("poi_power_req_mw"))
-        cols[6].write(input_summary.get("poi_energy_req_mwh"))
-        cols[7].write(summary.get("dc_energy_capacity_required_mwh"))
-        cols[8].write(summary.get("guarantee_year_poi_usable_mwh"))
-        cols[9].write(summary.get("margin_mwh"))
-        cols[10].write("Yes" if summary.get("converged") else "No")
+        cols = st.columns([2.0, 2.0, 2.0, 1.4, 1.2, 1.2, 1.4, 1.4, 1.2, 1.2])
+        cols[0].write(label)
+        cols[1].write(input_summary.get("project_name") or "—")
+        cols[2].write(input_summary.get("case_name") or "—")
+        cols[3].write(_SCENARIO_LABELS.get(input_summary.get("scenario_id"), input_summary.get("scenario_id") or "—"))
+        cols[4].write(input_summary.get("poi_power_req_mw") or "—")
+        cols[5].write(input_summary.get("poi_energy_req_mwh") or "—")
+        cols[6].write(summary.get("dc_energy_capacity_required_mwh") or "—")
+        cols[7].write(summary.get("guarantee_year_poi_usable_mwh") or "—")
+        cols[8].write(summary.get("margin_mwh") or "—")
+        cols[9].write("Yes" if summary.get("converged") else "No")
 
-        with st.expander(f"Run {run['sizing_run_id']} details", expanded=False):
+        with st.expander(f"Run {label} — details", expanded=False):
             st.write(
                 {
-                    "project_name": input_summary.get("project_name"),
-                    "case_name": input_summary.get("case_name"),
-                    "scenario_mode": input_summary.get("scenario_id"),
-                    "poi_power_req_mw": input_summary.get("poi_power_req_mw"),
-                    "poi_energy_req_mwh": input_summary.get("poi_energy_req_mwh"),
-                    "dc_energy_capacity_required_mwh": summary.get("dc_energy_capacity_required_mwh"),
-                    "guarantee_year_poi_usable_mwh": summary.get("guarantee_year_poi_usable_mwh"),
-                    "margin_mwh": summary.get("margin_mwh"),
-                    "effective_c_rate": summary.get("effective_c_rate"),
-                    "soh_profile_id": summary.get("soh_profile_id"),
-                    "rte_profile_id": summary.get("rte_profile_id"),
-                    "iterations": summary.get("iterations"),
-                    "converged": summary.get("converged"),
-                    "created_at": _format_dt(run["created_at"]),
+                    "Project": input_summary.get("project_name"),
+                    "Case": input_summary.get("case_name"),
+                    "Scenario": _SCENARIO_LABELS.get(input_summary.get("scenario_id"), input_summary.get("scenario_id")),
+                    "POI Power (MW)": input_summary.get("poi_power_req_mw"),
+                    "POI Energy (MWh)": input_summary.get("poi_energy_req_mwh"),
+                    "DC Required (MWh)": summary.get("dc_energy_capacity_required_mwh"),
+                    "Guarantee Year (MWh)": summary.get("guarantee_year_poi_usable_mwh"),
+                    "Margin (MWh)": summary.get("margin_mwh"),
+                    "Effective C-Rate": summary.get("effective_c_rate"),
+                    "SOH Profile": summary.get("soh_profile_id"),
+                    "RTE Profile": summary.get("rte_profile_id"),
+                    "Iterations": summary.get("iterations"),
+                    "Converged": summary.get("converged"),
+                    "Created": _format_dt(run["created_at"]),
                 }
             )
             if st.button("Restore Run", key=f"restore_{run['sizing_run_id']}"):
@@ -135,4 +149,4 @@ def show() -> None:
                     st.error("Run not found.")
                     return
                 restore_run_bundle_to_session(bundle, run["sizing_run_id"])
-                st.success("Run restored. Open DC Sizing to view results.")
+                st.success(f"Run {label} restored. Open DC Sizing to view results.")

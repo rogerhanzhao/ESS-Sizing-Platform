@@ -873,7 +873,7 @@ def show():
                         access = AccessControlService(session, auth_user)
                         bundle = access.load_dc_run_bundle(run_id)
                     if not bundle:
-                        st.error(f"Run id {run_id} not found.")
+                        st.error(f"Run ··{run_id[-8:] if len(run_id) >= 8 else run_id} not found.")
                     else:
                         case_input = (
                             bundle.input_snapshot.payload.get("case_input")
@@ -891,7 +891,7 @@ def show():
                         st.session_state["poi_frequency_hz"] = poi_frequency_hz
                         restore_run_bundle_to_session(bundle, run_id)
                         set_run_time("dc_results")
-                        st.success(f"Loaded DC run {run_id}.")
+                        st.success(f"DC run ··{run_id[-8:] if len(run_id) >= 8 else run_id} loaded.")
                 except PermissionError:
                     st.error("You do not have access to this run.")
                 except Exception as exc:
@@ -1271,7 +1271,7 @@ def show():
                         st.session_state["poi_nominal_voltage_kv"] = poi_nominal_voltage_kv
                         st.session_state["poi_frequency_hz"] = poi_frequency_hz
                         restore_run_bundle_to_session(bundle, run_id)
-                        st.info(f"Run saved: {run_id}")
+                        st.info("DC run saved and restored successfully.")
             except Exception as exc:
                 st.error(f"Failed to persist DC run: {exc}")
 

@@ -16,6 +16,7 @@
 # of any company or organization.
 # -----------------------------------------------------------------------------
 
+import datetime
 import hashlib
 import importlib
 import json
@@ -62,6 +63,14 @@ class ReportContext:
     qc_checks: List[str]
     dictionary_version_dc: str
     dictionary_version_ac: str
+    # --- DB provenance (populated from workspace session state) ---
+    run_id: Optional[str] = None
+    ac_run_id: Optional[str] = None
+    project_code: Optional[str] = None
+    case_code: Optional[str] = None
+    case_name: Optional[str] = None
+    report_generated_at: str = ""
+    # --- SLD / layout ---
     sld_snapshot_id: Optional[str] = None
     sld_snapshot_hash: Optional[str] = None
     sld_generated_at: Optional[str] = None
@@ -377,6 +386,21 @@ def build_report_context(
     if stage2.get("busbars_needed") is not None:
         qc_checks.append("DC busbar grouping not implemented in V2.1 report; field omitted.")
 
+    # --- DB provenance from workspace context (set by persist/restore services) ---
+    run_id = (
+        state.get("active_run_id")
+        or state.get("dc_last_run_id")
+        or outputs.get("run_id")
+    )
+    project_code = state.get("active_project_code") or outputs.get("project_code")
+    case_code = state.get("active_case_code") or outputs.get("case_code")
+    case_name = state.get("active_case_name") or outputs.get("case_name")
+    report_generated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M UTC+0")
+    # AC run ID: stored in ac_output by the AC view as source_ac_run_id
+    ac_run_id = None
+    if isinstance(ac_output, dict):
+        ac_run_id = ac_output.get("source_ac_run_id")
+
     sld_snapshot = outputs.get("sld_snapshot") or state.get("sld_snapshot")
     sld_snapshot_id = None
     sld_snapshot_hash = None
@@ -397,42 +421,73 @@ def build_report_context(
     sld_pro_png_bytes = None
     layout_png_bytes = None
     layout_svg_bytes = None
-    if isinstance(state, dict):
-        artifacts = state.get("artifacts")
-        if isinstance(artifacts, dict):
-            sld_preview_svg_bytes = artifacts.get("sld_svg_bytes") or sld_preview_svg_bytes
-            sld_pro_png_bytes = artifacts.get("sld_png_bytes") or sld_pro_png_bytes
-            layout_png_bytes = artifacts.get("layout_png_bytes") or layout_png_bytes
-            layout_svg_bytes = artifacts.get("layout_svg_bytes") or layout_svg_bytes
 
-        diagram_results = state.get("diagram_results")
-        if isinstance(diagram_results, dict) and diagram_results:
-            preferred = diagram_results.get("last_style")
-            if preferred and isinstance(diagram_results.get(preferred), dict):
-                sld_preview_svg_bytes = diagram_results[preferred].get("svg")
-                sld_pro_png_bytes = diagram_results[preferred].get("png")
-            if sld_preview_svg_bytes is None:
-                for style_key in ("raw_v05", "pro_v10", "jp_v08"):
-                    if isinstance(diagram_results.get(style_key), dict):
-                        sld_preview_svg_bytes = diagram_results[style_key].get("svg")
-                        sld_pro_png_bytes = diagram_results[style_key].get("png")
-                    if sld_preview_svg_bytes:
-                        break
+    def _extract_bundle(bundle) -> tuple[bytes | None, bytes | None]:
+        """Extract (png, svg) from a DiagramArtifactBundle.artifacts list[dict]."""
+        png = svg = None
+        artifact_list = getattr(bundle, "artifacts", None)
+        if not isinstance(artifact_list, list):
+            return png, svg
+        for item in artifact_list:
+            if not isinstance(item, dict):
+                continue
+            kind = item.get("artifact_kind", "")
+            content = item.get("content")
+            if not content:
+                continue
+            if kind.endswith("_png") and png is None:
+                png = content
+            elif kind.endswith("_svg") and svg is None:
+                svg = content
+        return png, svg
 
-        layout_results = state.get("layout_results")
-        if isinstance(layout_results, dict) and layout_results:
-            preferred = layout_results.get("last_style")
-            if preferred and isinstance(layout_results.get(preferred), dict):
-                layout_png_bytes = layout_results[preferred].get("png")
-                layout_svg_bytes = layout_results[preferred].get("svg") or layout_svg_bytes
-            if layout_png_bytes is None:
-                if isinstance(layout_results.get("raw_v05"), dict):
-                    layout_png_bytes = layout_results["raw_v05"].get("png")
-                    layout_svg_bytes = layout_results["raw_v05"].get("svg") or layout_svg_bytes
+    # st.session_state is a SessionState proxy (not a dict subclass) but supports .get()
+    try:
+        # Priority 1: new plugin-based bundles (sld_artifacts / layout_artifacts)
+        _sld_bundle = state.get("sld_artifacts")
+        if _sld_bundle is not None:
+            sld_pro_png_bytes, sld_preview_svg_bytes = _extract_bundle(_sld_bundle)
 
-        layout_png_bytes = layout_png_bytes or state.get("layout_png_bytes")
-        layout_svg_bytes = layout_svg_bytes or state.get("layout_svg_bytes")
+        _layout_bundle = state.get("layout_artifacts")
+        if _layout_bundle is not None:
+            layout_png_bytes, layout_svg_bytes = _extract_bundle(_layout_bundle)
 
+        # Priority 2: artifacts dict (written back by report_export_view after resolution)
+        _artifacts = state.get("artifacts")
+        if isinstance(_artifacts, dict):
+            sld_pro_png_bytes = sld_pro_png_bytes or _artifacts.get("sld_png_bytes")
+            sld_preview_svg_bytes = sld_preview_svg_bytes or _artifacts.get("sld_svg_bytes")
+            layout_png_bytes = layout_png_bytes or _artifacts.get("layout_png_bytes")
+            layout_svg_bytes = layout_svg_bytes or _artifacts.get("layout_svg_bytes")
+
+        # Priority 3: legacy diagram_results / layout_results dicts (old sessions)
+        if sld_pro_png_bytes is None:
+            diagram_results = state.get("diagram_results") or {}
+            if isinstance(diagram_results, dict):
+                for style_key in (diagram_results.get("last_style"), "raw_v05", "pro_v10", "jp_v08"):
+                    entry = diagram_results.get(style_key) if style_key else None
+                    if isinstance(entry, dict):
+                        sld_pro_png_bytes = sld_pro_png_bytes or entry.get("png")
+                        sld_preview_svg_bytes = sld_preview_svg_bytes or entry.get("svg")
+                        if sld_pro_png_bytes:
+                            break
+
+        if layout_png_bytes is None:
+            layout_results = state.get("layout_results") or {}
+            if isinstance(layout_results, dict):
+                for style_key in (layout_results.get("last_style"), "raw_v05"):
+                    entry = layout_results.get(style_key) if style_key else None
+                    if isinstance(entry, dict):
+                        layout_png_bytes = layout_png_bytes or entry.get("png")
+                        layout_svg_bytes = layout_svg_bytes or entry.get("svg")
+                        if layout_png_bytes:
+                            break
+            layout_png_bytes = layout_png_bytes or state.get("layout_png_bytes")
+            layout_svg_bytes = layout_svg_bytes or state.get("layout_svg_bytes")
+    except Exception:
+        pass
+
+    # Priority 4: flat file fallbacks (written by old pipeline)
     outputs_dir = get_outputs_dir()
     if sld_pro_png_bytes is None:
         candidate = outputs_dir / "sld_latest.png"
@@ -450,6 +505,24 @@ def build_report_context(
         candidate = outputs_dir / "layout_latest.svg"
         if candidate.exists():
             layout_svg_bytes = candidate.read_bytes()
+
+    # Priority 5: DB artifact_registry (enables recovery after run restore)
+    if (sld_pro_png_bytes is None or layout_png_bytes is None) and run_id:
+        try:
+            from calb_sizing_tool.services.artifact_service import load_artifact_bytes_from_db
+            _needed = []
+            if sld_pro_png_bytes is None:
+                _needed += ["sld_png", "sld_svg"]
+            if layout_png_bytes is None:
+                _needed += ["layout_png", "layout_svg"]
+            if _needed:
+                _db_art = load_artifact_bytes_from_db(run_id, _needed)
+                sld_pro_png_bytes = sld_pro_png_bytes or _db_art.get("sld_png")
+                sld_preview_svg_bytes = sld_preview_svg_bytes or _db_art.get("sld_svg")
+                layout_png_bytes = layout_png_bytes or _db_art.get("layout_png")
+                layout_svg_bytes = layout_svg_bytes or _db_art.get("layout_svg")
+        except Exception:
+            pass
 
     return ReportContext(
         project_name=project_name,
@@ -486,6 +559,12 @@ def build_report_context(
         qc_checks=qc_checks,
         dictionary_version_dc=Path(DC_DATA_PATH).name,
         dictionary_version_ac=Path(AC_DATA_PATH).name,
+        run_id=run_id,
+        ac_run_id=ac_run_id,
+        project_code=project_code,
+        case_code=case_code,
+        case_name=case_name,
+        report_generated_at=report_generated_at,
         sld_snapshot_id=sld_snapshot_id,
         sld_snapshot_hash=sld_snapshot_hash,
         sld_generated_at=sld_generated_at,

@@ -87,5 +87,7 @@ def test_run_restore_from_history(sample_excel_path, tmp_path):
     assert restored.stage3.meta.effective_c_rate == snapshot.stage3.meta.effective_c_rate
     assert restored.stage3.meta.soh_profile_id == snapshot.stage3.meta.soh_profile_id
     assert restored.stage3.meta.rte_profile_id == snapshot.stage3.meta.rte_profile_id
+    assert restored.stage3.meta.dc_usable_bol_mwh == snapshot.stage3.meta.dc_usable_bol_mwh
+    assert restored.stage3.meta.dc_usable_cod_mwh == snapshot.stage3.meta.dc_usable_cod_mwh
     assert restored.poi_usable_energy_mwh_at_guarantee_year == snapshot.poi_usable_energy_mwh_at_guarantee_year
     assert restored.iteration_count == snapshot.iteration_count

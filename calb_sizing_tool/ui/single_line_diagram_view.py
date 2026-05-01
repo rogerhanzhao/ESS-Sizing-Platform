@@ -197,10 +197,14 @@ def _validate_ac_snapshot_context(
     if not source_run_id:
         return "AC snapshot is missing source_run_id provenance. Re-run AC sizing from the active database run."
 
+    def _short(uid: str) -> str:
+        return f"··{uid[-8:]}" if uid and len(uid) >= 8 else uid
+
     expected_run_id = str(expected_run_id or "").strip()
     if expected_run_id and source_run_id != expected_run_id:
         return (
-            f"AC snapshot belongs to run `{source_run_id}` instead of active run `{expected_run_id}`. "
+            f"AC snapshot is from a different run ({_short(source_run_id)}) "
+            f"than the active run ({_short(expected_run_id)}). "
             "Re-run AC sizing for the current run before generating SLD."
         )
 
@@ -208,7 +212,7 @@ def _validate_ac_snapshot_context(
     source_case_id = str(ac_output.get("source_case_id") or "").strip()
     if expected_case_id and source_case_id and source_case_id != expected_case_id:
         return (
-            f"AC snapshot belongs to case `{source_case_id}` instead of active case `{expected_case_id}`. "
+            "AC snapshot belongs to a different case than the active case. "
             "Re-run AC sizing for the current case before generating SLD."
         )
 
@@ -216,7 +220,7 @@ def _validate_ac_snapshot_context(
     source_project_id = str(ac_output.get("source_project_id") or "").strip()
     if expected_project_id and source_project_id and source_project_id != expected_project_id:
         return (
-            f"AC snapshot belongs to project `{source_project_id}` instead of active project `{expected_project_id}`. "
+            "AC snapshot belongs to a different project than the active project. "
             "Re-run AC sizing for the current project before generating SLD."
         )
 
@@ -562,8 +566,10 @@ def show() -> None:
     if pipeline_meta:
         mode_label = "Draft / Override" if pipeline_meta.get("validation_mode") == "draft" else "Formal / Strict"
         st.subheader("Pipeline Status")
+        _meta_run = pipeline_meta.get("run_id") or ""
+        _meta_run_short = f"··{_meta_run[-8:]}" if len(_meta_run) >= 8 else (_meta_run or "—")
         st.caption(
-            f"Run `{pipeline_meta.get('run_id')}` | Group {pipeline_meta.get('group_index')} | "
+            f"Run {_meta_run_short} | Group {pipeline_meta.get('group_index')} | "
             f"Mode: {mode_label} | Topology {pipeline_meta.get('topology_nodes')} nodes / {pipeline_meta.get('topology_edges')} edges"
         )
         if pipeline_meta.get("runtime_source_mode"):
@@ -598,8 +604,11 @@ def show() -> None:
                 )
         preview_run_id = str(pipeline_meta.get("run_id") or "").strip()
         if run_id and preview_run_id and preview_run_id != run_id:
+            _prev_short = f"··{preview_run_id[-8:]}" if len(preview_run_id) >= 8 else preview_run_id
+            _curr_short = f"··{run_id[-8:]}" if len(run_id) >= 8 else run_id
             st.warning(
-                f"Current preview belongs to run `{preview_run_id}`. Click Generate SLD to refresh the diagram for `{run_id}`."
+                f"Current preview is from run {_prev_short}, but active run is {_curr_short}. "
+                "Click Generate SLD to refresh."
             )
     if artifact_bundle:
         artifacts = {item["artifact_kind"]: item for item in artifact_bundle.artifacts}
@@ -607,10 +616,25 @@ def show() -> None:
         png_item = artifacts.get("sld_png")
 
         st.subheader("Preview")
+        zoom = st.slider(
+            "Zoom (%)",
+            min_value=50,
+            max_value=200,
+            value=100,
+            step=10,
+            key="sld_zoom_level",
+        )
         if png_item and png_item.get("content"):
-            st.image(png_item["content"], use_container_width=True)
+            st.image(png_item["content"], width=int(1200 * zoom / 100))
         elif svg_item and svg_item.get("content"):
-            st.components.v1.html(svg_item["content"].decode("utf-8"), height=640, scrolling=True)
+            scale = zoom / 100.0
+            height = int(860 * scale)
+            svg_html = (
+                f"<div style='transform: scale({scale}); transform-origin: 0 0; overflow: visible;'>"
+                f"{svg_item['content'].decode('utf-8')}"
+                f"</div>"
+            )
+            st.components.v1.html(svg_html, height=height + 40, scrolling=True)
 
         st.subheader("Downloads")
         hash_rows = []
