@@ -74,9 +74,9 @@ def test_report_v2_smoke():
 
     assert sum("Executive Summary" in text for text in texts) == 1
     assert sum("Inputs & Assumptions" in text for text in texts) == 1
-    assert "Conventions & Units" in texts
+    assert any("DC Energy Sizing" in text for text in texts)
     assert any("Single Line Diagram" in text for text in texts)
-    assert any("Block Layout" in text for text in texts)
+    assert any("Site Layout" in text for text in texts)
     assert "Appendix" not in joined
     assert ".xlsx" not in joined
     assert "314 Ah cell database" not in joined

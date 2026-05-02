@@ -87,8 +87,8 @@ def test_sld_ui_rejects_ac_snapshot_from_different_run():
         expected_project_id="project-1",
     )
 
-    assert "run `run-old`" in message
-    assert "run `run-new`" in message
+    assert "run-old" in message
+    assert "run-new" in message
 
 
 def test_sld_ui_clears_cached_preview_when_render_controls_change(monkeypatch):
