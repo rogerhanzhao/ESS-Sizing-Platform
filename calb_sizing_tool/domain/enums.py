@@ -62,3 +62,8 @@ class ImportMode(StrEnum):
 class ValidationSeverity(StrEnum):
     ERROR = "error"
     WARNING = "warning"
+
+
+class StageScope(StrEnum):
+    DC = "dc"
+    AC = "ac"

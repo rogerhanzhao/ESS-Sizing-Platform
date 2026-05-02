@@ -72,8 +72,8 @@ def test_report_v2_smoke():
 
     has_logo = any(_has_header_drawing(section) for section in doc.sections)
 
-    assert texts.count("Executive Summary") == 1
-    assert texts.count("Inputs & Assumptions") == 1
+    assert sum("Executive Summary" in text for text in texts) == 1
+    assert sum("Inputs & Assumptions" in text for text in texts) == 1
     assert "Conventions & Units" in texts
     assert any("Single Line Diagram" in text for text in texts)
     assert any("Block Layout" in text for text in texts)

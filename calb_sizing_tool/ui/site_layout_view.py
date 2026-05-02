@@ -25,7 +25,6 @@ from calb_sizing_tool.plugins.registry import get_plugin_registry
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot
 from calb_sizing_tool.schemas.layout_inputs import LayoutRenderOptions
 from calb_sizing_tool.services.access_control_service import AccessControlService
-from calb_sizing_tool.services.auth_service import AuthUser
 from calb_sizing_tool.services.external_layout_service import (
     generate_layout_prompt,
     list_external_submissions,
@@ -33,7 +32,7 @@ from calb_sizing_tool.services.external_layout_service import (
     submit_external_layout_artifact,
 )
 from calb_sizing_tool.services.layout_service import render_layout_from_run_bundle
-from calb_sizing_tool.state.auth_state import get_auth_context
+from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state
 
@@ -68,12 +67,7 @@ def show() -> None:
     if auth_context is None:
         st.error("Login required.")
         return
-    auth_user = AuthUser(
-        user_id=auth_context.user_id,
-        username=auth_context.username,
-        display_name=auth_context.display_name,
-        roles=auth_context.roles,
-    )
+    auth_user = get_auth_user()
 
     st.header("Site Layout")
     st.caption("Generate layout from run_id via plugin renderer.")

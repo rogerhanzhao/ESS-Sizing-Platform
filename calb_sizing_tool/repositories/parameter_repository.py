@@ -6,6 +6,8 @@ from calb_sizing_tool.infra.db.models import ParameterDefinition, ParameterSet
 from calb_sizing_tool.schemas.master_data import ParameterDefinitionSchema, ParameterSetSchema
 
 
+# Future: ParameterRepository.create_parameter_set is scaffolded but not yet
+# wired to any UI or service. export_definition_snapshot is used by imports.
 class ParameterRepository:
     def __init__(self, session: Session):
         self.session = session

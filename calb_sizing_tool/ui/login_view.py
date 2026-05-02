@@ -2,25 +2,17 @@ from __future__ import annotations
 
 import streamlit as st
 
-from calb_sizing_tool.infra.db.base import Base
-from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.services.auth_service import AuthService
 from calb_sizing_tool.state.auth_state import AuthContext, set_auth_context
 from calb_sizing_tool.state.workspace_state import navigate_to
 
 
-def _ensure_schema() -> None:
-    with session_scope() as session:
-        Base.metadata.create_all(bind=session.get_bind())
-
-
 def show() -> None:
-    _ensure_schema()
     auth_service = AuthService()
     auth_service.ensure_system_roles()
 
     st.title("Sign In")
-    st.caption("Sign in to the Workbench. Project -> Case -> Run is now the primary working boundary.")
+    st.caption("Project → Case → Run is the primary working boundary.")
 
     if not auth_service.has_users():
         st.info("No users found. Create the initial admin account.")
@@ -53,7 +45,6 @@ def show() -> None:
                         )
                     )
                     navigate_to("Workbench")
-                    st.success("Admin account created.")
                     st.rerun()
         return
 
@@ -75,5 +66,4 @@ def show() -> None:
                     )
                 )
                 navigate_to("Workbench")
-                st.success("Login successful.")
                 st.rerun()

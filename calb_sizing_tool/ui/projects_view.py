@@ -1,107 +1,64 @@
 from __future__ import annotations
 
-import re
-
 import streamlit as st
 
-from calb_sizing_tool.infra.db.base import Base
 from calb_sizing_tool.infra.db.session import session_scope
-from calb_sizing_tool.repositories.case_repository import CaseRepository
 from calb_sizing_tool.repositories.auth_repository import AuthRepository
+from calb_sizing_tool.repositories.case_repository import CaseRepository
 from calb_sizing_tool.services.access_control_service import AccessControlService
-from calb_sizing_tool.services.auth_service import AuthUser
-from calb_sizing_tool.state.auth_state import get_auth_context
+from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import init_project_state
-from calb_sizing_tool.state.workspace_state import set_active_project
-
-
-def _slug(value: str) -> str:
-    cleaned = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip()).strip("-")
-    return cleaned.lower() or "project"
-
-
-def _ensure_schema() -> None:
-    with session_scope() as session:
-        Base.metadata.create_all(bind=session.get_bind())
+from calb_sizing_tool.state.workspace_state import navigate_to, set_active_project
+from calb_sizing_tool.utils.text import fmt_dt, slugify
 
 
 def show() -> None:
     init_project_state()
-    _ensure_schema()
 
     auth_context = get_auth_context()
     if auth_context is None:
         st.error("Login required.")
         return
-    auth_user = AuthUser(
-        user_id=auth_context.user_id,
-        username=auth_context.username,
-        display_name=auth_context.display_name,
-        roles=auth_context.roles,
-    )
+    auth_user = get_auth_user()
 
-    st.title("Projects")
-    st.caption("Detailed project directory. Daily use is faster from Workbench.")
-
-    with st.form("create_project"):
-        name = st.text_input("Project Name")
-        description = st.text_area("Description", height=80)
-        submitted = st.form_submit_button("Create Project")
-        if submitted:
-            if not name.strip():
-                st.error("Project name is required.")
-            else:
-                code = _slug(name)
-                with session_scope() as session:
-                    auth_repo = AuthRepository(session)
-                    repo = CaseRepository(session)
-                    project = repo.get_or_create_project(
-                        project_code=code,
-                        project_name=name.strip(),
-                        description=description.strip() or None,
-                        source_ref="ui",
-                    )
-                    session.flush()
-                    auth_repo.ensure_system_roles()
-                    auth_repo.add_project_member(
-                        project_id=project.project_id,
-                        user_id=auth_user.user_id,
-                        role_code="normal_user",
-                    )
-                    session.flush()
-                    set_active_project(
-                        project_id=project.project_id,
-                        project_code=project.project_code,
-                        project_name=project.project_name,
-                    )
-                st.success(f"Project created: {name.strip()}")
+    st.title("Project Directory")
+    st.caption("Browse all accessible projects. To create a new project, use the Workbench.")
 
     with session_scope() as session:
         access = AccessControlService(session, auth_user)
         projects = [
             {
-                "project_id": project.project_id,
-                "project_name": project.project_name,
-                "project_code": project.project_code,
-                "created_at": project.created_at,
+                "project_id": p.project_id,
+                "project_name": p.project_name,
+                "project_code": p.project_code,
+                "created_at": p.created_at,
             }
-            for project in access.list_projects()
+            for p in access.list_projects()
         ]
 
-    st.subheader("Project List")
     if not projects:
         st.info("No projects found.")
+        if st.button("Go to Workbench to create one"):
+            navigate_to("Workbench")
+            st.rerun()
         return
 
-    for project in projects:
-        cols = st.columns([3, 3, 2, 1.5])
-        cols[0].write(project["project_name"])
-        cols[1].write(project["project_code"])
-        cols[2].write(project["created_at"].strftime("%Y-%m-%d %H:%M"))
-        if cols[3].button("Open", key=f"project_open_{project['project_id']}"):
+    h0, h1, h2, h3 = st.columns([3, 2.5, 2, 1.5])
+    h0.caption("Project Name")
+    h1.caption("Code")
+    h2.caption("Created")
+    h3.caption("")
+
+    for p in projects:
+        c0, c1, c2, c3 = st.columns([3, 2.5, 2, 1.5])
+        c0.write(p["project_name"])
+        c1.write(p["project_code"])
+        c2.write(fmt_dt(p["created_at"]))
+        if c3.button("Open", key=f"proj_dir_open_{p['project_id']}", use_container_width=True):
             set_active_project(
-                project_id=project["project_id"],
-                project_code=project["project_code"],
-                project_name=project["project_name"],
+                project_id=p["project_id"],
+                project_code=p["project_code"],
+                project_name=p["project_name"],
             )
-            st.success(f"Active project set: {project['project_name']}")
+            navigate_to("Workbench")
+            st.rerun()

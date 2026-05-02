@@ -16,9 +16,12 @@
 # of any company or organization.
 # -----------------------------------------------------------------------------
 
+import logging
 from pathlib import Path
 
 import streamlit as st
+
+_log = logging.getLogger(__name__)
 from calb_sizing_tool.reporting.export_docx import (
     make_proposal_filename,
 )
@@ -83,8 +86,12 @@ def show():
 
     # --- SLD bytes: new plugin bundle → old artifacts dict → old diagram_results → file → DB ---
     sld_png, sld_svg = _extract_artifact_bytes(st.session_state.get("sld_artifacts"))
+    if sld_png is not None:
+        _log.info("SLD source: plugin bundle (sld_artifacts)")
     if sld_png is None:
         sld_png = artifacts.get("sld_png_bytes")
+        if sld_png is not None:
+            _log.info("SLD source: artifacts dict (sld_png_bytes)")
     if sld_svg is None:
         sld_svg = artifacts.get("sld_svg_bytes")
     if sld_png is None:
@@ -96,11 +103,13 @@ def show():
                 sld_png = sld_png or entry.get("png")
                 sld_svg = sld_svg or entry.get("svg")
                 if sld_png:
+                    _log.info("SLD source: legacy diagram_results[%s]", style_key)
                     break
     if sld_png is None:
         candidate = outputs_dir / "sld_latest.png"
         if candidate.exists():
             sld_png = candidate.read_bytes()
+            _log.info("SLD source: filesystem (%s)", candidate)
     if sld_svg is None:
         candidate = outputs_dir / "sld_latest.svg"
         if candidate.exists():
@@ -110,11 +119,19 @@ def show():
         _db_sld = load_artifact_bytes_from_db(_active_run_id, ["sld_png", "sld_svg"])
         sld_png = sld_png or _db_sld.get("sld_png")
         sld_svg = sld_svg or _db_sld.get("sld_svg")
+        if sld_png is not None:
+            _log.info("SLD source: DB artifact_registry (run_id=%s)", _active_run_id)
+    if sld_png is None:
+        _log.warning("SLD: no image resolved from any source")
 
     # --- Layout bytes: same priority chain ---
     layout_png, layout_svg = _extract_artifact_bytes(st.session_state.get("layout_artifacts"))
+    if layout_png is not None:
+        _log.info("Layout source: plugin bundle (layout_artifacts)")
     if layout_png is None:
         layout_png = artifacts.get("layout_png_bytes") or st.session_state.get("layout_png_bytes")
+        if layout_png is not None:
+            _log.info("Layout source: artifacts dict (layout_png_bytes)")
     if layout_svg is None:
         layout_svg = artifacts.get("layout_svg_bytes") or st.session_state.get("layout_svg_bytes")
     if layout_png is None:
@@ -125,11 +142,13 @@ def show():
                 layout_png = layout_png or entry.get("png")
                 layout_svg = layout_svg or entry.get("svg")
                 if layout_png:
+                    _log.info("Layout source: legacy layout_results[%s]", style_key)
                     break
     if layout_png is None:
         candidate = outputs_dir / "layout_latest.png"
         if candidate.exists():
             layout_png = candidate.read_bytes()
+            _log.info("Layout source: filesystem (%s)", candidate)
     if layout_svg is None:
         candidate = outputs_dir / "layout_latest.svg"
         if candidate.exists():
@@ -138,6 +157,10 @@ def show():
         _db_layout = load_artifact_bytes_from_db(_active_run_id, ["layout_png", "layout_svg"])
         layout_png = layout_png or _db_layout.get("layout_png")
         layout_svg = layout_svg or _db_layout.get("layout_svg")
+        if layout_png is not None:
+            _log.info("Layout source: DB artifact_registry (run_id=%s)", _active_run_id)
+    if layout_png is None:
+        _log.warning("Layout: no image resolved from any source")
 
     # Write resolved bytes back into the artifacts dict so build_report_context() picks them up
     if sld_png:

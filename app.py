@@ -21,6 +21,8 @@ from pathlib import Path
 import streamlit as st
 
 import calb_sizing_tool.config as config  # noqa: F401
+from calb_sizing_tool.infra.db.base import Base
+from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.state.auth_state import clear_auth_context, get_auth_context
 from calb_sizing_tool.state.workspace_state import apply_pending_navigation, get_workspace_context
 from calb_sizing_tool.ui.login_view import show as show_login
@@ -31,6 +33,10 @@ st.set_page_config(
     layout="wide",
     page_icon="CALB",
 )
+
+# Ensure DB tables exist once at startup, before any view touches the database.
+with session_scope() as _s:
+    Base.metadata.create_all(bind=_s.get_bind())
 
 auth_context = get_auth_context()
 if auth_context is None:

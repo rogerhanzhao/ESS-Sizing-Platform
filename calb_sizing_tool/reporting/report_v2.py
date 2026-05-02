@@ -430,6 +430,9 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
         "Key design parameters assumed in this sizing. "
         "Efficiency values are one-way (DC → POI). Loss and DoD values exclude auxiliary loads."
     ))
+    _keep_next_para(doc.add_paragraph(
+        "The listed efficiency values do not include Auxiliary losses; no Auxiliary loss assumption is applied in this report."
+    ))
     _dod = ctx.stage1.get("dod_frac") if isinstance(ctx.stage1, dict) else None
     _sc = ctx.stage1.get("sc_loss_frac") if isinstance(ctx.stage1, dict) else None
     _cyc = ctx.cycles_per_year or (ctx.stage1.get("cycles_per_year") if isinstance(ctx.stage1, dict) else None)

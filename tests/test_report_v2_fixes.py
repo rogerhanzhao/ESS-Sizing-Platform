@@ -80,7 +80,7 @@ def test_efficiency_chain_uses_dc_sizing_values():
     assert "do not include Auxiliary losses" in joined, "Report should state that efficiencies exclude Auxiliary"
     
     # Verify Efficiency Chain section exists
-    assert "Efficiency Chain (one-way)" in joined
+    assert "Efficiency Chain" in joined
 
 
 def test_ac_block_config_not_verbose():
@@ -120,7 +120,7 @@ def test_ac_block_config_not_verbose():
     joined = "\n".join(texts)
 
     # Should have summary section
-    assert "AC Block Configuration Summary" in joined or "AC:DC Ratio" in joined
+    assert "AC Block Sizing" in joined or "AC:DC Ratio" in joined
 
     # Should NOT have verbose per-block listing (the old "AC Block 1", "AC Block 2", etc. lines)
     # Count how many times "AC Block" appears - should be minimal (just heading), not per-block

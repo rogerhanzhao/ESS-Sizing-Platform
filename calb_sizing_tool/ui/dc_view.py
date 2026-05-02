@@ -37,7 +37,6 @@ from calb_sizing_tool.schemas.stage2 import Stage2Result
 from calb_sizing_tool.schemas.stage3 import Stage3Result
 from calb_sizing_tool.services.access_control_service import AccessControlService
 from calb_sizing_tool.services.dc_pipeline_service import size_with_guarantee as service_size_with_guarantee
-from calb_sizing_tool.services.auth_service import AuthUser
 from calb_sizing_tool.services.run_persistence_service import persist_dc_run
 from calb_sizing_tool.services.stage1_service import run_stage1 as service_run_stage1
 from calb_sizing_tool.services.stage2_service import (
@@ -56,7 +55,7 @@ from calb_sizing_tool.ui.stage4_interface import pack_stage13_output
 # Model import for AC/SLD handoff
 from calb_sizing_tool.models import DCBlockResult
 from calb_sizing_tool.state.project_state import bump_run_id_dc, init_project_state
-from calb_sizing_tool.state.auth_state import get_auth_context
+from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
 from calb_sizing_tool.state.workspace_state import get_workspace_context, restore_run_bundle_to_session
 
@@ -736,12 +735,7 @@ def show():
     if auth_context is None:
         st.error("Login required.")
         return
-    auth_user = AuthUser(
-        user_id=auth_context.user_id,
-        username=auth_context.username,
-        display_name=auth_context.display_name,
-        roles=auth_context.roles,
-    )
+    auth_user = get_auth_user()
 
     workspace = get_workspace_context()
     active_project_id = workspace.get("project_id")

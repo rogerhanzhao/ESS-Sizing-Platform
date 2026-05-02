@@ -2,23 +2,19 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import uuid
 from typing import Any
 
 from sqlalchemy.exc import OperationalError
 
+from calb_sizing_tool.domain.enums import StageScope
 from calb_sizing_tool.infra.db.base import Base
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.repositories.case_repository import CaseRepository
 from calb_sizing_tool.repositories.run_repository import RunRepository
 from calb_sizing_tool.schemas.case import SizingCaseInput
 from calb_sizing_tool.schemas.run_snapshot import DcPipelineRunSnapshot, RunInputSnapshotSchema, RunOutputSnapshotSchema
-
-
-def _slug(value: str) -> str:
-    cleaned = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip()).strip("-")
-    return cleaned.lower() or "project"
+from calb_sizing_tool.utils.text import slugify
 
 
 def _hash_payload(payload: dict[str, Any]) -> str:
@@ -73,7 +69,7 @@ def _persist_dc_run_with_session(
                 project_id=project.project_id,
                 case_code=case_code,
                 case_name=case_name,
-                stage_scope="dc",
+                stage_scope=StageScope.DC,
                 scenario_mode=scenario_id,
                 input_json=case_model.model_dump(mode="python"),
                 version_tag=version_tag,
@@ -84,7 +80,7 @@ def _persist_dc_run_with_session(
             project_id=project.project_id,
             case_code=case_code,
             case_name=case_name,
-            stage_scope="dc",
+            stage_scope=StageScope.DC,
             scenario_mode=scenario_id,
             input_json=case_model.model_dump(mode="python"),
             version_tag=version_tag,
@@ -181,7 +177,7 @@ def persist_dc_run(
 
     project_name = case_model.project_name
     scenario_id = str(case_model.scenario_id)
-    project_code = _slug(project_name)
+    project_code = slugify(project_name, fallback="project")
     run_id = run_id or f"dc-{uuid.uuid4().hex[:12]}"
     resolved_case_code = case_code or f"{project_code}-{scenario_id}"
     resolved_case_name = case_name or f"{project_name} {scenario_id}".strip()

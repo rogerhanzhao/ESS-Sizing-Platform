@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from calb_sizing_tool.adapters.excel_loader_adapter import load_dc_excel_bundle_from_path
+from calb_sizing_tool.domain.enums import StageScope
 from calb_sizing_tool.infra.db.base import Base
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.repositories.case_repository import CaseRepository
@@ -26,11 +27,12 @@ def test_project_case_run_flow(sample_excel_path, tmp_path):
             project_id=project.project_id,
             case_code="proj-alpha-case1",
             case_name="Case 1",
-            stage_scope="dc",
+            stage_scope=StageScope.DC,
             scenario_mode="container_only",
             input_json={},
         )
         session.flush()
+        assert sizing_case.stage_scope == "dc"
         project_id = project.project_id
         sizing_case_id = sizing_case.sizing_case_id
         case_code = sizing_case.case_code

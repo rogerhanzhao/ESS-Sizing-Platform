@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from calb_sizing_tool.infra.db.base import ActivePublishMixin, Base, SourceVersionMixin, TimestampMixin, new_uuid
 
 
+# Future: ParameterSet model is scaffolded but not yet wired to any UI or service.
 class ParameterSet(Base, TimestampMixin, SourceVersionMixin, ActivePublishMixin):
     __tablename__ = "parameter_set"
 

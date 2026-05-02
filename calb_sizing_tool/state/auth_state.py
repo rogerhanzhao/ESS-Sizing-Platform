@@ -45,3 +45,17 @@ def set_auth_context(context: AuthContext) -> None:
 
 def clear_auth_context() -> None:
     st.session_state.pop("auth_context", None)
+
+
+def get_auth_user():
+    """Return an AuthUser built from the current session auth context, or None."""
+    context = get_auth_context()
+    if context is None:
+        return None
+    from calb_sizing_tool.services.auth_service import AuthUser  # lazy to avoid circular import
+    return AuthUser(
+        user_id=context.user_id,
+        username=context.username,
+        display_name=context.display_name,
+        roles=context.roles,
+    )

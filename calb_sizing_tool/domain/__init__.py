@@ -5,6 +5,7 @@ from calb_sizing_tool.domain.enums import (
     RunStatus,
     ScenarioMode,
     StageCode,
+    StageScope,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "RunStatus",
     "ScenarioMode",
     "StageCode",
+    "StageScope",
 ]
