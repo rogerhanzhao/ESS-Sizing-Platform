@@ -6,3 +6,11 @@ address = "127.0.0.1"
 port = 8511
 headless = true
 fileWatcherType = "none"
+
+[theme]
+# CALB VI — primary: CALB steel navy blue
+primaryColor        = "#1E4172"
+backgroundColor     = "#FFFFFF"
+secondaryBackgroundColor = "#EDF1F7"
+textColor           = "#1A2635"
+font                = "sans serif"
