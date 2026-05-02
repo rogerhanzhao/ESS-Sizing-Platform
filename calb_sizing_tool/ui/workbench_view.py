@@ -89,12 +89,10 @@ def show() -> None:
             except PermissionError:
                 cases = []
 
-    # If the previously active case is no longer under this project, clear it.
     if context["case_id"] and not any(c["sizing_case_id"] == context["case_id"] for c in cases):
         set_active_case(case_id=None, case_code=None, case_name=None)
         context = get_workspace_context()
 
-    # Auto-select first case only when nothing is active yet.
     if context["case_id"] is None and cases:
         first = cases[0]
         set_active_case(
@@ -137,29 +135,30 @@ def show() -> None:
             active_run_label = f"··{_active_run_id[-8:]}" if len(_active_run_id) >= 8 else _active_run_id
 
     m1, m2, m3 = st.columns(3)
-    m1.metric("Active Project", context.get("project_name") or "None")
-    m2.metric("Active Case", context.get("case_name") or "None")
+    m1.metric("Active Project", context.get("project_name") or "—")
+    m2.metric("Active Case", context.get("case_name") or "—")
     m3.metric("Active Run", active_run_label)
 
     # ── Quick-action navigation buttons ───────────────────────────────────────
     a1, a2, a3, a4 = st.columns(4)
-    if a1.button("Continue DC Sizing", use_container_width=True, disabled=not context.get("case_id")):
+    if a1.button("▶  DC Sizing", use_container_width=True, disabled=not context.get("case_id")):
         navigate_to("DC Sizing")
         st.rerun()
-    if a2.button("Open AC Sizing", use_container_width=True, disabled=not context.get("run_id")):
+    if a2.button("▶  AC Sizing", use_container_width=True, disabled=not context.get("run_id")):
         navigate_to("AC Sizing")
         st.rerun()
-    if a3.button("Open SLD", use_container_width=True, disabled=not context.get("run_id")):
+    if a3.button("▶  SLD", use_container_width=True, disabled=not context.get("run_id")):
         navigate_to("Single Line Diagram")
         st.rerun()
-    if a4.button("Open Report Export", use_container_width=True, disabled=not context.get("run_id")):
+    if a4.button("▶  Report Export", use_container_width=True, disabled=not context.get("run_id")):
         navigate_to("Report Export")
         st.rerun()
 
     st.divider()
 
     # ── Three-column workspace manager ────────────────────────────────────────
-    project_col, case_col, run_col = st.columns([1.1, 1.1, 1.5])
+    # Run registry gets more space (1.8) since its inner rows need button room.
+    project_col, case_col, run_col = st.columns([1.0, 1.0, 1.8])
 
     # ── Projects column ────────────────────────────────────────────────────────
     with project_col:
@@ -174,6 +173,7 @@ def show() -> None:
                 index=project_ids.index(current_pid),
                 format_func=lambda pid: next(p["project_name"] for p in projects if p["project_id"] == pid),
                 key="workbench_project_select",
+                label_visibility="collapsed",
             )
             if selected_pid != context.get("project_id"):
                 sel = next(p for p in projects if p["project_id"] == selected_pid)
@@ -184,49 +184,49 @@ def show() -> None:
                 )
                 st.rerun()
         else:
-            st.info("No projects yet — create one below.")
+            st.info("No projects yet.")
 
-        with st.form("workbench_create_project"):
-            proj_name = st.text_input("New Project Name")
-            proj_desc = st.text_area("Description", height=68)
-            if st.form_submit_button("Create Project", use_container_width=True):
-                if not proj_name.strip():
-                    st.error("Project name is required.")
-                else:
-                    with session_scope() as session:
-                        auth_repo = AuthRepository(session)
-                        repo = CaseRepository(session)
-                        project = repo.get_or_create_project(
-                            project_code=slugify(proj_name, fallback="project"),
-                            project_name=proj_name.strip(),
-                            description=proj_desc.strip() or None,
-                            source_ref="workbench",
-                        )
-                        session.flush()
-                        auth_repo.ensure_system_roles()
-                        auth_repo.add_project_member(
-                            project_id=project.project_id,
-                            user_id=auth_user.user_id,
-                            role_code="normal_user",
-                        )
-                        session.flush()
-                        set_active_project(
-                            project_id=project.project_id,
-                            project_code=project.project_code,
-                            project_name=project.project_name,
-                        )
-                    st.rerun()
+        with st.expander("+ New Project", expanded=not projects):
+            with st.form("workbench_create_project"):
+                proj_name = st.text_input("Project Name")
+                proj_desc = st.text_area("Description (optional)", height=60)
+                if st.form_submit_button("Create", use_container_width=True):
+                    if not proj_name.strip():
+                        st.error("Name is required.")
+                    else:
+                        with session_scope() as session:
+                            auth_repo = AuthRepository(session)
+                            repo = CaseRepository(session)
+                            project = repo.get_or_create_project(
+                                project_code=slugify(proj_name, fallback="project"),
+                                project_name=proj_name.strip(),
+                                description=proj_desc.strip() or None,
+                                source_ref="workbench",
+                            )
+                            session.flush()
+                            auth_repo.ensure_system_roles()
+                            auth_repo.add_project_member(
+                                project_id=project.project_id,
+                                user_id=auth_user.user_id,
+                                role_code="normal_user",
+                            )
+                            session.flush()
+                            set_active_project(
+                                project_id=project.project_id,
+                                project_code=project.project_code,
+                                project_name=project.project_name,
+                            )
+                        st.rerun()
 
-        if projects:
-            st.caption("Accessible projects")
+        if len(projects) > 1:
+            st.caption("All projects")
             for p in projects[:8]:
                 is_active = p["project_id"] == context.get("project_id")
-                c_name, c_date, c_btn = st.columns([2.5, 1.5, 1])
-                c_name.write(("**▶ **" if is_active else "") + p["project_name"])
-                c_date.caption(fmt_dt(p["created_at"]))
+                c_name, c_btn = st.columns([3, 1])
+                c_name.write(("▶ " if is_active else "  ") + p["project_name"])
                 if is_active:
-                    c_btn.button("Active", key=f"proj_act_{p['project_id']}", disabled=True, use_container_width=True)
-                elif c_btn.button("Switch", key=f"proj_sw_{p['project_id']}", use_container_width=True):
+                    c_btn.button("✓", key=f"proj_act_{p['project_id']}", disabled=True, use_container_width=True)
+                elif c_btn.button("↗", key=f"proj_sw_{p['project_id']}", use_container_width=True):
                     set_active_project(
                         project_id=p["project_id"],
                         project_code=p["project_code"],
@@ -239,7 +239,7 @@ def show() -> None:
         st.subheader("Cases")
 
         if not context.get("project_id"):
-            st.info("Create or select a project first.")
+            st.info("Select a project first.")
         else:
             if cases:
                 case_ids = [c["sizing_case_id"] for c in cases]
@@ -250,6 +250,7 @@ def show() -> None:
                     index=case_ids.index(current_cid),
                     format_func=lambda cid: next(c["case_name"] for c in cases if c["sizing_case_id"] == cid),
                     key="workbench_case_select",
+                    label_visibility="collapsed",
                 )
                 if selected_cid != context.get("case_id"):
                     sel = next(c for c in cases if c["sizing_case_id"] == selected_cid)
@@ -260,51 +261,55 @@ def show() -> None:
                     )
                     st.rerun()
             else:
-                st.info("No cases — create one below.")
+                st.info("No cases yet.")
 
-            with st.form("workbench_create_case"):
-                case_name_input = st.text_input("New Case Name")
-                scenario_mode = st.selectbox(
-                    "Scenario Mode",
-                    list(SCENARIO_LABELS.keys()),
-                    index=0,
-                    format_func=lambda k: SCENARIO_LABELS[k],
-                )
-                if st.form_submit_button("Create Case", use_container_width=True):
-                    if not case_name_input.strip():
-                        st.error("Case name is required.")
-                    else:
-                        proj_code = context.get("project_code") or slugify(context.get("project_name") or "project", fallback="project")
-                        with session_scope() as session:
-                            repo = CaseRepository(session)
-                            AccessControlService(session, auth_user).ensure_project_access(context["project_id"])
-                            case = repo.create_case(
-                                project_id=context["project_id"],
-                                case_code=f"{proj_code}-{slugify(case_name_input, fallback='case')}",
-                                case_name=case_name_input.strip(),
-                                stage_scope=StageScope.DC,
-                                scenario_mode=scenario_mode,
-                                input_json={},
-                                source_ref="workbench",
+            with st.expander("+ New Case", expanded=not cases):
+                with st.form("workbench_create_case"):
+                    case_name_input = st.text_input("Case Name")
+                    scenario_mode = st.selectbox(
+                        "Scenario",
+                        list(SCENARIO_LABELS.keys()),
+                        index=0,
+                        format_func=lambda k: SCENARIO_LABELS[k],
+                    )
+                    if st.form_submit_button("Create", use_container_width=True):
+                        if not case_name_input.strip():
+                            st.error("Name is required.")
+                        else:
+                            proj_code = context.get("project_code") or slugify(
+                                context.get("project_name") or "project", fallback="project"
                             )
-                            session.flush()
-                            set_active_case(
-                                case_id=case.sizing_case_id,
-                                case_code=case.case_code,
-                                case_name=case.case_name,
-                            )
-                        st.rerun()
+                            with session_scope() as session:
+                                repo = CaseRepository(session)
+                                AccessControlService(session, auth_user).ensure_project_access(context["project_id"])
+                                case = repo.create_case(
+                                    project_id=context["project_id"],
+                                    case_code=f"{proj_code}-{slugify(case_name_input, fallback='case')}",
+                                    case_name=case_name_input.strip(),
+                                    stage_scope=StageScope.DC,
+                                    scenario_mode=scenario_mode,
+                                    input_json={},
+                                    source_ref="workbench",
+                                )
+                                session.flush()
+                                set_active_case(
+                                    case_id=case.sizing_case_id,
+                                    case_code=case.case_code,
+                                    case_name=case.case_name,
+                                )
+                            st.rerun()
 
-            if cases:
-                st.caption("Cases under current project")
+            if len(cases) > 1:
+                st.caption("Cases in this project")
                 for c in cases[:10]:
                     is_active = c["sizing_case_id"] == context.get("case_id")
-                    c_name, c_scen, c_btn = st.columns([2.5, 1.8, 1])
-                    c_name.write(("**▶ **" if is_active else "") + c["case_name"])
-                    c_scen.caption(SCENARIO_LABELS.get(c["scenario_mode"], c["scenario_mode"]))
+                    c_name, c_btn = st.columns([3, 1])
+                    scen = SCENARIO_LABELS.get(c["scenario_mode"], "")
+                    c_name.write(("▶ " if is_active else "  ") + c["case_name"])
+                    c_name.caption(scen)
                     if is_active:
-                        c_btn.button("Active", key=f"case_act_{c['sizing_case_id']}", disabled=True, use_container_width=True)
-                    elif c_btn.button("Switch", key=f"case_sw_{c['sizing_case_id']}", use_container_width=True):
+                        c_btn.button("✓", key=f"case_act_{c['sizing_case_id']}", disabled=True, use_container_width=True)
+                    elif c_btn.button("↗", key=f"case_sw_{c['sizing_case_id']}", use_container_width=True):
                         set_active_case(
                             case_id=c["sizing_case_id"],
                             case_code=c["case_code"],
@@ -320,19 +325,30 @@ def show() -> None:
         elif not runs:
             st.info("No runs yet. Start with DC Sizing.")
         else:
-            st.caption("Recent runs for the active case")
+            # Header row
+            h0, h1, h2, h3, h4 = st.columns([2.0, 1.8, 1.8, 0.6, 1.6])
+            h0.caption("Run")
+            h1.caption("MW / MWh")
+            h2.caption("Scenario")
+            h3.caption("OK")
+            h4.caption("")
+
             for idx, item in enumerate(runs[:12], start=1):
                 label = _run_label(idx, item["created_at"])
                 mw = item["poi_power_req_mw"]
                 mwh = item["poi_energy_req_mwh"]
-                power_str = f"{mw}MW / {mwh}MWh" if mw else "—"
+                power_str = f"{mw} / {mwh}" if mw else "—"
                 scenario_str = SCENARIO_LABELS.get(item["scenario_id"], item["scenario_id"] or "—")
-                c0, c1, c2, c3, c4 = st.columns([2.2, 2.0, 1.6, 0.8, 1.0])
-                c0.write(label)
+                is_active_run = item["sizing_run_id"] == _active_run_id
+
+                c0, c1, c2, c3, c4 = st.columns([2.0, 1.8, 1.8, 0.6, 1.6])
+                c0.write(("**" + label + "**") if is_active_run else label)
                 c1.write(power_str)
                 c2.write(scenario_str)
                 c3.write("✓" if item["converged"] else "✗")
-                if c4.button("Restore", key=f"wb_restore_{item['sizing_run_id']}"):
+                btn_label = "Active" if is_active_run else "Restore"
+                if c4.button(btn_label, key=f"wb_restore_{item['sizing_run_id']}",
+                             disabled=is_active_run, use_container_width=True):
                     with session_scope() as session:
                         bundle = AccessControlService(session, auth_user).load_dc_run_bundle(item["sizing_run_id"])
                     if not bundle:
@@ -341,15 +357,13 @@ def show() -> None:
                         restore_run_bundle_to_session(bundle, item["sizing_run_id"])
                         st.rerun()
 
+            # Latest run compact summary
             latest = runs[0]
-            st.markdown("---")
-            st.caption(f"Latest run · {_run_label(1, latest['created_at'])}")
-            st.write(
-                {
-                    "Scenario": SCENARIO_LABELS.get(latest["scenario_id"], latest["scenario_id"] or "—"),
-                    "POI Power": f"{latest['poi_power_req_mw']} MW" if latest["poi_power_req_mw"] else "—",
-                    "POI Energy": f"{latest['poi_energy_req_mwh']} MWh" if latest["poi_energy_req_mwh"] else "—",
-                    "Margin": f"{latest['margin_mwh']} MWh" if latest["margin_mwh"] is not None else "—",
-                    "Converged": "Yes" if latest["converged"] else "No",
-                }
-            )
+            st.divider()
+            st.caption(f"Latest run — {_run_label(1, latest['created_at'])}")
+            s1, s2 = st.columns(2)
+            s1.metric("POI Power", f"{latest['poi_power_req_mw']} MW" if latest["poi_power_req_mw"] else "—")
+            s2.metric("POI Energy", f"{latest['poi_energy_req_mwh']} MWh" if latest["poi_energy_req_mwh"] else "—")
+            s3, s4 = st.columns(2)
+            s3.metric("Margin", f"{latest['margin_mwh']} MWh" if latest["margin_mwh"] is not None else "—")
+            s4.metric("Converged", "Yes ✓" if latest["converged"] else "No ✗")
