@@ -16,6 +16,10 @@ class AuthContext:
     def is_admin(self) -> bool:
         return "admin" in self.roles
 
+    @property
+    def is_guest(self) -> bool:
+        return "guest" in self.roles
+
 
 def get_auth_context() -> AuthContext | None:
     payload = st.session_state.get("auth_context")

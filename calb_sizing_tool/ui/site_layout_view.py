@@ -31,6 +31,7 @@ from calb_sizing_tool.services.external_layout_service import (
     review_external_layout,
     submit_external_layout_artifact,
 )
+from calb_sizing_tool.schemas.run_bundle import DcRunBundle
 from calb_sizing_tool.services.layout_service import render_layout_from_run_bundle
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import get_project_state, init_project_state
@@ -58,6 +59,26 @@ def _resolve_ac_blocks_total(ac_output: dict) -> int:
     return max(1, value)
 
 
+def _build_guest_dc_bundle() -> DcRunBundle | None:
+    snapshot = st.session_state.get("guest_dc_run_snapshot")
+    if snapshot is None:
+        return None
+    run_id = st.session_state.get("dc_last_run_id") or "guest-session"
+    return DcRunBundle(
+        run_id=run_id,
+        project_id=None,
+        project_code=None,
+        project_name="Guest Session",
+        sizing_case_id=None,
+        case_code=None,
+        case_name="Guest Session",
+        scenario_mode=None,
+        input_snapshot=None,
+        output_snapshot=None,
+        snapshot=snapshot,
+    )
+
+
 def show() -> None:
     state = init_shared_state()
     init_project_state()
@@ -68,12 +89,23 @@ def show() -> None:
         st.error("Login required.")
         return
     auth_user = get_auth_user()
+    _is_guest = auth_context.is_guest
 
     st.header("Site Layout")
     st.caption("Generate layout from run_id via plugin renderer.")
 
+    if _is_guest:
+        st.info("👁 **Guest mode** — layout runs from session data. AI prompt and external submission are disabled.", icon=None)
+
     run_id_default = st.session_state.get("dc_last_run_id", "")
-    run_id = st.text_input("Run ID", value=str(run_id_default or "")).strip()
+    if _is_guest:
+        run_id = str(run_id_default or "")
+        if run_id:
+            st.caption(f"Session run: `{run_id}`")
+        else:
+            st.warning("No DC sizing results in session. Run DC sizing first.")
+    else:
+        run_id = st.text_input("Run ID", value=str(run_id_default or "")).strip()
 
     ac_snapshot = _build_ac_snapshot(state, project_state)
     if ac_snapshot is None:
@@ -105,16 +137,22 @@ def show() -> None:
     )
 
     if st.button("Generate Layout", disabled=not run_id or not ac_snapshot):
-        with session_scope() as session:
-            access = AccessControlService(session, auth_user)
-            try:
-                bundle = access.load_dc_run_bundle(run_id)
-            except PermissionError:
-                st.error("You do not have access to this run.")
+        if _is_guest:
+            bundle = _build_guest_dc_bundle()
+            if not bundle:
+                st.error("No DC sizing results in session. Run DC sizing first.")
                 return
-        if not bundle:
-            st.error("Run not found.")
-            return
+        else:
+            with session_scope() as session:
+                access = AccessControlService(session, auth_user)
+                try:
+                    bundle = access.load_dc_run_bundle(run_id)
+                except PermissionError:
+                    st.error("You do not have access to this run.")
+                    return
+            if not bundle:
+                st.error("Run not found.")
+                return
 
         options = LayoutRenderOptions(
             block_index=block_index,
@@ -172,59 +210,60 @@ def show() -> None:
                 "image/png",
             )
 
-    st.markdown("---")
-    st.subheader("AI Layout Prompt")
-    if st.button("Generate Prompt Payload", disabled=not run_id):
-        try:
-            prompt_result = generate_layout_prompt(
-                run_id=run_id,
-                auth_user=auth_user,
-                options=LayoutRenderOptions(block_index=block_index, arrangement=arrangement),
-            )
-            st.session_state["layout_prompt_payload"] = prompt_result["payload"]
-            st.session_state["layout_prompt_text"] = prompt_result["prompt_text"]
-            st.success("Prompt payload generated.")
-        except Exception as exc:
-            st.error(f"Prompt generation failed: {exc}")
-
-    prompt_payload = st.session_state.get("layout_prompt_payload")
-    prompt_text = st.session_state.get("layout_prompt_text")
-    if prompt_payload:
-        st.download_button(
-            "Download layout_prompt_payload.json",
-            __import__("json").dumps(prompt_payload, indent=2, sort_keys=True),
-            "layout_prompt_payload.json",
-            "application/json",
-        )
-    if prompt_text:
-        st.download_button(
-            "Download prompt.txt",
-            prompt_text,
-            "layout_prompt.txt",
-            "text/plain",
-        )
-
-    st.subheader("External AI Submission")
-    upload = st.file_uploader("Upload AI-generated layout (PNG or SVG)", type=["png", "svg"])
-    notes = st.text_area("Submission notes", height=80)
-    if st.button("Submit AI Layout", disabled=not run_id or upload is None):
-        if upload is None:
-            st.error("Please upload a file.")
-        else:
+    if not _is_guest:
+        st.markdown("---")
+        st.subheader("AI Layout Prompt")
+        if st.button("Generate Prompt Payload", disabled=not run_id):
             try:
-                submission = submit_external_layout_artifact(
+                prompt_result = generate_layout_prompt(
                     run_id=run_id,
                     auth_user=auth_user,
-                    file_bytes=upload.getvalue(),
-                    file_name=upload.name,
-                    media_type=upload.type or "image/png",
-                    notes=notes.strip() or None,
+                    options=LayoutRenderOptions(block_index=block_index, arrangement=arrangement),
                 )
-                st.success(f"Submission created: {submission['submission_id']}")
+                st.session_state["layout_prompt_payload"] = prompt_result["payload"]
+                st.session_state["layout_prompt_text"] = prompt_result["prompt_text"]
+                st.success("Prompt payload generated.")
             except Exception as exc:
-                st.error(f"Submission failed: {exc}")
+                st.error(f"Prompt generation failed: {exc}")
 
-    if run_id:
+        prompt_payload = st.session_state.get("layout_prompt_payload")
+        prompt_text = st.session_state.get("layout_prompt_text")
+        if prompt_payload:
+            st.download_button(
+                "Download layout_prompt_payload.json",
+                __import__("json").dumps(prompt_payload, indent=2, sort_keys=True),
+                "layout_prompt_payload.json",
+                "application/json",
+            )
+        if prompt_text:
+            st.download_button(
+                "Download prompt.txt",
+                prompt_text,
+                "layout_prompt.txt",
+                "text/plain",
+            )
+
+        st.subheader("External AI Submission")
+        upload = st.file_uploader("Upload AI-generated layout (PNG or SVG)", type=["png", "svg"])
+        notes = st.text_area("Submission notes", height=80)
+        if st.button("Submit AI Layout", disabled=not run_id or upload is None):
+            if upload is None:
+                st.error("Please upload a file.")
+            else:
+                try:
+                    submission = submit_external_layout_artifact(
+                        run_id=run_id,
+                        auth_user=auth_user,
+                        file_bytes=upload.getvalue(),
+                        file_name=upload.name,
+                        media_type=upload.type or "image/png",
+                        notes=notes.strip() or None,
+                    )
+                    st.success(f"Submission created: {submission['submission_id']}")
+                except Exception as exc:
+                    st.error(f"Submission failed: {exc}")
+
+    if not _is_guest and run_id:
         submissions = list_external_submissions(run_id)
     else:
         submissions = []

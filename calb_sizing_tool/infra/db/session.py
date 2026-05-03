@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session, sessionmaker
@@ -41,7 +41,15 @@ def normalize_database_url(database_url: str) -> str:
 def create_engine_for_url(database_url: str | None = None, *, echo: bool = False) -> Engine:
     url = normalize_database_url(database_url or get_database_url())
     connect_args = {"check_same_thread": False} if url.startswith("sqlite:") else {}
-    return create_engine(url, future=True, echo=echo, connect_args=connect_args)
+    engine = create_engine(url, future=True, echo=echo, connect_args=connect_args)
+    if url.startswith("sqlite:"):
+        @event.listens_for(engine, "connect")
+        def _sqlite_pragmas(dbapi_conn, _record):
+            cur = dbapi_conn.cursor()
+            cur.execute("PRAGMA foreign_keys=ON")
+            cur.execute("PRAGMA journal_mode=WAL")
+            cur.close()
+    return engine
 
 
 def create_session_factory(database_url: str | None = None, *, echo: bool = False) -> sessionmaker[Session]:

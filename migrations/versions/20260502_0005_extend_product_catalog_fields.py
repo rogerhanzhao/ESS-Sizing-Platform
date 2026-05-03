@@ -1,0 +1,136 @@
+from __future__ import annotations
+
+import sqlalchemy as sa
+from alembic import op
+
+
+revision = "20260502_0005"
+down_revision = "20260502_0004"
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    with op.batch_alter_table("product_cell") as batch:
+        batch.add_column(sa.Column("shipping_capacity_ah", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("rated_energy_wh", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("shoulder_height_mm", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("volume_l", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("energy_efficiency_pct", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("dcr_mohm", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("rated_c_rate_label", sa.String(length=64), nullable=True))
+        batch.add_column(sa.Column("cycle_life_cycles", sa.Integer(), nullable=True))
+        batch.add_column(sa.Column("cycle_life_rate_label", sa.String(length=64), nullable=True))
+        batch.add_column(sa.Column("cycle_life_dod_pct", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("end_of_life_soh_pct", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("manufacturing_process", sa.String(length=64), nullable=True))
+        batch.add_column(sa.Column("launch_year", sa.Integer(), nullable=True))
+
+    with op.batch_alter_table("degradation_curve") as batch:
+        batch.add_column(sa.Column("curve_type", sa.String(length=64), nullable=True))
+        batch.add_column(sa.Column("curve_family", sa.String(length=128), nullable=True))
+        batch.add_column(sa.Column("basis_cell_code", sa.String(length=128), nullable=True))
+        batch.add_column(sa.Column("default_scope", sa.String(length=64), nullable=True))
+        batch.add_column(sa.Column("data_status", sa.String(length=64), nullable=True))
+        batch.add_column(sa.Column("end_of_life_soh_pct", sa.Float(), nullable=True))
+
+    with op.batch_alter_table("product_dc_block") as batch:
+        batch.add_column(sa.Column("product_model", sa.String(length=128), nullable=True))
+        batch.add_column(sa.Column("packs_per_rack", sa.Integer(), nullable=True))
+        batch.add_column(sa.Column("racks_per_container", sa.Integer(), nullable=True))
+        batch.add_column(sa.Column("pack_count", sa.Integer(), nullable=True))
+        batch.add_column(sa.Column("container_count", sa.Integer(), nullable=True))
+        batch.add_column(sa.Column("configuration", sa.String(length=128), nullable=True))
+        batch.add_column(sa.Column("enclosure", sa.String(length=255), nullable=True))
+        batch.add_column(sa.Column("rated_capacity_kwh", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("voltage_min_v", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("voltage_max_v", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("nominal_power_kw", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("max_current_a", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("charge_discharge_rate", sa.String(length=64), nullable=True))
+        batch.add_column(sa.Column("dod_pct", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("cycle_life_cycles", sa.Integer(), nullable=True))
+        batch.add_column(sa.Column("end_of_life_soh_pct", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("service_life_years", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("system_efficiency_pct", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("dimension_width_mm", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("dimension_depth_mm", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("dimension_height_mm", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("weight_kg", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("ingress_protection", sa.String(length=64), nullable=True))
+        batch.add_column(sa.Column("relative_humidity", sa.String(length=128), nullable=True))
+        batch.add_column(sa.Column("working_temp_min_c", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("working_temp_max_c", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("storage_temp_min_c", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("storage_temp_max_c", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("altitude_m", sa.Float(), nullable=True))
+        batch.add_column(sa.Column("bms_communication", sa.String(length=255), nullable=True))
+        batch.add_column(sa.Column("compliance_standards", sa.Text(), nullable=True))
+        batch.add_column(sa.Column("seismic_rating", sa.String(length=64), nullable=True))
+        batch.add_column(sa.Column("coating", sa.String(length=255), nullable=True))
+        batch.add_column(sa.Column("firefighting_system", sa.Text(), nullable=True))
+        batch.add_column(sa.Column("explosion_protection", sa.Text(), nullable=True))
+        batch.add_column(sa.Column("default_degradation_curve_code", sa.String(length=128), nullable=True))
+
+
+def downgrade() -> None:
+    with op.batch_alter_table("product_dc_block") as batch:
+        batch.drop_column("default_degradation_curve_code")
+        batch.drop_column("explosion_protection")
+        batch.drop_column("firefighting_system")
+        batch.drop_column("coating")
+        batch.drop_column("seismic_rating")
+        batch.drop_column("compliance_standards")
+        batch.drop_column("bms_communication")
+        batch.drop_column("altitude_m")
+        batch.drop_column("storage_temp_max_c")
+        batch.drop_column("storage_temp_min_c")
+        batch.drop_column("working_temp_max_c")
+        batch.drop_column("working_temp_min_c")
+        batch.drop_column("relative_humidity")
+        batch.drop_column("ingress_protection")
+        batch.drop_column("weight_kg")
+        batch.drop_column("dimension_height_mm")
+        batch.drop_column("dimension_depth_mm")
+        batch.drop_column("dimension_width_mm")
+        batch.drop_column("system_efficiency_pct")
+        batch.drop_column("service_life_years")
+        batch.drop_column("end_of_life_soh_pct")
+        batch.drop_column("cycle_life_cycles")
+        batch.drop_column("dod_pct")
+        batch.drop_column("charge_discharge_rate")
+        batch.drop_column("max_current_a")
+        batch.drop_column("nominal_power_kw")
+        batch.drop_column("voltage_max_v")
+        batch.drop_column("voltage_min_v")
+        batch.drop_column("rated_capacity_kwh")
+        batch.drop_column("enclosure")
+        batch.drop_column("configuration")
+        batch.drop_column("container_count")
+        batch.drop_column("pack_count")
+        batch.drop_column("racks_per_container")
+        batch.drop_column("packs_per_rack")
+        batch.drop_column("product_model")
+
+    with op.batch_alter_table("degradation_curve") as batch:
+        batch.drop_column("end_of_life_soh_pct")
+        batch.drop_column("data_status")
+        batch.drop_column("default_scope")
+        batch.drop_column("basis_cell_code")
+        batch.drop_column("curve_family")
+        batch.drop_column("curve_type")
+
+    with op.batch_alter_table("product_cell") as batch:
+        batch.drop_column("launch_year")
+        batch.drop_column("manufacturing_process")
+        batch.drop_column("end_of_life_soh_pct")
+        batch.drop_column("cycle_life_dod_pct")
+        batch.drop_column("cycle_life_rate_label")
+        batch.drop_column("cycle_life_cycles")
+        batch.drop_column("rated_c_rate_label")
+        batch.drop_column("dcr_mohm")
+        batch.drop_column("energy_efficiency_pct")
+        batch.drop_column("volume_l")
+        batch.drop_column("shoulder_height_mm")
+        batch.drop_column("rated_energy_wh")
+        batch.drop_column("shipping_capacity_ah")

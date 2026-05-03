@@ -18,6 +18,7 @@
 
 import logging
 from pathlib import Path
+from typing import Any
 
 import streamlit as st
 
@@ -33,6 +34,42 @@ from calb_sizing_tool.state.session_state import init_shared_state
 from calb_sizing_tool.state.workspace_state import get_workspace_context
 from calb_sizing_tool.services.sld_data_source_service import load_persisted_ac_snapshot
 from calb_sizing_tool.services.artifact_service import load_artifact_bytes_from_db
+
+
+def _load_product_assets_for_block(block_code: str | None) -> list[dict[str, Any]]:
+    if not block_code:
+        return []
+    try:
+        from calb_sizing_tool.infra.db.models import ProductAsset
+        from calb_sizing_tool.infra.db.session import session_scope
+        with session_scope() as session:
+            rows = (
+                session.query(ProductAsset)
+                .filter(
+                    ProductAsset.owner_entity == "product_dc_block",
+                    ProductAsset.owner_code == block_code,
+                    ProductAsset.is_active.is_(True),
+                )
+                .order_by(ProductAsset.sort_order.asc(), ProductAsset.is_primary.desc())
+                .all()
+            )
+            return [
+                {
+                    "asset_code": r.asset_code,
+                    "kind": r.asset_kind,
+                    "title": r.title,
+                    "file_name": r.file_name,
+                    "caption": r.caption,
+                    "proposal_section": r.proposal_section,
+                    "source_path": r.source_path,
+                    "storage_uri": r.storage_uri,
+                    "is_primary": r.is_primary,
+                    "sort_order": r.sort_order,
+                }
+                for r in rows
+            ]
+    except Exception:
+        return []
 
 
 def _extract_block_identity(stage2_raw):
@@ -73,6 +110,31 @@ def _extract_artifact_bytes(artifact_bundle) -> tuple[bytes | None, bytes | None
 
 
 def show():
+    from calb_sizing_tool.state.auth_state import get_auth_context, clear_auth_context
+    _auth = get_auth_context()
+    if _auth and _auth.is_guest:
+        st.title("Report Export")
+        st.markdown(
+            """
+            <div style="background:#FFF8E6;border:1px solid #F0C060;border-radius:8px;
+                        padding:1.25rem 1.5rem;margin-top:1rem">
+                <div style="color:#7A5500;font-weight:700;font-size:0.95rem;margin-bottom:0.4rem">
+                    Export requires a registered account
+                </div>
+                <div style="color:#7A5500;font-size:0.82rem;line-height:1.6">
+                    Guest mode allows DC / AC sizing and SLD generation.<br>
+                    Report download and proposal export are available after sign-in.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("Sign In to Enable Export", use_container_width=False):
+            clear_auth_context()
+            st.rerun()
+        return
+
     state = init_shared_state()
     init_project_state()
     dc_results = state.dc_results or {}
@@ -290,6 +352,12 @@ def show():
 
         if active_run_id:
             st.success(f"DC Run ID: `{active_run_id}`  — linked to database")
+            # Block library source provenance
+            _block_src_label = st.session_state.get("dc_block_source") or "Excel reference library"
+            if "Admin" in _block_src_label:
+                st.info("DC Block Library: **Admin product library** (Phase B DB)")
+            else:
+                st.info("DC Block Library: Excel reference library")
             # Show AC snapshot linkage
             _ac_run_id = ac_output.get("source_ac_run_id") if ac_output else None
             if _ac_run_id:
@@ -304,6 +372,42 @@ def show():
                 "The report will be generated from the current session only and will "
                 "carry a provenance warning."
             )
+
+    # --- Standard Product Information (from ProductAsset DB) ---
+    _stage2_raw_preview = stage13_output.get("stage2_raw", {})
+    _preview_block_code, _preview_block_name = _extract_block_identity(_stage2_raw_preview)
+    _dc_block_src = st.session_state.get("dc_block_source", "Excel reference library")
+    _product_assets = _load_product_assets_for_block(_preview_block_code)
+
+    with st.expander("Standard Product Information", expanded=bool(_product_assets)):
+        if _preview_block_code:
+            st.caption(f"DC Block: **{_preview_block_code}**" + (f" — {_preview_block_name}" if _preview_block_name else ""))
+        if not _product_assets:
+            st.info(
+                "No product assets registered for this DC block. "
+                "Add datasheets and product images in ⚙ Product & Database → Product Assets."
+            )
+        else:
+            _kind_order = ["datasheet", "product_image", "proposal_image", "source_file", "other"]
+            _by_kind: dict[str, list] = {}
+            for _a in _product_assets:
+                _by_kind.setdefault(_a["kind"], []).append(_a)
+            for _kind in _kind_order:
+                if _kind not in _by_kind:
+                    continue
+                st.markdown(f"**{_kind.replace('_', ' ').title()}**")
+                for _asset in _by_kind[_kind]:
+                    _ref = _asset.get("storage_uri") or _asset.get("source_path") or ""
+                    _badge = " ⭐" if _asset["is_primary"] else ""
+                    _section = f"  ·  *{_asset['proposal_section']}*" if _asset.get("proposal_section") else ""
+                    st.markdown(
+                        f"- `{_asset['asset_code']}`{_badge}  {_asset['title']}{_section}"
+                        + (f"  —  `{_asset['file_name']}`" if _asset.get("file_name") else "")
+                        + (f"\n  > {_asset['caption']}" if _asset.get("caption") else "")
+                    )
+                    if _ref:
+                        st.caption(f"  Ref: {_ref}")
+
     st.divider()
 
     st.subheader("Downloads")

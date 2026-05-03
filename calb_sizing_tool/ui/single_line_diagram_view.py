@@ -26,6 +26,7 @@ import streamlit as st
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.plugins.registry import get_plugin_registry
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot, SldRenderOptions
+from calb_sizing_tool.schemas.run_bundle import DcRunBundle
 from calb_sizing_tool.schemas.sld_render_input import legacy_sld_override_preset
 from calb_sizing_tool.services.access_control_service import AccessControlService
 from calb_sizing_tool.services.sld_data_source_service import AcSnapshotResolution, resolve_preferred_ac_snapshot
@@ -57,6 +58,27 @@ class SldRuntimeSourceStatus:
 
 
 SLD_PREVIEW_CONTROL_SIGNATURE_KEY = "sld_preview_control_signature"
+
+
+def _build_guest_dc_bundle() -> DcRunBundle | None:
+    """Build a DcRunBundle from session state for guest users (no DB access)."""
+    snapshot = st.session_state.get("guest_dc_run_snapshot")
+    if snapshot is None:
+        return None
+    run_id = st.session_state.get("dc_last_run_id") or "guest-session"
+    return DcRunBundle(
+        run_id=run_id,
+        project_id=None,
+        project_code=None,
+        project_name="Guest Session",
+        sizing_case_id=None,
+        case_code=None,
+        case_name="Guest Session",
+        scenario_mode=None,
+        input_snapshot=None,
+        output_snapshot=None,
+        snapshot=snapshot,
+    )
 
 
 def _resolve_ac_snapshot(
@@ -316,8 +338,29 @@ def show() -> None:
         f"Case `{workspace.get('case_name') or 'None'}` | Run `{workspace.get('run_id') or 'None'}`"
     )
 
-    run_id_default = workspace.get("run_id") or st.session_state.get("dc_last_run_id", "")
-    run_id = st.text_input("Run ID", value=str(run_id_default or "")).strip()
+    _is_guest = auth_context.is_guest
+
+    if _is_guest:
+        st.info(
+            "👁 **Guest mode** — SLD generation runs from your session data. "
+            "Formal engineering settings and artifact persistence are disabled.",
+            icon=None,
+        )
+
+    run_id_default = (
+        st.session_state.get("dc_last_run_id", "")
+        if _is_guest
+        else (workspace.get("run_id") or st.session_state.get("dc_last_run_id", ""))
+    )
+    if _is_guest:
+        # Show the session run_id as read-only info — no editable input needed
+        run_id = str(run_id_default or "")
+        if run_id:
+            st.caption(f"Session run: `{run_id}`")
+        else:
+            st.warning("No DC sizing results found in this session. Run DC sizing first.")
+    else:
+        run_id = st.text_input("Run ID", value=str(run_id_default or "")).strip()
 
     ac_resolution = _resolve_ac_snapshot(
         state,
@@ -325,16 +368,18 @@ def show() -> None:
         run_id=run_id or workspace.get("run_id"),
     )
     ac_snapshot = ac_resolution.snapshot
-    ac_snapshot_issue = _validate_ac_snapshot_context(
-        ac_snapshot.output if ac_snapshot else None,
-        expected_run_id=run_id or workspace.get("run_id"),
-        expected_case_id=workspace.get("case_id"),
-        expected_project_id=workspace.get("project_id"),
-    )
-    if ac_snapshot_issue:
-        st.warning(ac_snapshot_issue)
-        ac_snapshot = None
-        ac_resolution = AcSnapshotResolution(snapshot=None, source="none")
+    if not _is_guest:
+        # For registered users: enforce strict run/case/project cross-validation
+        ac_snapshot_issue = _validate_ac_snapshot_context(
+            ac_snapshot.output if ac_snapshot else None,
+            expected_run_id=run_id or workspace.get("run_id"),
+            expected_case_id=workspace.get("case_id"),
+            expected_project_id=workspace.get("project_id"),
+        )
+        if ac_snapshot_issue:
+            st.warning(ac_snapshot_issue)
+            ac_snapshot = None
+            ac_resolution = AcSnapshotResolution(snapshot=None, source="none")
 
     runtime_status = _resolve_sld_runtime_source_status(ac_resolution)
     if runtime_status.is_authoritative:
@@ -379,46 +424,47 @@ def show() -> None:
     else:
         st.warning("Renderer mode is retired and should only be used for internal compatibility checks.")
 
-    if workspace.get("case_id"):
-        if persisted_project_settings:
-            st.caption("Formal engineering settings source: persisted case settings")
+    if not _is_guest:
+        if workspace.get("case_id"):
+            if persisted_project_settings:
+                st.caption("Formal engineering settings source: persisted case settings")
+            else:
+                st.warning(
+                    "Formal engineering settings are not yet saved for this case. "
+                    "Save them below before using strict mode, or switch to draft override mode."
+                )
+            with st.expander("Formal Engineering Settings", expanded=not bool(persisted_project_settings)):
+                formal_settings_input = render_electrical_inputs(
+                    persisted_project_settings or legacy_sld_override_preset(),
+                    key_prefix="sld_formal_settings",
+                    mv_nominal_voltage_kv=mv_nominal_voltage_kv,
+                    section_title="Formal SLD Engineering Settings",
+                    section_caption="Persisted case-level settings used by formal / strict SLD mode.",
+                )
+                if st.button("Save Formal Engineering Settings", use_container_width=True):
+                    try:
+                        with session_scope() as session:
+                            access = AccessControlService(session, auth_user)
+                            case_row = access.case_repo.get_case_by_id(str(workspace.get("case_id")))
+                            if case_row is None:
+                                raise ValueError("Active case not found.")
+                            access.ensure_project_access(case_row.project_id)
+                        formal_project_settings = build_persisted_sld_project_settings(
+                            formal_settings_input,
+                            mv_nominal_voltage_kv=mv_nominal_voltage_kv,
+                        )
+                        save_case_sld_project_settings(
+                            str(workspace.get("case_id")),
+                            formal_project_settings,
+                            actor=auth_user.username,
+                        )
+                    except Exception as exc:
+                        st.error(f"Saving formal engineering settings failed: {exc}")
+                    else:
+                        st.success("Formal engineering settings saved to the active case.")
+                        st.rerun()
         else:
-            st.warning(
-                "Formal engineering settings are not yet saved for this case. "
-                "Save them below before using strict mode, or switch to draft override mode."
-            )
-        with st.expander("Formal Engineering Settings", expanded=not bool(persisted_project_settings)):
-            formal_settings_input = render_electrical_inputs(
-                persisted_project_settings or legacy_sld_override_preset(),
-                key_prefix="sld_formal_settings",
-                mv_nominal_voltage_kv=mv_nominal_voltage_kv,
-                section_title="Formal SLD Engineering Settings",
-                section_caption="Persisted case-level settings used by formal / strict SLD mode.",
-            )
-            if st.button("Save Formal Engineering Settings", use_container_width=True):
-                try:
-                    with session_scope() as session:
-                        access = AccessControlService(session, auth_user)
-                        case_row = access.case_repo.get_case_by_id(str(workspace.get("case_id")))
-                        if case_row is None:
-                            raise ValueError("Active case not found.")
-                        access.ensure_project_access(case_row.project_id)
-                    formal_project_settings = build_persisted_sld_project_settings(
-                        formal_settings_input,
-                        mv_nominal_voltage_kv=mv_nominal_voltage_kv,
-                    )
-                    save_case_sld_project_settings(
-                        str(workspace.get("case_id")),
-                        formal_project_settings,
-                        actor=auth_user.username,
-                    )
-                except Exception as exc:
-                    st.error(f"Saving formal engineering settings failed: {exc}")
-                else:
-                    st.success("Formal engineering settings saved to the active case.")
-                    st.rerun()
-    else:
-        st.info("Select an active case to save formal engineering settings.")
+            st.info("Select an active case to save formal engineering settings.")
 
     override_mode = st.checkbox(
         "Enable Engineering Override Mode",
@@ -476,26 +522,33 @@ def show() -> None:
         st.info("SLD preview cleared.")
 
     if generate_sld:
-        with session_scope() as session:
-            access = AccessControlService(session, auth_user)
-            try:
-                bundle = access.load_dc_run_bundle(run_id)
-            except PermissionError:
-                st.error("You do not have access to this run.")
+        if _is_guest:
+            bundle = _build_guest_dc_bundle()
+            if not bundle:
+                st.error("No DC sizing results in session. Run DC sizing first.")
                 return
-        if not bundle:
-            st.error("Run not found.")
-            return
-        ac_context_error = _validate_ac_snapshot_context(
-            ac_snapshot.output if ac_snapshot else None,
-            expected_run_id=bundle.run_id,
-            expected_case_id=bundle.sizing_case_id,
-            expected_project_id=bundle.project_id,
-        )
-        if ac_context_error:
-            st.error(ac_context_error)
-            return
-        persisted_project_settings = load_run_sld_project_settings(bundle.run_id)
+            persisted_project_settings = None  # guests have no persisted settings
+        else:
+            with session_scope() as session:
+                access = AccessControlService(session, auth_user)
+                try:
+                    bundle = access.load_dc_run_bundle(run_id)
+                except PermissionError:
+                    st.error("You do not have access to this run.")
+                    return
+            if not bundle:
+                st.error("Run not found.")
+                return
+            ac_context_error = _validate_ac_snapshot_context(
+                ac_snapshot.output if ac_snapshot else None,
+                expected_run_id=bundle.run_id,
+                expected_case_id=bundle.sizing_case_id,
+                expected_project_id=bundle.project_id,
+            )
+            if ac_context_error:
+                st.error(ac_context_error)
+                return
+            persisted_project_settings = load_run_sld_project_settings(bundle.run_id)
 
         options = _build_sld_render_options(
             group_index=group_index,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 from xml.etree import ElementTree as ET
@@ -198,6 +199,10 @@ def _normalize_attr_value(value: str) -> Any:
         return " ".join(text.split())
 
 
+def _normalize_svg_text(text: str) -> str:
+    return re.sub(r"\b20\d{2}-\d{2}-\d{2}\b", "<DATE>", text)
+
+
 def normalize_sld_svg(svg_bytes: bytes | str) -> dict[str, Any]:
     raw_text = svg_bytes.decode("utf-8") if isinstance(svg_bytes, bytes) else str(svg_bytes)
     root = ET.fromstring(raw_text)
@@ -214,6 +219,7 @@ def normalize_sld_svg(svg_bytes: bytes | str) -> dict[str, Any]:
             class_counts[class_name] = class_counts.get(class_name, 0) + 1
 
         text = " ".join((element.text or "").split())
+        text = _normalize_svg_text(text)
         if text:
             text_nodes.append(text)
 
@@ -242,6 +248,8 @@ def normalize_sld_svg(svg_bytes: bytes | str) -> dict[str, Any]:
 def normalize_sld_render_output(render_output: dict[str, Any]) -> dict[str, Any]:
     metadata = dict(render_output.get("metadata") or {})
     metadata.pop("generated_at", None)
+    metadata.pop("svg_hash", None)
+    metadata.pop("png_hash", None)
     return {
         "metadata": _round_value(metadata),
         "spec": _round_value(dict(render_output.get("spec") or {})),

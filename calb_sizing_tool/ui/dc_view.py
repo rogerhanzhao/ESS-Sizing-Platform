@@ -754,12 +754,20 @@ def show():
                 st.error("You do not have access to the active project.")
                 return
 
-    if not active_project_id or not active_case_id:
+    if not auth_context.is_guest and (not active_project_id or not active_case_id):
         st.warning("Select a project and case before running DC sizing.")
         return
 
-    st.caption(f"Active Project: {active_project_name} ({active_project_code})")
-    st.caption(f"Active Case: {active_case_name} ({active_case_code})")
+    if auth_context.is_guest:
+        st.info(
+            "👁 **Guest mode** — DC sizing is fully functional. "
+            "Results are stored in this browser session only and will not be saved to the database. "
+            "Sign in to persist runs and access report export.",
+            icon=None,
+        )
+    else:
+        st.caption(f"Active Project: {active_project_name} ({active_project_code})")
+        st.caption(f"Active Case: {active_case_name} ({active_case_code})")
 
     # One-time default migration for UI fields (no impact on sizing logic)
     def _migrate_dc_defaults() -> None:
@@ -846,6 +854,31 @@ def show():
 
     if DC_DATA_IS_LEGACY:
         st.warning("using legacy dictionary")
+
+    # DC Block Library source — offer admin product library when it has active records
+    if not auth_context.is_guest:
+        from calb_sizing_tool.services.product_admin_service import ProductAdminService as _PAS
+        try:
+            _admin_df = _PAS().df_blocks_as_sizing_dataframe()
+            _admin_active = _admin_df[_admin_df["Is_Active"] == 1] if not _admin_df.empty else _admin_df
+        except Exception:
+            _admin_df = None
+            _admin_active = None
+
+        if _admin_active is not None and not _admin_active.empty:
+            _block_src = st.radio(
+                "DC Block Library",
+                ["Excel reference library", "Admin product library"],
+                horizontal=True,
+                key="dc_block_source",
+                help="Admin product library uses blocks maintained in ⚙ Product & Database.",
+            )
+            if _block_src == "Admin product library":
+                df_blocks = _admin_df
+                st.caption(
+                    f"Using {len(_admin_active)} active block(s) from admin product library "
+                    f"({', '.join(_admin_active['Dc_Block_Code'].tolist())})."
+                )
 
     rte_issues = validate_rte_monotonicity_314(df_rte_profile, df_rte_curve)
     if not rte_issues.empty:
@@ -1243,29 +1276,43 @@ def show():
                 )
                 case_input = dict(case_input_base)
                 case_input["scenario_id"] = active_mode
-                persist_result = persist_dc_run(
-                    SizingCaseInput.model_validate(case_input),
-                    active_snapshot,
-                    project_id=active_project_id,
-                    sizing_case_id=active_case_id,
-                    case_code=active_case_code,
-                    case_name=active_case_name,
-                    defaults=defaults,
-                    source_ref="dc_view",
-                    actor=auth_user.username,
-                )
-                run_id = persist_result.get("run_id")
-                if run_id:
-                    with session_scope() as session:
-                        access = AccessControlService(session, auth_user)
-                        bundle = access.load_dc_run_bundle(run_id)
-                    if not bundle:
-                        st.error("Run persisted but could not be reloaded from DB.")
-                    else:
-                        st.session_state["poi_nominal_voltage_kv"] = poi_nominal_voltage_kv
-                        st.session_state["poi_frequency_hz"] = poi_frequency_hz
-                        restore_run_bundle_to_session(bundle, run_id)
-                        st.info("DC run saved and restored successfully.")
+                if auth_context.is_guest:
+                    # Guest: keep results in session only — no DB persist.
+                    # Store the snapshot and set dc_last_run_id so SLD/Layout can find them.
+                    _session_run_id = str(
+                        st.session_state.get("project_state", {})
+                        .get("dc", {})
+                        .get("run_id", "guest-session")
+                    )
+                    st.session_state["poi_nominal_voltage_kv"] = poi_nominal_voltage_kv
+                    st.session_state["poi_frequency_hz"] = poi_frequency_hz
+                    st.session_state["dc_last_run_id"] = _session_run_id
+                    st.session_state["guest_dc_run_snapshot"] = active_snapshot
+                    st.success("DC sizing complete (guest mode — session only, not saved to database).")
+                else:
+                    persist_result = persist_dc_run(
+                        SizingCaseInput.model_validate(case_input),
+                        active_snapshot,
+                        project_id=active_project_id,
+                        sizing_case_id=active_case_id,
+                        case_code=active_case_code,
+                        case_name=active_case_name,
+                        defaults=defaults,
+                        source_ref="dc_view",
+                        actor=auth_user.username,
+                    )
+                    run_id = persist_result.get("run_id")
+                    if run_id:
+                        with session_scope() as session:
+                            access = AccessControlService(session, auth_user)
+                            bundle = access.load_dc_run_bundle(run_id)
+                        if not bundle:
+                            st.error("Run persisted but could not be reloaded from DB.")
+                        else:
+                            st.session_state["poi_nominal_voltage_kv"] = poi_nominal_voltage_kv
+                            st.session_state["poi_frequency_hz"] = poi_frequency_hz
+                            restore_run_bundle_to_session(bundle, run_id)
+                            st.info("DC run saved and restored successfully.")
             except Exception as exc:
                 st.error(f"Failed to persist DC run: {exc}")
 
@@ -1424,12 +1471,15 @@ div[data-testid="stDataFrame"] div[role="rowheader"] {
             report_bytes = build_report_bytes(s1, ok_results, report_order)
             
             if report_bytes:
-                st.download_button(
-                    "Export Technical Sizing Report",
-                    data=report_bytes,
-                    file_name=make_report_filename(project_name),
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
+                if auth_context.is_guest:
+                    st.info("🔒 Report export requires sign-in. Guest mode — session sizing only.", icon=None)
+                else:
+                    st.download_button(
+                        "Export Technical Sizing Report",
+                        data=report_bytes,
+                        file_name=make_report_filename(project_name),
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )
         
         st.info("Sizing Complete. Please proceed to AC Sizing or SLD generation via sidebar.")
 

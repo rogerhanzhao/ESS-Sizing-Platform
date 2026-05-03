@@ -5,6 +5,19 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+
+# ── Schema migrations (Alembic-first) ────────────────────────────────────────
+Write-Output "Running database migrations..."
+Push-Location $repoRoot
+try {
+    python -m alembic upgrade head
+    if ($LASTEXITCODE -ne 0) {
+        throw "alembic upgrade head failed (exit $LASTEXITCODE). Check migrations/versions/."
+    }
+} finally {
+    Pop-Location
+}
+Write-Output "Migrations OK."
 $listen = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq $Port }
 if ($listen) {
     $owners = $listen | Select-Object -ExpandProperty OwningProcess -Unique

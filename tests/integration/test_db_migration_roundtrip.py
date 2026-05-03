@@ -20,6 +20,9 @@ def test_db_migration_roundtrip(tmp_path: Path, monkeypatch):
     assert "parameter_definition" in tables
     assert "sizing_run" in tables
     assert "user_account" in tables
+    assert "product_asset" in tables
+    product_dc_columns = {column["name"] for column in inspect(engine).get_columns("product_dc_block")}
+    assert "block_form" in product_dc_columns
 
     command.downgrade(cfg, "base")
     engine = create_engine(db_url)
@@ -28,3 +31,4 @@ def test_db_migration_roundtrip(tmp_path: Path, monkeypatch):
     command.upgrade(cfg, "head")
     engine = create_engine(db_url)
     assert "artifact_registry" in inspect(engine).get_table_names()
+    assert "product_asset" in inspect(engine).get_table_names()
