@@ -25,6 +25,7 @@ from calb_sizing_tool.infra.db.base import Base
 from calb_sizing_tool.infra.db.session import create_engine_for_url, session_scope
 from calb_sizing_tool.state.auth_state import clear_auth_context, get_auth_context
 from calb_sizing_tool.state.workspace_state import apply_pending_navigation, get_workspace_context
+from calb_sizing_tool.ui._styles import inject_global_styles
 from calb_sizing_tool.ui.login_view import show as show_login
 
 
@@ -34,112 +35,7 @@ st.set_page_config(
     page_icon="⚡",
 )
 
-# ── CALB VI global styles ─────────────────────────────────────────────────────
-st.markdown(
-    """
-    <style>
-    /* ── Sidebar: CALB dark navy ──────────────────────────────────────── */
-    section[data-testid="stSidebar"] {
-        background-color: #0E2240 !important;
-    }
-    section[data-testid="stSidebar"] p,
-    section[data-testid="stSidebar"] span,
-    section[data-testid="stSidebar"] label,
-    section[data-testid="stSidebar"] .stMarkdown,
-    section[data-testid="stSidebar"] .stCaption > *  {
-        color: #B8CADE !important;
-    }
-    section[data-testid="stSidebar"] h1,
-    section[data-testid="stSidebar"] h2,
-    section[data-testid="stSidebar"] h3 {
-        color: #FFFFFF !important;
-    }
-    section[data-testid="stSidebar"] hr {
-        border-color: #1E3A5C !important;
-        margin: 0.5rem 0;
-    }
-    /* Sidebar radio: current page highlight */
-    section[data-testid="stSidebar"] [data-baseweb="radio"] div[aria-checked="true"] ~ div {
-        color: #FFFFFF !important;
-        font-weight: 600;
-    }
-    /* Sidebar logout button */
-    section[data-testid="stSidebar"] .stButton > button {
-        background-color: #1E3A5C;
-        color: #B8CADE;
-        border: 1px solid #2A4F7A;
-        border-radius: 4px;
-    }
-    section[data-testid="stSidebar"] .stButton > button:hover {
-        background-color: #1E4172;
-        color: #FFFFFF;
-    }
-
-    /* ── Main content: header spacing ─────────────────────────────────── */
-    .block-container {
-        padding-top: 1.5rem !important;
-        padding-bottom: 2rem !important;
-    }
-
-    /* ── Metric cards: tighter, branded ───────────────────────────────── */
-    [data-testid="stMetric"] {
-        background-color: #EDF1F7;
-        border-left: 3px solid #1E4172;
-        border-radius: 4px;
-        padding: 0.6rem 0.8rem !important;
-    }
-    [data-testid="stMetricLabel"] > div {
-        font-size: 0.72rem !important;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: #3A5A80 !important;
-    }
-    [data-testid="stMetricValue"] > div {
-        font-size: 1.1rem !important;
-        font-weight: 700;
-        color: #1A2635 !important;
-    }
-
-    /* ── Dividers ──────────────────────────────────────────────────────── */
-    hr {
-        border-color: #D0DAE8 !important;
-    }
-
-    /* ── Subheader: CALB blue left border ─────────────────────────────── */
-    h2, h3 {
-        color: #1A2635 !important;
-    }
-
-    /* ── Page headers: unified CALB brand style ───────────────────────── */
-    .calb-ph {
-        border-left: 4px solid #1E4172;
-        padding: 0.25rem 0 0.25rem 0.8rem;
-        margin-bottom: 0.5rem;
-    }
-    .calb-ph-title {
-        font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: #1A2635;
-        line-height: 1.2;
-        margin: 0 !important;
-        padding: 0 !important;
-    }
-    .calb-ph-sub {
-        font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-        font-size: 0.7rem;
-        font-weight: 600;
-        color: #3A5A80;
-        letter-spacing: 0.07em;
-        text-transform: uppercase;
-        margin: 0.18rem 0 0 0 !important;
-        padding: 0 !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+inject_global_styles()
 
 # ── DB schema (once at startup) ───────────────────────────────────────────────
 # create_all is a safe no-op for existing tables; it only creates tables that

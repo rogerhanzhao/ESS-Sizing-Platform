@@ -12,6 +12,7 @@ import streamlit as st
 
 from calb_sizing_tool.services.product_admin_service import ProductAdminService
 from calb_sizing_tool.state.auth_state import get_auth_context
+from calb_sizing_tool.ui._ui import page_header
 
 _ASSET_STORE = Path("var/assets")
 
@@ -118,6 +119,34 @@ _SECTIONS = [
 _ADMIN_NAV_KEY = "admin_portal_section"
 
 
+def _render_admin_css() -> None:
+    st.markdown(
+        """
+        <style>
+        .calb-admin-nav-title {
+            color: #506F94;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            margin-bottom: 0.35rem;
+            text-transform: uppercase;
+        }
+
+        .calb-admin-section-note {
+            color: #6F7E8F;
+            font-size: 0.86rem;
+            margin-bottom: 0.75rem;
+        }
+
+        div[data-testid="stRadio"] [role="radiogroup"] {
+            gap: 0.15rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def show() -> None:
     auth_context = get_auth_context()
     if auth_context is None or not auth_context.is_admin:
@@ -127,41 +156,22 @@ def show() -> None:
     service = ProductAdminService()
     snapshot = _load_snapshot(service)
 
-    st.markdown(
-        """
-        <style>
-        div[data-testid="stHorizontalBlock"]:first-of-type
-          > div[data-testid="column"]:first-child
-          > div[data-testid="stVerticalBlock"] {
-            background: #F4F7FB;
-            border-right: 2px solid #C2D3E8;
-            border-radius: 0;
-            padding: 0.25rem 0.5rem 0 !important;
-            min-height: 80vh;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        '<h2 style="color:#1A2635;font-size:1.2rem;font-weight:700;margin-bottom:0.25rem">'
-        "Product &amp; Database</h2>",
-        unsafe_allow_html=True,
-    )
-    st.caption("Admin-only product libraries, performance data, and simulation plugin management.")
+    _render_admin_css()
+    page_header("Product & Database", "Admin-only product libraries, performance data, and simulation plugins")
     st.divider()
 
-    nav_col, content_col = st.columns([1, 4])
+    nav_col, content_col = st.columns([1, 4], gap="large")
 
     with nav_col:
-        section_labels = [label for _, label in _SECTIONS]
-        selected_label = st.radio(
-            "Section",
-            section_labels,
-            key=_ADMIN_NAV_KEY,
-            label_visibility="collapsed",
-        )
+        with st.container(border=True):
+            st.markdown('<div class="calb-admin-nav-title">Admin Portal</div>', unsafe_allow_html=True)
+            section_labels = [label for _, label in _SECTIONS]
+            selected_label = st.radio(
+                "Section",
+                section_labels,
+                key=_ADMIN_NAV_KEY,
+                label_visibility="collapsed",
+            )
         selected = next(name for name, label in _SECTIONS if label == selected_label)
 
     with content_col:

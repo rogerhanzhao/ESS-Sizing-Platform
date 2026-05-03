@@ -141,125 +141,128 @@ def show():
     total_energy_mwh = dc_total_mwh_hint if dc_total_mwh_hint > 0 else dc_blocks_total * dc_block_mwh
 
     # ========== Display DC System Summary ==========
-    col1, col2, col3, col4 = st.columns(4)
-    if dc_cabinet_count > 0:
-        col1.metric("DC Blocks", f"{dc_blocks_total} total (C{dc_container_count}+B{dc_cabinet_count})")
-    else:
-        col1.metric("DC Blocks", f"{dc_blocks_total} x 20ft")
-    col2.metric("DC Capacity", f"{total_energy_mwh:.1f} MWh")
-    col3.metric("POI Power Req.", f"{target_mw:.1f} MW")
-    col4.metric("POI Energy Req.", f"{target_mwh:.0f} MWh")
+    with st.container(border=True):
+        col1, col2, col3, col4 = st.columns(4)
+        if dc_cabinet_count > 0:
+            col1.metric("DC Blocks", f"{dc_blocks_total} total (C{dc_container_count}+B{dc_cabinet_count})")
+        else:
+            col1.metric("DC Blocks", f"{dc_blocks_total} x 20ft")
+        col2.metric("DC Capacity", f"{total_energy_mwh:.1f} MWh")
+        col3.metric("POI Power Req.", f"{target_mw:.1f} MW")
+        col4.metric("POI Energy Req.", f"{target_mwh:.0f} MWh")
 
     st.divider()
 
     # ========== STEP 2: Generate Options & Auto-select Best ==========
-    st.subheader("AC Block Sizing Configuration")
-    st.markdown(
+    with st.container(border=True):
+        st.subheader("AC Block Sizing Configuration")
+        st.markdown(
+            """
+        System automatically recommends the best ratio based on your DC Block count.
         """
-    System automatically recommends the best ratio based on your DC Block count.
-    """
-    )
-
-    options = generate_ac_sizing_options(dc_blocks_total, target_mw, target_mwh, dc_block_mwh)
-
-    # Auto-select the recommended option, or use saved selection
-    selected_option = None
-    if "selected_ac_ratio" in st.session_state:
-        selected_ratio = st.session_state["selected_ac_ratio"]
-        selected_option = next((o for o in options if o.ratio == selected_ratio), None)
-
-    if selected_option is None:
-        for opt in options:
-            if opt.is_recommended:
-                selected_option = opt
-                break
-
-    if selected_option is None:
-        selected_option = options[1]
-
-    # Show ratio selection
-    ratio_choices = [opt.ratio for opt in options]
-    selected_ratio_idx = ratio_choices.index(selected_option.ratio) if selected_option.ratio in ratio_choices else 1
-
-    col_ratio, col_desc = st.columns([1, 3])
-    with col_ratio:
-        choice_idx = st.selectbox(
-            "AC:DC Ratio",
-            range(len(ratio_choices)),
-            index=selected_ratio_idx,
-            format_func=lambda i: ratio_choices[i],
-            help="Select the ratio of DC Blocks per AC Block (1:1, 1:2, or 1:4)",
         )
-        if choice_idx != selected_ratio_idx:
-            selected_option = options[choice_idx]
-            st.session_state["selected_ac_ratio"] = selected_option.ratio
 
-    with col_desc:
-        st.info(selected_option.description)
+        options = generate_ac_sizing_options(dc_blocks_total, target_mw, target_mwh, dc_block_mwh)
+
+        # Auto-select the recommended option, or use saved selection
+        selected_option = None
+        if "selected_ac_ratio" in st.session_state:
+            selected_ratio = st.session_state["selected_ac_ratio"]
+            selected_option = next((o for o in options if o.ratio == selected_ratio), None)
+
+        if selected_option is None:
+            for opt in options:
+                if opt.is_recommended:
+                    selected_option = opt
+                    break
+
+        if selected_option is None:
+            selected_option = options[1]
+
+        # Show ratio selection
+        ratio_choices = [opt.ratio for opt in options]
+        selected_ratio_idx = ratio_choices.index(selected_option.ratio) if selected_option.ratio in ratio_choices else 1
+
+        col_ratio, col_desc = st.columns([1, 3])
+        with col_ratio:
+            choice_idx = st.selectbox(
+                "AC:DC Ratio",
+                range(len(ratio_choices)),
+                index=selected_ratio_idx,
+                format_func=lambda i: ratio_choices[i],
+                help="Select the ratio of DC Blocks per AC Block (1:1, 1:2, or 1:4)",
+            )
+            if choice_idx != selected_ratio_idx:
+                selected_option = options[choice_idx]
+                st.session_state["selected_ac_ratio"] = selected_option.ratio
+
+        with col_desc:
+            st.info(selected_option.description)
 
     st.divider()
 
     # ========== STEP 3: Configure PCS for Selected Ratio ==========
     if selected_option:
-        st.subheader(f"PCS Configuration for {selected_option.ratio} Ratio")
+        with st.container(border=True):
+            st.subheader(f"PCS Configuration for {selected_option.ratio} Ratio")
 
-        with st.form("ac_config_form"):
-            col1, col2 = st.columns([2, 2])
+            with st.form("ac_config_form"):
+                col1, col2 = st.columns([2, 2])
 
-            # PCS rating selection from recommendations
-            pcs_options = [f"{rec.readable}" for rec in selected_option.pcs_recommendations]
-            pcs_options.append("Custom PCS Rating...")
+                # PCS rating selection from recommendations
+                pcs_options = [f"{rec.readable}" for rec in selected_option.pcs_recommendations]
+                pcs_options.append("Custom PCS Rating...")
 
-            with col1:
-                pcs_choice = st.selectbox(
-                    "Select PCS Configuration",
-                    range(len(pcs_options)),
-                    format_func=lambda i: pcs_options[i],
-                    help="Select from recommended configurations or enter custom PCS rating",
+                with col1:
+                    pcs_choice = st.selectbox(
+                        "Select PCS Configuration",
+                        range(len(pcs_options)),
+                        format_func=lambda i: pcs_options[i],
+                        help="Select from recommended configurations or enter custom PCS rating",
+                    )
+
+                    if pcs_choice < len(selected_option.pcs_recommendations):
+                        chosen_rec = selected_option.pcs_recommendations[pcs_choice]
+                        pcs_per_ac = chosen_rec.pcs_count
+                        pcs_kw = chosen_rec.pcs_kw
+                        st.write(f"**Selected**: {pcs_per_ac} x {pcs_kw} kW")
+                    else:
+                        st.write("**Selected**: Custom configuration")
+
+                with col2:
+                    if pcs_choice >= len(selected_option.pcs_recommendations):
+                        st.write("**Enter Custom Values:**")
+                        pcs_per_ac = st.number_input(
+                            "PCS Count per AC Block",
+                            min_value=1,
+                            max_value=6,
+                            value=2,
+                            step=1,
+                            key="custom_pcs_count",
+                        )
+                        pcs_kw = st.number_input(
+                            "PCS Rating (kW)",
+                            min_value=1000,
+                            max_value=5000,
+                            value=1500,
+                            step=100,
+                            key="custom_pcs_kw",
+                        )
+                    else:
+                        chosen_rec = selected_option.pcs_recommendations[pcs_choice]
+                        pcs_per_ac = chosen_rec.pcs_count
+                        pcs_kw = chosen_rec.pcs_kw
+
+                # Container size info - based on single AC block size
+                single_block_ac_power = pcs_per_ac * pcs_kw / 1000
+                auto_container = select_ac_block_container_type(single_block_ac_power, pcs_per_ac)
+                st.info(
+                    f"**AC Block Container**: {auto_container} "
+                    f"(Single block: {single_block_ac_power:.2f} MW, "
+                    f"Total AC: {selected_option.ac_block_count * single_block_ac_power:.2f} MW)"
                 )
 
-                if pcs_choice < len(selected_option.pcs_recommendations):
-                    chosen_rec = selected_option.pcs_recommendations[pcs_choice]
-                    pcs_per_ac = chosen_rec.pcs_count
-                    pcs_kw = chosen_rec.pcs_kw
-                    st.write(f"**Selected**: {pcs_per_ac} x {pcs_kw} kW")
-                else:
-                    st.write("**Selected**: Custom configuration")
-
-            with col2:
-                if pcs_choice >= len(selected_option.pcs_recommendations):
-                    st.write("**Enter Custom Values:**")
-                    pcs_per_ac = st.number_input(
-                        "PCS Count per AC Block",
-                        min_value=1,
-                        max_value=6,
-                        value=2,
-                        step=1,
-                        key="custom_pcs_count",
-                    )
-                    pcs_kw = st.number_input(
-                        "PCS Rating (kW)",
-                        min_value=1000,
-                        max_value=5000,
-                        value=1500,
-                        step=100,
-                        key="custom_pcs_kw",
-                    )
-                else:
-                    chosen_rec = selected_option.pcs_recommendations[pcs_choice]
-                    pcs_per_ac = chosen_rec.pcs_count
-                    pcs_kw = chosen_rec.pcs_kw
-
-            # Container size info - based on single AC block size
-            single_block_ac_power = pcs_per_ac * pcs_kw / 1000
-            auto_container = select_ac_block_container_type(single_block_ac_power, pcs_per_ac)
-            st.info(
-                f"**AC Block Container**: {auto_container} "
-                f"(Single block: {single_block_ac_power:.2f} MW, "
-                f"Total AC: {selected_option.ac_block_count * single_block_ac_power:.2f} MW)"
-            )
-
-            submitted = st.form_submit_button("Run AC Sizing", use_container_width=True)
+                submitted = st.form_submit_button("Run AC Sizing", use_container_width=True)
 
         # ========== STEP 4: Calculation & Validation ==========
         if submitted:

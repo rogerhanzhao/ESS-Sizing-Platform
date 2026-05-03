@@ -95,80 +95,9 @@ def inject_css():
     base_theme = st.get_option("theme.base") or "light"
     is_dark = (base_theme == "dark")
 
-    if is_dark:
-        BG_MAIN      = "#0f1116"
-        TITLE_COLOR  = CALB_SKY_BLUE
-        CARD_BG      = "#1b1e24"
-        CARD_BORDER  = "#2c2f36"
-        METRIC_LABEL = "#9ca3af"
-        METRIC_VALUE = CALB_SKY_BLUE
-        BUTTON_BG    = CALB_SKY_BLUE
-        BUTTON_FG    = CALB_BLACK
-        BUTTON_HOVER_BG = CALB_WHITE
-        BUTTON_HOVER_FG = CALB_DEEP_BLUE
-    else:
-        BG_MAIN      = CALB_WISE_GREY
-        TITLE_COLOR  = CALB_DEEP_BLUE
-        CARD_BG      = CALB_WHITE
-        CARD_BORDER  = CALB_LIGHT_GREY
-        METRIC_LABEL = CALB_GREY
-        METRIC_VALUE = CALB_DEEP_BLUE
-        BUTTON_BG    = CALB_SKY_BLUE
-        BUTTON_FG    = CALB_WHITE
-        BUTTON_HOVER_BG = CALB_DEEP_BLUE
-        BUTTON_HOVER_FG = CALB_WHITE
-
     global CHART_TEXT_COLOR
     CHART_TEXT_COLOR = CALB_DEEP_BLUE if not is_dark else CALB_SKY_BLUE
 
-    st.markdown(
-        f"""
-    <style>
-    .calb-page-title {{
-        font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-        color: {TITLE_COLOR};
-        margin-bottom: 0.0rem;
-    }}
-    .calb-card {{
-        background-color: {CARD_BG};
-        padding: 1.2rem 1.6rem;
-        border-radius: 18px;
-        border: 1px solid {CARD_BORDER};
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
-        margin-bottom: 1.4rem;
-    }}
-    .metric-label {{
-        color: {METRIC_LABEL} !important;
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-    }}
-    .metric-value {{
-        font-size: 1.3rem;
-        font-weight: 600;
-        color: {METRIC_VALUE} !important;
-        font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-    }}
-    .stButton>button {{
-        background-color: {BUTTON_BG};
-        color: {BUTTON_FG};
-        border-radius: 999px;
-        border: none;
-        padding: 0.7rem 2.3rem;
-        font-weight: 650;
-        font-size: 1.0rem;
-        font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.25);
-    }}
-    .stButton>button:hover {{
-        background-color: {BUTTON_HOVER_BG};
-        color: {BUTTON_HOVER_FG};
-    }}
-    </style>
-    """,
-        unsafe_allow_html=True,
-    )
 
 def to_float(x, default=0.0):
     try:
@@ -901,44 +830,43 @@ def show():
         with st.expander("Show RTE monotonicity issues", expanded=False):
             st.dataframe(rte_issues, use_container_width=True)
 
-    st.markdown("<div class='calb-card'>", unsafe_allow_html=True)
-    st.subheader("Load DC Run")
-    with st.expander("Load DC Run by ID", expanded=False):
-        load_run_id = st.text_input("Run ID", key="dc_load_run_id")
-        if st.button("Load Run", key="dc_load_run_btn"):
-            run_id = (load_run_id or "").strip()
-            if not run_id:
-                st.warning("Please enter a run id.")
-            else:
-                try:
-                    with session_scope() as session:
-                        access = AccessControlService(session, auth_user)
-                        bundle = access.load_dc_run_bundle(run_id)
-                    if not bundle:
-                        st.error(f"Run ··{run_id[-8:] if len(run_id) >= 8 else run_id} not found.")
-                    else:
-                        case_input = (
-                            bundle.input_snapshot.payload.get("case_input")
-                            if bundle.input_snapshot and isinstance(bundle.input_snapshot.payload, dict)
-                            else {}
-                        )
-                        poi_nominal_voltage_kv = case_input.get("poi_nominal_voltage_kv") or st.session_state.get(
-                            "poi_nominal_voltage_kv", 33.0
-                        )
-                        poi_frequency_hz = case_input.get("poi_frequency_hz") or st.session_state.get(
-                            "poi_frequency_hz"
-                        )
+    with st.container(border=True):
+        st.subheader("Load DC Run")
+        with st.expander("Load DC Run by ID", expanded=False):
+            load_run_id = st.text_input("Run ID", key="dc_load_run_id")
+            if st.button("Load Run", key="dc_load_run_btn"):
+                run_id = (load_run_id or "").strip()
+                if not run_id:
+                    st.warning("Please enter a run id.")
+                else:
+                    try:
+                        with session_scope() as session:
+                            access = AccessControlService(session, auth_user)
+                            bundle = access.load_dc_run_bundle(run_id)
+                        if not bundle:
+                            st.error(f"Run ··{run_id[-8:] if len(run_id) >= 8 else run_id} not found.")
+                        else:
+                            case_input = (
+                                bundle.input_snapshot.payload.get("case_input")
+                                if bundle.input_snapshot and isinstance(bundle.input_snapshot.payload, dict)
+                                else {}
+                            )
+                            poi_nominal_voltage_kv = case_input.get("poi_nominal_voltage_kv") or st.session_state.get(
+                                "poi_nominal_voltage_kv", 33.0
+                            )
+                            poi_frequency_hz = case_input.get("poi_frequency_hz") or st.session_state.get(
+                                "poi_frequency_hz"
+                            )
 
-                        st.session_state["poi_nominal_voltage_kv"] = poi_nominal_voltage_kv
-                        st.session_state["poi_frequency_hz"] = poi_frequency_hz
-                        restore_run_bundle_to_session(bundle, run_id)
-                        set_run_time("dc_results")
-                        st.success(f"DC run ··{run_id[-8:] if len(run_id) >= 8 else run_id} loaded.")
-                except PermissionError:
-                    st.error("You do not have access to this run.")
-                except Exception as exc:
-                    st.error(f"Failed to load run: {exc}")
-    st.markdown("</div>", unsafe_allow_html=True)
+                            st.session_state["poi_nominal_voltage_kv"] = poi_nominal_voltage_kv
+                            st.session_state["poi_frequency_hz"] = poi_frequency_hz
+                            restore_run_bundle_to_session(bundle, run_id)
+                            set_run_time("dc_results")
+                            st.success(f"DC run ··{run_id[-8:] if len(run_id) >= 8 else run_id} loaded.")
+                    except PermissionError:
+                        st.error("You do not have access to this run.")
+                    except Exception as exc:
+                        st.error(f"Failed to load run: {exc}")
 
     def get_default_numeric(key, fallback):
         return to_float(defaults.get(key, fallback), fallback)
@@ -966,8 +894,7 @@ def show():
         return key
 
     # --- UI Form ---
-    with st.container():
-        st.markdown("<div class='calb-card'>", unsafe_allow_html=True)
+    with st.container(border=True):
         st.subheader("1. Project Inputs")
 
         with st.form("main_form"):
@@ -1158,8 +1085,6 @@ def show():
             st.markdown("---")
             run_btn = st.form_submit_button("Run Sizing")
         
-        st.markdown("</div>", unsafe_allow_html=True)
-
     # --- Logic Execution ---
     if run_btn:
         bump_run_id_dc()

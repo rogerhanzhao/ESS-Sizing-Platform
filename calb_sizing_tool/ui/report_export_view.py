@@ -316,6 +316,7 @@ def show():
         "layout_svg_bytes": layout_svg,
     }
 
+    st.markdown("#### Report Content")
     st.subheader("Report Content Preview")
     rc1, rc2, rc3, rc4 = st.columns(4)
     rc1.success("✓  DC Sizing")
@@ -328,6 +329,8 @@ def show():
         rc4.success("✓  Site Layout")
     else:
         rc4.info("○  Layout (not generated)")
+
+    st.divider()
 
     # --- Database Provenance Panel ---
     workspace = get_workspace_context()
@@ -419,12 +422,9 @@ def show():
         index=0,
     )
     
-    c_d1, c_d2 = st.columns(2)
+    st.info("AC Report generation moved to V2.1 format only.")
 
-    with c_d1:
-        st.info("AC Report generation moved to V2.1 format only.")
-
-    with c_d2:
+    with st.container(border=True):
         stage2_raw = stage13_output.get("stage2_raw", {})
         block_code, block_name = _extract_block_identity(stage2_raw)
 

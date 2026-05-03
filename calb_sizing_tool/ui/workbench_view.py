@@ -68,29 +68,6 @@ def _render_workbench_css() -> None:
             margin: 0 0 1.05rem;
             overflow: visible;
         }
-        .wb-page-title {
-            color: #1A2635;
-            display: block;
-            font-size: 2.25rem !important;
-            font-weight: 800 !important;
-            font-family: Arial, "Segoe UI", sans-serif;
-            font-variant-caps: normal;
-            letter-spacing: 0;
-            line-height: 1.28 !important;
-            margin: 0 0 0.55rem;
-            min-height: 3.05rem;
-            overflow: visible;
-            padding: 0.28rem 0 0.08rem;
-            text-transform: none !important;
-            text-align: left;
-        }
-        .wb-page-subtitle {
-            color: #778494;
-            font-size: 0.9rem;
-            line-height: 1.35;
-            margin: 0;
-            text-align: left;
-        }
         .wb-toolbar-build {
             display: none;
         }
@@ -119,7 +96,7 @@ def _render_workbench_css() -> None:
         }
         .wb-compact-label {
             color: #506F94;
-            font-size: 0.56rem;
+            font-size: 0.72rem;
             font-weight: 700;
             letter-spacing: 0.07em;
             margin-bottom: 0.06rem;
@@ -194,50 +171,11 @@ def _render_workbench_css() -> None:
             margin-bottom: 0 !important;
         }
 
-        /* ── All workbench buttons: CALB navy chip style ─────────────────── */
-        .block-container .stButton > button {
-            background: #F5F8FC !important;
-            border: 1.5px solid #2A527A !important;
-            border-radius: 6px !important;
-            box-shadow: none !important;
-            color: #1E4172 !important;
-            font-size: 0.82rem !important;
-            font-weight: 600 !important;
-            height: 2.48rem !important;
-            min-height: 2.48rem !important;
-            justify-content: center !important;
-            letter-spacing: 0.01em !important;
-            padding: 0 0.6rem !important;
-            text-align: center !important;
-            transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease !important;
-        }
-        .block-container .stButton > button p {
-            text-align: center !important;
-            width: 100%;
-        }
-        .block-container .stButton > button:hover:not(:disabled) {
-            background: #1E4172 !important;
-            border-color: #1E4172 !important;
-            color: #FFFFFF !important;
-        }
-        .block-container .stButton > button:disabled {
-            background: #F5F8FC !important;
-            border-color: #CDD8E6 !important;
-            color: #9AAEC0 !important;
-            opacity: 1 !important;
-        }
-
-        div[data-testid="stDataFrame"] {
-            border: 1px solid #D7DEE8;
-            border-radius: 6px;
-        }
         @media (max-width: 900px) {
             .block-container {
                 padding-left: 1rem !important;
                 padding-right: 1rem !important;
             }
-            .wb-page-title { font-size: 2rem; }
-            .wb-page-subtitle { font-size: 0.86rem; }
             .wb-latest-grid { grid-template-columns: 1fr; }
             .wb-compact-grid { grid-template-columns: 1fr; }
             .wb-compact-status { min-height: auto; }

@@ -334,6 +334,7 @@ def show() -> None:
         f"Active Workspace: Project `{workspace.get('project_name') or 'None'}` | "
         f"Case `{workspace.get('case_name') or 'None'}` | Run `{workspace.get('run_id') or 'None'}`"
     )
+    st.divider()
 
     _is_guest = auth_context.is_guest
 
@@ -397,6 +398,7 @@ def show() -> None:
         disabled=not ac_snapshot or ac_blocks_total <= 0,
     )
 
+    st.markdown("#### Display Settings")
     display_col1, display_col2, display_col3 = st.columns(3)
     theme = display_col1.selectbox("Theme", ["dark", "light"], index=0)
     compact_mode = display_col2.checkbox("Compact Mode", value=False)
@@ -609,6 +611,7 @@ def show() -> None:
     pipeline_meta = st.session_state.get("sld_pipeline_meta") or {}
     if pipeline_meta:
         mode_label = "Draft / Override" if pipeline_meta.get("validation_mode") == "draft" else "Formal / Strict"
+        st.divider()
         st.subheader("Pipeline Status")
         _meta_run = pipeline_meta.get("run_id") or ""
         _meta_run_short = f"··{_meta_run[-8:]}" if len(_meta_run) >= 8 else (_meta_run or "—")
@@ -680,13 +683,13 @@ def show() -> None:
             )
             st.components.v1.html(svg_html, height=height + 40, scrolling=True)
 
-        st.subheader("Downloads")
         hash_rows = []
         for artifact_kind, artifact_hash in (pipeline_meta.get("artifact_hashes") or {}).items():
             hash_rows.append({"artifact_kind": artifact_kind, "content_hash": artifact_hash})
         if hash_rows:
             st.subheader("Traceability")
             st.dataframe(hash_rows, use_container_width=True, hide_index=True)
+        st.subheader("Downloads")
         if svg_item:
             st.download_button(
                 "Download SLD SVG",

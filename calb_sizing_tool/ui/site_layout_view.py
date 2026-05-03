@@ -107,10 +107,13 @@ def show() -> None:
     else:
         run_id = st.text_input("Run ID", value=str(run_id_default or "")).strip()
 
+    st.divider()
+
     ac_snapshot = _build_ac_snapshot(state, project_state)
     if ac_snapshot is None:
         st.warning("AC snapshot not found. Run AC sizing before generating layout.")
 
+    st.markdown("#### Render Options")
     ac_blocks_total = _resolve_ac_blocks_total(ac_snapshot.output if ac_snapshot else {})
     block_index = st.selectbox(
         "AC Block Group",
@@ -211,57 +214,57 @@ def show() -> None:
             )
 
     if not _is_guest:
-        st.markdown("---")
-        st.subheader("AI Layout Prompt")
-        if st.button("Generate Prompt Payload", disabled=not run_id):
-            try:
-                prompt_result = generate_layout_prompt(
-                    run_id=run_id,
-                    auth_user=auth_user,
-                    options=LayoutRenderOptions(block_index=block_index, arrangement=arrangement),
-                )
-                st.session_state["layout_prompt_payload"] = prompt_result["payload"]
-                st.session_state["layout_prompt_text"] = prompt_result["prompt_text"]
-                st.success("Prompt payload generated.")
-            except Exception as exc:
-                st.error(f"Prompt generation failed: {exc}")
-
-        prompt_payload = st.session_state.get("layout_prompt_payload")
-        prompt_text = st.session_state.get("layout_prompt_text")
-        if prompt_payload:
-            st.download_button(
-                "Download layout_prompt_payload.json",
-                __import__("json").dumps(prompt_payload, indent=2, sort_keys=True),
-                "layout_prompt_payload.json",
-                "application/json",
-            )
-        if prompt_text:
-            st.download_button(
-                "Download prompt.txt",
-                prompt_text,
-                "layout_prompt.txt",
-                "text/plain",
-            )
-
-        st.subheader("External AI Submission")
-        upload = st.file_uploader("Upload AI-generated layout (PNG or SVG)", type=["png", "svg"])
-        notes = st.text_area("Submission notes", height=80)
-        if st.button("Submit AI Layout", disabled=not run_id or upload is None):
-            if upload is None:
-                st.error("Please upload a file.")
-            else:
+        st.divider()
+        with st.expander("AI Layout Prompt", expanded=False):
+            if st.button("Generate Prompt Payload", disabled=not run_id):
                 try:
-                    submission = submit_external_layout_artifact(
+                    prompt_result = generate_layout_prompt(
                         run_id=run_id,
                         auth_user=auth_user,
-                        file_bytes=upload.getvalue(),
-                        file_name=upload.name,
-                        media_type=upload.type or "image/png",
-                        notes=notes.strip() or None,
+                        options=LayoutRenderOptions(block_index=block_index, arrangement=arrangement),
                     )
-                    st.success(f"Submission created: {submission['submission_id']}")
+                    st.session_state["layout_prompt_payload"] = prompt_result["payload"]
+                    st.session_state["layout_prompt_text"] = prompt_result["prompt_text"]
+                    st.success("Prompt payload generated.")
                 except Exception as exc:
-                    st.error(f"Submission failed: {exc}")
+                    st.error(f"Prompt generation failed: {exc}")
+
+            prompt_payload = st.session_state.get("layout_prompt_payload")
+            prompt_text = st.session_state.get("layout_prompt_text")
+            if prompt_payload:
+                st.download_button(
+                    "Download layout_prompt_payload.json",
+                    __import__("json").dumps(prompt_payload, indent=2, sort_keys=True),
+                    "layout_prompt_payload.json",
+                    "application/json",
+                )
+            if prompt_text:
+                st.download_button(
+                    "Download prompt.txt",
+                    prompt_text,
+                    "layout_prompt.txt",
+                    "text/plain",
+                )
+
+        with st.expander("External AI Submission", expanded=False):
+            upload = st.file_uploader("Upload AI-generated layout (PNG or SVG)", type=["png", "svg"])
+            notes = st.text_area("Submission notes", height=80)
+            if st.button("Submit AI Layout", disabled=not run_id or upload is None):
+                if upload is None:
+                    st.error("Please upload a file.")
+                else:
+                    try:
+                        submission = submit_external_layout_artifact(
+                            run_id=run_id,
+                            auth_user=auth_user,
+                            file_bytes=upload.getvalue(),
+                            file_name=upload.name,
+                            media_type=upload.type or "image/png",
+                            notes=notes.strip() or None,
+                        )
+                        st.success(f"Submission created: {submission['submission_id']}")
+                    except Exception as exc:
+                        st.error(f"Submission failed: {exc}")
 
     if not _is_guest and run_id:
         submissions = list_external_submissions(run_id)
@@ -269,33 +272,33 @@ def show() -> None:
         submissions = []
 
     if submissions:
-        st.subheader("AI Submissions")
-        for submission in submissions:
-            cols = st.columns([2.5, 1.5, 1.5, 2.0])
-            cols[0].write(submission["submission_id"])
-            cols[1].write(submission["status"])
-            cols[2].write(submission.get("ai_label"))
-            cols[3].write(submission.get("actor"))
-            if auth_user.is_admin:
-                with st.expander(f"Review {submission['submission_id']}", expanded=False):
-                    decision = st.selectbox(
-                        "Decision",
-                        ["approve", "reject", "request_revision"],
-                        key=f"decision_{submission['submission_id']}",
-                    )
-                    comment = st.text_area(
-                        "Review comments",
-                        key=f"comment_{submission['submission_id']}",
-                        height=60,
-                    )
-                    if st.button("Submit Review", key=f"review_{submission['submission_id']}"):
-                        try:
-                            result = review_external_layout(
-                                submission_id=submission["submission_id"],
-                                decision=decision,
-                                reviewer=auth_user,
-                                comments=comment.strip() or None,
-                            )
-                            st.success(f"Review saved: {result['status']}")
-                        except Exception as exc:
-                            st.error(f"Review failed: {exc}")
+        with st.expander("AI Submission History", expanded=bool(submissions)):
+            for submission in submissions:
+                cols = st.columns([2.5, 1.5, 1.5, 2.0])
+                cols[0].write(submission["submission_id"])
+                cols[1].write(submission["status"])
+                cols[2].write(submission.get("ai_label"))
+                cols[3].write(submission.get("actor"))
+                if auth_user.is_admin:
+                    with st.expander(f"Review {submission['submission_id']}", expanded=False):
+                        decision = st.selectbox(
+                            "Decision",
+                            ["approve", "reject", "request_revision"],
+                            key=f"decision_{submission['submission_id']}",
+                        )
+                        comment = st.text_area(
+                            "Review comments",
+                            key=f"comment_{submission['submission_id']}",
+                            height=60,
+                        )
+                        if st.button("Submit Review", key=f"review_{submission['submission_id']}"):
+                            try:
+                                result = review_external_layout(
+                                    submission_id=submission["submission_id"],
+                                    decision=decision,
+                                    reviewer=auth_user,
+                                    comments=comment.strip() or None,
+                                )
+                                st.success(f"Review saved: {result['status']}")
+                            except Exception as exc:
+                                st.error(f"Review failed: {exc}")
