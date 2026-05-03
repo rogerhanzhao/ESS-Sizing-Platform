@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import pandas as pd
 from sqlalchemy.orm import Session
 
 from calb_sizing_tool.infra.db.models import (
@@ -153,6 +154,131 @@ class MasterDataRepository:
                 version_tag=version_tag,
                 source_ref=source_ref,
                 **record,
+            )
+            self.session.add(row)
+            counts["rte_curve_band"] += 1
+
+        return counts
+
+    # ── SoH / RTE subset operations ───────────────────────────────────────────
+
+    def has_soh_rte_data(self) -> bool:
+        return (
+            self.session.query(SohProfile).count() > 0
+            and self.session.query(RteProfile).count() > 0
+        )
+
+    def get_soh_rte_counts(self) -> dict[str, int]:
+        return {
+            "soh_profile": self.session.query(SohProfile).count(),
+            "soh_curve_point": self.session.query(SohCurvePoint).count(),
+            "rte_profile": self.session.query(RteProfile).count(),
+            "rte_curve_band": self.session.query(RteCurveBand).count(),
+        }
+
+    def build_soh_rte_dataframes(self) -> dict[str, pd.DataFrame | None]:
+        """Build the 4 DataFrames that stage3 expects from DB-stored SoH/RTE data."""
+        soh_profiles = self.session.query(SohProfile).all()
+        rte_profiles = self.session.query(RteProfile).all()
+        if not soh_profiles or not rte_profiles:
+            return {"df_soh_profile": None, "df_soh_curve": None,
+                    "df_rte_profile": None, "df_rte_curve": None}
+
+        soh_id_to_source = {
+            row.soh_profile_id: row.source_profile_id
+            for row in soh_profiles if row.source_profile_id is not None
+        }
+        rte_id_to_source = {
+            row.rte_profile_id: row.source_profile_id
+            for row in rte_profiles if row.source_profile_id is not None
+        }
+
+        df_soh_profile = pd.DataFrame([
+            {"Profile_Id": row.source_profile_id, "C_Rate": row.c_rate,
+             "Cycles_Per_Year": row.cycles_per_year}
+            for row in soh_profiles if row.source_profile_id is not None
+        ])
+        soh_curve_pts = self.session.query(SohCurvePoint).all()
+        df_soh_curve = pd.DataFrame([
+            {"Profile_Id": soh_id_to_source[row.soh_profile_id],
+             "Life_Year_Index": row.life_year_index, "Soh_Dc_Pct": row.soh_dc_pct}
+            for row in soh_curve_pts if row.soh_profile_id in soh_id_to_source
+        ])
+        df_rte_profile = pd.DataFrame([
+            {"Profile_Id": row.source_profile_id, "C_Rate": row.c_rate,
+             "Cycles_Per_Year": row.cycles_per_year}
+            for row in rte_profiles if row.source_profile_id is not None
+        ])
+        rte_curve_bands = self.session.query(RteCurveBand).all()
+        df_rte_curve = pd.DataFrame([
+            {"Profile_Id": rte_id_to_source[row.rte_profile_id],
+             "Soh_Band_Min_Pct": row.soh_band_min_pct, "Rte_Dc_Pct": row.rte_dc_pct}
+            for row in rte_curve_bands if row.rte_profile_id in rte_id_to_source
+        ])
+
+        def _or_none(df: pd.DataFrame) -> pd.DataFrame | None:
+            return df if not df.empty else None
+
+        return {
+            "df_soh_profile": _or_none(df_soh_profile),
+            "df_soh_curve": _or_none(df_soh_curve),
+            "df_rte_profile": _or_none(df_rte_profile),
+            "df_rte_curve": _or_none(df_rte_curve),
+        }
+
+    def replace_soh_rte_data(
+        self, payload: dict[str, list[dict[str, Any]]], *, version_tag: str, source_ref: str
+    ) -> dict[str, int]:
+        """Delete then re-insert the 4 SoH/RTE tables.  Leaves cell/pack/rack/block data intact."""
+        self.session.query(RteCurveBand).delete()
+        self.session.query(RteProfile).delete()
+        self.session.query(SohCurvePoint).delete()
+        self.session.query(SohProfile).delete()
+
+        soh_profile_map: dict[int, str] = {}
+        rte_profile_map: dict[int, str] = {}
+        counts = {"soh_profile": 0, "soh_curve_point": 0, "rte_profile": 0, "rte_curve_band": 0}
+
+        for item in payload.get("soh_profile", []):
+            record = dict(item)
+            source_id = record.get("source_profile_id")
+            row = SohProfile(version_tag=version_tag, source_ref=source_ref, **record)
+            self.session.add(row)
+            self.session.flush()
+            if source_id is not None:
+                soh_profile_map[int(source_id)] = row.soh_profile_id
+            counts["soh_profile"] += 1
+
+        for item in payload.get("soh_curve_point", []):
+            record = dict(item)
+            source_profile_id = record.pop("source_profile_id", None)
+            if source_profile_id is None or int(source_profile_id) not in soh_profile_map:
+                continue
+            row = SohCurvePoint(
+                soh_profile_id=soh_profile_map[int(source_profile_id)],
+                version_tag=version_tag, source_ref=source_ref, **record,
+            )
+            self.session.add(row)
+            counts["soh_curve_point"] += 1
+
+        for item in payload.get("rte_profile", []):
+            record = dict(item)
+            source_id = record.get("source_profile_id")
+            row = RteProfile(version_tag=version_tag, source_ref=source_ref, **record)
+            self.session.add(row)
+            self.session.flush()
+            if source_id is not None:
+                rte_profile_map[int(source_id)] = row.rte_profile_id
+            counts["rte_profile"] += 1
+
+        for item in payload.get("rte_curve_band", []):
+            record = dict(item)
+            source_profile_id = record.pop("source_profile_id", None)
+            if source_profile_id is None or int(source_profile_id) not in rte_profile_map:
+                continue
+            row = RteCurveBand(
+                rte_profile_id=rte_profile_map[int(source_profile_id)],
+                version_tag=version_tag, source_ref=source_ref, **record,
             )
             self.session.add(row)
             counts["rte_curve_band"] += 1

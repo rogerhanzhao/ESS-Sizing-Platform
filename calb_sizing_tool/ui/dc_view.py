@@ -241,6 +241,24 @@ def load_data(path: Path):
     bundle = load_dc_excel_bundle_from_path(path)
     return bundle_to_legacy_tuple(bundle)
 
+
+@st.cache_data(ttl=60)
+def _load_db_soh_rte():
+    """Return (df_soh_profile, df_soh_curve, df_rte_profile, df_rte_curve) from DB, or None."""
+    try:
+        from calb_sizing_tool.services.master_data_service import MasterDataService
+        svc = MasterDataService()
+        if not svc.has_soh_rte_data():
+            return None
+        dfs = svc.build_soh_rte_dataframes()
+        sp, sc, rp, rc = (dfs.get(k) for k in ("df_soh_profile", "df_soh_curve", "df_rte_profile", "df_rte_curve"))
+        if all(df is not None and not df.empty for df in (sp, sc, rp, rc)):
+            return sp, sc, rp, rc
+    except Exception:
+        pass
+    return None
+
+
 def validate_rte_monotonicity_314(
     df_rte_profile: pd.DataFrame,
     df_rte_curve: pd.DataFrame,
@@ -851,6 +869,11 @@ def show():
     except Exception as exc:
         st.error(f"Failed to load data file: {exc}")
         return
+
+    # Override SoH/RTE DataFrames with DB data when available (migrated via Admin Portal)
+    _db_curves = _load_db_soh_rte()
+    if _db_curves is not None:
+        df_soh_profile, df_soh_curve, df_rte_profile, df_rte_curve = _db_curves
 
     if DC_DATA_IS_LEGACY:
         st.warning("using legacy dictionary")

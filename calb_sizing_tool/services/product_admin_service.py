@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import pandas as pd
 
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.repositories.product_admin_repository import ProductAdminRepository
+
+# Columns that must be stored as int, not float, when read from CSV/Excel
+_INT_COLUMNS = frozenset({
+    "cycle_life_cycles", "launch_year", "cells_in_series", "strings_in_parallel",
+    "racks_per_block", "packs_per_rack", "racks_per_container", "pack_count",
+    "container_count", "sort_order",
+})
 
 
 class ProductAdminService:
@@ -98,6 +106,55 @@ class ProductAdminService:
         if not records:
             return pd.DataFrame(columns=_COLS)
         return pd.DataFrame(records)
+
+
+    def import_records_from_df(
+        self, entity: str, df: pd.DataFrame
+    ) -> dict[str, Any]:
+        """Bulk-import rows from a DataFrame.
+
+        Returns {"imported": int, "skipped": int, "errors": list[str]}.
+        Each row is coerced and passed to the matching single-record create method.
+        Rows that raise an exception are skipped and recorded in errors.
+        """
+        _create = {
+            "cell": self.create_cell,
+            "dc_block": self.create_dc_block,
+            "ac_block": self.create_ac_block,
+            "asset": self.create_asset,
+            "degradation_curve": self.create_degradation_curve,
+            "rte_curve": self.create_rte_curve,
+            "plugin": self.create_plugin,
+        }
+        create_fn = _create.get(entity)
+        if create_fn is None:
+            return {"imported": 0, "skipped": 0, "errors": [f"Unknown entity type: {entity}"]}
+
+        imported = skipped = 0
+        errors: list[str] = []
+
+        for row_idx, row in df.iterrows():
+            values: dict[str, Any] = {}
+            for col, val in row.items():
+                if not col or str(col).startswith("_"):
+                    continue
+                if val is None or (isinstance(val, float) and math.isnan(val)):
+                    values[col] = None
+                elif col in _INT_COLUMNS:
+                    try:
+                        values[col] = int(val)
+                    except (TypeError, ValueError):
+                        values[col] = None
+                else:
+                    values[col] = val
+            try:
+                create_fn(values)
+                imported += 1
+            except Exception as exc:
+                skipped += 1
+                errors.append(f"Row {int(row_idx) + 2}: {exc}")  # +2 = header + 1-based
+
+        return {"imported": imported, "skipped": skipped, "errors": errors}
 
 
 def _to_dict(row: Any) -> dict[str, Any]:

@@ -1,12 +1,107 @@
 """Admin-only product and database management portal."""
 from __future__ import annotations
 
+import hashlib
+import io
+import mimetypes
+from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import streamlit as st
 
 from calb_sizing_tool.services.product_admin_service import ProductAdminService
 from calb_sizing_tool.state.auth_state import get_auth_context
+
+_ASSET_STORE = Path("var/assets")
+
+# ── CSV template column definitions ──────────────────────────────────────────
+
+_CELL_CSV_COLUMNS = [
+    "cell_code", "model_name", "chemistry", "manufacturer",
+    "nominal_capacity_ah", "shipping_capacity_ah", "nominal_voltage_v",
+    "min_voltage_v", "max_voltage_v", "rated_energy_wh",
+    "length_mm", "width_mm", "height_mm", "shoulder_height_mm",
+    "weight_kg", "volume_l", "gravimetric_density_wh_kg", "volumetric_density_wh_l",
+    "energy_efficiency_pct", "dcr_mohm", "rated_c_rate_label",
+    "cycle_life_cycles", "cycle_life_rate_label", "cycle_life_dod_pct",
+    "end_of_life_soh_pct", "manufacturing_process", "launch_year", "notes",
+]
+
+_DC_BLOCK_CSV_COLUMNS = [
+    "block_code", "block_name", "block_form", "product_model",
+    "cells_in_series", "strings_in_parallel", "racks_per_block",
+    "packs_per_rack", "racks_per_container", "pack_count", "container_count",
+    "configuration", "container_type", "thermal_management", "enclosure",
+    "gross_energy_mwh", "usable_energy_mwh", "rated_capacity_kwh",
+    "nominal_voltage_v", "voltage_min_v", "voltage_max_v",
+    "nominal_power_kw", "max_current_a", "max_c_rate", "charge_discharge_rate",
+    "dod_pct", "cycle_life_cycles", "end_of_life_soh_pct",
+    "service_life_years", "system_efficiency_pct",
+    "dimension_width_mm", "dimension_depth_mm", "dimension_height_mm", "weight_kg",
+    "ingress_protection", "working_temp_min_c", "working_temp_max_c", "notes",
+]
+
+
+def _template_csv(columns: list[str]) -> bytes:
+    """Return an empty CSV template with header row."""
+    return (",".join(columns) + "\n").encode()
+
+
+def _parse_upload(uploaded_file) -> pd.DataFrame | None:
+    """Parse an uploaded CSV or XLSX file. Returns None on failure."""
+    try:
+        name = uploaded_file.name.lower()
+        if name.endswith(".xlsx") or name.endswith(".xls"):
+            return pd.read_excel(uploaded_file, dtype=str).replace({"nan": None, "": None})
+        return pd.read_csv(uploaded_file, dtype=str).replace({"nan": None, "": None})
+    except Exception as exc:
+        st.error(f"Failed to parse file: {exc}")
+        return None
+
+
+def _render_import_expander(
+    service: ProductAdminService,
+    entity: str,
+    required_cols: list[str],
+    template_cols: list[str],
+    label: str,
+) -> None:
+    with st.expander(f"Import {label} from CSV / Excel", expanded=False):
+        tpl_bytes = _template_csv(template_cols)
+        st.download_button(
+            f"Download {label} CSV Template",
+            tpl_bytes,
+            file_name=f"template_{entity}.csv",
+            mime="text/csv",
+            key=f"dl_tpl_{entity}",
+        )
+        uploaded = st.file_uploader(
+            "Upload CSV or XLSX",
+            type=["csv", "xlsx", "xls"],
+            key=f"upload_{entity}",
+        )
+        if uploaded is None:
+            return
+        df = _parse_upload(uploaded)
+        if df is None:
+            return
+        missing = [c for c in required_cols if c not in df.columns]
+        if missing:
+            st.error(f"Missing required columns: {', '.join(missing)}")
+            return
+        st.caption(f"{len(df)} rows detected. Preview (first 5):")
+        st.dataframe(df.head(5), use_container_width=True, hide_index=True)
+        if st.button(f"Import {len(df)} {label} rows", key=f"btn_import_{entity}", type="primary"):
+            result = service.import_records_from_df(entity, df)
+            if result["imported"]:
+                st.success(f"Imported {result['imported']} record(s).")
+            if result["skipped"]:
+                st.warning(f"Skipped {result['skipped']} row(s).")
+            for err in result["errors"][:20]:
+                st.error(err)
+            if result["imported"]:
+                _refresh()
 
 _SECTIONS = [
     ("Overview", "Dashboard"),
@@ -17,6 +112,7 @@ _SECTIONS = [
     ("Degradation Library", "Degradation"),
     ("RTE Library", "RTE"),
     ("Plugin Registry", "Plugins"),
+    ("DC Sizing Data", "Sizing Data"),
 ]
 
 _ADMIN_NAV_KEY = "admin_portal_section"
@@ -85,6 +181,8 @@ def show() -> None:
             _section_rte(service, snapshot)
         elif selected == "Plugin Registry":
             _section_plugins(service, snapshot)
+        elif selected == "DC Sizing Data":
+            _section_dc_sizing_data()
 
 
 @st.cache_data(ttl=5)
@@ -389,6 +487,13 @@ def _section_cell_products(service: ProductAdminService, snapshot: dict[str, Any
                     st.success("Cell product saved.")
                     _refresh()
 
+    _render_import_expander(
+        service, "cell",
+        required_cols=["cell_code", "model_name", "chemistry"],
+        template_cols=_CELL_CSV_COLUMNS,
+        label="Cell Products",
+    )
+
 
 def _section_dc_block(service: ProductAdminService, snapshot: dict[str, Any]) -> None:
     st.subheader("DC Block Templates")
@@ -482,63 +587,87 @@ def _section_dc_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
 
     with st.expander("Add DC Block Template", expanded=False):
         with st.form("admin_add_product_dc_block"):
+            # ── Identity (always visible) ─────────────────────────────────
             c1, c2, c3 = st.columns(3)
-            block_code = c1.text_input("Block Code")
-            block_name = c2.text_input("Block Name")
-            block_form = c3.selectbox("Block Form (sizing)", ["container", "cabinet"],
-                                      help="Used by the DC sizing pipeline: 'container' = 20ft BESS unit, 'cabinet' = indoor rack cabinet")
-            product_model = st.text_input("Product Model")
-            cell_map = _cell_options(snapshot["cells"])
-            cell_label = st.selectbox("Linked Cell", list(cell_map.keys()))
-            d1, d2, d3, d4 = st.columns(4)
-            cells_in_series = d1.number_input("Cells in Series", min_value=0, step=1)
-            strings_in_parallel = d2.number_input("Strings in Parallel", min_value=0, step=1)
-            racks_per_block = d3.number_input("Racks per Block", min_value=0, step=1)
-            pack_count = d4.number_input("Pack Count", min_value=0, step=1)
-            e1, e2, e3, e4 = st.columns(4)
-            packs_per_rack = e1.number_input("Packs per Rack", min_value=0, step=1)
-            racks_per_container = e2.number_input("Racks per Container", min_value=0, step=1)
-            container_count = e3.number_input("Container Count", min_value=0, step=1)
-            configuration = e4.text_input("Configuration")
-            f1, f2, f3, f4 = st.columns(4)
-            container_type = f1.text_input("Container / Cabinet Type")
-            thermal_management = f2.text_input("Thermal Management")
-            enclosure = f3.text_input("Enclosure")
-            ingress_protection = f4.text_input("Ingress Protection")
-            g1, g2, g3, g4 = st.columns(4)
-            gross_energy_mwh = g1.number_input("Gross MWh", min_value=0.0, step=0.1)
-            rated_capacity_kwh = g2.number_input("Rated kWh", min_value=0.0, step=1.0)
-            nominal_voltage_v = g3.number_input("Nominal V", min_value=0.0, step=1.0)
-            max_c_rate = g4.number_input("Max C-rate", min_value=0.0, step=0.1)
-            h1, h2, h3, h4 = st.columns(4)
-            voltage_min_v = h1.number_input("Min V", min_value=0.0, step=1.0)
-            voltage_max_v = h2.number_input("Max V", min_value=0.0, step=1.0)
-            nominal_power_kw = h3.number_input("Nominal Power kW", min_value=0.0, step=1.0)
-            max_current_a = h4.number_input("Max Current A", min_value=0.0, step=1.0)
-            i1, i2, i3, i4 = st.columns(4)
-            dimension_depth_mm = i1.number_input("Depth / Length mm", min_value=0.0, step=1.0)
-            dimension_width_mm = i2.number_input("Width mm", min_value=0.0, step=1.0)
-            dimension_height_mm = i3.number_input("Height mm", min_value=0.0, step=1.0)
-            weight_kg = i4.number_input("Weight kg", min_value=0.0, step=1.0)
-            j1, j2, j3 = st.columns(3)
-            charge_discharge_rate = j1.text_input("CH/DCH Rate")
-            dod_pct = j2.number_input("DoD %", min_value=0.0, max_value=100.0, step=1.0)
-            cycle_life_cycles = j3.number_input("Cycle Life", min_value=0, step=100)
-            k1, k2, k3 = st.columns(3)
-            end_of_life_soh_pct = k1.number_input("EOL SoH %", min_value=0.0, max_value=100.0, step=1.0)
-            service_life_years = k2.number_input("Service Life Years", min_value=0.0, step=1.0)
-            system_efficiency_pct = k3.number_input("System Efficiency %", min_value=0.0, step=0.1)
-            l1, l2, l3 = st.columns(3)
-            working_temp_min_c = l1.number_input("Work Temp Min C", step=1.0)
-            working_temp_max_c = l2.number_input("Work Temp Max C", step=1.0)
-            altitude_m = l3.number_input("Altitude m", min_value=0.0, step=100.0)
-            relative_humidity = st.text_input("Relative Humidity")
-            bms_communication = st.text_input("BMS Communication")
-            default_degradation_curve_code = st.text_input("Default Degradation Curve Code")
-            compliance_standards = st.text_area("Compliance Standards", height=70)
-            firefighting_system = st.text_area("Firefighting System", height=70)
-            explosion_protection = st.text_area("Explosion Protection", height=70)
-            notes = st.text_area("Notes", height=70)
+            block_code = c1.text_input("Block Code *")
+            block_name = c2.text_input("Block Name *")
+            block_form = c3.selectbox(
+                "Block Form *",
+                ["container", "cabinet"],
+                help="container = 20ft BESS unit, cabinet = indoor rack cabinet",
+            )
+            # ── Tabs for the remaining 40 fields ─────────────────────────
+            tab_core, tab_struct, tab_phys, tab_comply, tab_notes = st.tabs(
+                ["Core", "Structure", "Physical", "Compliance", "Notes"]
+            )
+
+            with tab_core:
+                tc1, tc2 = st.columns(2)
+                product_model = tc1.text_input("Product Model")
+                cell_map = _cell_options(snapshot["cells"])
+                cell_label = tc2.selectbox("Linked Cell", list(cell_map.keys()))
+                e1, e2, e3, e4 = st.columns(4)
+                gross_energy_mwh = e1.number_input("Gross MWh", min_value=0.0, step=0.1)
+                rated_capacity_kwh = e2.number_input("Rated kWh", min_value=0.0, step=1.0)
+                usable_energy_mwh = e3.number_input("Usable MWh", min_value=0.0, step=0.1)
+                max_c_rate = e4.number_input("Max C-rate", min_value=0.0, step=0.1)
+                f1, f2, f3, f4 = st.columns(4)
+                nominal_voltage_v = f1.number_input("Nominal V", min_value=0.0, step=1.0)
+                voltage_min_v = f2.number_input("Min V", min_value=0.0, step=1.0)
+                voltage_max_v = f3.number_input("Max V", min_value=0.0, step=1.0)
+                nominal_power_kw = f4.number_input("Nominal Power kW", min_value=0.0, step=1.0)
+                g1, g2, g3, g4 = st.columns(4)
+                max_current_a = g1.number_input("Max Current A", min_value=0.0, step=1.0)
+                charge_discharge_rate = g2.text_input("CH/DCH Rate")
+                dod_pct = g3.number_input("DoD %", min_value=0.0, max_value=100.0, step=1.0)
+                system_efficiency_pct = g4.number_input("System Efficiency %", min_value=0.0, step=0.1)
+                h1, h2, h3 = st.columns(3)
+                cycle_life_cycles = h1.number_input("Cycle Life", min_value=0, step=100)
+                end_of_life_soh_pct = h2.number_input("EOL SoH %", min_value=0.0, max_value=100.0, step=1.0)
+                service_life_years = h3.number_input("Service Life Years", min_value=0.0, step=1.0)
+
+            with tab_struct:
+                s1, s2, s3, s4 = st.columns(4)
+                cells_in_series = s1.number_input("Cells in Series", min_value=0, step=1)
+                strings_in_parallel = s2.number_input("Strings in Parallel", min_value=0, step=1)
+                racks_per_block = s3.number_input("Racks per Block", min_value=0, step=1)
+                pack_count = s4.number_input("Pack Count", min_value=0, step=1)
+                s5, s6, s7, s8 = st.columns(4)
+                packs_per_rack = s5.number_input("Packs per Rack", min_value=0, step=1)
+                racks_per_container = s6.number_input("Racks per Container", min_value=0, step=1)
+                container_count = s7.number_input("Container Count", min_value=0, step=1)
+                configuration = s8.text_input("Configuration")
+                st1, st2 = st.columns(2)
+                container_type = st1.text_input("Container / Cabinet Type")
+                thermal_management = st2.text_input("Thermal Management")
+
+            with tab_phys:
+                p1, p2, p3, p4 = st.columns(4)
+                dimension_depth_mm = p1.number_input("Depth mm", min_value=0.0, step=1.0)
+                dimension_width_mm = p2.number_input("Width mm", min_value=0.0, step=1.0)
+                dimension_height_mm = p3.number_input("Height mm", min_value=0.0, step=1.0)
+                weight_kg = p4.number_input("Weight kg", min_value=0.0, step=1.0)
+                p5, p6, p7, p8 = st.columns(4)
+                enclosure = p5.text_input("Enclosure")
+                ingress_protection = p6.text_input("Ingress Protection")
+                relative_humidity = p7.text_input("Relative Humidity")
+                altitude_m = p8.number_input("Altitude m", min_value=0.0, step=100.0)
+                p9, p10 = st.columns(2)
+                working_temp_min_c = p9.number_input("Work Temp Min °C", step=1.0)
+                working_temp_max_c = p10.number_input("Work Temp Max °C", step=1.0)
+
+            with tab_comply:
+                bms_communication = st.text_input("BMS Communication")
+                default_degradation_curve_code = st.text_input("Default Degradation Curve Code")
+                compliance_standards = st.text_area("Compliance Standards", height=70)
+                firefighting_system = st.text_area("Firefighting System", height=70)
+                explosion_protection = st.text_area("Explosion Protection", height=70)
+                seismic_rating = st.text_input("Seismic Rating")
+                coating = st.text_input("Painting / Coating")
+
+            with tab_notes:
+                notes = st.text_area("Notes", height=100)
+
             if st.form_submit_button("Save DC Block Template", use_container_width=True):
                 if not block_code.strip() or not block_name.strip():
                     st.error("Block Code and Block Name are required.")
@@ -562,6 +691,7 @@ def _section_dc_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
                             "thermal_management": thermal_management.strip() or None,
                             "enclosure": enclosure.strip() or None,
                             "gross_energy_mwh": gross_energy_mwh or None,
+                            "usable_energy_mwh": usable_energy_mwh or None,
                             "rated_capacity_kwh": rated_capacity_kwh or None,
                             "nominal_voltage_v": nominal_voltage_v or None,
                             "voltage_min_v": voltage_min_v or None,
@@ -588,12 +718,21 @@ def _section_dc_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
                             "compliance_standards": compliance_standards.strip() or None,
                             "firefighting_system": firefighting_system.strip() or None,
                             "explosion_protection": explosion_protection.strip() or None,
+                            "seismic_rating": seismic_rating.strip() or None,
+                            "coating": coating.strip() or None,
                             "default_degradation_curve_code": default_degradation_curve_code.strip() or None,
                             "notes": notes.strip() or None,
                         }
                     )
                     st.success("DC block template saved.")
                     _refresh()
+
+    _render_import_expander(
+        service, "dc_block",
+        required_cols=["block_code", "block_name", "block_form"],
+        template_cols=_DC_BLOCK_CSV_COLUMNS,
+        label="DC Block Templates",
+    )
 
 
 def _section_ac_block(service: ProductAdminService, snapshot: dict[str, Any]) -> None:
@@ -735,20 +874,49 @@ def _section_assets(service: ProductAdminService, snapshot: dict[str, Any]) -> N
             asset_kind = c2.selectbox("Kind", ["datasheet", "product_image", "proposal_image", "source_file", "other"])
             proposal_section = c3.text_input("Proposal Section", value="Standard Product Information")
             title = st.text_input("Title")
+
+            # ── File upload ───────────────────────────────────────────────
+            uploaded_asset = st.file_uploader(
+                "Upload File (PDF, image, …)",
+                type=["pdf", "png", "jpg", "jpeg", "svg", "xlsx", "docx", "zip"],
+                key="asset_file_upload",
+                help="File is saved to var/assets/ on this server. SHA-256 and MIME auto-filled.",
+            )
             d1, d2 = st.columns(2)
-            file_name = d1.text_input("File Name")
-            mime_type = d2.text_input("MIME Type")
-            source_path = st.text_area("Source Path", height=60)
-            storage_uri = st.text_area("Storage URI", height=60)
-            content_sha256 = st.text_input("SHA-256")
+            file_name = d1.text_input("File Name (auto-filled from upload)")
+            mime_type = d2.text_input("MIME Type (auto-filled from upload)")
+            source_path = st.text_area("Source Path (auto-filled from upload)", height=50)
+            storage_uri = st.text_area("Storage URI (optional — cloud path)", height=50)
+            content_sha256 = st.text_input("SHA-256 (auto-filled from upload)")
             caption = st.text_area("Caption", height=70)
             e1, e2 = st.columns(2)
             sort_order = e1.number_input("Sort Order", min_value=0, step=1)
             is_primary = e2.checkbox("Primary Asset", value=True)
+
             if st.form_submit_button("Save Product Asset", use_container_width=True):
                 if not asset_code.strip() or not title.strip():
                     st.error("Asset Code and Title are required.")
                 else:
+                    _file_name = file_name.strip() or None
+                    _mime_type = mime_type.strip() or None
+                    _source_path = source_path.strip() or None
+                    _sha256 = content_sha256.strip() or None
+
+                    if uploaded_asset is not None:
+                        _raw = uploaded_asset.read()
+                        _sha256 = hashlib.sha256(_raw).hexdigest()
+                        _file_name = _file_name or uploaded_asset.name
+                        _mime_type = _mime_type or (
+                            mimetypes.guess_type(uploaded_asset.name)[0]
+                            or uploaded_asset.type
+                            or "application/octet-stream"
+                        )
+                        _dest_dir = _ASSET_STORE / (asset_code.strip().replace("/", "_"))
+                        _dest_dir.mkdir(parents=True, exist_ok=True)
+                        _dest = _dest_dir / (_file_name or uploaded_asset.name)
+                        _dest.write_bytes(_raw)
+                        _source_path = _source_path or str(_dest.resolve())
+
                     service.create_asset(
                         {
                             "asset_code": asset_code.strip(),
@@ -757,18 +925,21 @@ def _section_assets(service: ProductAdminService, snapshot: dict[str, Any]) -> N
                             "owner_code": owner_code or None,
                             "asset_kind": asset_kind,
                             "title": title.strip(),
-                            "file_name": file_name.strip() or None,
-                            "mime_type": mime_type.strip() or None,
-                            "source_path": source_path.strip() or None,
+                            "file_name": _file_name,
+                            "mime_type": _mime_type,
+                            "source_path": _source_path,
                             "storage_uri": storage_uri.strip() or None,
-                            "content_sha256": content_sha256.strip() or None,
+                            "content_sha256": _sha256,
                             "caption": caption.strip() or None,
                             "proposal_section": proposal_section.strip() or None,
                             "sort_order": int(sort_order),
                             "is_primary": is_primary,
                         }
                     )
-                    st.success("Product asset saved.")
+                    st.success(
+                        "Product asset saved."
+                        + (f" File stored at `{_source_path}`." if uploaded_asset else "")
+                    )
                     _refresh()
 
 
@@ -1021,3 +1192,101 @@ def _section_plugins(service: ProductAdminService, snapshot: dict[str, Any]) -> 
                     )
                     st.success("Plugin registered.")
                     _refresh()
+
+
+def _section_dc_sizing_data() -> None:
+    st.subheader("DC Sizing Data")
+    st.caption(
+        "SoH profiles, degradation curves and RTE bands used by the stage-3 DC sizing pipeline. "
+        "When DB data is present it overrides the Excel reference file at runtime."
+    )
+
+    from calb_sizing_tool.services.master_data_service import MasterDataService
+
+    svc = MasterDataService()
+    try:
+        counts = svc.get_soh_rte_counts()
+    except Exception as exc:
+        st.error(f"Could not query DB: {exc}")
+        return
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("SoH Profiles", counts["soh_profile"])
+    c2.metric("SoH Curve Points", counts["soh_curve_point"])
+    c3.metric("RTE Profiles", counts["rte_profile"])
+    c4.metric("RTE Curve Bands", counts["rte_curve_band"])
+
+    _has_data = counts["soh_profile"] > 0 and counts["rte_profile"] > 0
+    if _has_data:
+        st.success("DB data present — stage-3 will use DB curves (refreshed every 60 s).")
+    else:
+        st.info("No DB data — stage-3 uses the Excel reference file.")
+
+    st.markdown("---")
+    st.markdown("**Migrate from Excel reference file**")
+    st.caption(
+        "Reads `soh_profile_314_data`, `soh_curve_314_template`, `rte_profile_314_data`, "
+        "and `rte_curve_314_template` sheets from the active DC data workbook and stores them "
+        "in the database. Existing SoH/RTE records are fully replaced."
+    )
+
+    version_tag = st.text_input("Version tag", value="excel-import", key="soh_rte_version_tag")
+    source_ref = st.text_input("Source ref (optional notes)", value="", key="soh_rte_source_ref")
+
+    if st.button("Migrate SoH / RTE from Excel", type="primary", key="btn_migrate_soh_rte"):
+        try:
+            from calb_sizing_tool.config import DC_DATA_PATH
+            from calb_sizing_tool.adapters.excel_loader_adapter import load_dc_excel_bundle_from_path
+            from pathlib import Path
+
+            data_path = Path(DC_DATA_PATH)
+            if not data_path.is_file():
+                st.error(f"Excel data file not found: {data_path}")
+            else:
+                bundle = load_dc_excel_bundle_from_path(data_path)
+                result = svc.migrate_soh_rte_from_excel_bundle(
+                    bundle,
+                    version_tag=version_tag.strip() or "excel-import",
+                    source_ref=source_ref.strip() or str(data_path.name),
+                )
+                st.success(
+                    f"Migration complete — "
+                    f"{result['soh_profile']} SoH profiles, "
+                    f"{result['soh_curve_point']} curve points, "
+                    f"{result['rte_profile']} RTE profiles, "
+                    f"{result['rte_curve_band']} curve bands."
+                )
+                st.rerun()
+        except Exception as exc:
+            st.error(f"Migration failed: {exc}")
+
+    if _has_data:
+        st.markdown("---")
+        st.markdown("**Clear DB data (revert to Excel)**")
+        st.caption("Removes all SoH/RTE records. Stage-3 will revert to the Excel reference file.")
+        if st.button("Clear DB SoH / RTE data", key="btn_clear_soh_rte"):
+            try:
+                result = svc.migrate_soh_rte_from_excel_bundle(
+                    _empty_bundle(), version_tag="cleared", source_ref="admin-clear"
+                )
+                st.success("SoH/RTE DB data cleared.")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Clear failed: {exc}")
+
+
+def _empty_bundle():
+    """Return a minimal DcExcelMasterDataBundle with empty SoH/RTE DataFrames for clearing."""
+    import pandas as pd
+    from pathlib import Path
+    from calb_sizing_tool.schemas.master_data import DcExcelMasterDataBundle
+    return DcExcelMasterDataBundle(
+        workbook_path=Path("."),
+        defaults={},
+        df_blocks=pd.DataFrame(),
+        df_soh_profile=pd.DataFrame(),
+        df_soh_curve=pd.DataFrame(),
+        df_rte_profile=pd.DataFrame(),
+        df_rte_curve=pd.DataFrame(),
+        raw_sheets={},
+    )
