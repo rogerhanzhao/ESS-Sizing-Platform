@@ -21,8 +21,8 @@ def show() -> None:
         return
     auth_user = get_auth_user()
 
-    st.title("Project Directory")
-    st.caption("Browse all accessible projects. To create a new project, use the Workbench.")
+    from calb_sizing_tool.ui._ui import page_header
+    page_header("Project Directory", "All accessible projects")
 
     with session_scope() as session:
         access = AccessControlService(session, auth_user)

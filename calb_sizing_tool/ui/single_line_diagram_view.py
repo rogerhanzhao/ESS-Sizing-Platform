@@ -328,11 +328,8 @@ def show() -> None:
 
     workspace = get_workspace_context()
 
-    st.header("Single Line Diagram")
-    st.caption("Read runtime run data, execute the SLD pipeline, preview the result, and download artifacts.")
-    st.caption(
-        "Preview is session-scoped. Change the run or AC result, then click Generate SLD again to refresh the formal diagram."
-    )
+    from calb_sizing_tool.ui._ui import page_header
+    page_header("Single Line Diagram", "System Schematic & Engineering Export")
     st.caption(
         f"Active Workspace: Project `{workspace.get('project_name') or 'None'}` | "
         f"Case `{workspace.get('case_name') or 'None'}` | Run `{workspace.get('run_id') or 'None'}`"

@@ -24,8 +24,8 @@ def show() -> None:
     project_name = workspace.get("project_name")
     project_code = workspace.get("project_code")
 
-    st.title("Case Directory")
-    st.caption("Browse all cases for the active project. To create a new case, use the Workbench.")
+    from calb_sizing_tool.ui._ui import page_header
+    page_header("Case Directory", "Cases for the active project")
 
     if not project_id:
         st.warning("No project is active. Go to Workbench to select or create one.")

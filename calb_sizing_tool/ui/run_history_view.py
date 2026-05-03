@@ -33,8 +33,8 @@ def show() -> None:
     case_id = workspace.get("case_id")
     case_name = workspace.get("case_name")
 
-    st.title("Run Registry")
-    st.caption("Full run history for the active case. Use Workbench for quick restore.")
+    from calb_sizing_tool.ui._ui import page_header
+    page_header("Run Registry", "Sizing run history")
 
     if not project_id or not case_id:
         st.warning("Select a project and case first.")

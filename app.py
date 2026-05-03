@@ -110,6 +110,32 @@ st.markdown(
     h2, h3 {
         color: #1A2635 !important;
     }
+
+    /* ── Page headers: unified CALB brand style ───────────────────────── */
+    .calb-ph {
+        border-left: 4px solid #1E4172;
+        padding: 0.25rem 0 0.25rem 0.8rem;
+        margin-bottom: 0.5rem;
+    }
+    .calb-ph-title {
+        font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #1A2635;
+        line-height: 1.2;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    .calb-ph-sub {
+        font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: #3A5A80;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        margin: 0.18rem 0 0 0 !important;
+        padding: 0 !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,

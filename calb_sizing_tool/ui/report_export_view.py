@@ -112,8 +112,9 @@ def _extract_artifact_bytes(artifact_bundle) -> tuple[bytes | None, bytes | None
 def show():
     from calb_sizing_tool.state.auth_state import get_auth_context, clear_auth_context
     _auth = get_auth_context()
+    from calb_sizing_tool.ui._ui import page_header as _ph
     if _auth and _auth.is_guest:
-        st.title("Report Export")
+        _ph("Report Export", "Proposal & Technical Document Export")
         st.markdown(
             """
             <div style="background:#FFF8E6;border:1px solid #F0C060;border-radius:8px;
@@ -234,8 +235,7 @@ def show():
     if layout_svg:
         artifacts["layout_svg_bytes"] = layout_svg
 
-    st.header("Report Export")
-    st.caption("Generate unified V2.1 DOCX report with full AC and DC analysis.")
+    _ph("Report Export", "Proposal & Technical Document Export")
 
     stage13_output = (
         dc_results.get("stage13_output")

@@ -91,8 +91,8 @@ def show() -> None:
     auth_user = get_auth_user()
     _is_guest = auth_context.is_guest
 
-    st.header("Site Layout")
-    st.caption("Generate layout from run_id via plugin renderer.")
+    from calb_sizing_tool.ui._ui import page_header
+    page_header("Site Layout", "Block Arrangement & Site Planning")
 
     if _is_guest:
         st.info("👁 **Guest mode** — layout runs from session data. AI prompt and external submission are disabled.", icon=None)

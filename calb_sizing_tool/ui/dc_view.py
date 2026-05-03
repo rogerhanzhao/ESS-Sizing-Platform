@@ -851,17 +851,9 @@ def show():
 
     # Inject CSS
     inject_css()
-    
-    # Title
-    st.markdown(
-        """
-        <div style="padding-top:0.6rem; padding-bottom:0.6rem;">
-            <h1 class="calb-page-title">Utility-Scale ESS Sizing Tool V1.0 (DC)</h1>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown("<br/>", unsafe_allow_html=True)
+
+    from calb_sizing_tool.ui._ui import page_header
+    page_header("DC Sizing", "Battery Block · Degradation · Performance Projection")
     
     # Load Data
     try:

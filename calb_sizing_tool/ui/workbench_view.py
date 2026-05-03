@@ -261,9 +261,9 @@ def _tile_html(label: str, value: str) -> str:
 
 def _page_header_html() -> str:
     return (
-        '<div class="wb-page-header" data-wb-build="workbench-toolbar-20260502-0006">'
-        '<div class="wb-toolbar-build">workbench-toolbar-20260502-0006</div>'
-        '<div class="wb-page-title" style="text-transform:none!important">Workbench</div>'
+        '<div class="calb-ph" data-wb-build="workbench-toolbar-20260502-0006">'
+        '<p class="calb-ph-title">Workbench</p>'
+        '<p class="calb-ph-sub">Project &amp; Case Management</p>'
         "</div>"
     )
 

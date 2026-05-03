@@ -81,7 +81,8 @@ def show():
     ac_results = state.ac_results
     workspace = get_workspace_context()
 
-    st.header("AC Block Sizing (V2 - DC-First Approach)")
+    from calb_sizing_tool.ui._ui import page_header
+    page_header("AC Sizing", "PCS & AC Block Configuration")
 
     # ========== STEP 1: Dependency & DC Summary ==========
     dc_data = st.session_state.get("dc_result_summary") or dc_results.get("dc_result_summary")
