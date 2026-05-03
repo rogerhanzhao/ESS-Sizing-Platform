@@ -705,6 +705,9 @@ def show():
         st.warning("Select a project and case before running DC sizing.")
         return
 
+    from calb_sizing_tool.ui._ui import page_header
+    page_header("DC Sizing", "Battery Block · Degradation · Performance Projection")
+
     if auth_context.is_guest:
         st.info(
             "👁 **Guest mode** — DC sizing is fully functional. "
@@ -781,9 +784,6 @@ def show():
     # Inject CSS
     inject_css()
 
-    from calb_sizing_tool.ui._ui import page_header
-    page_header("DC Sizing", "Battery Block · Degradation · Performance Projection")
-    
     # Load Data
     try:
         defaults, df_blocks, df_soh_profile, df_soh_curve, df_rte_profile, df_rte_curve = load_data(DC_DATA_PATH)

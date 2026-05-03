@@ -31,7 +31,7 @@ def inject_global_styles() -> None:
         }
 
         .block-container {
-            padding-top: 1.5rem !important;
+            padding-top: 4rem !important;
             padding-bottom: 2rem !important;
         }
 
