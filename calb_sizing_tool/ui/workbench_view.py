@@ -49,7 +49,6 @@ def _render_workbench_css() -> None:
     st.markdown(
         """
         <style>
-        .block-container { padding-top: 1.55rem !important; }
         .block-container h1,
         .block-container h2,
         .block-container h3,
