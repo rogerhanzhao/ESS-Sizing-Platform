@@ -43,8 +43,8 @@ verify_*.py
 .ssh/
 user_preferences.json
 outputs/
-var/*.sqlite
-var/*.sqlite-*
+# Runtime data directory — DB, uploads, generated assets
+var/
 
 # Claude Code project settings (machine/user-specific)
 .claude/
