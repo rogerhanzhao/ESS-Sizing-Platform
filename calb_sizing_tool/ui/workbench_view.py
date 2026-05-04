@@ -569,7 +569,6 @@ def _render_run_registry(runs: list[dict], context: dict, auth_user) -> None:
 
 def show() -> None:
     init_project_state()
-    _render_workbench_css()
 
     auth_context = get_auth_context()
     if auth_context is None:
@@ -577,7 +576,9 @@ def show() -> None:
         return
     auth_user = get_auth_user()
 
-    st.markdown(_page_header_html(), unsafe_allow_html=True)
+    from calb_sizing_tool.ui._ui import page_header
+    page_header("Workbench", "Project & Case Management")
+    _render_workbench_css()
 
     projects = _load_projects(auth_user)
     context = get_workspace_context()
