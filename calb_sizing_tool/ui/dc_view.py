@@ -705,7 +705,7 @@ def show():
         st.warning("Select a project and case before running DC sizing.")
         return
 
-    from calb_sizing_tool.ui._ui import page_header
+    from calb_sizing_tool.ui._ui import compact_note, page_header, section_header, workspace_status_bar
     page_header("DC Sizing", "Battery Block · Degradation · Performance Projection")
 
     if auth_context.is_guest:
@@ -716,8 +716,13 @@ def show():
             icon=None,
         )
     else:
-        st.caption(f"Active Project: {active_project_name} ({active_project_code})")
-        st.caption(f"Active Case: {active_case_name} ({active_case_code})")
+        workspace_status_bar(
+            [
+                ("Project", active_project_name or active_project_code or "None"),
+                ("Case", active_case_name or active_case_code or "None"),
+                ("Run", workspace.get("run_id") or st.session_state.get("dc_last_run_id") or "None"),
+            ]
+        )
 
     # One-time default migration for UI fields (no impact on sizing logic)
     def _migrate_dc_defaults() -> None:
@@ -830,11 +835,11 @@ def show():
         with st.expander("Show RTE monotonicity issues", expanded=False):
             st.dataframe(rte_issues, use_container_width=True)
 
-    with st.container(border=True):
-        st.subheader("Load DC Run")
-        with st.expander("Load DC Run by ID", expanded=False):
-            load_run_id = st.text_input("Run ID", key="dc_load_run_id")
-            if st.button("Load Run", key="dc_load_run_btn"):
+    if not auth_context.is_guest:
+        with st.expander("Restore saved DC run", expanded=False):
+            load_col, action_col = st.columns([3, 1])
+            load_run_id = load_col.text_input("Run ID", key="dc_load_run_id")
+            if action_col.button("Load Run", key="dc_load_run_btn"):
                 run_id = (load_run_id or "").strip()
                 if not run_id:
                     st.warning("Please enter a run id.")
@@ -895,7 +900,11 @@ def show():
 
     # --- UI Form ---
     with st.container(border=True):
-        st.subheader("1. Project Inputs")
+        section_header(
+            "Project Inputs",
+            "Project basis, POI requirements, grid interface, and operating period.",
+            eyebrow="Step 1",
+        )
 
         with st.form("main_form"):
             project_name_default = active_project_name or get_default_str("project_name", "CALB ESS Project")
@@ -993,21 +1002,26 @@ def show():
             sc_time_months = to_int(sc_time_months, 3)
             dc_inputs["sc_time_months"] = sc_time_months
 
-            st.markdown("---")
-            st.subheader("2. DC Parameters")
+            st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
+            section_header(
+                "DC Parameters",
+                "Battery usable-energy basis, DC RTE envelope, and efficiency chain.",
+                eyebrow="Step 2",
+            )
             
-            c7, c8, c9, c10 = st.columns([1, 1, 1, 1.15])
+            c7, c8, c9 = st.columns(3)
             dod_pct = c7.number_input(
                 "DOD (%)",
                 key=_init_input("dod_pct", get_default_percent_val("dod_pct", 95.0)),
             )
             dc_inputs["dod_pct"] = dod_pct
             dc_rte_pct = c8.number_input(
-                "DC RTE (%) System level Base on 0.25C",
+                "DC RTE (%)",
                 key=_init_input(
                     "dc_round_trip_efficiency_pct",
                     get_default_percent_val("dc_round_trip_efficiency_pct", 94.0),
                 ),
+                help="System-level base on 0.25C.",
             )
             dc_inputs["dc_round_trip_efficiency_pct"] = dc_rte_pct
             rte_adjust_pp = c9.number_input(
@@ -1018,22 +1032,25 @@ def show():
                 step=0.1,
             )
             dc_inputs["rte_curve_adjust_pp"] = rte_adjust_pp
-            c10.markdown("<div style=\"margin-top: 1.5rem;\"></div>", unsafe_allow_html=True)
-            rte_monotonic_enforce = c10.checkbox(
-                "RTE Monotonic (No Rise vs SOH)",
+            rte_monotonic_enforce = st.checkbox(
+                "RTE monotonic envelope: no RTE rise as SoH declines",
                 key=_init_input("rte_monotonic_enforce", True),
                 help="Default: On. Enforces a monotonic RTE envelope so RTE does not increase as SOH declines.",
             )
             dc_inputs["rte_monotonic_enforce"] = rte_monotonic_enforce
             
-            st.info(f"Design Rule: Max 418kWh Cabinets per DC Busbar (K) = {K_MAX_FIXED} (fixed)")
+            compact_note(f"Design rule: max 418kWh cabinets per DC busbar (K) = {K_MAX_FIXED}.")
 
-            st.markdown("**3. Configuration Options**")
+            section_header(
+                "Configuration Options",
+                "Scenario switches for cabinet, container, and hybrid search paths.",
+                eyebrow="Step 3",
+            )
             threshold_key = _init_input("hybrid_disable_threshold_mwh", 20.0)
             threshold_val = to_float(st.session_state.get(threshold_key, 20.0), 20.0)
             auto_enable_hybrid = not (threshold_val > 0 and poi_energy >= threshold_val)
             auto_enable_cabinet_only = auto_enable_hybrid
-            copt1, copt2, copt3 = st.columns([2, 2, 3])
+            copt1, copt2 = st.columns(2)
             enable_hybrid = copt1.checkbox(
                 "Enable Hybrid Mode",
                 key=_init_input("enable_hybrid", auto_enable_hybrid),
@@ -1044,7 +1061,8 @@ def show():
                 key=_init_input("enable_cabinet_only", auto_enable_cabinet_only),
             )
             dc_inputs["enable_cabinet_only"] = enable_cabinet_only
-            hybrid_disable_threshold = copt3.number_input(
+            threshold_col, _threshold_spacer = st.columns([1, 1])
+            hybrid_disable_threshold = threshold_col.number_input(
                 "Disable Hybrid Threshold (MWh)",
                 key=threshold_key,
             )
@@ -1082,7 +1100,7 @@ def show():
                 )
                 dc_inputs["eff_hvt_others"] = eff_hvt
 
-            st.markdown("---")
+            st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
             run_btn = st.form_submit_button("Run Sizing")
         
     # --- Logic Execution ---
@@ -1150,21 +1168,20 @@ def show():
         s1 = run_stage1(inputs, defaults)
 
         # Stage 1 Display
-        st.markdown("<div class='calb-card'>", unsafe_allow_html=True)
-        st.subheader("3. Stage 1 - DC Requirement")
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Theoretical DC Required", f"{s1['dc_energy_capacity_required_mwh']:.2f} MWh")
-        m2.metric("Efficiency Chain", f"{s1['eff_dc_to_poi_frac']*100:.2f} %")
-        m3.metric("DC Usable @BOL", f"{s1['dc_usable_bol_frac']*100:.2f} %")
-        m4.metric("DC Power Req", f"{s1['dc_power_required_mw']:.2f} MW")
-        rte_base_pct = float(s1.get("dc_rte_base_frac", s1.get("dc_round_trip_efficiency_frac", 0.0))) * 100.0
-        rte_adjust_pp_used = float(s1.get("rte_curve_adjust_pp", 0.0))
-        rte_effective_pct = float(s1.get("dc_rte_effective_frac", s1.get("dc_round_trip_efficiency_frac", 0.0))) * 100.0
-        r1, r2, r3 = st.columns(3)
-        r1.metric("DC RTE base (%)", f"{rte_base_pct:.2f} %")
-        r2.metric("RTE adjustment (pp)", f"{rte_adjust_pp_used:+.2f} pp")
-        r3.metric("DC RTE effective (%)", f"{rte_effective_pct:.2f} %")
-        st.markdown("</div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            section_header("Stage 1 - DC Requirement", eyebrow="Result")
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Theoretical DC Required", f"{s1['dc_energy_capacity_required_mwh']:.2f} MWh")
+            m2.metric("Efficiency Chain", f"{s1['eff_dc_to_poi_frac']*100:.2f} %")
+            m3.metric("DC Usable @BOL", f"{s1['dc_usable_bol_frac']*100:.2f} %")
+            m4.metric("DC Power Req", f"{s1['dc_power_required_mw']:.2f} MW")
+            rte_base_pct = float(s1.get("dc_rte_base_frac", s1.get("dc_round_trip_efficiency_frac", 0.0))) * 100.0
+            rte_adjust_pp_used = float(s1.get("rte_curve_adjust_pp", 0.0))
+            rte_effective_pct = float(s1.get("dc_rte_effective_frac", s1.get("dc_round_trip_efficiency_frac", 0.0))) * 100.0
+            r1, r2, r3 = st.columns(3)
+            r1.metric("DC RTE base (%)", f"{rte_base_pct:.2f} %")
+            r2.metric("RTE adjustment (pp)", f"{rte_adjust_pp_used:+.2f} pp")
+            r3.metric("DC RTE effective (%)", f"{rte_effective_pct:.2f} %")
 
         # Run Options
         modes_to_run = ["container_only"]
@@ -1257,9 +1274,7 @@ def show():
                 st.error(f"Failed to persist DC run: {exc}")
 
         # Tabs Display
-        st.markdown("<div class='calb-card'>", unsafe_allow_html=True)
-        st.subheader("4. Configuration Comparison")
-        
+        section_header("Configuration Comparison", eyebrow="Result")
         tabs = st.tabs([m.replace("_", " ").title() for m in modes_to_run])
         for i, mode in enumerate(modes_to_run):
             with tabs[i]:
@@ -1402,8 +1417,6 @@ div[data-testid="stDataFrame"] div[role="rowheader"] {
 
                 else:
                     st.error(f"Error: {res[1]}")
-        st.markdown("</div>", unsafe_allow_html=True)
-
         # Export Button
         if DOCX_AVAILABLE:
             ok_results = {k: v for k, v in results.items() if v[0] != "ERROR"}

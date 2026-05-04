@@ -328,13 +328,8 @@ def show() -> None:
 
     workspace = get_workspace_context()
 
-    from calb_sizing_tool.ui._ui import page_header
+    from calb_sizing_tool.ui._ui import compact_note, page_header, section_header, workspace_status_bar
     page_header("Single Line Diagram", "System Schematic & Engineering Export")
-    st.caption(
-        f"Active Workspace: Project `{workspace.get('project_name') or 'None'}` | "
-        f"Case `{workspace.get('case_name') or 'None'}` | Run `{workspace.get('run_id') or 'None'}`"
-    )
-    st.divider()
 
     _is_guest = auth_context.is_guest
 
@@ -350,6 +345,13 @@ def show() -> None:
         if _is_guest
         else (workspace.get("run_id") or st.session_state.get("dc_last_run_id", ""))
     )
+    workspace_status_bar(
+        [
+            ("Project", workspace.get("project_name") or "None"),
+            ("Case", workspace.get("case_name") or "None"),
+            ("Run", run_id_default or "None"),
+        ]
+    )
     if _is_guest:
         # Show the session run_id as read-only info — no editable input needed
         run_id = str(run_id_default or "")
@@ -358,7 +360,14 @@ def show() -> None:
         else:
             st.warning("No DC sizing results found in this session. Run DC sizing first.")
     else:
-        run_id = st.text_input("Run ID", value=str(run_id_default or "")).strip()
+        run_id = str(run_id_default or "").strip()
+        with st.expander("Run source", expanded=False):
+            run_id = st.text_input(
+                "Run ID",
+                value=str(run_id_default or ""),
+                key="sld_run_id_override",
+                help="Use the active workspace run by default. Override only for restore or trace checks.",
+            ).strip()
 
     ac_resolution = _resolve_ac_snapshot(
         state,
@@ -391,6 +400,11 @@ def show() -> None:
     mv_nominal_voltage_kv = _resolve_mv_nominal_voltage_kv(state, project_state, ac_snapshot)
     persisted_project_settings = load_case_sld_project_settings(workspace.get("case_id"))
     group_choices = list(range(1, ac_blocks_total + 1)) if ac_blocks_total > 0 else [1]
+    section_header(
+        "Generation Setup",
+        "Select the AC block group, visual density, renderer mode, and output plugin.",
+        eyebrow="Step 1",
+    )
     group_index = st.selectbox(
         "AC Block Group",
         group_choices,
@@ -398,11 +412,11 @@ def show() -> None:
         disabled=not ac_snapshot or ac_blocks_total <= 0,
     )
 
-    st.markdown("#### Display Settings")
-    display_col1, display_col2, display_col3 = st.columns(3)
-    theme = display_col1.selectbox("Theme", ["dark", "light"], index=0)
-    compact_mode = display_col2.checkbox("Compact Mode", value=False)
-    draw_summary = display_col3.checkbox("Draw Summary", value=False)
+    section_header("Display Settings", eyebrow="Step 2")
+    theme = st.selectbox("Theme", ["dark", "light"], index=0)
+    display_flag_col1, display_flag_col2 = st.columns(2)
+    compact_mode = display_flag_col1.checkbox("Compact Mode", value=False)
+    draw_summary = display_flag_col2.checkbox("Draw Summary", value=False)
     renderer_mode_choices = list(AVAILABLE_SLD_RENDERER_MODES)
     renderer_mode_default_index = 0
     renderer_mode = st.selectbox(
@@ -486,11 +500,12 @@ def show() -> None:
                 "Generate SLD will force draft/session mode until a persisted AC runtime snapshot exists."
             )
         else:
-            st.info("Formal mode uses strict runtime inputs only. Missing required engineering inputs will fail fast.")
+            compact_note("Formal mode uses strict runtime inputs only. Missing required engineering inputs will fail fast.")
 
     registry = get_plugin_registry()
     plugins = registry.list_by_artifact("sld_svg")
     plugin_ids = [plugin.metadata.plugin_id for plugin in plugins]
+    section_header("Renderer", eyebrow="Step 3")
     selected_plugin = st.selectbox(
         "Renderer",
         plugin_ids,
@@ -611,8 +626,8 @@ def show() -> None:
     pipeline_meta = st.session_state.get("sld_pipeline_meta") or {}
     if pipeline_meta:
         mode_label = "Draft / Override" if pipeline_meta.get("validation_mode") == "draft" else "Formal / Strict"
-        st.divider()
-        st.subheader("Pipeline Status")
+        st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
+        section_header("Pipeline Status", eyebrow="Result")
         _meta_run = pipeline_meta.get("run_id") or ""
         _meta_run_short = f"··{_meta_run[-8:]}" if len(_meta_run) >= 8 else (_meta_run or "—")
         st.caption(
@@ -662,7 +677,7 @@ def show() -> None:
         svg_item = artifacts.get("sld_svg")
         png_item = artifacts.get("sld_png")
 
-        st.subheader("Preview")
+        section_header("Preview", eyebrow="Output")
         zoom = st.slider(
             "Zoom (%)",
             min_value=50,
@@ -687,9 +702,9 @@ def show() -> None:
         for artifact_kind, artifact_hash in (pipeline_meta.get("artifact_hashes") or {}).items():
             hash_rows.append({"artifact_kind": artifact_kind, "content_hash": artifact_hash})
         if hash_rows:
-            st.subheader("Traceability")
+            section_header("Traceability", eyebrow="Output")
             st.dataframe(hash_rows, use_container_width=True, hide_index=True)
-        st.subheader("Downloads")
+        section_header("Downloads", eyebrow="Output")
         if svg_item:
             st.download_button(
                 "Download SLD SVG",

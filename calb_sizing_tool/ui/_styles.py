@@ -125,6 +125,98 @@ def inject_global_styles() -> None:
             padding: 1rem 1.1rem;
         }
 
+        .calb-section-header {
+            align-items: baseline;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem 0.55rem;
+            margin: 0.15rem 0 0.8rem;
+        }
+
+        .calb-section-eyebrow {
+            color: #506F94;
+            font-size: 0.72rem;
+            font-weight: 750;
+            letter-spacing: 0.06em;
+            line-height: 1.25;
+            text-transform: uppercase;
+        }
+
+        .calb-section-title {
+            color: var(--calb-text);
+            font-size: 1.05rem;
+            font-weight: 720;
+            letter-spacing: 0;
+            line-height: 1.24;
+        }
+
+        .calb-section-caption {
+            color: var(--calb-muted);
+            flex-basis: 100%;
+            font-size: 0.82rem;
+            line-height: 1.35;
+            margin: 0.1rem 0 0 0 !important;
+        }
+
+        .calb-status-bar {
+            background: var(--calb-soft-2);
+            border: 1px solid var(--calb-line);
+            border-left: 4px solid var(--calb-blue);
+            border-radius: 5px;
+            display: grid;
+            gap: 0;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            margin: 0.6rem 0 1rem;
+            overflow: hidden;
+        }
+
+        .calb-status-cell {
+            min-width: 0;
+            padding: 0.58rem 0.8rem;
+        }
+
+        .calb-status-cell + .calb-status-cell {
+            border-left: 1px solid var(--calb-line);
+        }
+
+        .calb-status-label {
+            color: #506F94;
+            display: block;
+            font-size: 0.68rem;
+            font-weight: 760;
+            letter-spacing: 0.06em;
+            line-height: 1.25;
+            text-transform: uppercase;
+        }
+
+        .calb-status-value {
+            color: var(--calb-text);
+            display: block;
+            font-size: 0.9rem;
+            font-weight: 720;
+            line-height: 1.28;
+            margin-top: 0.18rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .calb-note {
+            background: #EAF2FB;
+            border-left: 3px solid var(--calb-blue);
+            border-radius: 5px;
+            color: #164170;
+            font-size: 0.86rem;
+            line-height: 1.35;
+            margin-top: 0.25rem;
+            padding: 0.62rem 0.75rem;
+        }
+
+        .calb-muted-line {
+            border-top: 1px solid var(--calb-line);
+            margin: 1.35rem 0;
+        }
+
         div[data-testid="stVerticalBlockBorderWrapper"] {
             background: var(--calb-white) !important;
             border: 1px solid var(--calb-line) !important;
@@ -210,6 +302,22 @@ def inject_global_styles() -> None:
             opacity: 1 !important;
         }
 
+        div[data-testid="stNumberInput"] label p,
+        div[data-testid="stSelectbox"] label p,
+        div[data-testid="stTextInput"] label p,
+        div[data-testid="stCheckbox"] label p {
+            line-height: 1.28 !important;
+        }
+
+        div[data-testid="stCheckbox"] {
+            margin: 0.25rem 0 0.65rem !important;
+        }
+
+        div[data-testid="stCheckbox"] label {
+            align-items: flex-start !important;
+            gap: 0.55rem !important;
+        }
+
         section[data-testid="stSidebar"] .stButton > button {
             background-color: #1E3A5C !important;
             border: 1px solid #2A4F7A !important;
@@ -243,6 +351,15 @@ def inject_global_styles() -> None:
 
             .stButton > button {
                 min-height: 2.45rem !important;
+            }
+
+            .calb-status-bar {
+                grid-template-columns: 1fr;
+            }
+
+            .calb-status-cell + .calb-status-cell {
+                border-left: 0;
+                border-top: 1px solid var(--calb-line);
             }
         }
         </style>

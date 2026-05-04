@@ -19,6 +19,7 @@ from calb_sizing_tool.state.workspace_state import (
     set_active_case,
     set_active_project,
 )
+from calb_sizing_tool.ui._ui import page_header, section_header
 from calb_sizing_tool.utils.text import SCENARIO_LABELS, fmt_dt, slugify
 
 
@@ -473,7 +474,7 @@ def _render_case_picker(cases: list[dict], context: dict, auth_user) -> None:
 
 
 def _render_latest_run(runs: list[dict], context: dict, auth_user) -> None:
-    st.subheader("Latest Run")
+    section_header("Latest Run")
     if not context.get("case_id"):
         st.info("Select a case to see the latest run.")
         return
@@ -505,7 +506,7 @@ def _render_latest_run(runs: list[dict], context: dict, auth_user) -> None:
 
 
 def _render_run_registry(runs: list[dict], context: dict, auth_user) -> None:
-    st.subheader("Run Registry")
+    section_header("Run Registry")
     if not context.get("case_id"):
         st.info("Select a case to see runs.")
         return
@@ -576,7 +577,6 @@ def show() -> None:
         return
     auth_user = get_auth_user()
 
-    from calb_sizing_tool.ui._ui import page_header
     page_header("Workbench", "Project & Case Management")
     _render_workbench_css()
 
@@ -619,7 +619,7 @@ def show() -> None:
 
     setup_col, latest_col = st.columns([1.15, 1.0])
     with setup_col:
-        st.subheader("Workspace Setup")
+        section_header("Workspace Setup")
         project_col, case_col = st.columns(2)
         with project_col:
             _render_project_picker(projects, context, auth_user)

@@ -36,6 +36,7 @@ from calb_sizing_tool.services.layout_service import render_layout_from_run_bund
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state
+from calb_sizing_tool.state.workspace_state import get_workspace_context
 
 
 def _build_ac_snapshot(state, project_state) -> AcSnapshot | None:
@@ -90,14 +91,22 @@ def show() -> None:
         return
     auth_user = get_auth_user()
     _is_guest = auth_context.is_guest
+    workspace = get_workspace_context()
 
-    from calb_sizing_tool.ui._ui import page_header
+    from calb_sizing_tool.ui._ui import page_header, section_header, workspace_status_bar
     page_header("Site Layout", "Block Arrangement & Site Planning")
 
     if _is_guest:
         st.info("👁 **Guest mode** — layout runs from session data. AI prompt and external submission are disabled.", icon=None)
 
     run_id_default = st.session_state.get("dc_last_run_id", "")
+    workspace_status_bar(
+        [
+            ("Project", workspace.get("project_name") or "None"),
+            ("Case", workspace.get("case_name") or "None"),
+            ("Run", run_id_default or "None"),
+        ]
+    )
     if _is_guest:
         run_id = str(run_id_default or "")
         if run_id:
@@ -105,23 +114,35 @@ def show() -> None:
         else:
             st.warning("No DC sizing results in session. Run DC sizing first.")
     else:
-        run_id = st.text_input("Run ID", value=str(run_id_default or "")).strip()
+        run_id = str(run_id_default or "").strip()
+        with st.expander("Run source", expanded=False):
+            run_id = st.text_input(
+                "Run ID",
+                value=str(run_id_default or ""),
+                key="layout_run_id_override",
+                help="Use the current DC sizing run by default. Override only for restore or trace checks.",
+            ).strip()
 
-    st.divider()
+    st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
 
     ac_snapshot = _build_ac_snapshot(state, project_state)
     if ac_snapshot is None:
         st.warning("AC snapshot not found. Run AC sizing before generating layout.")
 
-    st.markdown("#### Render Options")
+    section_header(
+        "Render Options",
+        "Select AC group, DC block arrangement, skid visibility, and renderer plugin.",
+        eyebrow="Step 1",
+    )
     ac_blocks_total = _resolve_ac_blocks_total(ac_snapshot.output if ac_snapshot else {})
-    block_index = st.selectbox(
+    layout_col1, layout_col2 = st.columns(2)
+    block_index = layout_col1.selectbox(
         "AC Block Group",
         list(range(1, ac_blocks_total + 1)),
         index=0,
         disabled=not ac_snapshot,
     )
-    arrangement = st.selectbox(
+    arrangement = layout_col2.selectbox(
         "DC Block arrangement",
         ["Auto", "2x2", "1x4", "4x1"],
         index=0,
@@ -139,7 +160,7 @@ def show() -> None:
         format_func=lambda pid: registry.get(pid).metadata.plugin_name if registry.get(pid) else pid,
     )
 
-    if st.button("Generate Layout", disabled=not run_id or not ac_snapshot):
+    if st.button("Generate Layout", disabled=not run_id or not ac_snapshot, use_container_width=True):
         if _is_guest:
             bundle = _build_guest_dc_bundle()
             if not bundle:
@@ -184,13 +205,13 @@ def show() -> None:
         png_item = artifacts.get("layout_png")
         spec_item = artifacts.get("layout_spec_json")
 
-        st.subheader("Preview")
+        section_header("Preview", eyebrow="Output")
         if png_item and png_item.get("content"):
             st.image(png_item["content"], use_container_width=True)
         elif svg_item and svg_item.get("content"):
             st.components.v1.html(svg_item["content"].decode("utf-8"), height=640, scrolling=True)
 
-        st.subheader("Downloads")
+        section_header("Downloads", eyebrow="Output")
         if spec_item:
             st.download_button(
                 "Download layout_spec.json",
