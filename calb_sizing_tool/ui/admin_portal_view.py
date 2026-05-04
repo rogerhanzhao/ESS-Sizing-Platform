@@ -10,6 +10,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from calb_sizing_tool.services.auth_service import AuthService
 from calb_sizing_tool.services.product_admin_service import ProductAdminService
 from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.ui._ui import page_header
@@ -114,6 +115,7 @@ _SECTIONS = [
     ("RTE Library", "RTE"),
     ("Plugin Registry", "Plugins"),
     ("DC Sizing Data", "Sizing Data"),
+    ("Users & Access", "Users"),
 ]
 
 _ADMIN_NAV_KEY = "admin_portal_section"
@@ -157,7 +159,7 @@ def show() -> None:
     snapshot = _load_snapshot(service)
 
     _render_admin_css()
-    page_header("Product & Database", "Admin-only product libraries, performance data, and simulation plugins")
+    page_header("Product & Database", "Admin-only product libraries, user access, performance data, and simulation plugins")
     st.divider()
 
     nav_col, content_col = st.columns([1, 4], gap="large")
@@ -193,6 +195,8 @@ def show() -> None:
             _section_plugins(service, snapshot)
         elif selected == "DC Sizing Data":
             _section_dc_sizing_data()
+        elif selected == "Users & Access":
+            _section_users_access()
 
 
 @st.cache_data(ttl=5)
@@ -263,6 +267,30 @@ def _optional_float(value: Any) -> float:
 
 def _optional_int(value: Any) -> int:
     return int(value or 0)
+
+
+def _format_datetime(value: Any) -> str:
+    if value is None:
+        return "N/A"
+    try:
+        return value.strftime("%Y-%m-%d %H:%M")
+    except AttributeError:
+        return str(value)
+
+
+def _project_label_map(projects: list[dict[str, str]]) -> dict[str, str]:
+    return {project["label"]: project["project_id"] for project in projects}
+
+
+def _labels_for_project_ids(projects: list[dict[str, str]], project_ids: list[str]) -> list[str]:
+    by_id = {project["project_id"]: project["label"] for project in projects}
+    return [by_id[project_id] for project_id in project_ids if project_id in by_id]
+
+
+def _user_option_label(row: dict[str, Any]) -> str:
+    display = row.get("display_name") or row.get("username")
+    status = row.get("status") or "unknown"
+    return f"{row['username']} - {display} ({status})"
 
 
 def _render_edit_form(
@@ -359,6 +387,142 @@ def _section_overview(snapshot: dict[str, Any]) -> None:
         "These Phase B tables are independent from the legacy imported master-data tables. "
         "They are the maintained source for Admin Portal product records."
     )
+
+
+def _section_users_access() -> None:
+    auth_context = get_auth_context()
+    if auth_context is None or not auth_context.is_admin:
+        st.error("Admin access required.")
+        return
+
+    service = AuthService()
+    rows = service.list_user_admin_rows()
+    role_options = sorted(
+        service.list_role_codes(),
+        key=lambda code: {"normal_user": 0, "admin": 1}.get(code, 10),
+    )
+    default_roles = ["normal_user"] if "normal_user" in role_options else role_options[:1]
+    projects = service.list_project_options()
+    project_map = _project_label_map(projects)
+    project_labels = list(project_map.keys())
+
+    st.subheader("Users & Access")
+    st.caption("Public sign-up remains disabled. Administrators create accounts and assign project access here.")
+
+    display_rows = [
+        {
+            "Username": row["username"],
+            "Display Name": row.get("display_name") or "N/A",
+            "Email": row.get("email") or "N/A",
+            "Status": row.get("status"),
+            "Roles": ", ".join(row.get("roles") or []),
+            "Project Access": (
+                "All projects (admin)"
+                if row.get("is_admin")
+                else ", ".join(row.get("project_labels") or []) or "N/A"
+            ),
+            "Created": _format_datetime(row.get("created_at")),
+            "Last Login": _format_datetime(row.get("last_login_at")),
+        }
+        for row in rows
+    ]
+    st.dataframe(display_rows, use_container_width=True, hide_index=True)
+
+    with st.expander("Create User", expanded=False):
+        st.info("This prepares registration internally only. No public registration entry is exposed on the login page.")
+        with st.form("admin_create_user"):
+            c1, c2 = st.columns(2)
+            username = c1.text_input("Username *")
+            display_name = c2.text_input("Display Name")
+            email = st.text_input("Email")
+            roles = st.multiselect("Roles *", role_options, default=default_roles)
+            selected_project_labels = st.multiselect(
+                "Project Access",
+                project_labels,
+                help="Admin role can access all projects. Use this list to scope normal users.",
+            )
+            p1, p2 = st.columns(2)
+            password = p1.text_input("Initial Password *", type="password")
+            confirm = p2.text_input("Confirm Password *", type="password")
+
+            if st.form_submit_button("Create User", use_container_width=True):
+                if password != confirm:
+                    st.error("Passwords do not match.")
+                else:
+                    try:
+                        service.admin_create_user(
+                            actor_user_id=auth_context.user_id,
+                            username=username,
+                            password=password,
+                            display_name=display_name,
+                            email=email,
+                            role_codes=roles,
+                            project_ids=[project_map[label] for label in selected_project_labels],
+                        )
+                    except ValueError as exc:
+                        st.error(str(exc))
+                    else:
+                        st.success("User created.")
+                        st.rerun()
+
+    if not rows:
+        return
+
+    with st.expander("Edit User Access", expanded=False):
+        option_map = {_user_option_label(row): row["user_id"] for row in rows}
+        selected_label = st.selectbox("User", list(option_map.keys()), key="admin_edit_user_record")
+        user_id = option_map[selected_label]
+        row = next((item for item in rows if item["user_id"] == user_id), None)
+        if row is None:
+            st.warning("Selected user is no longer available.")
+            return
+
+        with st.form("admin_edit_user"):
+            st.text_input("Username", value=str(row.get("username") or ""), disabled=True)
+            c1, c2 = st.columns(2)
+            display_name = c1.text_input("Display Name", value=str(row.get("display_name") or ""))
+            email = c2.text_input("Email", value=str(row.get("email") or ""))
+            statuses = ["active", "inactive"]
+            current_status = str(row.get("status") or "active")
+            status = st.selectbox(
+                "Status",
+                statuses,
+                index=statuses.index(current_status) if current_status in statuses else 0,
+            )
+            current_roles = [role for role in (row.get("roles") or []) if role in role_options] or default_roles
+            roles = st.multiselect("Roles *", role_options, default=current_roles, key="admin_edit_user_roles")
+            current_project_labels = _labels_for_project_ids(projects, row.get("project_ids") or [])
+            selected_project_labels = st.multiselect(
+                "Project Access",
+                project_labels,
+                default=current_project_labels,
+                help="Admin role can access all projects. Use this list to scope normal users.",
+            )
+            st.caption("Leave password fields blank to keep the current password.")
+            p1, p2 = st.columns(2)
+            new_password = p1.text_input("New Password", type="password")
+            confirm_password = p2.text_input("Confirm New Password", type="password")
+
+            if st.form_submit_button("Save User Access", use_container_width=True):
+                if new_password and new_password != confirm_password:
+                    st.error("Passwords do not match.")
+                else:
+                    try:
+                        service.admin_update_user(
+                            user_id=user_id,
+                            actor_user_id=auth_context.user_id,
+                            display_name=display_name,
+                            email=email,
+                            status=status,
+                            role_codes=roles,
+                            project_ids=[project_map[label] for label in selected_project_labels],
+                            new_password=new_password or None,
+                        )
+                    except ValueError as exc:
+                        st.error(str(exc))
+                    else:
+                        st.success("User access updated.")
+                        st.rerun()
 
 
 def _section_cell_products(service: ProductAdminService, snapshot: dict[str, Any]) -> None:
