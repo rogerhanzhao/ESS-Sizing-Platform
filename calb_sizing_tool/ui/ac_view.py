@@ -40,7 +40,7 @@ from calb_sizing_tool.services.sld_data_source_service import persist_ac_runtime
 from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.state.project_state import bump_run_id_ac, get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
-from calb_sizing_tool.state.workspace_state import get_workspace_context
+from calb_sizing_tool.state.workspace_state import get_workspace_context, navigate_to
 
 
 def _format_float(val, decimals=2) -> str:
@@ -408,6 +408,29 @@ def show():
                     results={},
                     source_ref="ac_view",
                 )
-                st.info("Configuration saved. Proceed to SLD generation and report export.")
+                st.info("Configuration saved.")
             else:
-                st.success("AC sizing complete (guest mode — session only). Proceed to SLD generation.")
+                st.success("AC sizing complete (guest mode — session only).")
+
+            st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
+            section_header("Next Steps", eyebrow="Continue")
+            _is_guest_cta = _auth_ctx and _auth_ctx.is_guest
+            if _is_guest_cta:
+                _cta1, _cta2 = st.columns(2)
+                if _cta1.button("Single Line Diagram →", use_container_width=True, key="ac_cta_sld"):
+                    navigate_to("Single Line Diagram")
+                    st.rerun()
+                if _cta2.button("Site Layout →", use_container_width=True, key="ac_cta_layout"):
+                    navigate_to("Site Layout")
+                    st.rerun()
+            else:
+                _cta1, _cta2, _cta3 = st.columns(3)
+                if _cta1.button("Single Line Diagram →", use_container_width=True, key="ac_cta_sld"):
+                    navigate_to("Single Line Diagram")
+                    st.rerun()
+                if _cta2.button("Site Layout →", use_container_width=True, key="ac_cta_layout"):
+                    navigate_to("Site Layout")
+                    st.rerun()
+                if _cta3.button("Report Export →", use_container_width=True, key="ac_cta_report"):
+                    navigate_to("Report Export")
+                    st.rerun()

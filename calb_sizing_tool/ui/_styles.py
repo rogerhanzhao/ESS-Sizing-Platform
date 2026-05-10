@@ -335,6 +335,71 @@ def inject_global_styles() -> None:
             border-radius: 6px;
         }
 
+        /* ── Sidebar: workspace context strip ──────────────────────── */
+        .sb-workspace {
+            padding: 0.25rem 0 0.1rem;
+        }
+
+        .sb-ws-item {
+            display: flex;
+            flex-direction: column;
+            padding: 0.18rem 0;
+        }
+
+        .sb-ws-label {
+            color: #7A9EC4;
+            font-size: 0.62rem;
+            font-weight: 760;
+            letter-spacing: 0.07em;
+            line-height: 1.25;
+            text-transform: uppercase;
+        }
+
+        .sb-ws-value {
+            color: #D4E4F4;
+            font-size: 0.82rem;
+            font-weight: 650;
+            line-height: 1.25;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* ── Sidebar: navigation group labels ──────────────────────── */
+        .sb-nav-group {
+            color: #6A8EB0;
+            font-size: 0.62rem;
+            font-weight: 760;
+            letter-spacing: 0.09em;
+            margin-bottom: 0.3rem;
+            margin-top: 0.75rem;
+            text-transform: uppercase;
+        }
+
+        /* ── Sidebar: active navigation item (filled chip) ─────────── */
+        .sb-nav-active {
+            background: var(--calb-blue);
+            border: 1px solid var(--calb-blue);
+            border-radius: 4px;
+            box-sizing: border-box;
+            color: #FFFFFF;
+            display: block;
+            font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            font-size: 0.84rem;
+            font-weight: 650;
+            margin-bottom: 0.38rem;
+            padding: 0.62rem 0.75rem;
+            text-align: center;
+            width: 100%;
+        }
+
+        /* Suppress extra Streamlit wrapper margins for these sidebar elements */
+        section[data-testid="stSidebar"] .stMarkdown:has(.sb-nav-active),
+        section[data-testid="stSidebar"] .stMarkdown:has(.sb-nav-group),
+        section[data-testid="stSidebar"] .stMarkdown:has(.sb-workspace) {
+            margin-bottom: 0 !important;
+        }
+
         @media (max-width: 900px) {
             .block-container {
                 padding-left: 1rem !important;

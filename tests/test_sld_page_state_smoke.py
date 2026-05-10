@@ -36,7 +36,7 @@ def _login(app: AppTest) -> None:
 
 
 def _go_to(app: AppTest, page: str) -> AppTest:
-    app.sidebar.radio[0].set_value(page)
+    app.session_state["main_nav"] = page
     return app.run()
 
 

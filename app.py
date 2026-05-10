@@ -16,6 +16,7 @@
 # of any company or organization.
 # -----------------------------------------------------------------------------
 
+from html import escape
 from pathlib import Path
 
 import streamlit as st
@@ -38,13 +39,24 @@ st.set_page_config(
 inject_global_styles()
 
 # ── DB schema (once at startup) ───────────────────────────────────────────────
-# create_all is a safe no-op for existing tables; it only creates tables that
-# are not yet present (handles direct `streamlit run app.py` without the start
-# script).  Incremental column / index migrations are managed by Alembic; run
-# `python -m alembic upgrade head` (or use start_local_web.ps1 / start.sh)
-# before first use on an existing database.
-with session_scope() as _s:
-    Base.metadata.create_all(bind=_s.get_bind())
+# Prefer Alembic so that alembic_version is populated correctly (required for
+# future incremental migrations).  Falls back to create_all when alembic.ini
+# is not reachable (e.g. unusual working-directory situations).
+@st.cache_resource
+def _run_startup_migrations() -> None:
+    try:
+        from pathlib import Path as _Path
+        from alembic import command as _alembic_cmd
+        from alembic.config import Config as _AlembicCfg
+        _ini = _Path(__file__).resolve().parent / "alembic.ini"
+        _cfg = _AlembicCfg(str(_ini))
+        _alembic_cmd.upgrade(_cfg, "head")
+    except Exception:
+        # Fallback: create_all is safe for fresh databases.
+        with session_scope() as _s:
+            Base.metadata.create_all(bind=_s.get_bind())
+
+_run_startup_migrations()
 
 @st.cache_resource
 def _db_schema_revision() -> str:
@@ -113,28 +125,69 @@ with st.sidebar:
 
     if not auth_context.is_guest:
         workspace_context = get_workspace_context()
-        st.markdown("---")
-        st.caption("WORKSPACE")
-        st.caption(f"Project: {workspace_context.get('project_name') or '—'}")
-        st.caption(f"Case:    {workspace_context.get('case_name') or '—'}")
         _run_id = workspace_context.get("run_id")
         _run_short = f"··{_run_id[-8:]}" if _run_id and len(_run_id) >= 8 else (_run_id or "—")
-        st.caption(f"Run:     {_run_short}")
+        st.markdown("---")
+        st.markdown(
+            '<div class="sb-nav-group" style="margin-top:0">Workspace</div>'
+            '<div class="sb-workspace">'
+            '<div class="sb-ws-item">'
+            f'<span class="sb-ws-label">Project</span>'
+            f'<span class="sb-ws-value">{escape(workspace_context.get("project_name") or "—")}</span>'
+            "</div>"
+            '<div class="sb-ws-item">'
+            f'<span class="sb-ws-label">Case</span>'
+            f'<span class="sb-ws-value">{escape(workspace_context.get("case_name") or "—")}</span>'
+            "</div>"
+            '<div class="sb-ws-item">'
+            f'<span class="sb-ws-label">Run</span>'
+            f'<span class="sb-ws-value">{escape(_run_short)}</span>'
+            "</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
     st.markdown("---")
-    st.caption("NAVIGATION")
     if _ADMIN_PORTAL_ACTIVE:
-        st.caption("← Admin Portal active")
+        st.markdown(
+            '<div class="sb-nav-group" style="margin-top:0">Admin Portal</div>'
+            '<div class="sb-nav-active">&#9881; Product &amp; Database</div>',
+            unsafe_allow_html=True,
+        )
         if st.button("← Back to Sizing", use_container_width=True):
             st.session_state.pop("__admin_portal__", None)
             st.rerun()
     else:
-        nav = st.radio(
-            "Go to",
-            NAV_OPTIONS,
-            key="main_nav",
-            label_visibility="collapsed",
+        _NAV_GROUPS: list[tuple[str, list[str]]] = (
+            [
+                ("Workspace",       ["Workbench", "Project Directory", "Case Directory"]),
+                ("Sizing Pipeline", ["DC Sizing", "AC Sizing", "Single Line Diagram", "Site Layout", "Report Export"]),
+                ("History",         ["Run Registry"]),
+            ]
+            if not auth_context.is_guest
+            else [
+                ("Sizing Pipeline", ["DC Sizing", "AC Sizing", "Single Line Diagram", "Site Layout"]),
+            ]
         )
+        for _grp_i, (_grp_label, _grp_pages) in enumerate(_NAV_GROUPS):
+            _visible = [p for p in _grp_pages if p in NAV_OPTIONS]
+            if not _visible:
+                continue
+            _top_style = ' style="margin-top:0"' if _grp_i == 0 else ""
+            st.markdown(
+                f'<div class="sb-nav-group"{_top_style}>{escape(_grp_label)}</div>',
+                unsafe_allow_html=True,
+            )
+            for _page in _visible:
+                if _page == nav:
+                    st.markdown(
+                        f'<div class="sb-nav-active">{escape(_page)}</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    if st.button(_page, use_container_width=True, key=f"nav_btn_{_page}"):
+                        st.session_state["main_nav"] = _page
+                        st.rerun()
 
     if auth_context.is_admin:
         st.markdown("---")

@@ -2,20 +2,18 @@
 
 ## Critical: Server Port
 
-This project runs on **port 8511** (configured in `.streamlit/config.toml`).
+**Local development** runs on **port 8511**, set via CLI args in `start_local_web.ps1`.
+`config.toml` no longer hard-codes port or address — those were removed to allow cloud deployment
+(Streamlit Community Cloud health-checks port 8501 and needs address 0.0.0.0).
 
-**NEVER use `--server.port=8501`.** Streamlit's built-in default is 8501, but this project
-overrides it. Adding `--server.port=8501` creates a second instance on the wrong port while
-the correct one keeps running on 8511 — two versions alive simultaneously.
-
-### Correct restart procedure
+### Correct local restart procedure
 
 ```powershell
 # Preferred — runs Alembic migrations first, then starts on 8511:
 .\scripts\start_local_web.ps1
 
-# Acceptable — bare invocation reads config.toml → port 8511:
-streamlit run app.py
+# Manual — must pass port explicitly (config.toml no longer sets it):
+streamlit run app.py --server.port 8511 --server.address 127.0.0.1
 ```
 
 ### Kill + restart (clean)
@@ -24,7 +22,7 @@ streamlit run app.py
 Get-NetTCPConnection -LocalPort 8511 -ErrorAction SilentlyContinue |
     ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
 Start-Sleep -Seconds 1
-streamlit run app.py          # reads config.toml, binds to 8511
+.\scripts\start_local_web.ps1
 ```
 
 Verify it's up: `Get-NetTCPConnection -LocalPort 8511`
