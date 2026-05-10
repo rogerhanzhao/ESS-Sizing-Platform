@@ -335,6 +335,44 @@ def inject_global_styles() -> None:
             border-radius: 6px;
         }
 
+        /* ── Form submit buttons (primary action style) ─────────── */
+        [data-testid="stFormSubmitButton"] > button {
+            background: var(--calb-blue) !important;
+            border: 1px solid var(--calb-blue) !important;
+            border-radius: 6px !important;
+            color: var(--calb-white) !important;
+            font-size: 0.84rem !important;
+            font-weight: 700 !important;
+            height: 2.5rem !important;
+            min-height: 2.5rem !important;
+            padding: 0 0.75rem !important;
+            transition: background 0.12s ease, border-color 0.12s ease !important;
+            width: 100%;
+        }
+
+        [data-testid="stFormSubmitButton"] > button:hover:not(:disabled) {
+            background: var(--calb-navy) !important;
+            border-color: var(--calb-navy) !important;
+        }
+
+        [data-testid="stFormSubmitButton"] > button:disabled {
+            background: var(--calb-soft-2) !important;
+            border-color: #CDD8E6 !important;
+            color: #A4AFBA !important;
+            opacity: 1 !important;
+        }
+
+        section[data-testid="stSidebar"] [data-testid="stFormSubmitButton"] > button {
+            background-color: #1E3A5C !important;
+            border-color: #2A4F7A !important;
+            color: #B8CADE !important;
+        }
+
+        section[data-testid="stSidebar"] [data-testid="stFormSubmitButton"] > button:hover {
+            background-color: var(--calb-blue) !important;
+            color: var(--calb-white) !important;
+        }
+
         /* ── Sidebar: workspace context strip ──────────────────────── */
         .sb-workspace {
             padding: 0.25rem 0 0.1rem;

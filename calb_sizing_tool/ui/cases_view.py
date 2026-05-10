@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 
 from calb_sizing_tool.infra.db.session import session_scope
@@ -36,7 +37,6 @@ def show() -> None:
 
     st.markdown(f"**Project:** {project_name} `{project_code}`")
 
-    # Single session: check access and list cases together.
     with session_scope() as session:
         access = AccessControlService(session, auth_user)
         try:
@@ -63,25 +63,34 @@ def show() -> None:
 
     active_case_id = workspace.get("case_id")
 
-    # Column headers
-    h0, h1, h2, h3 = st.columns([3, 2, 2, 1.5])
-    h0.caption("Case Name")
-    h1.caption("Scenario")
-    h2.caption("Created")
-    h3.caption("")
+    df = pd.DataFrame([
+        {
+            "Case Name": ("▶ " if c["sizing_case_id"] == active_case_id else "") + c["case_name"],
+            "Scenario": SCENARIO_LABELS.get(c["scenario_mode"], c["scenario_mode"]),
+            "Created": fmt_dt(c["created_at"]),
+        }
+        for c in cases
+    ])
+    st.dataframe(df, hide_index=True, use_container_width=True)
 
-    for case in cases:
-        is_active = case["sizing_case_id"] == active_case_id
-        c0, c1, c2, c3 = st.columns([3, 2, 2, 1.5])
-        c0.write(("**▶ **" if is_active else "") + case["case_name"])
-        c1.write(SCENARIO_LABELS.get(case["scenario_mode"], case["scenario_mode"]))
-        c2.write(fmt_dt(case["created_at"]))
-        btn_label = "Active" if is_active else "Open"
-        if c3.button(btn_label, key=f"case_dir_open_{case['sizing_case_id']}", disabled=is_active, use_container_width=True):
-            set_active_case(
-                case_id=case["sizing_case_id"],
-                case_code=case["case_code"],
-                case_name=case["case_name"],
-            )
-            navigate_to("Workbench")
-            st.rerun()
+    case_options = [c["case_name"] for c in cases]
+    active_index = next(
+        (i for i, c in enumerate(cases) if c["sizing_case_id"] == active_case_id),
+        0,
+    )
+    selected_name = st.selectbox(
+        "Select case to open",
+        case_options,
+        index=active_index,
+        label_visibility="collapsed",
+    )
+    selected = next(c for c in cases if c["case_name"] == selected_name)
+    is_active = selected["sizing_case_id"] == active_case_id
+    if st.button("Open Case", disabled=is_active, use_container_width=True):
+        set_active_case(
+            case_id=selected["sizing_case_id"],
+            case_code=selected["case_code"],
+            case_name=selected["case_name"],
+        )
+        navigate_to("Workbench")
+        st.rerun()

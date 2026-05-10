@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 
 from calb_sizing_tool.infra.db.session import session_scope
@@ -62,31 +63,31 @@ def show() -> None:
         st.info("No runs found for this case.")
         return
 
-    st.subheader("Runs")
-    header_cols = st.columns([2.0, 2.0, 2.0, 1.4, 1.2, 1.2, 1.4, 1.4, 1.2, 1.2])
-    for col, label in zip(
-        header_cols,
-        ["Run", "Project", "Case", "Scenario", "POI MW", "POI MWh",
-         "DC MWh Req", "Guarantee MWh", "Margin MWh", "Converged"],
-    ):
-        col.write(label)
-
+    # Summary table
+    rows = []
     for idx, run in enumerate(runs, start=1):
         label = _run_label(idx, run["created_at"])
         summary = run["output_summary_json"]
         inp = run["input_summary_json"]
-        cols = st.columns([2.0, 2.0, 2.0, 1.4, 1.2, 1.2, 1.4, 1.4, 1.2, 1.2])
-        cols[0].write(label)
-        cols[1].write(inp.get("project_name") or "—")
-        cols[2].write(inp.get("case_name") or "—")
-        cols[3].write(SCENARIO_LABELS.get(inp.get("scenario_id"), inp.get("scenario_id") or "—"))
-        cols[4].write(inp.get("poi_power_req_mw") or "—")
-        cols[5].write(inp.get("poi_energy_req_mwh") or "—")
-        cols[6].write(summary.get("dc_energy_capacity_required_mwh") or "—")
-        cols[7].write(summary.get("guarantee_year_poi_usable_mwh") or "—")
-        cols[8].write(summary.get("margin_mwh") or "—")
-        cols[9].write("Yes" if summary.get("converged") else "No")
+        rows.append({
+            "Run": label,
+            "Scenario": SCENARIO_LABELS.get(inp.get("scenario_id"), inp.get("scenario_id") or "—"),
+            "POI MW": inp.get("poi_power_req_mw") or "—",
+            "POI MWh": inp.get("poi_energy_req_mwh") or "—",
+            "DC Req MWh": summary.get("dc_energy_capacity_required_mwh") or "—",
+            "Guarantee MWh": summary.get("guarantee_year_poi_usable_mwh") or "—",
+            "Margin MWh": summary.get("margin_mwh") or "—",
+            "Converged": "Yes" if summary.get("converged") else "No",
+        })
 
+    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+
+    # Per-run detail expanders with restore action
+    st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
+    for idx, run in enumerate(runs, start=1):
+        label = _run_label(idx, run["created_at"])
+        summary = run["output_summary_json"]
+        inp = run["input_summary_json"]
         with st.expander(f"Run {label} — details", expanded=False):
             st.write(
                 {

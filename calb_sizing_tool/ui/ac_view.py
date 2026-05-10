@@ -302,7 +302,7 @@ def show():
 
             # ========== Results Summary ==========
             st.success("AC Configuration Complete!")
-            st.divider()
+            st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
 
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("AC Blocks", num_blocks)
@@ -310,33 +310,19 @@ def show():
             col3.metric("AC Power per Block", f"{block_size_mw:.2f} MW")
             col4.metric("Total AC Power", f"{total_ac_mw:.2f} MW")
 
-            section_header("Sizing Summary", eyebrow="Result")
-            summary_cols = st.columns(2)
-
-            with summary_cols[0]:
-                st.write("**DC Side:**")
-                if dc_cabinet_count > 0:
-                    st.write(
-                        f"- Total DC Blocks: {dc_blocks_total} "
-                        f"(Container {dc_container_count}, Cabinet {dc_cabinet_count})"
-                    )
-                else:
-                    st.write(f"- Total DC Blocks: {dc_blocks_total} x 20ft")
-                st.write(f"- DC Blocks per AC Block: ~{dc_blocks_total/num_blocks:.1f} avg")
-                st.write(f"- Total DC Energy: {total_energy:.1f} MWh")
-
-            with summary_cols[1]:
-                st.write("**AC Side:**")
-                st.write(f"- Total AC Blocks: {num_blocks}")
-                st.write(f"- PCS Configuration: {pcs_per_block} x {pcs_kw} kW")
-                st.write(f"- Total AC Power: {total_ac_mw:.2f} MW")
-
-            st.write(
-                "**Container Type:** "
-                + select_ac_block_container_type(block_size_mw, pcs_per_block)
-                + " per AC Block"
+            st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
+            section_header("DC Allocation", eyebrow="Detail")
+            if dc_cabinet_count > 0:
+                _dc_block_str = f"{dc_blocks_total} (C{dc_container_count}+B{dc_cabinet_count})"
+            else:
+                _dc_block_str = f"{dc_blocks_total} × 20ft"
+            _dc1, _dc2, _dc3 = st.columns(3)
+            _dc1.metric("DC Blocks", _dc_block_str)
+            _dc2.metric("DC per AC Block (avg)", f"{dc_blocks_total / num_blocks:.1f}")
+            _dc3.metric("Total DC Energy", f"{total_energy:.1f} MWh")
+            compact_note(
+                f"Container type: {select_ac_block_container_type(block_size_mw, pcs_per_block)} per AC Block."
             )
-            st.divider()
 
             # --- DETAILED DC ALLOCATION ---
             dc_allocation_plan = build_dc_allocation_plan(dc_blocks_total, num_blocks, pcs_per_block)

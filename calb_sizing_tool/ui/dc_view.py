@@ -91,7 +91,7 @@ CALB_WHITE      = "#ffffff"
 # ==========================================
 # HELPERS
 # ==========================================
-def inject_css():
+def _init_chart_colors():
     base_theme = st.get_option("theme.base") or "light"
     is_dark = (base_theme == "dark")
 
@@ -787,7 +787,7 @@ def show():
     _migrate_dc_defaults()
 
     # Inject CSS
-    inject_css()
+    _init_chart_colors()
 
     # Load Data
     try:
@@ -941,10 +941,11 @@ def show():
             project_life = to_int(project_life, 0)
             dc_inputs["project_life_years"] = project_life
 
+            _c_volt, _c_freq = st.columns(2)
             mv_default = dc_inputs.get("poi_nominal_voltage_kv")
             if mv_default is None:
                 mv_default = st.session_state.get("poi_nominal_voltage_kv", 33.0)
-            poi_nominal_voltage_kv = st.number_input(
+            poi_nominal_voltage_kv = _c_volt.number_input(
                 "POI / MV Voltage (kV)",
                 key=_init_input("poi_nominal_voltage_kv", float(mv_default)),
                 step=0.1,
@@ -961,7 +962,7 @@ def show():
                 freq_index = 2
             else:
                 freq_index = 0
-            poi_frequency = st.selectbox(
+            poi_frequency = _c_freq.selectbox(
                 "POI Frequency (Hz)",
                 freq_options,
                 index=freq_index,
@@ -1101,7 +1102,7 @@ def show():
                 dc_inputs["eff_hvt_others"] = eff_hvt
 
             st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
-            run_btn = st.form_submit_button("Run Sizing")
+            run_btn = st.form_submit_button("Run Sizing", type="primary", use_container_width=True)
         
     # --- Logic Execution ---
     if run_btn:
@@ -1165,7 +1166,25 @@ def show():
             "poi_guarantee_year": guarantee_year
         }
 
-        s1 = run_stage1(inputs, defaults)
+        with st.spinner("Running DC sizing…"):
+            s1 = run_stage1(inputs, defaults)
+            modes_to_run = ["container_only"]
+            if enable_cabinet_only:
+                modes_to_run.insert(0, "cabinet_only")
+            if enable_hybrid:
+                modes_to_run.insert(0, "hybrid")
+            results = {}
+            for mode in modes_to_run:
+                try:
+                    results[mode] = size_with_guarantee(
+                        s1, mode,
+                        df_blocks,
+                        df_soh_profile, df_soh_curve,
+                        df_rte_profile, df_rte_curve,
+                        k_max=K_MAX_FIXED
+                    )
+                except Exception as e:
+                    results[mode] = ("ERROR", str(e))
 
         # Stage 1 Display
         with st.container(border=True):
@@ -1182,26 +1201,6 @@ def show():
             r1.metric("DC RTE base (%)", f"{rte_base_pct:.2f} %")
             r2.metric("RTE adjustment (pp)", f"{rte_adjust_pp_used:+.2f} pp")
             r3.metric("DC RTE effective (%)", f"{rte_effective_pct:.2f} %")
-
-        # Run Options
-        modes_to_run = ["container_only"]
-        if enable_cabinet_only:
-            modes_to_run.insert(0, "cabinet_only")
-        if enable_hybrid:
-            modes_to_run.insert(0, "hybrid")
-
-        results = {}
-        for mode in modes_to_run:
-            try:
-                results[mode] = size_with_guarantee(
-                    s1, mode,
-                    df_blocks,
-                    df_soh_profile, df_soh_curve,
-                    df_rte_profile, df_rte_curve,
-                    k_max=K_MAX_FIXED
-                )
-            except Exception as e:
-                results[mode] = ("ERROR", str(e))
 
         ok_results = {
             k: v for k, v in results.items() if isinstance(v, tuple) and v[0] != "ERROR"
