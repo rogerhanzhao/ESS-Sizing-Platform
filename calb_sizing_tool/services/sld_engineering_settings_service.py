@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from calb_sizing_tool.infra.db.models import AuditLog, SldProjectSettings
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.repositories.case_repository import CaseRepository
 from calb_sizing_tool.repositories.run_repository import RunRepository
@@ -53,6 +54,45 @@ def load_case_sld_project_settings(sizing_case_id: str | None, *, db_url: str | 
         return repo.get_case_project_settings(case_id)
 
 
+def load_case_sld_project_settings_record(
+    sizing_case_id: str | None,
+    *,
+    db_url: str | None = None,
+) -> dict[str, Any]:
+    case_id = str(sizing_case_id or "").strip()
+    if not case_id:
+        return {"source": "none", "project_settings": {}}
+    with session_scope(db_url) as session:
+        case_repo = CaseRepository(session)
+        case_row = case_repo.get_case_by_id(case_id)
+        if case_row is None:
+            return {"source": "none", "project_settings": {}}
+        settings_row = (
+            session.query(SldProjectSettings)
+            .filter_by(sizing_case_id=case_id)
+            .one_or_none()
+        )
+        if settings_row is not None and isinstance(settings_row.settings_json, dict):
+            return {
+                "source": "dedicated_table",
+                "project_settings": dict(settings_row.settings_json),
+                "updated_at": settings_row.updated_at,
+                "created_at": settings_row.created_at,
+                "source_ref": settings_row.source_ref,
+                "version_tag": settings_row.version_tag,
+            }
+        if isinstance(case_row.input_json, dict) and isinstance(case_row.input_json.get("project_settings"), dict):
+            return {
+                "source": "legacy_case_json",
+                "project_settings": dict(case_row.input_json["project_settings"]),
+                "updated_at": case_row.updated_at,
+                "created_at": case_row.created_at,
+                "source_ref": case_row.source_ref,
+                "version_tag": case_row.version_tag,
+            }
+        return {"source": "none", "project_settings": {}}
+
+
 def load_run_sld_project_settings(run_id: str | None, *, db_url: str | None = None) -> dict[str, Any]:
     resolved_run_id = str(run_id or "").strip()
     if not resolved_run_id:
@@ -70,6 +110,38 @@ def load_run_sld_project_settings(run_id: str | None, *, db_url: str | None = No
         return repo.get_case_project_settings(sizing_case_id)
 
 
+def list_case_sld_project_settings_history(
+    sizing_case_id: str | None,
+    *,
+    db_url: str | None = None,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    case_id = str(sizing_case_id or "").strip()
+    if not case_id:
+        return []
+    with session_scope(db_url) as session:
+        rows = (
+            session.query(AuditLog)
+            .filter_by(
+                entity_type="sizing_case",
+                entity_id=case_id,
+                action="save_sld_project_settings",
+            )
+            .order_by(AuditLog.created_at.desc())
+            .limit(max(1, int(limit)))
+            .all()
+        )
+        return [
+            {
+                "created_at": row.created_at,
+                "actor": row.actor,
+                "source_ref": row.source_ref,
+                "version_tag": row.version_tag,
+            }
+            for row in rows
+        ]
+
+
 def save_case_sld_project_settings(
     sizing_case_id: str,
     project_settings: dict[str, Any],
@@ -85,7 +157,12 @@ def save_case_sld_project_settings(
     with session_scope(db_url) as session:
         case_repo = CaseRepository(session)
         run_repo = RunRepository(session)
-        case_row = case_repo.save_case_project_settings(case_id, project_settings)
+        case_row = case_repo.save_case_project_settings(
+            case_id,
+            project_settings,
+            version_tag=None,
+            source_ref=source_ref,
+        )
         if case_row is None:
             raise ValueError(f"Sizing case not found: {case_id}")
         run_repo.add_audit_log(

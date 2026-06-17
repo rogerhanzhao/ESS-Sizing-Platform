@@ -14,7 +14,7 @@ from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import init_project_state
 from calb_sizing_tool.state.workspace_state import (
     get_workspace_context,
-    navigate_to,
+    navigate_now,
     restore_run_bundle_to_session,
     set_active_case,
     set_active_project,
@@ -304,17 +304,13 @@ def _render_workspace_toolbar(context: dict, active_run_label: str) -> None:
         )
         status_col.markdown(_compact_context_html(context, active_run_label), unsafe_allow_html=True)
         if dc_col.button("DC Sizing", use_container_width=True, disabled=not context.get("case_id")):
-            navigate_to("DC Sizing")
-            st.rerun()
+            navigate_now("DC Sizing")
         if ac_col.button("AC Sizing", use_container_width=True, disabled=not context.get("run_id")):
-            navigate_to("AC Sizing")
-            st.rerun()
+            navigate_now("AC Sizing")
         if sld_col.button("SLD", use_container_width=True, disabled=not context.get("run_id")):
-            navigate_to("Single Line Diagram")
-            st.rerun()
+            navigate_now("Single Line Diagram")
         if report_col.button("Report Export", use_container_width=True, disabled=not context.get("run_id")):
-            navigate_to("Report Export")
-            st.rerun()
+            navigate_now("Report Export")
 
 
 def _render_project_picker(projects: list[dict], context: dict, auth_user) -> None:

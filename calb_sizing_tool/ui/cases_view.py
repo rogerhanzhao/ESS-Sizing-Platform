@@ -7,7 +7,7 @@ from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.services.access_control_service import AccessControlService
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import init_project_state
-from calb_sizing_tool.state.workspace_state import get_workspace_context, navigate_to, set_active_case
+from calb_sizing_tool.state.workspace_state import get_workspace_context, navigate_now, set_active_case
 from calb_sizing_tool.utils.text import SCENARIO_LABELS, fmt_dt
 
 
@@ -31,8 +31,7 @@ def show() -> None:
     if not project_id:
         st.warning("No project is active. Go to Workbench to select or create one.")
         if st.button("Go to Workbench"):
-            navigate_to("Workbench")
-            st.rerun()
+            navigate_now("Workbench")
         return
 
     st.markdown(f"**Project:** {project_name} `{project_code}`")
@@ -57,8 +56,7 @@ def show() -> None:
     if not cases:
         st.info("No cases yet for this project.")
         if st.button("Create a case in Workbench"):
-            navigate_to("Workbench")
-            st.rerun()
+            navigate_now("Workbench")
         return
 
     active_case_id = workspace.get("case_id")
@@ -92,5 +90,4 @@ def show() -> None:
             case_code=selected["case_code"],
             case_name=selected["case_name"],
         )
-        navigate_to("Workbench")
-        st.rerun()
+        navigate_now("Workbench")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from calb_sizing_tool.infra.db.models import Project, SizingCase
+from calb_sizing_tool.infra.db.models import Project, SizingCase, SldProjectSettings
 
 
 class CaseRepository:
@@ -82,20 +82,52 @@ class CaseRepository:
 
     def get_case_project_settings(self, sizing_case_id: str) -> dict:
         row = self.get_case_by_id(sizing_case_id)
-        if row is None or not isinstance(row.input_json, dict):
+        if row is None:
+            return {}
+        settings_row = (
+            self.session.query(SldProjectSettings)
+            .filter_by(sizing_case_id=sizing_case_id)
+            .one_or_none()
+        )
+        if settings_row is not None and isinstance(settings_row.settings_json, dict):
+            return dict(settings_row.settings_json)
+
+        if not isinstance(row.input_json, dict):
             return {}
         project_settings = row.input_json.get("project_settings")
         if not isinstance(project_settings, dict):
             return {}
         return dict(project_settings)
 
-    def save_case_project_settings(self, sizing_case_id: str, project_settings: dict) -> SizingCase | None:
+    def save_case_project_settings(
+        self,
+        sizing_case_id: str,
+        project_settings: dict,
+        *,
+        version_tag: str | None = None,
+        source_ref: str | None = None,
+    ) -> SizingCase | None:
         row = self.get_case_by_id(sizing_case_id)
         if row is None:
             return None
-        input_json = dict(row.input_json or {})
-        input_json["project_settings"] = dict(project_settings or {})
-        row.input_json = input_json
+        settings_row = (
+            self.session.query(SldProjectSettings)
+            .filter_by(sizing_case_id=sizing_case_id)
+            .one_or_none()
+        )
+        if settings_row is None:
+            settings_row = SldProjectSettings(
+                sizing_case_id=sizing_case_id,
+                settings_json=dict(project_settings or {}),
+                version_tag=version_tag,
+                source_ref=source_ref,
+            )
+            self.session.add(settings_row)
+        else:
+            settings_row.settings_json = dict(project_settings or {})
+            settings_row.version_tag = version_tag
+            settings_row.source_ref = source_ref
+            self.session.add(settings_row)
         self.session.add(row)
         return row
 

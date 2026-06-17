@@ -32,6 +32,9 @@ Reference:
   1. persisted AC snapshot
   2. compatibility adapter
   3. session cache
+- AC page restores persisted AC runtime snapshots on page load.
+- Layout and Report Export now use the same persisted-first AC runtime policy.
+- Report Export reads registered SLD/Layout artifacts from DB before session/file fallbacks.
 
 Reference:
 
@@ -54,8 +57,8 @@ References:
 ### Formal engineering settings
 
 - SLD page now has a `Formal Engineering Settings` section
-- settings are saved to the active case at:
-  `SizingCase.input_json["project_settings"]`
+- settings are saved in the dedicated `sld_project_settings` table
+- legacy settings under `SizingCase.input_json["project_settings"]` remain readable as a migration fallback
 - strict mode can now use persisted engineering settings instead of requiring draft override input
 
 ## Important Retained Tests
@@ -89,15 +92,13 @@ Removed temporary docs:
 
 ## Remaining Known Limits
 
-- formal engineering settings are currently stored at case level, not in a dedicated engineering settings table
 - the formal engineering settings UI currently lives inside the SLD page
-- AC page itself is still not fully DB-restored on page load
-- Layout and Report Export have not been migrated to the same persisted-first pattern
+- project-level SLD settings are still edited from the SLD page rather than a dedicated maintained settings flow
 
 ## Recommended Next Work
 
 If work continues, the next logical scope is:
 
-1. move formal engineering settings into a dedicated maintained settings flow
-2. make AC page restore persisted AC runtime directly
-3. extend persisted-first runtime policy to Layout and Report Export
+1. move formal engineering settings UI into a dedicated maintained settings flow
+2. add a focused admin/workbench surface for project engineering settings history and review
+3. add migration/data-quality checks for old cases that still only carry legacy JSON settings

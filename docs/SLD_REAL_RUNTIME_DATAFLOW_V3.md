@@ -95,10 +95,12 @@ Current settings read/write behavior:
 | --- | --- |
 | Settings form initial value | active case settings through `load_case_sld_project_settings(workspace.case_id)` |
 | Generate SLD settings | run-linked case settings through `load_run_sld_project_settings(run_id)` |
-| Save settings | `CaseRepository.save_case_project_settings()` under `input_json["project_settings"]` |
+| Save settings | `CaseRepository.save_case_project_settings()` into dedicated `sld_project_settings` |
 | RMU rated voltage in saved settings | overwritten from MV/RMU contract before save |
 
-Risk: the displayed settings form and the generated run settings can diverge if the active workspace case and selected run case are not the same. The current page has context validation, but Phase 2 should make the source-of-truth status more explicit.
+Legacy note: settings stored under `SizingCase.input_json["project_settings"]` remain a read fallback and are backfilled to `sld_project_settings` by migration `20260617_0007`.
+
+Risk: the displayed settings form and the generated run settings can diverge if the active workspace case and selected run case are not the same. The current page has context validation, but the source-of-truth status should remain explicit.
 
 ## Data Item Source Table
 
@@ -108,7 +110,7 @@ Risk: the displayed settings form and the generated run settings can diverge if 
 | AC runtime output | `ac_runtime_snapshot_v1` output snapshot | project/shared state, session cache | persisted, then compat, then session |
 | MV visible form value | not consistently first | session/project/shared before AC snapshot | session first today |
 | RMU visible form value | derived from visible MV | draft default if MV missing | follows whatever MV display resolved |
-| SLD labels/equipment ratings | case `project_settings` | override payload or draft preset | strict rejects missing; draft fills |
+| SLD labels/equipment ratings | `sld_project_settings.settings_json` | legacy case JSON, override payload, or draft preset | dedicated table first; strict rejects missing; draft fills |
 | Generated artifacts | artifact persistence | session preview cache | persisted artifacts plus session preview |
 
 ## Legacy Paths

@@ -36,11 +36,12 @@ from calb_sizing_tool.services.ac_sizing_service import (
     select_ac_block_container_type,
     suggest_pcs_count_and_rating,
 )
-from calb_sizing_tool.services.sld_data_source_service import persist_ac_runtime_snapshot
+from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot
+from calb_sizing_tool.services.sld_data_source_service import persist_ac_runtime_snapshot, resolve_preferred_ac_snapshot
 from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.state.project_state import bump_run_id_ac, get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
-from calb_sizing_tool.state.workspace_state import get_workspace_context, navigate_to
+from calb_sizing_tool.state.workspace_state import get_workspace_context, navigate_now
 
 
 def _format_float(val, decimals=2) -> str:
@@ -94,6 +95,63 @@ def _ac_block_grouping_note(selected_option, dc_blocks_total: int) -> str:
     )
 
 
+def _snapshot_output_matches_run(ac_output: dict | None, run_id: str | None) -> bool:
+    if not isinstance(ac_output, dict) or not ac_output:
+        return False
+    expected = str(run_id or "").strip()
+    if not expected:
+        return True
+    return str(ac_output.get("source_run_id") or "").strip() == expected
+
+
+def _hydrate_ac_runtime_snapshot(
+    snapshot: AcSnapshot,
+    *,
+    ac_inputs: dict,
+    ac_results: dict,
+    project_state: dict,
+) -> None:
+    if isinstance(snapshot.inputs, dict):
+        ac_inputs.update(snapshot.inputs)
+    if isinstance(snapshot.output, dict):
+        ac_output = dict(snapshot.output)
+        st.session_state["ac_output"] = ac_output
+        ac_results.update(ac_output)
+        project_state["ac_results"] = ac_output
+        ac_state = project_state.setdefault("ac", {})
+        ac_state["run_id"] = ac_output.get("source_ac_run_id")
+        ac_state["results"] = ac_output
+
+
+def _render_saved_ac_snapshot(ac_output: dict, *, section_header) -> None:
+    with st.container(border=True):
+        section_header("Saved AC Runtime Snapshot", "Current AC configuration restored from persisted run data.")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("AC Blocks", int(ac_output.get("num_blocks") or 0))
+        col2.metric("PCS per Block", int(ac_output.get("pcs_per_block") or 0))
+        col3.metric("PCS Rating", f"{_format_float(ac_output.get('pcs_kw'), 0)} kW")
+        col4.metric("Total AC Power", f"{_format_float(ac_output.get('total_ac_mw'), 2)} MW")
+
+
+def _render_ac_next_steps(*, is_guest: bool, section_header) -> None:
+    st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
+    section_header("Next Steps", eyebrow="Continue")
+    if is_guest:
+        cta1, cta2 = st.columns(2)
+        if cta1.button("Single Line Diagram →", use_container_width=True, key="ac_cta_sld"):
+            navigate_now("Single Line Diagram")
+        if cta2.button("Site Layout →", use_container_width=True, key="ac_cta_layout"):
+            navigate_now("Site Layout")
+    else:
+        cta1, cta2, cta3 = st.columns(3)
+        if cta1.button("Single Line Diagram →", use_container_width=True, key="ac_cta_sld"):
+            navigate_now("Single Line Diagram")
+        if cta2.button("Site Layout →", use_container_width=True, key="ac_cta_layout"):
+            navigate_now("Site Layout")
+        if cta3.button("Report Export →", use_container_width=True, key="ac_cta_report"):
+            navigate_now("Report Export")
+
+
 def show():
     """AC SIZING V2 main entrypoint."""
     state = init_shared_state()
@@ -103,6 +161,26 @@ def show():
     ac_inputs = state.ac_inputs
     ac_results = state.ac_results
     workspace = get_workspace_context()
+    active_run_id = (
+        workspace.get("run_id")
+        or state.dc_results.get("last_run_id")
+        or st.session_state.get("dc_last_run_id")
+        or project_state.get("dc", {}).get("run_id")
+    )
+
+    ac_resolution = resolve_preferred_ac_snapshot(
+        active_run_id,
+        project_state=project_state,
+        shared_state=state,
+        session_state=st.session_state,
+    )
+    if ac_resolution.source == "persisted_run_snapshot" and ac_resolution.snapshot is not None:
+        _hydrate_ac_runtime_snapshot(
+            ac_resolution.snapshot,
+            ac_inputs=ac_inputs,
+            ac_results=ac_results,
+            project_state=project_state,
+        )
 
     from calb_sizing_tool.ui._ui import compact_note, page_header, section_header, workspace_status_bar
     page_header("AC Sizing", "PCS & AC Block Configuration")
@@ -184,6 +262,11 @@ def show():
 
     st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
 
+    saved_ac_output = st.session_state.get("ac_output") if isinstance(st.session_state.get("ac_output"), dict) else ac_results
+    if _snapshot_output_matches_run(saved_ac_output, active_run_id):
+        _render_saved_ac_snapshot(saved_ac_output, section_header=section_header)
+        st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
+
     # ========== STEP 2: Generate Options & Auto-select Best ==========
     with st.container(border=True):
         section_header(
@@ -196,7 +279,12 @@ def show():
 
         ratio_choices = [opt.ratio for opt in options]
         recommended_option = next((opt for opt in options if opt.is_recommended), None) or options[1]
-        saved_ratio = st.session_state.get("selected_ac_block_grouping") or st.session_state.get("selected_ac_ratio")
+        saved_ratio = (
+            st.session_state.get("selected_ac_block_grouping")
+            or st.session_state.get("selected_ac_ratio")
+            or saved_ac_output.get("ac_block_grouping_ratio")
+            or saved_ac_output.get("selected_ratio")
+        )
         default_ratio = saved_ratio if saved_ratio in ratio_choices else recommended_option.ratio
 
         choice_ratio = st.segmented_control(
@@ -393,30 +481,13 @@ def show():
                     ac_output=ac_output,
                     results={},
                     source_ref="ac_view",
+                    actor=_auth_ctx.username,
                 )
                 st.info("Configuration saved.")
             else:
                 st.success("AC sizing complete (guest mode — session only).")
 
-            st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
-            section_header("Next Steps", eyebrow="Continue")
-            _is_guest_cta = _auth_ctx and _auth_ctx.is_guest
-            if _is_guest_cta:
-                _cta1, _cta2 = st.columns(2)
-                if _cta1.button("Single Line Diagram →", use_container_width=True, key="ac_cta_sld"):
-                    navigate_to("Single Line Diagram")
-                    st.rerun()
-                if _cta2.button("Site Layout →", use_container_width=True, key="ac_cta_layout"):
-                    navigate_to("Site Layout")
-                    st.rerun()
-            else:
-                _cta1, _cta2, _cta3 = st.columns(3)
-                if _cta1.button("Single Line Diagram →", use_container_width=True, key="ac_cta_sld"):
-                    navigate_to("Single Line Diagram")
-                    st.rerun()
-                if _cta2.button("Site Layout →", use_container_width=True, key="ac_cta_layout"):
-                    navigate_to("Site Layout")
-                    st.rerun()
-                if _cta3.button("Report Export →", use_container_width=True, key="ac_cta_report"):
-                    navigate_to("Report Export")
-                    st.rerun()
+    latest_ac_output = st.session_state.get("ac_output") if isinstance(st.session_state.get("ac_output"), dict) else ac_results
+    if _snapshot_output_matches_run(latest_ac_output, active_run_id):
+        auth_ctx = get_auth_context()
+        _render_ac_next_steps(is_guest=bool(auth_ctx and auth_ctx.is_guest), section_header=section_header)

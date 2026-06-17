@@ -52,7 +52,22 @@ class PromptLayoutPlugin:
         if stage2.block_config_items:
             block_energy = stage2.block_config_items[0].unit_capacity_mwh
 
-        ac_block_count = max(1, int(round(dc_block_total / 4))) if dc_block_total > 0 else 1
+        ac_output = render_input.ac_snapshot.output if render_input.ac_snapshot else {}
+        if not isinstance(ac_output, dict):
+            ac_output = {}
+        derived_ac_block_count = max(1, int(round(dc_block_total / 4))) if dc_block_total > 0 else 1
+        try:
+            ac_block_count = int(
+                ac_output.get("num_blocks")
+                or ac_output.get("ac_blocks_total")
+                or derived_ac_block_count
+            )
+        except Exception:
+            ac_block_count = derived_ac_block_count
+        try:
+            pcs_per_block = int(ac_output.get("pcs_per_block") or 4)
+        except Exception:
+            pcs_per_block = 4
 
         case_input = {}
         if render_input.run_bundle.input_snapshot and isinstance(render_input.run_bundle.input_snapshot.payload, dict):
@@ -76,9 +91,13 @@ class PromptLayoutPlugin:
             },
             "ac_assumptions": {
                 "ac_block_count": ac_block_count,
-                "pcs_per_block": 4,
-                "transformer_mva": None,
-                "assumption_note": "Derived from DC blocks; update if AC snapshot exists.",
+                "pcs_per_block": pcs_per_block,
+                "transformer_mva": ac_output.get("transformer_mva"),
+                "assumption_note": (
+                    "Loaded from persisted AC snapshot."
+                    if ac_output
+                    else "Derived from DC blocks; update if AC snapshot exists."
+                ),
             },
             "layout_rules": {
                 "arrangement": render_input.options.arrangement,

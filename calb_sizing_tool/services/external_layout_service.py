@@ -13,10 +13,18 @@ from calb_sizing_tool.schemas.layout_inputs import LayoutRenderOptions
 from calb_sizing_tool.services.access_control_service import AccessControlService
 from calb_sizing_tool.services.artifact_service import persist_artifacts
 from calb_sizing_tool.services.auth_service import AuthUser
+from calb_sizing_tool.services.sld_data_source_service import load_persisted_ac_snapshot
+from calb_sizing_tool.utils.files import safe_child_path, safe_storage_filename
 
 
 def _hash_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _require_auth_user(auth_user: AuthUser | None) -> AuthUser:
+    if auth_user is None:
+        raise PermissionError("Login required.")
+    return auth_user
 
 
 def generate_layout_prompt(
@@ -26,13 +34,10 @@ def generate_layout_prompt(
     options: LayoutRenderOptions | None = None,
     db_url: str | None = None,
 ) -> dict:
+    auth_user = _require_auth_user(auth_user)
     with session_scope(db_url) as session:
-        if auth_user is not None:
-            access = AccessControlService(session, auth_user)
-            bundle = access.load_dc_run_bundle(run_id)
-        else:
-            bundle = RunRepository(session).get_run_bundle(run_id)
-            bundle = bundle and __import__("calb_sizing_tool.services.run_restore_service", fromlist=["load_dc_run_bundle"]).load_dc_run_bundle(run_id)
+        access = AccessControlService(session, auth_user)
+        bundle = access.load_dc_run_bundle(run_id)
         if bundle is None:
             raise ValueError("Run not found.")
 
@@ -41,9 +46,11 @@ def generate_layout_prompt(
     if plugin is None:
         raise ValueError("Prompt plugin not registered.")
 
+    ac_snapshot = load_persisted_ac_snapshot(run_id, db_url=db_url) or AcSnapshot()
+
     render_input = plugin.build_input_from_run(
         run_bundle=bundle,
-        ac_snapshot=AcSnapshot(),
+        ac_snapshot=ac_snapshot,
         options=options or LayoutRenderOptions(),
         topology_snapshot=None,
         layout_rules=None,
@@ -82,19 +89,18 @@ def submit_external_layout_artifact(
     notes: str | None = None,
     db_url: str | None = None,
 ) -> dict:
+    auth_user = _require_auth_user(auth_user)
     with session_scope(db_url) as session:
-        if auth_user is not None:
-            access = AccessControlService(session, auth_user)
-            bundle = access.load_dc_run_bundle(run_id)
-        else:
-            bundle = RunRepository(session).get_run_bundle(run_id)
+        access = AccessControlService(session, auth_user)
+        bundle = access.load_dc_run_bundle(run_id)
         if bundle is None:
             raise ValueError("Run not found.")
 
     outputs_dir = ensure_outputs_dir() / "external_ai" / run_id
     outputs_dir.mkdir(parents=True, exist_ok=True)
 
-    file_path = outputs_dir / file_name
+    stored_file_name = safe_storage_filename(file_name, fallback="layout_ai_upload")
+    file_path = safe_child_path(outputs_dir, stored_file_name, fallback="layout_ai_upload")
     file_path.write_bytes(file_bytes)
     content_hash = _hash_bytes(file_bytes)
 
@@ -105,7 +111,7 @@ def submit_external_layout_artifact(
             plugin_id="layout_prompt_v1",
             plugin_version="1.0.0",
             artifact_kind="layout_ai_preview",
-            file_name=file_name,
+            file_name=stored_file_name,
             file_path=str(file_path),
             media_type=media_type,
             content_hash=content_hash,
@@ -122,7 +128,7 @@ def submit_external_layout_artifact(
             entity_id=submission.submission_id,
             action="submit_external_ai",
             actor=auth_user.username if auth_user else None,
-            payload_json={"run_id": run_id, "file_name": file_name},
+            payload_json={"run_id": run_id, "file_name": stored_file_name},
             source_ref="external_ai",
         )
         session.flush()
@@ -143,7 +149,7 @@ def review_external_layout(
 ) -> dict:
     if decision not in {"approve", "reject", "request_revision"}:
         raise ValueError("Invalid decision.")
-    if reviewer is not None and not reviewer.is_admin:
+    if reviewer is None or not reviewer.is_admin:
         raise PermissionError("Only admin can review external layouts.")
 
     with session_scope(db_url) as session:

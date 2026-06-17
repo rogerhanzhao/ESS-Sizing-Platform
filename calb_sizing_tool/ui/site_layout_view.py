@@ -33,20 +33,44 @@ from calb_sizing_tool.services.external_layout_service import (
 )
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
 from calb_sizing_tool.services.layout_service import render_layout_from_run_bundle
+from calb_sizing_tool.services.sld_data_source_service import AcSnapshotResolution, resolve_preferred_ac_snapshot
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state
 from calb_sizing_tool.state.workspace_state import get_workspace_context
 
 
-def _build_ac_snapshot(state, project_state) -> AcSnapshot | None:
-    ac_output = st.session_state.get("ac_output") or project_state.get("ac_results") or state.ac_results
-    if not isinstance(ac_output, dict) or not ac_output:
-        return None
-    ac_inputs = project_state.get("ac_inputs") or state.ac_inputs
-    if not isinstance(ac_inputs, dict):
-        ac_inputs = {}
-    return AcSnapshot(inputs=ac_inputs, output=ac_output, results={})
+def _resolve_layout_ac_snapshot(
+    state,
+    project_state,
+    *,
+    run_id: str | None,
+    db_url: str | None = None,
+) -> AcSnapshotResolution:
+    return resolve_preferred_ac_snapshot(
+        run_id,
+        project_state=project_state,
+        shared_state=state,
+        session_state=st.session_state,
+        db_url=db_url,
+    )
+
+
+def _layout_ac_source_message(resolution: AcSnapshotResolution) -> tuple[str, str]:
+    if resolution.snapshot is None:
+        return (
+            "warning",
+            "AC snapshot not found. Run AC sizing before generating layout.",
+        )
+    if resolution.source == "persisted_run_snapshot":
+        return (
+            "caption",
+            "Layout runtime data source: persisted AC snapshot attached to the active run.",
+        )
+    return (
+        "warning",
+        "Layout runtime data source: session compatibility fallback. Persist AC sizing before using layout as formal output.",
+    )
 
 
 def _resolve_ac_blocks_total(ac_output: dict) -> int:
@@ -99,7 +123,11 @@ def show() -> None:
     if _is_guest:
         st.info("👁 **Guest mode** — layout runs from session data. AI prompt and external submission are disabled.", icon=None)
 
-    run_id_default = st.session_state.get("dc_last_run_id", "")
+    run_id_default = (
+        st.session_state.get("dc_last_run_id", "")
+        if _is_guest
+        else (workspace.get("run_id") or st.session_state.get("dc_last_run_id", ""))
+    )
     workspace_status_bar(
         [
             ("Project", workspace.get("project_name") or "None"),
@@ -125,9 +153,17 @@ def show() -> None:
 
     st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
 
-    ac_snapshot = _build_ac_snapshot(state, project_state)
-    if ac_snapshot is None:
-        st.warning("AC snapshot not found. Run AC sizing before generating layout.")
+    ac_resolution = _resolve_layout_ac_snapshot(
+        state,
+        project_state,
+        run_id=run_id or workspace.get("run_id"),
+    )
+    ac_snapshot = ac_resolution.snapshot
+    message_level, message = _layout_ac_source_message(ac_resolution)
+    if message_level == "caption":
+        st.caption(message)
+    else:
+        st.warning(message)
 
     section_header(
         "Render Options",

@@ -23,6 +23,7 @@ from calb_sizing_tool.infra.db.models.run_input_snapshot import RunInputSnapshot
 from calb_sizing_tool.infra.db.models.run_output_snapshot import RunOutputSnapshot
 from calb_sizing_tool.infra.db.models.sizing_case import SizingCase
 from calb_sizing_tool.infra.db.models.sizing_run import SizingRun
+from calb_sizing_tool.infra.db.models.sld_project_settings import SldProjectSettings
 from calb_sizing_tool.infra.db.models.soh_curve_point import SohCurvePoint
 from calb_sizing_tool.infra.db.models.soh_profile import SohProfile
 from calb_sizing_tool.infra.db.models.user_account import UserAccount
@@ -55,6 +56,7 @@ __all__ = [
     "RunOutputSnapshot",
     "SizingCase",
     "SizingRun",
+    "SldProjectSettings",
     "SohCurvePoint",
     "SohProfile",
     "UserAccount",

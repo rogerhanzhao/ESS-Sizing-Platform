@@ -17,6 +17,7 @@
 # -----------------------------------------------------------------------------
 
 from html import escape
+import os
 from pathlib import Path
 
 import streamlit as st
@@ -25,7 +26,7 @@ import calb_sizing_tool.config as config  # noqa: F401
 from calb_sizing_tool.infra.db.base import Base
 from calb_sizing_tool.infra.db.session import create_engine_for_url, session_scope
 from calb_sizing_tool.state.auth_state import clear_auth_context, get_auth_context
-from calb_sizing_tool.state.workspace_state import apply_pending_navigation, get_workspace_context
+from calb_sizing_tool.state.workspace_state import apply_pending_navigation, get_workspace_context, navigate_now
 from calb_sizing_tool.ui._styles import inject_global_styles
 from calb_sizing_tool.ui.login_view import show as show_login
 
@@ -42,6 +43,15 @@ inject_global_styles()
 # Prefer Alembic so that alembic_version is populated correctly (required for
 # future incremental migrations).  Falls back to create_all when alembic.ini
 # is not reachable (e.g. unusual working-directory situations).
+def _allow_create_all_fallback() -> bool:
+    return os.environ.get("CALB_ALLOW_CREATE_ALL_FALLBACK", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 @st.cache_resource
 def _run_startup_migrations() -> None:
     try:
@@ -51,8 +61,12 @@ def _run_startup_migrations() -> None:
         _ini = _Path(__file__).resolve().parent / "alembic.ini"
         _cfg = _AlembicCfg(str(_ini))
         _alembic_cmd.upgrade(_cfg, "head")
-    except Exception:
-        # Fallback: create_all is safe for fresh databases.
+    except Exception as exc:
+        if not _allow_create_all_fallback():
+            raise RuntimeError(
+                "Alembic migration failed. Refusing to fall back to create_all(). "
+                "Set CALB_ALLOW_CREATE_ALL_FALLBACK=true only for local throwaway databases."
+            ) from exc
         with session_scope() as _s:
             Base.metadata.create_all(bind=_s.get_bind())
 
@@ -82,6 +96,7 @@ _ALL_NAV = [
     "Single Line Diagram",
     "Site Layout",
     "Report Export",
+    "Engineering Settings",
     "Project Directory",
     "Case Directory",
     "Run Registry",
@@ -160,7 +175,7 @@ with st.sidebar:
     else:
         _NAV_GROUPS: list[tuple[str, list[str]]] = (
             [
-                ("Workspace",       ["Workbench", "Project Directory", "Case Directory"]),
+                ("Workspace",       ["Workbench", "Project Directory", "Case Directory", "Engineering Settings"]),
                 ("Sizing Pipeline", ["DC Sizing", "AC Sizing", "Single Line Diagram", "Site Layout", "Report Export"]),
                 ("History",         ["Run Registry"]),
             ]
@@ -186,8 +201,7 @@ with st.sidebar:
                     )
                 else:
                     if st.button(_page, use_container_width=True, key=f"nav_btn_{_page}"):
-                        st.session_state["main_nav"] = _page
-                        st.rerun()
+                        navigate_now(_page)
 
     if auth_context.is_admin:
         st.markdown("---")
@@ -240,4 +254,8 @@ elif nav == "Site Layout":
 
 elif nav == "Report Export":
     from calb_sizing_tool.ui.report_export_view import show
+    show()
+
+elif nav == "Engineering Settings":
+    from calb_sizing_tool.ui.engineering_settings_view import show
     show()

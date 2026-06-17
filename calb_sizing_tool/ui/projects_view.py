@@ -7,7 +7,7 @@ from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.services.access_control_service import AccessControlService
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import init_project_state
-from calb_sizing_tool.state.workspace_state import navigate_to, set_active_project
+from calb_sizing_tool.state.workspace_state import navigate_now, set_active_project
 from calb_sizing_tool.utils.text import fmt_dt
 
 
@@ -38,8 +38,7 @@ def show() -> None:
     if not projects:
         st.info("No projects found.")
         if st.button("Go to Workbench to create one"):
-            navigate_to("Workbench")
-            st.rerun()
+            navigate_now("Workbench")
         return
 
     df = pd.DataFrame([
@@ -61,5 +60,4 @@ def show() -> None:
             project_code=selected["project_code"],
             project_name=selected["project_name"],
         )
-        navigate_to("Workbench")
-        st.rerun()
+        navigate_now("Workbench")

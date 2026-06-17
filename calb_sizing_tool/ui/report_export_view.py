@@ -29,10 +29,10 @@ from calb_sizing_tool.reporting.export_docx import (
 from calb_sizing_tool.reporting.report_context import build_report_context
 from calb_sizing_tool.reporting.report_v2 import export_report_v2_1
 from calb_sizing_tool.runtime_paths import get_outputs_dir
-from calb_sizing_tool.state.project_state import init_project_state
+from calb_sizing_tool.state.project_state import get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state
 from calb_sizing_tool.state.workspace_state import get_workspace_context
-from calb_sizing_tool.services.sld_data_source_service import load_persisted_ac_snapshot
+from calb_sizing_tool.services.sld_data_source_service import AcSnapshotResolution, resolve_preferred_ac_snapshot
 from calb_sizing_tool.services.artifact_service import load_artifact_bytes_from_db
 
 
@@ -109,6 +109,23 @@ def _extract_artifact_bytes(artifact_bundle) -> tuple[bytes | None, bytes | None
     return png_bytes, svg_bytes
 
 
+def _resolve_report_ac_snapshot(
+    run_id: str | None,
+    *,
+    state,
+    project_state: dict,
+    session_state,
+    db_url: str | None = None,
+) -> AcSnapshotResolution:
+    return resolve_preferred_ac_snapshot(
+        run_id,
+        project_state=project_state,
+        shared_state=state,
+        session_state=session_state,
+        db_url=db_url,
+    )
+
+
 def show():
     from calb_sizing_tool.state.auth_state import get_auth_context, clear_auth_context
     _auth = get_auth_context()
@@ -138,6 +155,7 @@ def show():
 
     state = init_shared_state()
     init_project_state()
+    project_state = get_project_state()
     dc_results = state.dc_results or {}
     ac_results = state.ac_results or {}
     artifacts = state.artifacts
@@ -147,10 +165,21 @@ def show():
         or st.session_state.get("dc_last_run_id")
     )
 
-    # --- SLD bytes: new plugin bundle → old artifacts dict → old diagram_results → file → DB ---
-    sld_png, sld_svg = _extract_artifact_bytes(st.session_state.get("sld_artifacts"))
+    # --- SLD bytes: DB artifact_registry → plugin bundle → old artifacts dict → old diagram_results → file ---
+    sld_png = sld_svg = None
+    if _active_run_id:
+        _db_sld = load_artifact_bytes_from_db(_active_run_id, ["sld_png", "sld_svg"])
+        sld_png = _db_sld.get("sld_png")
+        sld_svg = _db_sld.get("sld_svg")
+        if sld_png is not None:
+            _log.info("SLD source: DB artifact_registry (run_id=%s)", _active_run_id)
+    bundle_sld_png, bundle_sld_svg = _extract_artifact_bytes(st.session_state.get("sld_artifacts"))
+    if sld_png is None:
+        sld_png = bundle_sld_png
+    if sld_svg is None:
+        sld_svg = bundle_sld_svg
     if sld_png is not None:
-        _log.info("SLD source: plugin bundle (sld_artifacts)")
+        _log.info("SLD source: plugin bundle or DB artifact")
     if sld_png is None:
         sld_png = artifacts.get("sld_png_bytes")
         if sld_png is not None:
@@ -177,20 +206,24 @@ def show():
         candidate = outputs_dir / "sld_latest.svg"
         if candidate.exists():
             sld_svg = candidate.read_bytes()
-    # DB fallback: recover from artifact_registry after run restore
-    if sld_png is None and _active_run_id:
-        _db_sld = load_artifact_bytes_from_db(_active_run_id, ["sld_png", "sld_svg"])
-        sld_png = sld_png or _db_sld.get("sld_png")
-        sld_svg = sld_svg or _db_sld.get("sld_svg")
-        if sld_png is not None:
-            _log.info("SLD source: DB artifact_registry (run_id=%s)", _active_run_id)
     if sld_png is None:
         _log.warning("SLD: no image resolved from any source")
 
-    # --- Layout bytes: same priority chain ---
-    layout_png, layout_svg = _extract_artifact_bytes(st.session_state.get("layout_artifacts"))
+    # --- Layout bytes: same DB-first priority chain ---
+    layout_png = layout_svg = None
+    if _active_run_id:
+        _db_layout = load_artifact_bytes_from_db(_active_run_id, ["layout_png", "layout_svg"])
+        layout_png = _db_layout.get("layout_png")
+        layout_svg = _db_layout.get("layout_svg")
+        if layout_png is not None:
+            _log.info("Layout source: DB artifact_registry (run_id=%s)", _active_run_id)
+    bundle_layout_png, bundle_layout_svg = _extract_artifact_bytes(st.session_state.get("layout_artifacts"))
+    if layout_png is None:
+        layout_png = bundle_layout_png
+    if layout_svg is None:
+        layout_svg = bundle_layout_svg
     if layout_png is not None:
-        _log.info("Layout source: plugin bundle (layout_artifacts)")
+        _log.info("Layout source: plugin bundle or DB artifact")
     if layout_png is None:
         layout_png = artifacts.get("layout_png_bytes") or st.session_state.get("layout_png_bytes")
         if layout_png is not None:
@@ -216,12 +249,6 @@ def show():
         candidate = outputs_dir / "layout_latest.svg"
         if candidate.exists():
             layout_svg = candidate.read_bytes()
-    if layout_png is None and _active_run_id:
-        _db_layout = load_artifact_bytes_from_db(_active_run_id, ["layout_png", "layout_svg"])
-        layout_png = layout_png or _db_layout.get("layout_png")
-        layout_svg = layout_svg or _db_layout.get("layout_svg")
-        if layout_png is not None:
-            _log.info("Layout source: DB artifact_registry (run_id=%s)", _active_run_id)
     if layout_png is None:
         _log.warning("Layout: no image resolved from any source")
 
@@ -242,28 +269,21 @@ def show():
         or st.session_state.get("stage13_output")
         or {}
     )
-    ac_output = {}
-    if isinstance(ac_results, dict):
-        ac_output.update(ac_results)
-    ss_ac_output = st.session_state.get("ac_output")
-    if isinstance(ss_ac_output, dict):
-        ac_output.update(ss_ac_output)
-
-    # Fallback: if AC output is absent from session (e.g. after a run restore),
-    # attempt to reload the persisted AC snapshot from DB using the active run ID.
-    if not ac_output:
-        _active_run_id = (
-            st.session_state.get("active_run_id")
-            or st.session_state.get("dc_last_run_id")
-        )
-        if _active_run_id:
-            try:
-                _ac_snap = load_persisted_ac_snapshot(_active_run_id)
-                if _ac_snap is not None and isinstance(_ac_snap.output, dict) and _ac_snap.output:
-                    ac_output = _ac_snap.output
-                    st.session_state["ac_output"] = ac_output
-            except Exception:
-                pass
+    ac_resolution = _resolve_report_ac_snapshot(
+        _active_run_id,
+        state=state,
+        project_state=project_state,
+        session_state=st.session_state,
+    )
+    ac_output = dict(ac_resolution.snapshot.output) if ac_resolution.snapshot is not None else {}
+    if ac_output:
+        st.session_state["ac_output"] = ac_output
+        if isinstance(ac_results, dict):
+            ac_results.update(ac_output)
+        if isinstance(ac_resolution.snapshot.inputs, dict) and ac_resolution.snapshot.inputs:
+            ac_inputs = st.session_state.get("ac_inputs")
+            if isinstance(ac_inputs, dict):
+                ac_inputs.update(ac_resolution.snapshot.inputs)
 
     if not stage13_output or not ac_output:
         st.warning("Run DC sizing and AC sizing first to enable report export.")

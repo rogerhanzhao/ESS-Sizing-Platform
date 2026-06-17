@@ -53,6 +53,8 @@ The application writes only lightweight runtime artifacts.
   - `${CALB_RUNTIME_ROOT}/outputs`
 - Local app state:
   - `${CALB_RUNTIME_ROOT}/state/user_preferences.json`
+- SQLite database:
+  - `${CALB_RUNTIME_ROOT}/state/calb_sizing.sqlite`
 
 The Excel dictionaries remain inside the image because they are part of the repo and versioned together with the code.
 
@@ -110,6 +112,9 @@ Clone the repo into the new root, not into `/opt/energain`.
    COMPOSE_PROJECT_NAME=calb-sizingtool
    CALB_HOST_PORT=18511
    CALB_RUNTIME_ROOT=/opt/calb-sizingtool/runtime
+   CALB_DATABASE_URL=sqlite:////app/runtime/state/calb_sizing.sqlite
+   CALB_REQUIRE_BOOTSTRAP_TOKEN=true
+   CALB_BOOTSTRAP_ADMIN_TOKEN=<set-a-private-first-admin-token>
    TZ=UTC
    CALB_DOCKER_LOG_MAX_SIZE=20m
    CALB_DOCKER_LOG_MAX_FILE=5

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import base64
+import hmac
+import os
 from pathlib import Path
 
 import streamlit as st
 
 from calb_sizing_tool.services.auth_service import AuthService
 from calb_sizing_tool.state.auth_state import AuthContext, set_auth_context
-from calb_sizing_tool.state.workspace_state import navigate_to
+from calb_sizing_tool.state.workspace_state import navigate_now
 
 _FEATURES = [
     ("DC Sizing",           "String sizing from POI targets — cell selection, thermal derating, capacity margin."),
@@ -49,6 +51,28 @@ div[data-testid="stVerticalBlockBorderWrapper"]
 }
 </style>
 """
+
+
+def _env_flag(name: str, *, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _bootstrap_admin_token() -> str:
+    return os.environ.get("CALB_BOOTSTRAP_ADMIN_TOKEN", "").strip()
+
+
+def _bootstrap_token_required() -> bool:
+    return _env_flag("CALB_REQUIRE_BOOTSTRAP_TOKEN", default=False)
+
+
+def _bootstrap_token_matches(value: str) -> bool:
+    expected = _bootstrap_admin_token()
+    if not expected:
+        return False
+    return hmac.compare_digest(str(value or "").strip(), expected)
 
 
 def _logo_b64() -> str | None:
@@ -120,11 +144,26 @@ def show() -> None:
 
             if not auth_service.has_users():
                 st.info("No users found. Create the initial admin account.")
+                bootstrap_required = _bootstrap_token_required()
+                bootstrap_token = _bootstrap_admin_token()
+                if bootstrap_required and not bootstrap_token:
+                    st.error(
+                        "Initial admin bootstrap is locked. Set CALB_BOOTSTRAP_ADMIN_TOKEN "
+                        "on the server before creating the first admin account."
+                    )
+                    return
                 with st.form("bootstrap_admin"):
                     username     = st.text_input("Admin Username", placeholder="username")
                     display_name = st.text_input("Display Name", value="Administrator")
                     password     = st.text_input("Password", type="password", placeholder="••••••••")
                     confirm      = st.text_input("Confirm Password", type="password", placeholder="••••••••")
+                    token_input = ""
+                    if bootstrap_required or bootstrap_token:
+                        token_input = st.text_input(
+                            "Bootstrap Token",
+                            type="password",
+                            placeholder="Server bootstrap token",
+                        )
                     if st.form_submit_button("Create Admin Account", use_container_width=True):
                         if not username.strip():
                             st.error("Username is required.")
@@ -132,6 +171,8 @@ def show() -> None:
                             st.error("Password is required.")
                         elif password != confirm:
                             st.error("Passwords do not match.")
+                        elif (bootstrap_required or bootstrap_token) and not _bootstrap_token_matches(token_input):
+                            st.error("Invalid bootstrap token.")
                         else:
                             user = auth_service.create_user(
                                 username=username.strip(),
@@ -145,8 +186,7 @@ def show() -> None:
                                 display_name=user.display_name,
                                 roles=user.roles,
                             ))
-                            navigate_to("Workbench")
-                            st.rerun()
+                            navigate_now("Workbench")
             else:
                 with st.form("login_form"):
                     username = st.text_input(
@@ -171,8 +211,7 @@ def show() -> None:
                                 display_name=user.display_name,
                                 roles=user.roles,
                             ))
-                            navigate_to("Workbench")
-                            st.rerun()
+                            navigate_now("Workbench")
 
                 st.markdown(
                     '<div style="text-align:center;margin-top:0.5rem">'
@@ -190,5 +229,4 @@ def show() -> None:
                         display_name="Guest",
                         roles=["guest"],
                     ))
-                    navigate_to("DC Sizing")
-                    st.rerun()
+                    navigate_now("DC Sizing")

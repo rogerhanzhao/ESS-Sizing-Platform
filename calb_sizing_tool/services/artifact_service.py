@@ -11,6 +11,7 @@ from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.repositories.run_repository import RunRepository
 from calb_sizing_tool.runtime_paths import ensure_outputs_dir
 from calb_sizing_tool.plugins.base import ArtifactPayload
+from calb_sizing_tool.utils.files import safe_child_path, safe_storage_filename
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -36,7 +37,8 @@ def persist_artifacts(
     with session_scope(db_url) as session:
         repo = RunRepository(session)
         for artifact in artifacts:
-            file_path = base_dir / artifact.file_name
+            file_name = safe_storage_filename(artifact.file_name, fallback=f"{artifact.artifact_kind}.bin")
+            file_path = safe_child_path(base_dir, file_name, fallback=f"{artifact.artifact_kind}.bin")
             file_path.write_bytes(artifact.content)
             content_hash = _hash_bytes(artifact.content)
             metadata = dict(artifact.metadata or {})
@@ -50,7 +52,7 @@ def persist_artifacts(
             row = repo.register_artifact(
                 sizing_run_id=run_id,
                 artifact_kind=artifact.artifact_kind,
-                file_name=artifact.file_name,
+                file_name=file_name,
                 file_path=str(file_path),
                 media_type=artifact.media_type,
                 content_hash=content_hash,

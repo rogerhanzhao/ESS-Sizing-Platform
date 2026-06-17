@@ -57,7 +57,7 @@ from calb_sizing_tool.models import DCBlockResult
 from calb_sizing_tool.state.project_state import bump_run_id_dc, init_project_state
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
-from calb_sizing_tool.state.workspace_state import get_workspace_context, navigate_to, restore_run_bundle_to_session
+from calb_sizing_tool.state.workspace_state import get_workspace_context, navigate_now, restore_run_bundle_to_session
 
 # ==========================================
 # 0. SETUP & LIBRARY CHECK
@@ -1433,15 +1433,15 @@ div[data-testid="stDataFrame"] div[role="rowheader"] {
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
         
+    has_dc_result = bool(st.session_state.get("dc_result_summary") or dc_results.get("dc_result_summary"))
+    if has_dc_result:
         st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
         section_header("Next Steps", eyebrow="Continue")
         _cta1, _cta2 = st.columns(2)
         if _cta1.button("AC Sizing →", use_container_width=True, key="dc_cta_ac"):
-            navigate_to("AC Sizing")
-            st.rerun()
+            navigate_now("AC Sizing")
         if _cta2.button("Single Line Diagram →", use_container_width=True, key="dc_cta_sld"):
-            navigate_to("Single Line Diagram")
-            st.rerun()
+            navigate_now("Single Line Diagram")
 
 
 

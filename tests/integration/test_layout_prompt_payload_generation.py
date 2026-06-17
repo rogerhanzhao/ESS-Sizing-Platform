@@ -9,6 +9,7 @@ from calb_sizing_tool.services.dc_pipeline_service import size_with_guarantee
 from calb_sizing_tool.services.external_layout_service import generate_layout_prompt
 from calb_sizing_tool.services.run_persistence_service import persist_dc_run
 from calb_sizing_tool.services.run_restore_service import load_dc_run_bundle
+from calb_sizing_tool.services.sld_data_source_service import persist_ac_runtime_snapshot
 from calb_sizing_tool.services.stage1_service import run_stage1 as service_run_stage1
 
 
@@ -83,8 +84,24 @@ def test_layout_prompt_payload_generation(sample_excel_path, tmp_path):
     run_bundle = load_dc_run_bundle(run_id, db_url=db_url)
     assert run_bundle is not None
 
+    persist_ac_runtime_snapshot(
+        run_id=run_id,
+        db_url=db_url,
+        ac_inputs={"grid_kv": 33.0, "grid_frequency_hz": 50.0},
+        ac_output={
+            "source_run_id": run_id,
+            "num_blocks": 3,
+            "pcs_per_block": 4,
+            "transformer_mva": 6.0,
+        },
+    )
+
     result = generate_layout_prompt(run_id=run_id, auth_user=admin, db_url=db_url)
     payload = result["payload"]
     assert payload["run_id"] == run_id
     assert payload["project"]["project_name"] == stage1_inputs["project_name"]
     assert "layout_rules" in payload
+    assert payload["ac_assumptions"]["ac_block_count"] == 3
+    assert payload["ac_assumptions"]["pcs_per_block"] == 4
+    assert payload["ac_assumptions"]["transformer_mva"] == 6.0
+    assert payload["ac_assumptions"]["assumption_note"] == "Loaded from persisted AC snapshot."

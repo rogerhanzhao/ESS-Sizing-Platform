@@ -55,13 +55,13 @@ def test_clear_active_run_clears_downstream_runtime_state(monkeypatch):
     assert session_state["artifacts"]["sld_meta"] == {}
 
 
-def test_navigate_to_defers_main_nav_until_app_can_apply_it(monkeypatch):
+def test_navigate_to_sets_main_and_pending_nav(monkeypatch):
     session_state = {"main_nav": "Workbench"}
     monkeypatch.setattr(workspace_state, "st", SimpleNamespace(session_state=session_state))
 
     workspace_state.navigate_to("DC Sizing")
 
-    assert session_state["main_nav"] == "Workbench"
+    assert session_state["main_nav"] == "DC Sizing"
     assert session_state["_pending_main_nav"] == "DC Sizing"
 
     selected = workspace_state.apply_pending_navigation(["Workbench", "DC Sizing"])
@@ -69,6 +69,22 @@ def test_navigate_to_defers_main_nav_until_app_can_apply_it(monkeypatch):
     assert selected == "DC Sizing"
     assert session_state["main_nav"] == "DC Sizing"
     assert "_pending_main_nav" not in session_state
+
+
+def test_navigate_now_sets_nav_and_reruns(monkeypatch):
+    session_state = {"main_nav": "Workbench"}
+    reruns = []
+    monkeypatch.setattr(
+        workspace_state,
+        "st",
+        SimpleNamespace(session_state=session_state, rerun=lambda: reruns.append("rerun")),
+    )
+
+    workspace_state.navigate_now("AC Sizing")
+
+    assert session_state["main_nav"] == "AC Sizing"
+    assert session_state["_pending_main_nav"] == "AC Sizing"
+    assert reruns == ["rerun"]
 
 
 def test_apply_pending_navigation_ignores_invalid_page_and_uses_default(monkeypatch):

@@ -31,10 +31,8 @@ from calb_sizing_tool.schemas.sld_render_input import legacy_sld_override_preset
 from calb_sizing_tool.services.access_control_service import AccessControlService
 from calb_sizing_tool.services.sld_data_source_service import AcSnapshotResolution, resolve_preferred_ac_snapshot
 from calb_sizing_tool.services.sld_engineering_settings_service import (
-    build_persisted_sld_project_settings,
     load_case_sld_project_settings,
     load_run_sld_project_settings,
-    save_case_sld_project_settings,
 )
 from calb_sizing_tool.services.sld_pipeline_service import run_sld_pipeline_from_run_bundle
 from calb_sizing_tool.services.sld_renderer_mode_service import (
@@ -44,7 +42,7 @@ from calb_sizing_tool.services.sld_renderer_mode_service import (
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state
-from calb_sizing_tool.state.workspace_state import get_workspace_context
+from calb_sizing_tool.state.workspace_state import get_workspace_context, navigate_now
 from calb_sizing_tool.ui.sld_inputs import render_electrical_inputs
 
 
@@ -444,38 +442,10 @@ def show() -> None:
             else:
                 st.warning(
                     "Formal engineering settings are not yet saved for this case. "
-                    "Save them below before using strict mode, or switch to draft override mode."
+                    "Open Engineering Settings before using strict mode, or switch to draft override mode."
                 )
-            with st.expander("Formal Engineering Settings", expanded=not bool(persisted_project_settings)):
-                formal_settings_input = render_electrical_inputs(
-                    persisted_project_settings or legacy_sld_override_preset(),
-                    key_prefix="sld_formal_settings",
-                    mv_nominal_voltage_kv=mv_nominal_voltage_kv,
-                    section_title="Formal SLD Engineering Settings",
-                    section_caption="Persisted case-level settings used by formal / strict SLD mode.",
-                )
-                if st.button("Save Formal Engineering Settings", use_container_width=True):
-                    try:
-                        with session_scope() as session:
-                            access = AccessControlService(session, auth_user)
-                            case_row = access.case_repo.get_case_by_id(str(workspace.get("case_id")))
-                            if case_row is None:
-                                raise ValueError("Active case not found.")
-                            access.ensure_project_access(case_row.project_id)
-                        formal_project_settings = build_persisted_sld_project_settings(
-                            formal_settings_input,
-                            mv_nominal_voltage_kv=mv_nominal_voltage_kv,
-                        )
-                        save_case_sld_project_settings(
-                            str(workspace.get("case_id")),
-                            formal_project_settings,
-                            actor=auth_user.username,
-                        )
-                    except Exception as exc:
-                        st.error(f"Saving formal engineering settings failed: {exc}")
-                    else:
-                        st.success("Formal engineering settings saved to the active case.")
-                        st.rerun()
+            if st.button("Open Engineering Settings", use_container_width=False):
+                navigate_now("Engineering Settings")
         else:
             st.info("Select an active case to save formal engineering settings.")
 

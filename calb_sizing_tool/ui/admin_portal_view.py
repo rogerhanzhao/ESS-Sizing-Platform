@@ -12,6 +12,7 @@ import streamlit as st
 
 from calb_sizing_tool.services.auth_service import AuthService
 from calb_sizing_tool.services.product_admin_service import ProductAdminService
+from calb_sizing_tool.utils.files import safe_child_path, safe_storage_filename
 from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.ui._ui import page_header
 
@@ -1079,15 +1080,15 @@ def _section_assets(service: ProductAdminService, snapshot: dict[str, Any]) -> N
                     if uploaded_asset is not None:
                         _raw = uploaded_asset.read()
                         _sha256 = hashlib.sha256(_raw).hexdigest()
-                        _file_name = _file_name or uploaded_asset.name
+                        _file_name = safe_storage_filename(_file_name or uploaded_asset.name)
                         _mime_type = _mime_type or (
                             mimetypes.guess_type(uploaded_asset.name)[0]
                             or uploaded_asset.type
                             or "application/octet-stream"
                         )
-                        _dest_dir = _ASSET_STORE / (asset_code.strip().replace("/", "_"))
+                        _dest_dir = _ASSET_STORE / safe_storage_filename(asset_code.strip(), fallback="asset")
                         _dest_dir.mkdir(parents=True, exist_ok=True)
-                        _dest = _dest_dir / (_file_name or uploaded_asset.name)
+                        _dest = safe_child_path(_dest_dir, _file_name or uploaded_asset.name)
                         _dest.write_bytes(_raw)
                         _source_path = _source_path or str(_dest.resolve())
 

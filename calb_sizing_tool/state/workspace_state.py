@@ -69,7 +69,15 @@ def get_workspace_context() -> dict[str, Any]:
 
 
 def navigate_to(page_name: str) -> None:
+    """Set the target page for both immediate and next-run routing."""
+    st.session_state[MAIN_NAV_KEY] = page_name
     st.session_state[PENDING_MAIN_NAV_KEY] = page_name
+
+
+def navigate_now(page_name: str) -> None:
+    """Route to a page from a button click and force Streamlit to rerender."""
+    navigate_to(page_name)
+    st.rerun()
 
 
 def apply_pending_navigation(nav_options: Sequence[str], *, default_page: str = "Workbench") -> str:

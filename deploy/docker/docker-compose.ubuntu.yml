@@ -9,8 +9,12 @@ services:
       - "${CALB_HOST_PORT:-18511}:${STREAMLIT_INTERNAL_PORT:-8501}"
     environment:
       TZ: ${TZ:-UTC}
+      CALB_DATABASE_URL: ${CALB_DATABASE_URL:-sqlite:////app/runtime/state/calb_sizing.sqlite}
       CALB_OUTPUTS_DIR: /app/runtime/outputs
       CALB_PREFERENCES_FILE: /app/runtime/state/user_preferences.json
+      CALB_REQUIRE_BOOTSTRAP_TOKEN: ${CALB_REQUIRE_BOOTSTRAP_TOKEN:-true}
+      CALB_BOOTSTRAP_ADMIN_TOKEN: ${CALB_BOOTSTRAP_ADMIN_TOKEN:-}
+      CALB_ALLOW_CREATE_ALL_FALLBACK: ${CALB_ALLOW_CREATE_ALL_FALLBACK:-false}
       STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
       STREAMLIT_SERVER_ADDRESS: 0.0.0.0
       STREAMLIT_SERVER_HEADLESS: "true"
