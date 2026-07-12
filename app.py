@@ -221,47 +221,64 @@ with st.sidebar:
     st.caption(f"v2.1 · CALB ESS Sizing Platform · db:{_db_schema_revision()}")
 
 # ── Route ─────────────────────────────────────────────────────────────────────
-if _ADMIN_PORTAL_ACTIVE:
-    from calb_sizing_tool.ui.admin_portal_view import show as show_admin
-    show_admin()
-    st.stop()
+# BEGIN OPLOG — removable trial-run instrumentation (calb_sizing_tool/infra/oplog.py).
+# Runtime off-switch: CALB_OPLOG_ENABLED=false. Full removal: delete oplog.py,
+# this marked block, and unindent the route chain back one level.
+from calb_sizing_tool.infra import oplog as _oplog
 
-if nav == "Workbench":
-    from calb_sizing_tool.ui.workbench_view import show
-    show()
+_oplog_page = "Product & Database" if _ADMIN_PORTAL_ACTIVE else nav
+if st.session_state.get("_oplog_last_page") != (_oplog_page, auth_context.username):
+    st.session_state["_oplog_last_page"] = (_oplog_page, auth_context.username)
+    _oplog.log_page_view(actor=auth_context.username, page=_oplog_page, is_guest=auth_context.is_guest)
 
-elif nav == "Project Directory":
-    from calb_sizing_tool.ui.projects_view import show
-    show()
+try:
+    if _ADMIN_PORTAL_ACTIVE:
+        from calb_sizing_tool.ui.admin_portal_view import show as show_admin
+        show_admin()
+        st.stop()
 
-elif nav == "Case Directory":
-    from calb_sizing_tool.ui.cases_view import show
-    show()
+    if nav == "Workbench":
+        from calb_sizing_tool.ui.workbench_view import show
+        show()
 
-elif nav == "Run Registry":
-    from calb_sizing_tool.ui.run_history_view import show
-    show()
+    elif nav == "Project Directory":
+        from calb_sizing_tool.ui.projects_view import show
+        show()
 
-elif nav == "DC Sizing":
-    from calb_sizing_tool.ui.dc_view import show
-    show()
+    elif nav == "Case Directory":
+        from calb_sizing_tool.ui.cases_view import show
+        show()
 
-elif nav == "AC Sizing":
-    from calb_sizing_tool.ui.ac_view import show
-    show()
+    elif nav == "Run Registry":
+        from calb_sizing_tool.ui.run_history_view import show
+        show()
 
-elif nav == "Single Line Diagram":
-    from calb_sizing_tool.ui.single_line_diagram_view import show
-    show()
+    elif nav == "DC Sizing":
+        from calb_sizing_tool.ui.dc_view import show
+        show()
 
-elif nav == _TYPICAL_AC_BLOCK_ARRANGEMENT:
-    from calb_sizing_tool.ui.site_layout_view import show
-    show()
+    elif nav == "AC Sizing":
+        from calb_sizing_tool.ui.ac_view import show
+        show()
 
-elif nav == "Report Export":
-    from calb_sizing_tool.ui.report_export_view import show
-    show()
+    elif nav == "Single Line Diagram":
+        from calb_sizing_tool.ui.single_line_diagram_view import show
+        show()
 
-elif nav == "Engineering Settings":
-    from calb_sizing_tool.ui.engineering_settings_view import show
-    show()
+    elif nav == _TYPICAL_AC_BLOCK_ARRANGEMENT:
+        from calb_sizing_tool.ui.site_layout_view import show
+        show()
+
+    elif nav == "Report Export":
+        from calb_sizing_tool.ui.report_export_view import show
+        show()
+
+    elif nav == "Engineering Settings":
+        from calb_sizing_tool.ui.engineering_settings_view import show
+        show()
+except BaseException as _exc:
+    # Streamlit control-flow exceptions (st.stop/st.rerun) are not errors.
+    if not type(_exc).__module__.startswith("streamlit"):
+        _oplog.log_error(actor=auth_context.username, page=_oplog_page, error=_exc)
+    raise
+# END OPLOG
