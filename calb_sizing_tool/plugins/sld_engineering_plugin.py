@@ -43,7 +43,10 @@ def _resolve_artifact_mode(validation_mode: str, override_mode: bool) -> str:
 
 
 def _artifact_file_name(base_name: str, extension: str, artifact_mode: str) -> str:
-    suffix = ".draft" if artifact_mode == "draft_override" else ""
+    suffix = {
+        "draft_override": ".draft",
+        "concept": ".concept",
+    }.get(artifact_mode, "")
     return f"{base_name}{suffix}.{extension}"
 
 
@@ -73,6 +76,15 @@ class SldEngineeringPlugin:
             "sld_png",
             "sld_topology_json",
             "sld_render_spec_json",
+            "site_electrical_index_json",
+            "site_electrical_index_svg",
+            "site_electrical_index_png",
+            "sld_design_basis_schedule_json",
+            "sld_design_basis_schedule_svg",
+            "sld_design_basis_schedule_png",
+            "sld_interface_scope_json",
+            "sld_interface_scope_svg",
+            "sld_interface_scope_png",
         ],
     )
 

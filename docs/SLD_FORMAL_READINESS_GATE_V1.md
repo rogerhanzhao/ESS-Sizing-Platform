@@ -63,11 +63,16 @@ renderer mode is not engineering_v2
 `sld_pipeline_service.prepare_sld_pipeline_from_run_bundle()` now computes the
 readiness report after canonical input/topology preparation.
 
-`run_sld_pipeline_from_run_bundle()` adds the report to the artifact bundle
-metadata as:
+`run_sld_pipeline_from_run_bundle()` now uses the report as a publication gate:
+
+- strict flow + `ready=true` → `official`;
+- strict flow + `ready=false` → `concept` with a `NOT FOR CONSTRUCTION` watermark;
+- override flow → `draft_override` with a `NOT FOR CONSTRUCTION` watermark.
+
+The report is stored in every artifact metadata record and emitted as:
 
 ```text
-metadata["formal_readiness"]
+sld_readiness_manifest[.concept|.draft].json
 ```
 
 The Streamlit SLD page surfaces the readiness status in the pipeline status

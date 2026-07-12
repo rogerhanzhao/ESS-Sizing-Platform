@@ -15,8 +15,8 @@ _FEATURES = [
     ("DC Sizing",           "String sizing from POI targets — cell selection, thermal derating, capacity margin."),
     ("AC Sizing",           "PCS block count, transformer sizing, auxiliary load budget, AC/DC validation."),
     ("Single Line Diagram", "Auto-generated engineering SLD — bus topology, protection annotation, PNG export."),
-    ("Site Layout",         "Block-level arrangement with footprint checks and scaled plan-view export."),
-    ("Report Export",       "Word (.docx) report: executive summary, sizing tables, SLD, and site layout."),
+    ("Typical AC Block Arrangement", "Concept relationship for one AC Block; not a full site plan or construction drawing."),
+    ("Report Export",       "Word (.docx) report: executive summary, sizing tables, SLD, and typical AC Block arrangement."),
 ]
 
 _CSS = """

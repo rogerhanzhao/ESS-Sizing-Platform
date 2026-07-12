@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from calb_sizing_tool.adapters.excel_loader_adapter import load_dc_excel_bundle_from_path
 from calb_sizing_tool.infra.db.models import ArtifactRegistry
 from calb_sizing_tool.infra.db.session import session_scope
@@ -121,7 +124,8 @@ def test_sld_artifact_registry_records_traceability(sample_excel_path, tmp_path)
         db_url=db_url,
     )
 
-    assert artifact_bundle.metadata["artifact_mode"] == "official"
+    assert artifact_bundle.metadata["artifact_mode"] == "concept"
+    assert artifact_bundle.metadata["formal_readiness"]["ready"] is False
     assert artifact_bundle.metadata["renderer_version"] == artifact_bundle.plugin_version
 
     with session_scope(db_url) as session:
@@ -131,6 +135,16 @@ def test_sld_artifact_registry_records_traceability(sample_excel_path, tmp_path)
             "sld_png",
             "sld_topology_json",
             "sld_render_spec_json",
+            "sld_readiness_manifest_json",
+            "site_electrical_index_json",
+            "site_electrical_index_svg",
+            "site_electrical_index_png",
+            "sld_design_basis_schedule_json",
+            "sld_design_basis_schedule_svg",
+            "sld_design_basis_schedule_png",
+            "sld_interface_scope_json",
+            "sld_interface_scope_svg",
+            "sld_interface_scope_png",
         }
         for artifact in artifacts:
             assert artifact.sizing_run_id == run_id
@@ -138,9 +152,38 @@ def test_sld_artifact_registry_records_traceability(sample_excel_path, tmp_path)
             assert artifact.version_tag == artifact_bundle.plugin_version
             assert artifact.metadata_json["actor"] == "registry-tester"
             assert artifact.metadata_json["renderer_version"] == artifact_bundle.plugin_version
-            assert artifact.metadata_json["artifact_mode"] == "official"
+            assert artifact.metadata_json["artifact_mode"] == "concept"
+            assert artifact.metadata_json["not_for_construction"] is True
+            assert artifact.metadata_json["formal_readiness"]["ready"] is False
             assert artifact.metadata_json["validation_mode"] == "strict"
             assert artifact.metadata_json["input_hash"]
             assert artifact.metadata_json["topology_hash"]
             assert artifact.metadata_json["render_spec_hash"]
-            assert ".draft." not in artifact.file_name
+            assert ".concept." in artifact.file_name
+
+        artifacts_by_kind = {artifact.artifact_kind: artifact for artifact in artifacts}
+        svg_text = Path(artifacts_by_kind["sld_svg"].file_path).read_text(encoding="utf-8")
+        assert "CONCEPT ONLY - NOT FOR CONSTRUCTION" in svg_text
+        assert "MISSING:" not in svg_text
+        manifest = json.loads(
+            Path(artifacts_by_kind["sld_readiness_manifest_json"].file_path).read_text(encoding="utf-8")
+        )
+        assert manifest["document_status"] == "concept"
+        assert manifest["formal_readiness"]["ready"] is False
+        site_index = json.loads(
+            Path(artifacts_by_kind["site_electrical_index_json"].file_path).read_text(encoding="utf-8")
+        )
+        assert site_index["sheet_id"] == "SLD-01"
+        assert site_index["quantity_summary"]["ac_block_count"] == 1
+        assert site_index["scope"]["typical_sld_reference"] == "SLD-02 Typical AC Block SLD (AC Block 1)."
+        design_basis = json.loads(
+            Path(artifacts_by_kind["sld_design_basis_schedule_json"].file_path).read_text(encoding="utf-8")
+        )
+        assert design_basis["sheet_id"] == "SLD-03"
+        assert design_basis["document_status"] == "concept"
+        interface_scope = json.loads(
+            Path(artifacts_by_kind["sld_interface_scope_json"].file_path).read_text(encoding="utf-8")
+        )
+        assert interface_scope["sheet_id"] == "SLD-04"
+        assert "must be confirmed" in interface_scope["scope_status"]
+        assert interface_scope["scope_zones"][0]["responsibility"] == "To be confirmed by project agreement."

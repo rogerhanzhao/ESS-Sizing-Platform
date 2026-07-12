@@ -8,6 +8,11 @@ from calb_sizing_tool.services.dc_pipeline_service import size_with_guarantee
 from calb_sizing_tool.services.layout_service import render_layout_from_run_bundle
 from calb_sizing_tool.services.run_persistence_service import persist_dc_run
 from calb_sizing_tool.services.run_restore_service import load_dc_run_bundle
+from calb_sizing_tool.services.site_constraint_readiness_service import build_site_constraint_template
+from calb_sizing_tool.services.site_constraint_set_service import (
+    load_persisted_site_constraint_set,
+    register_site_constraint_set,
+)
 from calb_sizing_tool.services.stage1_service import run_stage1 as service_run_stage1
 
 
@@ -106,3 +111,30 @@ def test_layout_plugin_from_run_snapshot(sample_excel_path, tmp_path):
     assert "layout_png" in kinds
     assert "layout_spec_json" in kinds
     assert "layout_metadata_json" in kinds
+    assert "layout_master_readiness_manifest_json" in kinds
+    assert artifact_bundle.metadata["document_status"] == "concept"
+    assert artifact_bundle.metadata["not_for_construction"] is True
+    assert artifact_bundle.metadata["scope"] == "typical_ac_block_arrangement"
+    assert artifact_bundle.metadata["master_layout_readiness"]["ready"] is False
+
+    artifacts = {artifact["artifact_kind"]: artifact for artifact in artifact_bundle.artifacts}
+    assert "CONCEPT ONLY - NOT FOR CONSTRUCTION" in artifacts["layout_svg"]["content"].decode("utf-8")
+    assert artifacts["layout_svg"]["file_name"] == "typical_ac_block_arrangement.concept.svg"
+    assert b"site_constraint_template" in artifacts["layout_master_readiness_manifest_json"]["content"]
+
+    constraint_set = build_site_constraint_template(
+        run_id=run_id,
+        project_context={"project_name": run_bundle.project_name, "case_name": run_bundle.case_name},
+        ac_output=_make_ac_snapshot().output,
+    )
+    registration = register_site_constraint_set(
+        run_id=run_id,
+        constraint_set=constraint_set,
+        actor="tester",
+        db_url=db_url,
+    )
+    persisted_constraint_set = load_persisted_site_constraint_set(run_id, db_url=db_url)
+
+    assert registration["constraint_set_status"] == "draft_incomplete"
+    assert registration["master_layout_readiness"]["ready"] is False
+    assert persisted_constraint_set == constraint_set

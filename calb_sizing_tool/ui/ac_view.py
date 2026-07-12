@@ -140,14 +140,14 @@ def _render_ac_next_steps(*, is_guest: bool, section_header) -> None:
         cta1, cta2 = st.columns(2)
         if cta1.button("Single Line Diagram →", use_container_width=True, key="ac_cta_sld"):
             navigate_now("Single Line Diagram")
-        if cta2.button("Site Layout →", use_container_width=True, key="ac_cta_layout"):
-            navigate_now("Site Layout")
+        if cta2.button("Typical AC Block Arrangement →", use_container_width=True, key="ac_cta_layout"):
+            navigate_now("Typical AC Block Arrangement")
     else:
         cta1, cta2, cta3 = st.columns(3)
         if cta1.button("Single Line Diagram →", use_container_width=True, key="ac_cta_sld"):
             navigate_now("Single Line Diagram")
-        if cta2.button("Site Layout →", use_container_width=True, key="ac_cta_layout"):
-            navigate_now("Site Layout")
+        if cta2.button("Typical AC Block Arrangement →", use_container_width=True, key="ac_cta_layout"):
+            navigate_now("Typical AC Block Arrangement")
         if cta3.button("Report Export →", use_container_width=True, key="ac_cta_report"):
             navigate_now("Report Export")
 

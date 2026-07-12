@@ -147,16 +147,32 @@ def test_sld_artifact_mode_separation(sample_excel_path, tmp_path):
             mode = artifact.metadata_json["artifact_mode"]
             by_kind[artifact.artifact_kind].add(mode)
             file_names_by_mode[mode].append(artifact.file_name)
-            if mode == "official":
+            if mode == "concept":
                 assert artifact.metadata_json["validation_mode"] == "strict"
-                assert ".draft." not in artifact.file_name
+                assert ".concept." in artifact.file_name
+                assert artifact.metadata_json["not_for_construction"] is True
             if mode == "draft_override":
                 assert artifact.metadata_json["validation_mode"] == "draft"
                 assert ".draft." in artifact.file_name
 
-    expected_kinds = {"sld_svg", "sld_png", "sld_topology_json", "sld_render_spec_json"}
+    expected_kinds = {
+        "sld_svg",
+        "sld_png",
+        "sld_topology_json",
+        "sld_render_spec_json",
+        "sld_readiness_manifest_json",
+        "site_electrical_index_json",
+        "site_electrical_index_svg",
+        "site_electrical_index_png",
+        "sld_design_basis_schedule_json",
+        "sld_design_basis_schedule_svg",
+        "sld_design_basis_schedule_png",
+        "sld_interface_scope_json",
+        "sld_interface_scope_svg",
+        "sld_interface_scope_png",
+    }
     assert set(by_kind.keys()) == expected_kinds
     for artifact_kind in expected_kinds:
-        assert by_kind[artifact_kind] == {"official", "draft_override"}
-    assert file_names_by_mode["official"]
+        assert by_kind[artifact_kind] == {"concept", "draft_override"}
+    assert file_names_by_mode["concept"]
     assert file_names_by_mode["draft_override"]

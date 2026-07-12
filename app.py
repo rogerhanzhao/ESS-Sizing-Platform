@@ -89,12 +89,18 @@ if auth_context is None:
     show_login()
     st.stop()
 
+_TYPICAL_AC_BLOCK_ARRANGEMENT = "Typical AC Block Arrangement"
+_LEGACY_NAV_ALIASES = {"Site Layout": _TYPICAL_AC_BLOCK_ARRANGEMENT}
+for _nav_state_key in ("main_nav", "_pending_main_nav"):
+    if st.session_state.get(_nav_state_key) in _LEGACY_NAV_ALIASES:
+        st.session_state[_nav_state_key] = _LEGACY_NAV_ALIASES[st.session_state[_nav_state_key]]
+
 _ALL_NAV = [
     "Workbench",
     "DC Sizing",
     "AC Sizing",
     "Single Line Diagram",
-    "Site Layout",
+    _TYPICAL_AC_BLOCK_ARRANGEMENT,
     "Report Export",
     "Engineering Settings",
     "Project Directory",
@@ -102,7 +108,7 @@ _ALL_NAV = [
     "Run Registry",
 ]
 # Guests can size but cannot access project/run management or export
-_GUEST_NAV = ["DC Sizing", "AC Sizing", "Single Line Diagram", "Site Layout"]
+_GUEST_NAV = ["DC Sizing", "AC Sizing", "Single Line Diagram", _TYPICAL_AC_BLOCK_ARRANGEMENT]
 
 NAV_OPTIONS = _GUEST_NAV if auth_context.is_guest else _ALL_NAV
 apply_pending_navigation(NAV_OPTIONS, default_page="DC Sizing" if auth_context.is_guest else "Workbench")
@@ -176,12 +182,12 @@ with st.sidebar:
         _NAV_GROUPS: list[tuple[str, list[str]]] = (
             [
                 ("Workspace",       ["Workbench", "Project Directory", "Case Directory", "Engineering Settings"]),
-                ("Sizing Pipeline", ["DC Sizing", "AC Sizing", "Single Line Diagram", "Site Layout", "Report Export"]),
+                ("Sizing Pipeline", ["DC Sizing", "AC Sizing", "Single Line Diagram", _TYPICAL_AC_BLOCK_ARRANGEMENT, "Report Export"]),
                 ("History",         ["Run Registry"]),
             ]
             if not auth_context.is_guest
             else [
-                ("Sizing Pipeline", ["DC Sizing", "AC Sizing", "Single Line Diagram", "Site Layout"]),
+                ("Sizing Pipeline", ["DC Sizing", "AC Sizing", "Single Line Diagram", _TYPICAL_AC_BLOCK_ARRANGEMENT]),
             ]
         )
         for _grp_i, (_grp_label, _grp_pages) in enumerate(_NAV_GROUPS):
@@ -248,7 +254,7 @@ elif nav == "Single Line Diagram":
     from calb_sizing_tool.ui.single_line_diagram_view import show
     show()
 
-elif nav == "Site Layout":
+elif nav == _TYPICAL_AC_BLOCK_ARRANGEMENT:
     from calb_sizing_tool.ui.site_layout_view import show
     show()
 

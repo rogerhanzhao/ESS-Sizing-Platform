@@ -19,6 +19,7 @@
 import base64
 import io
 import json
+import re
 from pathlib import Path
 
 from docx import Document
@@ -122,11 +123,11 @@ def test_ac_block_config_not_verbose():
     # Should have summary section
     assert "AC Block Sizing" in joined or "AC:DC Ratio" in joined
 
-    # Should NOT have verbose per-block listing (the old "AC Block 1", "AC Block 2", etc. lines)
-    # Count how many times "AC Block" appears - should be minimal (just heading), not per-block
-    ac_block_count = joined.count("AC Block")
-    # Should be much less than actual AC blocks (e.g., 2-3 times for heading + maybe template ID)
-    assert ac_block_count < 5, f"AC Block appears {ac_block_count} times, suggests verbose per-block listing"
+    # The concept-arrangement section is allowed to use the phrase "AC Block",
+    # but the report must not revert to a per-block list such as "AC Block 1".
+    assert not re.search(r"\bAC Block\s+\d+\b", joined), (
+        "Report contains a verbose numbered AC Block listing"
+    )
 
 
 def test_report_consistency_validation():

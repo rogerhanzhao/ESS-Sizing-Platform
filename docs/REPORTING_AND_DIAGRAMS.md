@@ -9,7 +9,7 @@ The tool generates four key outputs:
 2. **AC Sizing Report** (V1 stable format)
 3. **Combined Report** (V1 or V2.1 beta format)
 4. **Single Line Diagram (SLD)** with optional PNG export
-5. **Site Layout** with optional PNG export
+5. **Typical AC Block Arrangement (Concept Only)** with optional PNG export
 
 ## Workflow
 
@@ -83,11 +83,11 @@ systemctl start calb-sizingtool@prod
 - If SLD fails to generate, ensure svgwrite is installed: `pip install svgwrite`
 - For PNG export, ensure cairosvg is installed: `pip install cairosvg`
 
-### 5. Site Layout Generation
+### 5. Typical AC Block Arrangement Generation
 
-1. Navigate to **Site Layout** page
+1. Navigate to **Typical AC Block Arrangement** page
 2. Prerequisite: Complete DC and AC sizing
-3. Click **Generate Layout** (Raw V0.5 Stable)
+3. Click **Generate Typical AC Block Arrangement**
 4. Layout outputs are saved:
    - `st.session_state["layout_results"]` — contains SVG and PNG bytes
 5. Download SVG or PNG
@@ -288,7 +288,7 @@ To compare current behavior against the master branch:
 To add a new SLD or Layout style:
 
 1. Create a new renderer function in `calb_diagrams/`
-2. Register it in the Single Line Diagram / Site Layout page
+2. Register it in the Single Line Diagram / Typical AC Block Arrangement page
 3. Follow naming convention: `render_<type>_<style>_svg(spec: ..., out_svg: Path, ...)`
 4. Return `(svg_path, png_warning_or_none)` tuple
 5. Store results in `st.session_state["diagram_results"][<style_key>]`
@@ -300,5 +300,5 @@ To add a new SLD or Layout style:
 - [SLD Pro Renderer](calb_diagrams/sld_pro_renderer.py)
 - [Layout Block Renderer](calb_diagrams/layout_block_renderer.py)
 - [Single Line Diagram UI](calb_sizing_tool/ui/single_line_diagram_view.py)
-- [Site Layout UI](calb_sizing_tool/ui/site_layout_view.py)
+- [Typical AC Block Arrangement UI](calb_sizing_tool/ui/site_layout_view.py)
 - [Report Export UI](calb_sizing_tool/ui/report_export_view.py)

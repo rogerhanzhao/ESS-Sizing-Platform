@@ -72,9 +72,9 @@ streamlit run app.py --server.port 8511 --server.headless true
   - Review SLD with proper electrical topology
   - Each PCS has independent DC BUSBAR
   
-- Go to **"Site Layout"** page
-  - Review DC Block layout (6 modules per block)
-  - Container arrangement and spacing
+- Go to **"Typical AC Block Arrangement"** page
+  - Review one representative AC Block concept arrangement
+  - This is not a full site plan or construction drawing
 
 ### Step 5: Export Report
 - Go to **"Report Export"** page
@@ -140,7 +140,7 @@ python3 verify_fixes_simple.py
 
 ### Issue: SLD/Layout Images Not Showing
 **Solution**:
-1. Ensure diagrams were generated (check Single Line Diagram / Site Layout pages)
+1. Ensure diagrams were generated (check Single Line Diagram / Typical AC Block Arrangement pages)
 2. Check outputs directory exists: `/opt/calb/prod/CALB_SIZINGTOOL/outputs/`
 3. Files should exist: `sld_latest.svg`, `layout_latest.svg`, and PNG versions
 

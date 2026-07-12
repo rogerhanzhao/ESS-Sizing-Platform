@@ -346,7 +346,7 @@ def show():
     else:
         rc3.info("○  SLD (not generated)")
     if layout_png or layout_svg:
-        rc4.success("✓  Site Layout")
+        rc4.success("✓  Typical AC Block Arrangement (Concept Only)")
     else:
         rc4.info("○  Layout (not generated)")
 
@@ -513,6 +513,6 @@ def show():
     if not sld_png and not sld_svg:
         st.info("SLD image not found. Generate it in Single Line Diagram.")
     if not layout_png and not layout_svg:
-        st.info("Layout image not found. Generate it in Site Layout.")
+        st.info("Typical AC Block Arrangement image not found. Generate it from the corresponding concept page.")
 
 

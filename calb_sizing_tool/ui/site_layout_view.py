@@ -18,6 +18,8 @@
 
 from __future__ import annotations
 
+import json
+
 import streamlit as st
 
 from calb_sizing_tool.infra.db.session import session_scope
@@ -33,6 +35,14 @@ from calb_sizing_tool.services.external_layout_service import (
 )
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
 from calb_sizing_tool.services.layout_service import render_layout_from_run_bundle
+from calb_sizing_tool.services.site_constraint_readiness_service import (
+    assess_site_constraint_readiness,
+    build_site_constraint_template,
+)
+from calb_sizing_tool.services.site_constraint_set_service import (
+    load_persisted_site_constraint_set,
+    register_site_constraint_set,
+)
 from calb_sizing_tool.services.sld_data_source_service import AcSnapshotResolution, resolve_preferred_ac_snapshot
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import get_project_state, init_project_state
@@ -60,16 +70,16 @@ def _layout_ac_source_message(resolution: AcSnapshotResolution) -> tuple[str, st
     if resolution.snapshot is None:
         return (
             "warning",
-            "AC snapshot not found. Run AC sizing before generating layout.",
+            "AC snapshot not found. Run AC sizing before generating a Typical AC Block Arrangement.",
         )
     if resolution.source == "persisted_run_snapshot":
         return (
             "caption",
-            "Layout runtime data source: persisted AC snapshot attached to the active run.",
+            "Arrangement data source: persisted AC snapshot attached to the active run.",
         )
     return (
         "warning",
-        "Layout runtime data source: session compatibility fallback. Persist AC sizing before using layout as formal output.",
+        "Arrangement data source: session compatibility fallback. Persist AC sizing before using this concept output.",
     )
 
 
@@ -118,10 +128,18 @@ def show() -> None:
     workspace = get_workspace_context()
 
     from calb_sizing_tool.ui._ui import page_header, section_header, workspace_status_bar
-    page_header("Site Layout", "Block Arrangement & Site Planning")
+    page_header(
+        "Typical AC Block Arrangement",
+        "Concept equipment relationship for one AC Block — not a site plan or construction drawing.",
+    )
+    st.info(
+        "This output shows one typical AC Block. It does not model site boundary, access, fire lanes, "
+        "maintenance clearances, POI routing, or by-others scope.",
+        icon=None,
+    )
 
     if _is_guest:
-        st.info("👁 **Guest mode** — layout runs from session data. AI prompt and external submission are disabled.", icon=None)
+        st.info("👁 **Guest mode** — concept arrangements run from session data. AI prompt and external submission are disabled.", icon=None)
 
     run_id_default = (
         st.session_state.get("dc_last_run_id", "")
@@ -165,15 +183,108 @@ def show() -> None:
     else:
         st.warning(message)
 
+    constraint_template = build_site_constraint_template(
+        run_id=run_id,
+        project_context={
+            "project_code": workspace.get("project_code"),
+            "project_name": workspace.get("project_name"),
+            "case_code": workspace.get("case_code"),
+            "case_name": workspace.get("case_name"),
+        },
+        ac_output=ac_snapshot.output if ac_snapshot else {},
+    )
+    constraint_set_for_assessment = constraint_template
+    constraint_source = "generated_template"
+    uploaded_constraint_set_valid = False
     section_header(
-        "Render Options",
-        "Select AC group, DC block arrangement, skid visibility, and renderer plugin.",
+        "Concept Master Layout Readiness",
+        "A deterministic Master Layout remains blocked until project-specific site constraints are provided.",
+        eyebrow="P2 Gate",
+    )
+    st.caption(
+        "This is an input-completeness check, not a code-compliance or construction-design check. "
+        "No boundary, POI location, access route or clearance is assumed by the tool."
+    )
+    if not _is_guest:
+        persisted_constraint_set = load_persisted_site_constraint_set(run_id) if run_id else None
+        if persisted_constraint_set is not None:
+            constraint_set_for_assessment = persisted_constraint_set
+            constraint_source = "persisted_run_artifact"
+            st.caption("Loaded the latest registered Site Constraint Set for this run.")
+        uploaded_constraint_set = st.file_uploader(
+            "Assess or register Site Constraint Set JSON",
+            type=["json"],
+            key="site_constraint_set_assessment_upload",
+            help="The upload is assessed in the current session. It is registered only when you click the explicit register button below.",
+        )
+        if uploaded_constraint_set is not None:
+            try:
+                uploaded_payload = json.loads(uploaded_constraint_set.getvalue().decode("utf-8"))
+                if not isinstance(uploaded_payload, dict):
+                    raise ValueError("The JSON root must be an object.")
+                constraint_set_for_assessment = uploaded_payload
+                constraint_source = "uploaded_session"
+                uploaded_constraint_set_valid = True
+                st.info("Uploaded Site Constraint Set assessed in this session. It has not been registered or used to generate a Master Layout.")
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+                st.error(f"Site Constraint Set cannot be assessed: {exc}")
+
+    master_layout_readiness = assess_site_constraint_readiness(constraint_set_for_assessment)
+    readiness_rows = [
+        {"requirement": item["label"], "status": item["status"], "action": item["message"]}
+        for item in master_layout_readiness["items"]
+    ]
+    if master_layout_readiness["ready"]:
+        st.success("Site Constraint Set is complete enough for the next constraint-validation phase. A Master Layout renderer is not yet enabled.")
+    else:
+        st.warning(
+            f"Concept Master Layout is blocked: {master_layout_readiness['provided_count']} of "
+            f"{master_layout_readiness['required_count']} prerequisite groups are provided."
+        )
+    with st.expander("Site Constraint Set readiness details", expanded=False):
+        st.dataframe(readiness_rows, use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download Site Constraint Set template",
+            json.dumps(constraint_template, indent=2, sort_keys=True),
+            "site_constraint_set.template.json",
+            "application/json",
+        )
+        if not _is_guest:
+            st.caption(f"Assessment source: `{constraint_source}`")
+            register_constraint_set = st.button(
+                "Register uploaded Site Constraint Set to this run",
+                disabled=not uploaded_constraint_set_valid or not run_id,
+                help="Registers the uploaded JSON as a versioned run artifact with an audit record. Incomplete sets remain blocked from Master Layout generation.",
+            )
+            if register_constraint_set:
+                try:
+                    with session_scope() as session:
+                        access = AccessControlService(session, auth_user)
+                        if access.load_dc_run_bundle(run_id) is None:
+                            raise ValueError("Run not found.")
+                    registration = register_site_constraint_set(
+                        run_id=run_id,
+                        constraint_set=constraint_set_for_assessment,
+                        actor=auth_user.username,
+                    )
+                    st.success(
+                        "Site Constraint Set registered as "
+                        f"`{registration['constraint_set_status']}`. "
+                        f"Readiness: {registration['master_layout_readiness']['provided_count']}/"
+                        f"{registration['master_layout_readiness']['required_count']} groups."
+                    )
+                except (PermissionError, ValueError) as exc:
+                    st.error(f"Site Constraint Set registration failed: {exc}")
+
+    section_header(
+        "Concept Options",
+        "Select one representative AC Block, its DC Block arrangement, skid visibility, and renderer.",
         eyebrow="Step 1",
     )
     ac_blocks_total = _resolve_ac_blocks_total(ac_snapshot.output if ac_snapshot else {})
     layout_col1, layout_col2 = st.columns(2)
     block_index = layout_col1.selectbox(
-        "AC Block Group",
+        "Typical AC Block",
         list(range(1, ac_blocks_total + 1)),
         index=0,
         disabled=not ac_snapshot,
@@ -196,7 +307,7 @@ def show() -> None:
         format_func=lambda pid: registry.get(pid).metadata.plugin_name if registry.get(pid) else pid,
     )
 
-    if st.button("Generate Layout", disabled=not run_id or not ac_snapshot, use_container_width=True):
+    if st.button("Generate Typical AC Block Arrangement", disabled=not run_id or not ac_snapshot, use_container_width=True):
         if _is_guest:
             bundle = _build_guest_dc_bundle()
             if not bundle:
@@ -228,11 +339,11 @@ def show() -> None:
                 actor=auth_user.username,
             )
         except Exception as exc:
-            st.error(f"Layout generation failed: {exc}")
+            st.error(f"Typical AC Block Arrangement generation failed: {exc}")
             return
 
         st.session_state["layout_artifacts"] = artifact_bundle
-        st.success("Layout generated and artifacts registered.")
+        st.success("Typical AC Block Arrangement generated and registered as CONCEPT ONLY.")
 
     artifact_bundle = st.session_state.get("layout_artifacts")
     if artifact_bundle:
@@ -240,8 +351,10 @@ def show() -> None:
         svg_item = artifacts.get("layout_svg")
         png_item = artifacts.get("layout_png")
         spec_item = artifacts.get("layout_spec_json")
+        master_readiness_item = artifacts.get("layout_master_readiness_manifest_json")
 
-        section_header("Preview", eyebrow="Output")
+        section_header("Concept Preview", eyebrow="Output")
+        st.caption("CONCEPT ONLY — NOT FOR CONSTRUCTION. Full Site Layout requires a site constraint model and project-specific design rules.")
         if png_item and png_item.get("content"):
             st.image(png_item["content"], use_container_width=True)
         elif svg_item and svg_item.get("content"):
@@ -250,29 +363,36 @@ def show() -> None:
         section_header("Downloads", eyebrow="Output")
         if spec_item:
             st.download_button(
-                "Download layout_spec.json",
+                "Download typical AC Block arrangement spec",
                 spec_item["content"],
-                spec_item.get("file_name") or "layout_spec.json",
+                spec_item.get("file_name") or "typical_ac_block_arrangement_spec.json",
                 "application/json",
             )
         if svg_item:
             st.download_button(
-                "Download layout SVG",
+                "Download typical AC Block arrangement SVG",
                 svg_item["content"],
-                svg_item.get("file_name") or "layout_render.svg",
+                svg_item.get("file_name") or "typical_ac_block_arrangement.concept.svg",
                 "image/svg+xml",
             )
         if png_item:
             st.download_button(
-                "Download layout PNG",
+                "Download typical AC Block arrangement PNG",
                 png_item["content"],
-                png_item.get("file_name") or "layout_render.png",
+                png_item.get("file_name") or "typical_ac_block_arrangement.concept.png",
                 "image/png",
+            )
+        if master_readiness_item:
+            st.download_button(
+                "Download Concept Master Layout readiness manifest",
+                master_readiness_item["content"],
+                master_readiness_item.get("file_name") or "concept_master_layout_readiness_manifest.json",
+                "application/json",
             )
 
     if not _is_guest:
         st.divider()
-        with st.expander("AI Layout Prompt", expanded=False):
+        with st.expander("AI Concept Arrangement Prompt", expanded=False):
             if st.button("Generate Prompt Payload", disabled=not run_id):
                 try:
                     prompt_result = generate_layout_prompt(
@@ -291,7 +411,7 @@ def show() -> None:
             if prompt_payload:
                 st.download_button(
                     "Download layout_prompt_payload.json",
-                    __import__("json").dumps(prompt_payload, indent=2, sort_keys=True),
+                    json.dumps(prompt_payload, indent=2, sort_keys=True),
                     "layout_prompt_payload.json",
                     "application/json",
                 )
@@ -303,10 +423,10 @@ def show() -> None:
                     "text/plain",
                 )
 
-        with st.expander("External AI Submission", expanded=False):
-            upload = st.file_uploader("Upload AI-generated layout (PNG or SVG)", type=["png", "svg"])
+        with st.expander("External AI Concept Submission", expanded=False):
+            upload = st.file_uploader("Upload AI-generated concept arrangement (PNG or SVG)", type=["png", "svg"])
             notes = st.text_area("Submission notes", height=80)
-            if st.button("Submit AI Layout", disabled=not run_id or upload is None):
+            if st.button("Submit AI Concept Arrangement", disabled=not run_id or upload is None):
                 if upload is None:
                     st.error("Please upload a file.")
                 else:

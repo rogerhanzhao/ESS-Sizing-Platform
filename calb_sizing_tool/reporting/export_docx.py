@@ -891,14 +891,14 @@ def create_combined_report(dc_output: dict, ac_output: dict, ctx: dict) -> bytes
         doc.add_paragraph("SLD not generated. Please generate in Single Line Diagram page.")
     doc.add_paragraph("")
 
-    doc.add_heading("7. Site Layout", level=2)
+    doc.add_heading("7. Typical AC Block Arrangement (Concept Only)", level=2)
     layout_png = _resolve_diagram_bytes(ctx or {}, "layout_png_bytes", "layout_svg_bytes")
     if layout_png:
         doc.add_picture(io.BytesIO(layout_png), width=Inches(6.7))
-        doc.add_paragraph(f"Figure {figure_index} - Block Layout (auto-generated)")
+        doc.add_paragraph(f"Figure {figure_index} - Typical AC Block Arrangement (concept only)")
         figure_index += 1
     else:
-        doc.add_paragraph("Layout not generated. Please generate in Site Layout page.")
+        doc.add_paragraph("Typical AC Block Arrangement not generated. Generate it from the corresponding concept page.")
     doc.add_paragraph("")
 
     _add_appendix(doc, ctx or {})

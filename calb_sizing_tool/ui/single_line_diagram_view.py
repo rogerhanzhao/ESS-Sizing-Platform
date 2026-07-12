@@ -576,6 +576,8 @@ def show() -> None:
             "renderer_lineage": artifact_bundle.metadata.get("renderer_lineage"),
             "preview_control_signature": preview_control_signature,
             "formal_readiness": artifact_bundle.metadata.get("formal_readiness"),
+            "document_status": artifact_bundle.metadata.get("document_status"),
+            "not_for_construction": artifact_bundle.metadata.get("not_for_construction"),
             "engineering_v2_graph_hash": artifact_bundle.metadata.get("engineering_v2_graph_hash"),
             "engineering_v2_layout_hash": artifact_bundle.metadata.get("engineering_v2_layout_hash"),
             "artifact_mode": artifact_bundle.metadata.get("artifact_mode"),
@@ -587,22 +589,30 @@ def show() -> None:
             "runtime_source_mode": runtime_status.mode,
             "forced_draft_by_source": bool(runtime_status.force_draft),
         }
-        if execution.prepared.validation_mode == "draft":
-            st.warning("SLD draft generated and artifacts registered.")
-        else:
+        if artifact_bundle.metadata.get("document_status") == "official":
             st.success("Formal SLD generated and artifacts registered.")
+        else:
+            st.warning(
+                "Concept SLD generated and artifacts registered. "
+                "It is marked NOT FOR CONSTRUCTION until the readiness gate passes."
+            )
 
     artifact_bundle = st.session_state.get("sld_artifacts")
     pipeline_meta = st.session_state.get("sld_pipeline_meta") or {}
     if pipeline_meta:
-        mode_label = "Draft / Override" if pipeline_meta.get("validation_mode") == "draft" else "Formal / Strict"
+        document_status = str(pipeline_meta.get("document_status") or pipeline_meta.get("artifact_mode") or "concept")
+        mode_label = {
+            "official": "Formal / Released",
+            "concept": "Concept / Not for construction",
+            "draft_override": "Draft / Override",
+        }.get(document_status, document_status)
         st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
         section_header("Pipeline Status", eyebrow="Result")
         _meta_run = pipeline_meta.get("run_id") or ""
         _meta_run_short = f"··{_meta_run[-8:]}" if len(_meta_run) >= 8 else (_meta_run or "—")
         st.caption(
             f"Run {_meta_run_short} | Group {pipeline_meta.get('group_index')} | "
-            f"Mode: {mode_label} | Topology {pipeline_meta.get('topology_nodes')} nodes / {pipeline_meta.get('topology_edges')} edges"
+            f"Document: {mode_label} | Topology {pipeline_meta.get('topology_nodes')} nodes / {pipeline_meta.get('topology_edges')} edges"
         )
         if pipeline_meta.get("runtime_source_mode"):
             st.caption(
@@ -620,8 +630,10 @@ def show() -> None:
                 f"Engineering V2 graph `{pipeline_meta.get('engineering_v2_graph_hash')}` | "
                 f"layout `{pipeline_meta.get('engineering_v2_layout_hash')}`"
             )
-        if pipeline_meta.get("validation_mode") == "draft":
-            st.warning("This SLD was produced in draft mode and must not replace the formal baseline result.")
+        if document_status == "concept":
+            st.warning("This SLD is a concept document and must not be used for construction or formal issue.")
+        elif document_status == "draft_override":
+            st.warning("This SLD was produced in draft/override mode and must not replace the formal baseline result.")
         elif pipeline_meta.get("draft_warnings"):
             st.info("No draft fallback was applied in formal mode.")
         formal_readiness = pipeline_meta.get("formal_readiness") or {}
@@ -646,6 +658,16 @@ def show() -> None:
         artifacts = {item["artifact_kind"]: item for item in artifact_bundle.artifacts}
         svg_item = artifacts.get("sld_svg")
         png_item = artifacts.get("sld_png")
+        manifest_item = artifacts.get("sld_readiness_manifest_json")
+        site_index_png_item = artifacts.get("site_electrical_index_png")
+        site_index_svg_item = artifacts.get("site_electrical_index_svg")
+        site_index_json_item = artifacts.get("site_electrical_index_json")
+        design_basis_png_item = artifacts.get("sld_design_basis_schedule_png")
+        design_basis_svg_item = artifacts.get("sld_design_basis_schedule_svg")
+        design_basis_json_item = artifacts.get("sld_design_basis_schedule_json")
+        interface_scope_png_item = artifacts.get("sld_interface_scope_png")
+        interface_scope_svg_item = artifacts.get("sld_interface_scope_svg")
+        interface_scope_json_item = artifacts.get("sld_interface_scope_json")
 
         section_header("Preview", eyebrow="Output")
         zoom = st.slider(
@@ -668,6 +690,24 @@ def show() -> None:
             )
             st.components.v1.html(svg_html, height=height + 40, scrolling=True)
 
+        if site_index_png_item or design_basis_png_item or interface_scope_png_item:
+            section_header("Proposal Package Sheets", eyebrow="Output")
+            st.caption(
+                "SLD-01 indexes the complete AC Block population; SLD-02 is the selected typical block; "
+                "SLD-03 records the sizing-derived design basis and formal-issue register; SLD-04 makes "
+                "interface locations and project-confirmation boundaries explicit. "
+                "These sheets are not a site layout or construction package."
+            )
+            if site_index_png_item:
+                with st.expander("SLD-01 Site Electrical Index", expanded=False):
+                    st.image(site_index_png_item["content"], width=1200)
+            if design_basis_png_item:
+                with st.expander("SLD-03 Electrical Design Basis Schedule", expanded=False):
+                    st.image(design_basis_png_item["content"], width=1200)
+            if interface_scope_png_item:
+                with st.expander("SLD-04 Concept Interface / Scope", expanded=False):
+                    st.image(interface_scope_png_item["content"], width=1200)
+
         hash_rows = []
         for artifact_kind, artifact_hash in (pipeline_meta.get("artifact_hashes") or {}).items():
             hash_rows.append({"artifact_kind": artifact_kind, "content_hash": artifact_hash})
@@ -689,3 +729,58 @@ def show() -> None:
                 png_item.get("file_name") or "sld_render.png",
                 "image/png",
             )
+        if manifest_item:
+            st.download_button(
+                "Download SLD readiness manifest",
+                manifest_item["content"],
+                manifest_item.get("file_name") or "sld_readiness_manifest.json",
+                "application/json",
+            )
+        for label, item, fallback_name, media_type in (
+            ("Download Site Electrical Index SVG", site_index_svg_item, "site_electrical_index.svg", "image/svg+xml"),
+            ("Download Site Electrical Index PNG", site_index_png_item, "site_electrical_index.png", "image/png"),
+            ("Download Site Electrical Index JSON", site_index_json_item, "site_electrical_index.json", "application/json"),
+            (
+                "Download Electrical Design Basis SVG",
+                design_basis_svg_item,
+                "sld_design_basis_schedule.svg",
+                "image/svg+xml",
+            ),
+            (
+                "Download Electrical Design Basis PNG",
+                design_basis_png_item,
+                "sld_design_basis_schedule.png",
+                "image/png",
+            ),
+            (
+                "Download Electrical Design Basis JSON",
+                design_basis_json_item,
+                "sld_design_basis_schedule.json",
+                "application/json",
+            ),
+            (
+                "Download Concept Interface / Scope SVG",
+                interface_scope_svg_item,
+                "sld_interface_scope.svg",
+                "image/svg+xml",
+            ),
+            (
+                "Download Concept Interface / Scope PNG",
+                interface_scope_png_item,
+                "sld_interface_scope.png",
+                "image/png",
+            ),
+            (
+                "Download Concept Interface / Scope JSON",
+                interface_scope_json_item,
+                "sld_interface_scope.json",
+                "application/json",
+            ),
+        ):
+            if item:
+                st.download_button(
+                    label,
+                    item["content"],
+                    item.get("file_name") or fallback_name,
+                    media_type,
+                )

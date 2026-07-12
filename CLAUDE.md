@@ -55,7 +55,7 @@ a fresh DB (the `Base.metadata.create_all` safety net in `app.py` creates missin
 python -m pytest tests/ -x -q
 ```
 
-195 tests, ~30 s. All must pass before committing.
+215 tests, ~50 s. All must pass before committing.
 
 ## Git
 

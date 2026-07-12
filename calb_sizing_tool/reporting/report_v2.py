@@ -700,18 +700,18 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
     if not sld_embedded:
         doc.add_paragraph("SLD not generated. Please generate in the Single Line Diagram page.")
 
-    # --- Section 8: Site Layout ---
+    # --- Section 8: Typical AC Block Arrangement ---
     doc.add_page_break()
-    doc.add_heading("8.  Site Layout", level=2)
+    doc.add_heading("8.  Typical AC Block Arrangement (Concept Only)", level=2)
     layout_png_bytes = ctx.layout_png_bytes
     if not layout_png_bytes and ctx.layout_svg_bytes:
         layout_png_bytes = _svg_bytes_to_png(ctx.layout_svg_bytes)
     if layout_png_bytes:
         doc.add_picture(io.BytesIO(layout_png_bytes), width=Inches(6.7))
         _keep_next_para(doc.paragraphs[-1])
-        doc.add_paragraph(f"Figure {figure_index}: Site Layout – Block Arrangement")
+        doc.add_paragraph(f"Figure {figure_index}: Typical AC Block Arrangement — Concept Only")
     else:
-        doc.add_paragraph("Layout not generated. Please generate in the Site Layout page.")
+        doc.add_paragraph("Typical AC Block Arrangement not generated. Generate it from the corresponding concept page.")
 
     return _doc_to_bytes(doc)
 

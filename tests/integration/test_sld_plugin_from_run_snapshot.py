@@ -116,6 +116,10 @@ def test_sld_plugin_from_run_snapshot(sample_excel_path, tmp_path):
     assert "sld_png" in kinds
     assert "sld_topology_json" in kinds
     assert "sld_render_spec_json" in kinds
+    assert "sld_readiness_manifest_json" in kinds
+    assert "site_electrical_index_png" in kinds
+    assert "sld_design_basis_schedule_png" in kinds
+    assert "sld_interface_scope_png" in kinds
     assert artifact_bundle.metadata["artifact_mode"] == "draft_override"
     assert artifact_bundle.metadata["renderer_version"] == artifact_bundle.plugin_version
     assert artifact_bundle.metadata["input_hash"]

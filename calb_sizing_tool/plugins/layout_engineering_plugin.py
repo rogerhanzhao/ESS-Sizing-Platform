@@ -12,6 +12,10 @@ from calb_sizing_tool.plugins.base import ArtifactPayload, PluginMetadata, json_
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot, LayoutRuleSnapshot, TopologySnapshot
 from calb_sizing_tool.schemas.layout_inputs import LayoutRenderInput, LayoutRenderOptions
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
+from calb_sizing_tool.services.site_constraint_readiness_service import (
+    assess_site_constraint_readiness,
+    build_site_constraint_template,
+)
 
 
 def _svg_bytes_to_png(svg_bytes: bytes) -> bytes:
@@ -27,16 +31,31 @@ def _safe_int(value, default=0):
         return default
 
 
+def _apply_concept_watermark(svg_bytes: bytes) -> bytes:
+    svg_text = svg_bytes.decode("utf-8")
+    overlay = (
+        '<g id="calb-document-status" pointer-events="none">'
+        '<text x="50%" y="52%" text-anchor="middle" '
+        'font-family="Arial, sans-serif" font-size="30" font-weight="700" '
+        'fill="#B42318" fill-opacity="0.25">'
+        'CONCEPT ONLY - NOT FOR CONSTRUCTION</text></g>'
+    )
+    if "</svg>" not in svg_text:
+        raise ValueError("Layout renderer returned malformed SVG without a closing tag.")
+    return svg_text.rsplit("</svg>", 1)[0].encode("utf-8") + overlay.encode("utf-8") + b"</svg>"
+
+
 class LayoutEngineeringPlugin:
     metadata = PluginMetadata(
         plugin_id="layout_engineering_v1",
-        plugin_name="Layout Engineering Renderer",
+        plugin_name="Typical AC Block Arrangement Renderer",
         plugin_version="1.0.0",
         supported_artifact_kind=[
             "layout_svg",
             "layout_png",
             "layout_spec_json",
             "layout_metadata_json",
+            "layout_master_readiness_manifest_json",
         ],
     )
 
@@ -109,10 +128,10 @@ class LayoutEngineeringPlugin:
                 pcs_count = 4
 
         labels = {
-            "block_title": options.block_title or "Block {index}: DC Blocks={dc_blocks}",
+            "block_title": options.block_title or "Typical AC Block {index}: DC Blocks={dc_blocks}",
             "bess_range_text": options.bess_range_text or "BESS {start}~{end}",
-            "skid_text": options.skid_text or "PCS&MVT SKID (AC Block)",
-            "skid_subtext": options.skid_subtext or "TBD",
+            "skid_text": options.skid_text or "PCS & MVT SKID (TYPICAL AC BLOCK)",
+            "skid_subtext": options.skid_subtext or "CONCEPT ONLY - NOT FOR CONSTRUCTION",
         }
 
         spec = build_layout_block_spec(
@@ -145,54 +164,91 @@ class LayoutEngineeringPlugin:
         if not svg_bytes:
             raise RuntimeError("Layout SVG render failed.")
 
+        svg_bytes = _apply_concept_watermark(svg_bytes)
         png_bytes = _svg_bytes_to_png(svg_bytes)
+        site_constraint_template = build_site_constraint_template(
+            run_id=render_input.run_id,
+            project_context={
+                "project_code": render_input.run_bundle.project_code,
+                "project_name": render_input.run_bundle.project_name,
+                "case_code": render_input.run_bundle.case_code,
+                "case_name": render_input.run_bundle.case_name,
+            },
+            ac_output=ac_output,
+        )
+        master_layout_readiness = assess_site_constraint_readiness(site_constraint_template)
 
         metadata = {
             "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
             "block_index": block_index,
             "dc_blocks_total": dc_blocks_total,
             "arrangement": arrangement,
+            "document_status": "concept",
+            "not_for_construction": True,
+            "scope": "typical_ac_block_arrangement",
+            "master_layout_readiness": master_layout_readiness,
         }
 
         return {
             "spec": asdict(spec),
             "svg_bytes": svg_bytes,
             "png_bytes": png_bytes,
+            "site_constraint_template": site_constraint_template,
+            "master_layout_readiness": master_layout_readiness,
             "metadata": metadata,
         }
 
     def emit_artifact(self, render_output: dict[str, Any]) -> list[ArtifactPayload]:
+        metadata = dict(render_output.get("metadata") or {})
         artifacts: list[ArtifactPayload] = []
         artifacts.append(
             ArtifactPayload(
                 artifact_kind="layout_spec_json",
-                file_name="layout_spec.json",
+                file_name="typical_ac_block_arrangement_spec.json",
                 media_type="application/json",
                 content=json_bytes(render_output["spec"]),
+                metadata=dict(metadata),
             )
         )
         artifacts.append(
             ArtifactPayload(
                 artifact_kind="layout_svg",
-                file_name="layout_render.svg",
+                file_name="typical_ac_block_arrangement.concept.svg",
                 media_type="image/svg+xml",
                 content=render_output["svg_bytes"],
+                metadata=dict(metadata),
             )
         )
         artifacts.append(
             ArtifactPayload(
                 artifact_kind="layout_png",
-                file_name="layout_render.png",
+                file_name="typical_ac_block_arrangement.concept.png",
                 media_type="image/png",
                 content=render_output["png_bytes"],
+                metadata=dict(metadata),
             )
         )
         artifacts.append(
             ArtifactPayload(
                 artifact_kind="layout_metadata_json",
-                file_name="layout_metadata.json",
+                file_name="typical_ac_block_arrangement_metadata.json",
                 media_type="application/json",
                 content=json_bytes(render_output["metadata"]),
+                metadata=dict(metadata),
+            )
+        )
+        artifacts.append(
+            ArtifactPayload(
+                artifact_kind="layout_master_readiness_manifest_json",
+                file_name="concept_master_layout_readiness_manifest.json",
+                media_type="application/json",
+                content=json_bytes(
+                    {
+                        "site_constraint_template": render_output["site_constraint_template"],
+                        "master_layout_readiness": render_output["master_layout_readiness"],
+                    }
+                ),
+                metadata=dict(metadata),
             )
         )
         return artifacts

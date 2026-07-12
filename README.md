@@ -68,11 +68,11 @@ On first run, the login page prompts to create the initial admin account. After 
 
 ## Diagrams (SLD / Layout)
 
-Both SLD and Layout are generated from `run_id` via the plugin system. Use the Single Line Diagram or Site Layout pages to select a run and generate artifacts. Artifacts are registered in the database.
+SLD and the Typical AC Block Arrangement are generated from `run_id` via the plugin system. The Arrangement is a concept-only view of one AC Block; it is not a full site plan or construction drawing. Artifacts are registered in the database.
 
 ## External AI Layout Workflow
 
-1. In Site Layout, generate and download the prompt payload or prompt text.
+1. In Typical AC Block Arrangement, generate and download the concept prompt payload or prompt text.
 2. Run the external AI tool and upload the returned image.
 3. Admin reviews and approves/rejects the submission. Approved artifacts are stored alongside deterministic layouts.
 

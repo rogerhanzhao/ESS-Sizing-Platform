@@ -97,7 +97,7 @@ def load_artifact_bytes_from_db(
     try:
         with session_scope(db_url) as session:
             rows = (
-                session.query(ArtifactRegistry)
+                session.query(ArtifactRegistry.artifact_kind, ArtifactRegistry.file_path)
                 .filter(
                     ArtifactRegistry.sizing_run_id == run_id,
                     ArtifactRegistry.artifact_kind.in_(kinds_set),
@@ -105,14 +105,14 @@ def load_artifact_bytes_from_db(
                 .order_by(ArtifactRegistry.created_at.desc())
                 .all()
             )
+            artifact_paths = [(str(row.artifact_kind), str(row.file_path)) for row in rows]
         seen: set[str] = set()
-        for row in rows:
-            kind = row.artifact_kind
+        for kind, file_path_value in artifact_paths:
             if kind in seen:
                 continue
             seen.add(kind)
             try:
-                file_path = Path(row.file_path)
+                file_path = Path(file_path_value)
                 if file_path.exists():
                     result[kind] = file_path.read_bytes()
             except Exception:

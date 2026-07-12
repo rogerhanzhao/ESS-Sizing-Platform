@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass
@@ -7,6 +8,7 @@ from typing import Any
 from xml.etree import ElementTree as ET
 
 from calb_sizing_tool.plugins.registry import get_plugin_registry
+from calb_sizing_tool.plugins.base import ArtifactPayload, json_bytes
 from calb_sizing_tool.schemas.diagram_inputs import (
     AcSnapshot,
     DiagramArtifactBundle,
@@ -22,6 +24,7 @@ from calb_sizing_tool.services.sld_formal_readiness_service import (
     SldFormalReadinessReport,
     assess_sld_formal_readiness,
 )
+from calb_sizing_tool.services.sld_proposal_package_service import build_sld_proposal_package_artifacts
 from calb_sizing_tool.services.sld_authoritative_builder import build_sld_authoritative_result
 
 
@@ -45,6 +48,75 @@ class ExecutedSldPipeline:
 
 def resolve_sld_validation_mode(options: SldRenderOptions) -> str:
     return "draft" if bool(options.override_mode) else "strict"
+
+
+def _resolve_document_status(prepared: PreparedSldPipeline) -> str:
+    if prepared.validation_mode == "draft" or bool(prepared.render_input.canonical_input.override_mode):
+        return "draft_override"
+    return "official" if prepared.formal_readiness.ready else "concept"
+
+
+def _hash_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _svg_to_png(svg_bytes: bytes) -> bytes:
+    import cairosvg
+
+    return cairosvg.svg2png(bytestring=svg_bytes, background_color="white")
+
+
+def _concept_safe_svg(svg_bytes: bytes, document_status: str) -> bytes:
+    """Overlay non-formal drawings and remove false-looking equipment values.
+
+    The detailed values remain in the readiness manifest. The drawing itself
+    must not look like a released engineering document when those values are
+    not yet supplied.
+    """
+    if document_status == "official":
+        return svg_bytes
+
+    svg_text = svg_bytes.decode("utf-8")
+    if document_status == "concept":
+        # The renderer marks unsupplied engineering values as "MISSING: <label>".
+        # Match the marker pattern rather than each label so renderer label
+        # changes cannot silently leak a MISSING marker into a concept issue.
+        svg_text = re.sub(r"MISSING:\s*[^<]*", "Not specified - concept only", svg_text)
+        status_label = "CONCEPT ONLY - NOT FOR CONSTRUCTION"
+    else:
+        status_label = "DRAFT / OVERRIDE - NOT FOR CONSTRUCTION"
+
+    overlay = (
+        '<g id="calb-document-status" pointer-events="none">'
+        '<text x="50%" y="52%" text-anchor="middle" '
+        'font-family="Arial, sans-serif" font-size="42" font-weight="700" '
+        'fill="#B42318" fill-opacity="0.28">'
+        f"{status_label}</text></g>"
+    )
+    if "</svg>" not in svg_text:
+        raise ValueError("SLD renderer returned malformed SVG without a closing tag.")
+    return svg_text.rsplit("</svg>", 1)[0].encode("utf-8") + overlay.encode("utf-8") + b"</svg>"
+
+
+def _apply_document_status(render_output: dict[str, Any], document_status: str) -> None:
+    svg_bytes = _concept_safe_svg(bytes(render_output.get("svg_bytes") or b""), document_status)
+    if document_status == "official":
+        png_bytes = bytes(render_output.get("png_bytes") or b"") or _svg_to_png(svg_bytes)
+    else:
+        png_bytes = _svg_to_png(svg_bytes)
+    metadata = dict(render_output.get("metadata") or {})
+    metadata.update(
+        {
+            "artifact_mode": document_status,
+            "document_status": document_status,
+            "not_for_construction": document_status != "official",
+            "svg_hash": _hash_bytes(svg_bytes),
+            "png_hash": _hash_bytes(png_bytes),
+        }
+    )
+    render_output["svg_bytes"] = svg_bytes
+    render_output["png_bytes"] = png_bytes
+    render_output["metadata"] = metadata
 
 
 def prepare_sld_pipeline_from_run_bundle(
@@ -142,9 +214,79 @@ def run_sld_pipeline_from_run_bundle(
         plugin_id=plugin_id,
     )
     render_output = render_prepared_sld_pipeline(prepared)
+    document_status = _resolve_document_status(prepared)
+    _apply_document_status(render_output, document_status)
     artifacts = prepared.plugin.emit_artifact(render_output)
     metadata = prepared.plugin.metadata_payload(prepared.render_input, render_output)
-    metadata["formal_readiness"] = prepared.formal_readiness.to_payload()
+    formal_readiness = prepared.formal_readiness.to_payload()
+    metadata.update(
+        {
+            "formal_readiness": formal_readiness,
+            "document_status": document_status,
+            "not_for_construction": document_status != "official",
+            "proposal_package": {
+                "sheets": [
+                    "SLD-01 Site Electrical Index",
+                    "SLD-02 Typical AC Block SLD",
+                    "SLD-03 Electrical Design Basis Schedule",
+                    "SLD-04 Concept Interface / Scope",
+                ],
+                "site_layout_included": False,
+            },
+        }
+    )
+
+    manifest_suffix = {
+        "official": "",
+        "concept": ".concept",
+        "draft_override": ".draft",
+    }.get(document_status, ".concept")
+    manifest_payload = {
+        "run_id": run_bundle.run_id,
+        "document_status": document_status,
+        "not_for_construction": document_status != "official",
+        "validation_mode": prepared.validation_mode,
+        "renderer_mode": metadata.get("renderer_mode"),
+        "source_trace": prepared.render_input.canonical_input.source_trace,
+        "formal_readiness": formal_readiness,
+    }
+    artifacts.append(
+        ArtifactPayload(
+            artifact_kind="sld_readiness_manifest_json",
+            file_name=f"sld_readiness_manifest{manifest_suffix}.json",
+            media_type="application/json",
+            content=json_bytes(manifest_payload),
+            metadata={
+                "content_hash": _hash_bytes(json_bytes(manifest_payload)),
+            },
+        )
+    )
+    artifacts.extend(
+        build_sld_proposal_package_artifacts(
+            run_bundle=run_bundle,
+            ac_snapshot=ac_snapshot,
+            formal_readiness=formal_readiness,
+            document_status=document_status,
+            typical_group_index=prepared.topology.summary.group_index,
+            svg_to_png=_svg_to_png,
+        )
+    )
+    shared_artifact_metadata = {
+        "artifact_mode": document_status,
+        "document_status": document_status,
+        "not_for_construction": document_status != "official",
+        "formal_readiness": formal_readiness,
+        "run_id": run_bundle.run_id,
+        "validation_mode": metadata.get("validation_mode"),
+        "renderer_version": metadata.get("renderer_version"),
+        "renderer_mode": metadata.get("renderer_mode"),
+        "input_hash": metadata.get("input_hash"),
+        "topology_hash": metadata.get("topology_hash"),
+        "render_spec_hash": metadata.get("render_spec_hash"),
+    }
+    for artifact in artifacts:
+        artifact.metadata.update(shared_artifact_metadata)
+        artifact.metadata.setdefault("content_hash", _hash_bytes(artifact.content))
 
     persist_artifacts(
         run_id=run_bundle.run_id,
