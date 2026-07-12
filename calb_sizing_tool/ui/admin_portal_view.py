@@ -324,18 +324,23 @@ def _render_edit_form(
                 label = spec["label"]
                 kind = spec.get("kind", "text")
                 current = record.get(key)
+                # Explicit entity+record keys: without them Streamlit derives
+                # widget IDs from (type, label, value), which collide with the
+                # add-form widgets on the same page whenever values match, and
+                # keep stale user input when the selected record changes.
+                widget_key = f"edit_{entity}_{record_id}_{key}"
                 if kind == "text":
-                    values[key] = st.text_input(label, value=str(current or ""))
+                    values[key] = st.text_input(label, value=str(current or ""), key=widget_key)
                 elif kind == "textarea":
-                    values[key] = st.text_area(label, value=str(current or ""), height=70)
+                    values[key] = st.text_area(label, value=str(current or ""), height=70, key=widget_key)
                 elif kind == "float":
-                    values[key] = st.number_input(label, value=_optional_float(current), step=float(spec.get("step", 1.0)))
+                    values[key] = st.number_input(label, value=_optional_float(current), step=float(spec.get("step", 1.0)), key=widget_key)
                 elif kind == "int":
-                    values[key] = st.number_input(label, value=_optional_int(current), min_value=0, step=1)
+                    values[key] = st.number_input(label, value=_optional_int(current), min_value=0, step=1, key=widget_key)
                 elif kind == "select":
                     choices = spec["choices"]
                     index = choices.index(current) if current in choices else 0
-                    values[key] = st.selectbox(label, choices, index=index, key=f"edit_{entity}_{key}")
+                    values[key] = st.selectbox(label, choices, index=index, key=widget_key)
                 elif kind == "cell":
                     cell_map = _cell_options(cells or [])
                     reverse = {value: label for label, value in cell_map.items()}
@@ -346,15 +351,15 @@ def _render_edit_form(
                             label,
                             labels,
                             index=labels.index(current_label) if current_label in labels else 0,
-                            key=f"edit_{entity}_{key}",
+                            key=widget_key,
                         )
                     ]
                 elif kind == "bool":
-                    values[key] = st.checkbox(label, value=bool(current))
+                    values[key] = st.checkbox(label, value=bool(current), key=widget_key)
 
             c1, c2 = st.columns(2)
-            values["is_active"] = c1.checkbox("Active", value=bool(record.get("is_active", True)))
-            values["is_published"] = c2.checkbox("Published", value=bool(record.get("is_published", False)))
+            values["is_active"] = c1.checkbox("Active", value=bool(record.get("is_active", True)), key=f"edit_{entity}_{record_id}_is_active")
+            values["is_published"] = c2.checkbox("Published", value=bool(record.get("is_published", False)), key=f"edit_{entity}_{record_id}_is_published")
 
             if st.form_submit_button("Save Changes", use_container_width=True):
                 cleaned = {
