@@ -62,3 +62,15 @@ python -m pytest tests/ -x -q
 - Active branch: `ops/ubuntu-docker-coexist-20260311`
 - Main branch: `master`
 - Always run the test suite before committing.
+
+## Session Navigation — read this before scanning code
+
+Do NOT re-read the whole tree at session start. Instead:
+
+1. Read `docs/CURRENT_STATUS_2026-07-12.md` — it holds the current milestone,
+   deferred items, the module map (domain → packages → size → change
+   frequency), and the maintenance decomposition plan.
+2. Declare which domains the task touches; read only those packages.
+3. Sizing-core business logic is FROZEN (`docs/SIZING_LOGIC_CANON_V1.md`).
+4. Update the module map in the status doc in the same commit whenever a
+   domain's responsibility changes.
