@@ -29,6 +29,23 @@ REQUIRED_NON_NULL_COLUMNS = {
     "rte_curve_314_template": ["Profile_Id", "Soh_Band_Min_Pct", "Rte_Dc_Pct"],
 }
 
+# The legacy 314Ah dictionary contains deliberately unpopulated *tail* rows
+# for profiles whose published curve stops before the workbook horizon.  Those
+# rows retain a profile and coordinate but have no usable curve value.  They
+# must not be coerced to zero or inserted into the non-null DB point tables.
+# They are therefore warnings (and omitted during payload construction), while
+# all other missing curve keys/values remain import-blocking errors.
+_OMITTABLE_CURVE_VALUE_GAPS = {
+    "soh_curve_314_template": {
+        "value_column": "Soh_Dc_Pct",
+        "anchor_columns": ("Profile_Id", "Life_Year_Index"),
+    },
+    "rte_curve_314_template": {
+        "value_column": "Soh_Band_Min_Pct",
+        "anchor_columns": ("Profile_Id", "Rte_Dc_Pct"),
+    },
+}
+
 NUMERIC_RANGE_RULES = {
     "battery_cell_type_314_data": {
         "Cell_Capacity_Ah": (0.0, None),
@@ -139,6 +156,22 @@ def _validate_required_non_null(raw: dict[str, pd.DataFrame]) -> list[ImportVali
         for idx, row in df.iterrows():
             for column in columns:
                 if column in df.columns and _is_missing(row.get(column)):
+                    omission_rule = _OMITTABLE_CURVE_VALUE_GAPS.get(sheet)
+                    if (
+                        omission_rule is not None
+                        and column == omission_rule["value_column"]
+                        and all(not _is_missing(row.get(anchor)) for anchor in omission_rule["anchor_columns"])
+                    ):
+                        issues.append(
+                            _issue(
+                                ValidationSeverity.WARNING,
+                                sheet,
+                                "Legacy source curve value is blank; the undefined point will be omitted without interpolation.",
+                                field_name=column,
+                                row_ref=str(idx + 2),
+                            )
+                        )
+                        continue
                     issues.append(
                         _issue(
                             ValidationSeverity.ERROR,
@@ -261,7 +294,8 @@ def _validate_curve_duplicates(raw: dict[str, pd.DataFrame]) -> list[ImportValid
     issues: list[ImportValidationIssue] = []
     df_soh = raw.get("soh_curve_314_template")
     if df_soh is not None and {"Profile_Id", "Life_Year_Index"}.issubset(df_soh.columns):
-        duplicates = df_soh[df_soh.duplicated(subset=["Profile_Id", "Life_Year_Index"], keep=False)]
+        valid_soh = df_soh.dropna(subset=["Profile_Id", "Life_Year_Index", "Soh_Dc_Pct"])
+        duplicates = valid_soh[valid_soh.duplicated(subset=["Profile_Id", "Life_Year_Index"], keep=False)]
         for _, row in duplicates.iterrows():
             issues.append(
                 _issue(
@@ -273,7 +307,8 @@ def _validate_curve_duplicates(raw: dict[str, pd.DataFrame]) -> list[ImportValid
             )
     df_rte = raw.get("rte_curve_314_template")
     if df_rte is not None and {"Profile_Id", "Soh_Band_Min_Pct"}.issubset(df_rte.columns):
-        duplicates = df_rte[df_rte.duplicated(subset=["Profile_Id", "Soh_Band_Min_Pct"], keep=False)]
+        valid_rte = df_rte.dropna(subset=["Profile_Id", "Soh_Band_Min_Pct", "Rte_Dc_Pct"])
+        duplicates = valid_rte[valid_rte.duplicated(subset=["Profile_Id", "Soh_Band_Min_Pct"], keep=False)]
         for _, row in duplicates.iterrows():
             issues.append(
                 _issue(
@@ -292,7 +327,8 @@ def _validate_soh_curve_continuity(raw: dict[str, pd.DataFrame]) -> list[ImportV
     if df is None or not {"Profile_Id", "Life_Year_Index"}.issubset(df.columns):
         return issues
 
-    for profile_id, group in df.groupby("Profile_Id", dropna=True):
+    valid_points = df.dropna(subset=["Profile_Id", "Life_Year_Index", "Soh_Dc_Pct"])
+    for profile_id, group in valid_points.groupby("Profile_Id", dropna=True):
         year_values: list[int] = []
         for value in group["Life_Year_Index"].tolist():
             numeric = _to_float(value)

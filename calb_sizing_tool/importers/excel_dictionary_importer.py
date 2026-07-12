@@ -25,13 +25,33 @@ def _records_with_raw(df: pd.DataFrame, rename_map: dict[str, str], keep_fields:
     for _, row in renamed.iterrows():
         item = {field: row.get(field) for field in keep_fields if field in renamed.columns}
         item["raw_row_json"] = row.to_dict()
-        records.append(item)
+        records.append(_normalize_record(item))
     return records
 
 
 def _records_only(df: pd.DataFrame, rename_map: dict[str, str], keep_fields: list[str]) -> list[dict]:
     renamed = df.rename(columns=rename_map).copy()
-    return [{field: row.get(field) for field in keep_fields if field in renamed.columns} for _, row in renamed.iterrows()]
+    return [
+        _normalize_record({field: row.get(field) for field in keep_fields if field in renamed.columns})
+        for _, row in renamed.iterrows()
+    ]
+
+
+def _complete_records_only(
+    df: pd.DataFrame,
+    rename_map: dict[str, str],
+    keep_fields: list[str],
+    *,
+    required_source_fields: list[str],
+) -> list[dict]:
+    """Build DB records only for source curve rows with usable non-null values.
+
+    Legacy dictionary tail rows can identify a profile and year/band while
+    leaving the curve value undefined.  The source workbook remains the audit
+    record; the non-null point tables receive only defined values.
+    """
+    complete_rows = df.dropna(subset=required_source_fields)
+    return _records_only(complete_rows, rename_map, keep_fields)
 
 
 def _normalize_value(value: Any) -> Any:
@@ -275,7 +295,7 @@ class ExcelDictionaryImporter:
                     "c_rate",
                 ],
             ),
-            "soh_curve_point": _records_only(
+            "soh_curve_point": _complete_records_only(
                 raw["soh_curve_314_template"],
                 {
                     "Profile_Id": "source_profile_id",
@@ -289,8 +309,9 @@ class ExcelDictionaryImporter:
                     "cycle_index",
                     "soh_dc_pct",
                 ],
+                required_source_fields=["Profile_Id", "Life_Year_Index", "Soh_Dc_Pct"],
             ),
-            "rte_curve_band": _records_only(
+            "rte_curve_band": _complete_records_only(
                 raw["rte_curve_314_template"],
                 {
                     "Profile_Id": "source_profile_id",
@@ -304,6 +325,7 @@ class ExcelDictionaryImporter:
                     "soh_band_max_pct",
                     "rte_dc_pct",
                 ],
+                required_source_fields=["Profile_Id", "Soh_Band_Min_Pct", "Rte_Dc_Pct"],
             ),
         }
 
