@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pandas as pd
+from sqlalchemy import text
+
 from calb_sizing_tool.config import DC_DATA_PATH
 from calb_sizing_tool.importers.excel_dictionary_importer import ExcelDictionaryImporter
 from calb_sizing_tool.importers.import_validators import collect_dc_import_validation_issues
@@ -30,3 +33,25 @@ def test_legacy_314_curve_tails_are_audited_and_never_coerced_to_zero(tmp_path):
         assert session.query(RteCurveBand).count() == 51
         assert session.query(SohCurvePoint).filter(SohCurvePoint.soh_dc_pct == 0.0).count() == 0
         assert session.query(RteCurveBand).filter(RteCurveBand.rte_dc_pct == 0.0).count() == 0
+
+        source_soh = pd.read_excel(DC_DATA_PATH, sheet_name="soh_curve_314_template").dropna(
+            subset=["Profile_Id", "Life_Year_Index", "Soh_Dc_Pct"]
+        )
+        source_rows = [
+            (int(row.Profile_Id), int(row.Life_Year_Index), float(row.Soh_Dc_Pct))
+            for row in source_soh.sort_values(["Profile_Id", "Life_Year_Index"]).itertuples(index=False)
+        ]
+        database_rows = [
+            (int(row.source_profile_id), int(row.life_year_index), float(row.soh_dc_pct))
+            for row in session.execute(
+                text(
+                    """
+                    SELECT p.source_profile_id, c.life_year_index, c.soh_dc_pct
+                    FROM soh_curve_point c
+                    JOIN soh_profile p ON p.soh_profile_id = c.soh_profile_id
+                    ORDER BY p.source_profile_id, c.life_year_index
+                    """
+                )
+            )
+        ]
+        assert database_rows == source_rows

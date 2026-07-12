@@ -25,14 +25,14 @@ def _records_with_raw(df: pd.DataFrame, rename_map: dict[str, str], keep_fields:
     for _, row in renamed.iterrows():
         item = {field: row.get(field) for field in keep_fields if field in renamed.columns}
         item["raw_row_json"] = row.to_dict()
-        records.append(_normalize_record(item))
+        records.append(_database_record(item))
     return records
 
 
 def _records_only(df: pd.DataFrame, rename_map: dict[str, str], keep_fields: list[str]) -> list[dict]:
     renamed = df.rename(columns=rename_map).copy()
     return [
-        _normalize_record({field: row.get(field) for field in keep_fields if field in renamed.columns})
+        _database_record({field: row.get(field) for field in keep_fields if field in renamed.columns})
         for _, row in renamed.iterrows()
     ]
 
@@ -54,13 +54,13 @@ def _complete_records_only(
     return _records_only(complete_rows, rename_map, keep_fields)
 
 
-def _normalize_value(value: Any) -> Any:
+def _database_value(value: Any) -> Any:
     if isinstance(value, dict):
-        return {str(key): _normalize_value(val) for key, val in sorted(value.items(), key=lambda item: str(item[0]))}
+        return {str(key): _database_value(val) for key, val in sorted(value.items(), key=lambda item: str(item[0]))}
     if isinstance(value, list):
-        return [_normalize_value(item) for item in value]
+        return [_database_value(item) for item in value]
     if isinstance(value, tuple):
-        return [_normalize_value(item) for item in value]
+        return [_database_value(item) for item in value]
     if isinstance(value, pd.Timestamp):
         return value.isoformat()
     try:
@@ -73,6 +73,17 @@ def _normalize_value(value: Any) -> Any:
             value = value.item()
         except Exception:
             pass
+    return value
+
+
+def _database_record(record: dict[str, Any]) -> dict[str, Any]:
+    """Convert Excel nulls and scalar types without changing source precision."""
+    return {str(key): _database_value(value) for key, value in record.items()}
+
+
+def _normalize_value(value: Any) -> Any:
+    """Normalize values for stable preview/diff comparisons only."""
+    value = _database_value(value)
     if isinstance(value, float):
         return round(value, 10)
     return value
