@@ -153,6 +153,91 @@ def _render_workbench_css() -> None:
             margin-bottom: 0.55rem;
             text-align: left;
         }
+        .wb-workflow {
+            display: grid;
+            gap: 0.55rem;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            margin: 0.25rem 0 1.2rem;
+        }
+        .wb-workflow-step {
+            align-items: flex-start;
+            background: #F8FAFD;
+            border: 1px solid #DDE5EF;
+            border-radius: 6px;
+            display: flex;
+            gap: 0.62rem;
+            min-height: 4.8rem;
+            padding: 0.72rem 0.8rem;
+            text-align: left;
+        }
+        .wb-workflow-step.is-active {
+            background: #EDF4FD;
+            border-color: #7294BD;
+            box-shadow: inset 3px 0 0 #1E4172;
+        }
+        .wb-workflow-step.is-complete {
+            background: #F5F9F6;
+            border-color: #B8D1BF;
+        }
+        .wb-workflow-index {
+            align-items: center;
+            background: #DCE6F2;
+            border-radius: 999px;
+            color: #1E4172;
+            display: inline-flex;
+            flex: 0 0 auto;
+            font-size: 0.78rem;
+            font-weight: 700;
+            height: 1.55rem;
+            justify-content: center;
+            width: 1.55rem;
+        }
+        .wb-workflow-step.is-active .wb-workflow-index {
+            background: #1E4172;
+            color: #FFFFFF;
+        }
+        .wb-workflow-step.is-complete .wb-workflow-index {
+            background: #3E7A52;
+            color: #FFFFFF;
+        }
+        .wb-workflow-label {
+            color: #1A2635;
+            font-size: 0.86rem;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-bottom: 0.16rem;
+        }
+        .wb-workflow-note {
+            color: #687789;
+            font-size: 0.78rem;
+            line-height: 1.35;
+        }
+        .wb-onboarding-copy {
+            color: #687789;
+            font-size: 0.9rem;
+            line-height: 1.45;
+            margin: -0.2rem 0 0.75rem;
+            max-width: 52rem;
+        }
+        .wb-onboarding-aside {
+            background: #F8FAFD;
+            border-left: 3px solid #7294BD;
+            border-radius: 4px;
+            margin-top: 0.15rem;
+            padding: 1rem 1.05rem;
+            text-align: left;
+        }
+        .wb-onboarding-aside-title {
+            color: #1A2635;
+            font-size: 0.9rem;
+            font-weight: 700;
+            margin-bottom: 0.35rem;
+        }
+        .wb-onboarding-aside-copy {
+            color: #5D6D80;
+            font-size: 0.84rem;
+            line-height: 1.45;
+        }
         .wb-action-spacer { height: 0.75rem; }
         .block-container div[data-testid="stButton"] {
             margin-top: 0 !important;
@@ -181,6 +266,7 @@ def _render_workbench_css() -> None:
             .wb-compact-status { min-height: auto; }
             .wb-compact-item { border-left: 0; border-top: 1px solid #DDE5EF; min-height: 2.25rem; }
             .wb-compact-item:first-child { border-top: 0; }
+            .wb-workflow { grid-template-columns: 1fr; }
         }
         </style>
         """,
@@ -220,6 +306,38 @@ def _compact_context_html(context: dict, active_run_label: str) -> str:
         for label, value in items
     )
     return f'<div class="wb-compact-status"><div class="wb-compact-grid">{cells}</div></div>'
+
+
+def _workflow_html(active_step: str) -> str:
+    steps = [
+        ("project", "Project", "Create the project workspace"),
+        ("case", "Case", "Define the sizing case"),
+        ("run", "Run", "Start and retain sizing results"),
+    ]
+    active_index = next(index for index, (code, _, _) in enumerate(steps) if code == active_step)
+    cards = []
+    for index, (_, label, note) in enumerate(steps, start=1):
+        state = "is-active" if index - 1 == active_index else "is-complete" if index - 1 < active_index else "is-locked"
+        number = "✓" if state == "is-complete" else str(index)
+        cards.append(
+            f'<div class="wb-workflow-step {state}">'
+            f'<span class="wb-workflow-index">{number}</span>'
+            "<div>"
+            f'<div class="wb-workflow-label">{escape(label)}</div>'
+            f'<div class="wb-workflow-note">{escape(note)}</div>'
+            "</div>"
+            "</div>"
+        )
+    return '<div class="wb-workflow">' + "".join(cards) + "</div>"
+
+
+def _onboarding_aside_html(title: str, copy: str) -> str:
+    return (
+        '<div class="wb-onboarding-aside">'
+        f'<div class="wb-onboarding-aside-title">{escape(title)}</div>'
+        f'<div class="wb-onboarding-aside-copy">{escape(copy)}</div>'
+        "</div>"
+    )
 
 
 def _restore_run(run_id: str, auth_user) -> None:
@@ -313,61 +431,66 @@ def _render_workspace_toolbar(context: dict, active_run_label: str) -> None:
             navigate_now("Report Export")
 
 
+def _render_project_selector(projects: list[dict], context: dict, *, key: str = "workbench_project_select") -> None:
+    project_ids = [p["project_id"] for p in projects]
+    current_pid = context.get("project_id") if context.get("project_id") in project_ids else project_ids[0]
+    selected_pid = st.selectbox(
+        "Active Project",
+        project_ids,
+        index=project_ids.index(current_pid),
+        format_func=lambda pid: next(p["project_name"] for p in projects if p["project_id"] == pid),
+        key=key,
+        label_visibility="collapsed",
+    )
+    if selected_pid != context.get("project_id"):
+        sel = next(p for p in projects if p["project_id"] == selected_pid)
+        set_active_project(
+            project_id=sel["project_id"],
+            project_code=sel["project_code"],
+            project_name=sel["project_name"],
+        )
+        st.rerun()
+
+
+def _render_create_project_form(auth_user, *, form_key: str) -> None:
+    with st.form(form_key):
+        proj_name = st.text_input("Project Name")
+        proj_desc = st.text_area("Description (optional)", height=60)
+        if st.form_submit_button("Create Project", use_container_width=True):
+            if not proj_name.strip():
+                st.error("Name is required.")
+            else:
+                with session_scope() as session:
+                    auth_repo = AuthRepository(session)
+                    repo = CaseRepository(session)
+                    project = repo.get_or_create_project(
+                        project_code=slugify(proj_name, fallback="project"),
+                        project_name=proj_name.strip(),
+                        description=proj_desc.strip() or None,
+                        source_ref="workbench",
+                    )
+                    session.flush()
+                    auth_repo.ensure_system_roles()
+                    auth_repo.add_project_member(
+                        project_id=project.project_id,
+                        user_id=auth_user.user_id,
+                        role_code="normal_user",
+                    )
+                    session.flush()
+                    set_active_project(
+                        project_id=project.project_id,
+                        project_code=project.project_code,
+                        project_name=project.project_name,
+                    )
+                st.rerun()
+
+
 def _render_project_picker(projects: list[dict], context: dict, auth_user) -> None:
     st.caption("Project")
-    if projects:
-        project_ids = [p["project_id"] for p in projects]
-        current_pid = context.get("project_id") if context.get("project_id") in project_ids else project_ids[0]
-        selected_pid = st.selectbox(
-            "Active Project",
-            project_ids,
-            index=project_ids.index(current_pid),
-            format_func=lambda pid: next(p["project_name"] for p in projects if p["project_id"] == pid),
-            key="workbench_project_select",
-            label_visibility="collapsed",
-        )
-        if selected_pid != context.get("project_id"):
-            sel = next(p for p in projects if p["project_id"] == selected_pid)
-            set_active_project(
-                project_id=sel["project_id"],
-                project_code=sel["project_code"],
-                project_name=sel["project_name"],
-            )
-            st.rerun()
-    else:
-        st.info("No projects yet.")
+    _render_project_selector(projects, context)
 
-    with st.expander("+ New Project", expanded=not projects):
-        with st.form("workbench_create_project"):
-            proj_name = st.text_input("Project Name")
-            proj_desc = st.text_area("Description (optional)", height=60)
-            if st.form_submit_button("Create Project", use_container_width=True):
-                if not proj_name.strip():
-                    st.error("Name is required.")
-                else:
-                    with session_scope() as session:
-                        auth_repo = AuthRepository(session)
-                        repo = CaseRepository(session)
-                        project = repo.get_or_create_project(
-                            project_code=slugify(proj_name, fallback="project"),
-                            project_name=proj_name.strip(),
-                            description=proj_desc.strip() or None,
-                            source_ref="workbench",
-                        )
-                        session.flush()
-                        auth_repo.ensure_system_roles()
-                        auth_repo.add_project_member(
-                            project_id=project.project_id,
-                            user_id=auth_user.user_id,
-                            role_code="normal_user",
-                        )
-                        session.flush()
-                        set_active_project(
-                            project_id=project.project_id,
-                            project_code=project.project_code,
-                            project_name=project.project_name,
-                        )
-                    st.rerun()
+    with st.expander("+ New Project", expanded=False):
+        _render_create_project_form(auth_user, form_key="workbench_create_project")
 
     if len(projects) > 1:
         with st.expander("Project List", expanded=False):
@@ -386,69 +509,70 @@ def _render_project_picker(projects: list[dict], context: dict, auth_user) -> No
                     st.rerun()
 
 
+def _render_case_selector(cases: list[dict], context: dict, *, key: str = "workbench_case_select") -> None:
+    case_ids = [c["sizing_case_id"] for c in cases]
+    current_cid = context.get("case_id") if context.get("case_id") in case_ids else case_ids[0]
+    selected_cid = st.selectbox(
+        "Active Case",
+        case_ids,
+        index=case_ids.index(current_cid),
+        format_func=lambda cid: next(c["case_name"] for c in cases if c["sizing_case_id"] == cid),
+        key=key,
+        label_visibility="collapsed",
+    )
+    if selected_cid != context.get("case_id"):
+        sel = next(c for c in cases if c["sizing_case_id"] == selected_cid)
+        set_active_case(
+            case_id=sel["sizing_case_id"],
+            case_code=sel["case_code"],
+            case_name=sel["case_name"],
+        )
+        st.rerun()
+
+
+def _render_create_case_form(context: dict, auth_user, *, form_key: str) -> None:
+    with st.form(form_key):
+        case_name_input = st.text_input("Case Name")
+        scenario_mode = st.selectbox(
+            "Scenario",
+            list(SCENARIO_LABELS.keys()),
+            index=0,
+            format_func=lambda k: SCENARIO_LABELS[k],
+        )
+        if st.form_submit_button("Create Case", use_container_width=True):
+            if not case_name_input.strip():
+                st.error("Name is required.")
+            else:
+                proj_code = context.get("project_code") or slugify(
+                    context.get("project_name") or "project", fallback="project"
+                )
+                with session_scope() as session:
+                    repo = CaseRepository(session)
+                    AccessControlService(session, auth_user).ensure_project_access(context["project_id"])
+                    case = repo.create_case(
+                        project_id=context["project_id"],
+                        case_code=f"{proj_code}-{slugify(case_name_input, fallback='case')}",
+                        case_name=case_name_input.strip(),
+                        stage_scope=StageScope.DC,
+                        scenario_mode=scenario_mode,
+                        input_json={},
+                        source_ref="workbench",
+                    )
+                    session.flush()
+                    set_active_case(
+                        case_id=case.sizing_case_id,
+                        case_code=case.case_code,
+                        case_name=case.case_name,
+                    )
+                st.rerun()
+
+
 def _render_case_picker(cases: list[dict], context: dict, auth_user) -> None:
     st.caption("Case")
-    if not context.get("project_id"):
-        st.info("Select a project first.")
-        return
+    _render_case_selector(cases, context)
 
-    if cases:
-        case_ids = [c["sizing_case_id"] for c in cases]
-        current_cid = context.get("case_id") if context.get("case_id") in case_ids else case_ids[0]
-        selected_cid = st.selectbox(
-            "Active Case",
-            case_ids,
-            index=case_ids.index(current_cid),
-            format_func=lambda cid: next(c["case_name"] for c in cases if c["sizing_case_id"] == cid),
-            key="workbench_case_select",
-            label_visibility="collapsed",
-        )
-        if selected_cid != context.get("case_id"):
-            sel = next(c for c in cases if c["sizing_case_id"] == selected_cid)
-            set_active_case(
-                case_id=sel["sizing_case_id"],
-                case_code=sel["case_code"],
-                case_name=sel["case_name"],
-            )
-            st.rerun()
-    else:
-        st.info("No cases yet.")
-
-    with st.expander("+ New Case", expanded=not cases):
-        with st.form("workbench_create_case"):
-            case_name_input = st.text_input("Case Name")
-            scenario_mode = st.selectbox(
-                "Scenario",
-                list(SCENARIO_LABELS.keys()),
-                index=0,
-                format_func=lambda k: SCENARIO_LABELS[k],
-            )
-            if st.form_submit_button("Create Case", use_container_width=True):
-                if not case_name_input.strip():
-                    st.error("Name is required.")
-                else:
-                    proj_code = context.get("project_code") or slugify(
-                        context.get("project_name") or "project", fallback="project"
-                    )
-                    with session_scope() as session:
-                        repo = CaseRepository(session)
-                        AccessControlService(session, auth_user).ensure_project_access(context["project_id"])
-                        case = repo.create_case(
-                            project_id=context["project_id"],
-                            case_code=f"{proj_code}-{slugify(case_name_input, fallback='case')}",
-                            case_name=case_name_input.strip(),
-                            stage_scope=StageScope.DC,
-                            scenario_mode=scenario_mode,
-                            input_json={},
-                            source_ref="workbench",
-                        )
-                        session.flush()
-                        set_active_case(
-                            case_id=case.sizing_case_id,
-                            case_code=case.case_code,
-                            case_name=case.case_name,
-                        )
-                    st.rerun()
+    with st.expander("+ New Case", expanded=False):
+        _render_create_case_form(context, auth_user, form_key="workbench_create_case")
 
     if len(cases) > 1:
         with st.expander("Case List", expanded=False):
@@ -467,6 +591,81 @@ def _render_case_picker(cases: list[dict], context: dict, auth_user) -> None:
                         case_name=c["case_name"],
                     )
                     st.rerun()
+
+
+def _render_first_project_onboarding(auth_user) -> None:
+    section_header("Start a Workspace")
+    st.markdown(
+        '<div class="wb-onboarding-copy">Create the project first. Cases, sizing runs, and exported design files will then stay together in one traceable workspace.</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(_workflow_html("project"), unsafe_allow_html=True)
+
+    form_col, next_col = st.columns([1.08, 0.92], gap="large", vertical_alignment="top")
+    with form_col:
+        with st.container(border=True):
+            st.subheader("Create your first project")
+            st.caption("Use the project name your team will recognize in the sizing record and export package.")
+            _render_create_project_form(auth_user, form_key="workbench_create_first_project")
+    with next_col:
+        st.markdown(
+            _onboarding_aside_html(
+                "What happens next",
+                "After the project is created, define a case for the required duty. The DC sizing workflow becomes available once that case is active.",
+            ),
+            unsafe_allow_html=True,
+        )
+
+
+def _render_first_case_onboarding(projects: list[dict], context: dict, auth_user) -> None:
+    section_header("Define the First Case")
+    st.markdown(
+        '<div class="wb-onboarding-copy">The project is ready. Define one sizing case for a specific power, energy, duration, and operating scenario.</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(_workflow_html("case"), unsafe_allow_html=True)
+
+    project_col, form_col = st.columns([0.78, 1.22], gap="large", vertical_alignment="top")
+    with project_col:
+        with st.container(border=True):
+            st.subheader("Active Project")
+            st.caption("The new case will be added here.")
+            _render_project_selector(projects, context, key="workbench_onboarding_project_select")
+            with st.expander("+ New Project", expanded=False):
+                _render_create_project_form(auth_user, form_key="workbench_create_project_from_case")
+    with form_col:
+        with st.container(border=True):
+            st.subheader("Create your first case")
+            st.caption("A case is the accountable input set for the subsequent sizing run.")
+            _render_create_case_form(context, auth_user, form_key="workbench_create_first_case")
+
+
+def _render_first_run_onboarding(projects: list[dict], cases: list[dict], context: dict) -> None:
+    section_header("Start the First Sizing Run")
+    st.markdown(
+        '<div class="wb-onboarding-copy">The project and case are ready. Continue to DC Sizing to enter requirements and create the first retained run.</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(_workflow_html("run"), unsafe_allow_html=True)
+
+    context_col, action_col = st.columns([1.08, 0.92], gap="large", vertical_alignment="top")
+    with context_col:
+        with st.container(border=True):
+            st.subheader("Active Context")
+            st.caption("Confirm where the first sizing result will be stored.")
+            project_col, case_col = st.columns(2)
+            with project_col:
+                st.caption("Project")
+                _render_project_selector(projects, context, key="workbench_run_project_select")
+            with case_col:
+                st.caption("Case")
+                _render_case_selector(cases, context, key="workbench_run_case_select")
+    with action_col:
+        with st.container(border=True):
+            st.subheader("Continue to DC Sizing")
+            st.caption("Enter the duty requirements, review the calculated configuration, and save the first run.")
+            if st.button("Open DC Sizing", use_container_width=True, key="workbench_open_first_dc_sizing"):
+                navigate_now("DC Sizing")
 
 
 def _render_latest_run(runs: list[dict], context: dict, auth_user) -> None:
@@ -612,6 +811,18 @@ def show() -> None:
 
     _render_workspace_toolbar(context, active_run_label)
     st.markdown('<div class="wb-section-rule"></div>', unsafe_allow_html=True)
+
+    if not projects:
+        _render_first_project_onboarding(auth_user)
+        return
+
+    if not cases:
+        _render_first_case_onboarding(projects, context, auth_user)
+        return
+
+    if not runs:
+        _render_first_run_onboarding(projects, cases, context)
+        return
 
     setup_col, latest_col = st.columns([1.15, 1.0])
     with setup_col:
