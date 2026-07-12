@@ -62,3 +62,6 @@ deploy/systemd/calb-ngrok@.service.d/override.conf
 **/.ngrok2/
 .vscode-server/
 .git-credentials
+
+# local-only ops records (contain infra details; repo is public)
+docs/ops-local/
