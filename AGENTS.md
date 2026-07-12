@@ -11,6 +11,10 @@
    `git diff` before commit must show no changes to frozen modules.
 4. If your change moves responsibility between domains, update the module map
    in the status doc in the same commit.
+5. Production operations (log inspection, issue triage, deploy) follow the
+   local-only runbooks under `docs/ops-local/` (untracked by design). When the
+   user asks for a "server log inspection" / "巡检", read
+   `docs/ops-local/DAILY_OPS_LOOP_V1.md` first and follow it exactly.
 
 ## Environment
 
