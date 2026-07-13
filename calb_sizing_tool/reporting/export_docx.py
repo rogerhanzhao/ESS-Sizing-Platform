@@ -248,7 +248,9 @@ def _svg_bytes_to_png(svg_bytes: bytes) -> bytes | None:
     except Exception:
         return None
     try:
-        return cairosvg.svg2png(bytestring=svg_bytes)
+        from calb_sizing_tool.common.render_lock import RENDER_LOCK
+        with RENDER_LOCK:
+            return cairosvg.svg2png(bytestring=svg_bytes)
     except Exception:
         return None
 

@@ -16,8 +16,14 @@
 # of any company or organization.
 # -----------------------------------------------------------------------------
 
-from html import escape
+# --- Native-rendering crash safety: must run before any matplotlib import ---
 import os
+os.environ.setdefault("MPLBACKEND", "Agg")  # headless Agg backend, not a GUI one
+import faulthandler
+faulthandler.enable()  # dump a C-level traceback to stderr on any native crash
+# ----------------------------------------------------------------------------
+
+from html import escape
 from pathlib import Path
 
 import streamlit as st

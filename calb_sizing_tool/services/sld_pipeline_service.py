@@ -62,8 +62,10 @@ def _hash_bytes(payload: bytes) -> str:
 
 def _svg_to_png(svg_bytes: bytes) -> bytes:
     import cairosvg
+    from calb_sizing_tool.common.render_lock import RENDER_LOCK
 
-    return cairosvg.svg2png(bytestring=svg_bytes, background_color="white")
+    with RENDER_LOCK:
+        return cairosvg.svg2png(bytestring=svg_bytes, background_color="white")
 
 
 def _concept_safe_svg(svg_bytes: bytes, document_status: str) -> bytes:

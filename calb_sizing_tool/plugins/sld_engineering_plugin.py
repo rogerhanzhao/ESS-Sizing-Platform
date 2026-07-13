@@ -52,8 +52,10 @@ def _artifact_file_name(base_name: str, extension: str, artifact_mode: str) -> s
 
 def _svg_bytes_to_png(svg_bytes: bytes) -> bytes:
     import cairosvg
+    from calb_sizing_tool.common.render_lock import RENDER_LOCK
 
-    return cairosvg.svg2png(bytestring=svg_bytes, background_color="white")
+    with RENDER_LOCK:
+        return cairosvg.svg2png(bytestring=svg_bytes, background_color="white")
 
 
 def _renderer_lineage(renderer_mode: str) -> str:

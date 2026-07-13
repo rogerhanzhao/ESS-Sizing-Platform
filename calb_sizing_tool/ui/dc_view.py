@@ -72,10 +72,12 @@ except ImportError:
 
 # Optional: Matplotlib for DOCX chart export
 try:
-    import matplotlib.pyplot as plt
+    from matplotlib.figure import Figure
     MATPLOTLIB_AVAILABLE = True
 except Exception:
     MATPLOTLIB_AVAILABLE = False
+
+from calb_sizing_tool.common.render_lock import RENDER_LOCK
 
 # ==========================================
 # CALB VI COLORS
@@ -439,7 +441,7 @@ def _plot_poi_usable_png(s3_df: pd.DataFrame, poi_target: float, title: str) -> 
     x = df["Year_Index"].astype(int).tolist()
     y = df["POI_Usable_Energy_MWh"].astype(float).tolist()
 
-    fig = plt.figure(figsize=(7.0, 3.2))
+    fig = Figure(figsize=(7.0, 3.2))
     ax = fig.add_subplot(111)
     ax.bar(x, y, color=CALB_SKY_BLUE)
     ax.axhline(poi_target, linewidth=2, color="#ff0000")
@@ -451,8 +453,8 @@ def _plot_poi_usable_png(s3_df: pd.DataFrame, poi_target: float, title: str) -> 
 
     buf = io.BytesIO()
     fig.tight_layout()
-    fig.savefig(buf, format="png", dpi=150)
-    plt.close(fig)
+    with RENDER_LOCK:
+        fig.savefig(buf, format="png", dpi=150)
     buf.seek(0)
     return buf
 
@@ -483,7 +485,7 @@ def _plot_dc_capacity_bar_png(
             float(yx) if yx is not None else 0.0,
         ]
 
-        fig = plt.figure(figsize=(6.6, 3.0))
+        fig = Figure(figsize=(6.6, 3.0))
         ax = fig.add_subplot(111)
         ax.bar(labels, values, color=CALB_SKY_BLUE)
         ax.set_title(title)
@@ -493,8 +495,8 @@ def _plot_dc_capacity_bar_png(
 
         buf = io.BytesIO()
         fig.tight_layout()
-        fig.savefig(buf, format="png", dpi=150)
-        plt.close(fig)
+        with RENDER_LOCK:
+            fig.savefig(buf, format="png", dpi=150)
         buf.seek(0)
         return buf
     except Exception:

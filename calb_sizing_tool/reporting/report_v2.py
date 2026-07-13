@@ -30,7 +30,7 @@ from calb_sizing_tool.reporting.formatter import format_percent, format_value
 from calb_sizing_tool.reporting.report_context import ReportContext
 
 try:
-    import matplotlib.pyplot as plt
+    from matplotlib.figure import Figure
 
     MATPLOTLIB_AVAILABLE = True
 except Exception:
@@ -42,6 +42,8 @@ try:
     CAIROSVG_AVAILABLE = True
 except Exception:
     CAIROSVG_AVAILABLE = False
+
+from calb_sizing_tool.common.render_lock import RENDER_LOCK
 
 
 def _format_percent_with_fraction(value, input_is_fraction=None, fraction_decimals=4) -> str:
@@ -95,7 +97,7 @@ def _plot_poi_usable_png(df: pd.DataFrame, poi_target: float, title: str) -> Opt
         x = data["Year_Index"].astype(int).tolist()
         y = data["POI_Usable_Energy_MWh"].astype(float).tolist()
 
-        fig = plt.figure(figsize=(7.0, 3.2))
+        fig = Figure(figsize=(7.0, 3.2))
         ax = fig.add_subplot(111)
         ax.bar(x, y, color="#5cc3e4")
         ax.axhline(poi_target, linewidth=2, color="#ff0000")
@@ -107,8 +109,8 @@ def _plot_poi_usable_png(df: pd.DataFrame, poi_target: float, title: str) -> Opt
 
         buf = io.BytesIO()
         fig.tight_layout()
-        fig.savefig(buf, format="png", dpi=150)
-        plt.close(fig)
+        with RENDER_LOCK:
+            fig.savefig(buf, format="png", dpi=150)
         buf.seek(0)
         return buf
     except Exception:
@@ -147,7 +149,7 @@ def _plot_dc_capacity_bar_png(
             float(yx) if yx is not None else 0.0,
         ]
 
-        fig = plt.figure(figsize=(6.6, 3.0))
+        fig = Figure(figsize=(6.6, 3.0))
         ax = fig.add_subplot(111)
         ax.bar(labels, values, color="#5cc3e4")
         ax.set_title(title)
@@ -157,8 +159,8 @@ def _plot_dc_capacity_bar_png(
 
         buf = io.BytesIO()
         fig.tight_layout()
-        fig.savefig(buf, format="png", dpi=150)
-        plt.close(fig)
+        with RENDER_LOCK:
+            fig.savefig(buf, format="png", dpi=150)
         buf.seek(0)
         return buf
     except Exception:
@@ -194,7 +196,8 @@ def _svg_bytes_to_png(svg_bytes: bytes, width_px: int = 900) -> Optional[bytes]:
     if not svg_bytes or not CAIROSVG_AVAILABLE:
         return None
     try:
-        return cairosvg.svg2png(bytestring=svg_bytes, output_width=width_px)
+        with RENDER_LOCK:
+            return cairosvg.svg2png(bytestring=svg_bytes, output_width=width_px)
     except Exception:
         return None
 
