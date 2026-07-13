@@ -4,6 +4,7 @@ from typing import Any
 
 import streamlit as st
 
+from calb_sizing_tool.common.arrow_safe import arrow_safe
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.schemas.sld_render_input import legacy_sld_override_preset
 from calb_sizing_tool.services.access_control_service import AccessControlService
@@ -76,7 +77,7 @@ def _render_history(rows: list[dict[str, Any]]) -> None:
         st.info("No saved settings history for this case.")
         return
     st.dataframe(
-        [
+        arrow_safe([
             {
                 "Saved At": row.get("created_at"),
                 "Actor": row.get("actor") or "-",
@@ -84,7 +85,7 @@ def _render_history(rows: list[dict[str, Any]]) -> None:
                 "Version": row.get("version_tag") or "-",
             }
             for row in rows
-        ],
+        ]),
         use_container_width=True,
         hide_index=True,
     )

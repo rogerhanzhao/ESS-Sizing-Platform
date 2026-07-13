@@ -27,6 +27,7 @@ from pathlib import Path
 # --- Adapted imports for refactor ---
 from calb_sizing_tool.adapters.excel_loader_adapter import bundle_to_legacy_tuple, load_dc_excel_bundle_from_path
 from calb_sizing_tool.config import DC_DATA_PATH, DC_DATA_IS_LEGACY, PROJECT_ROOT
+from calb_sizing_tool.common.arrow_safe import arrow_safe
 from calb_sizing_tool.common.nameplate import apply_block_nameplate_recalc, get_standard_container_mwh
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.schemas.case import SizingCaseInput
@@ -835,7 +836,7 @@ def show():
     if not rte_issues.empty:
         st.warning(f"RTE curve monotonicity check found {len(rte_issues)} issues.")
         with st.expander("Show RTE monotonicity issues", expanded=False):
-            st.dataframe(rte_issues, use_container_width=True)
+            st.dataframe(arrow_safe(rte_issues), use_container_width=True)
 
     if not auth_context.is_guest:
         with st.expander("Restore saved DC run", expanded=False):
@@ -1288,7 +1289,7 @@ def show():
                     c2.metric("Container Count", int(s2.get('container_count', 0)))
                     c3.metric("Cabinet Count", int(s2.get('cabinet_count', 0)))
 
-                    st.dataframe(s2.get("block_config_table"), use_container_width=True)
+                    st.dataframe(arrow_safe(s2.get("block_config_table")), use_container_width=True)
                     
                     # Chart
                     s3_df_sorted = s3_df.sort_values("Year_Index").reset_index(drop=True)
@@ -1348,11 +1349,11 @@ div[data-testid="stDataFrame"] div[role="rowheader"] {
 
                         # Display table with CSS-driven left alignment (sorting stays numeric where possible)
                         try:
-                            st.dataframe(disp_show, use_container_width=True, hide_index=True)
+                            st.dataframe(arrow_safe(disp_show), use_container_width=True, hide_index=True)
                         except TypeError:
                             # Fallback for older Streamlit versions without hide_index
                             disp_show.index = [""] * len(disp_show)
-                            st.dataframe(disp_show, use_container_width=True)
+                            st.dataframe(arrow_safe(disp_show), use_container_width=True)
                     # ----------------------------------
 
                     # Pack data for Session State (For AC/SLD)

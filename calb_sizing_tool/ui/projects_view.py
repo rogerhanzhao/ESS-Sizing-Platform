@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from calb_sizing_tool.common.arrow_safe import arrow_safe
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.services.access_control_service import AccessControlService
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
@@ -49,7 +50,7 @@ def show() -> None:
         }
         for p in projects
     ])
-    st.dataframe(df, hide_index=True, use_container_width=True)
+    st.dataframe(arrow_safe(df), hide_index=True, use_container_width=True)
 
     project_names = [p["project_name"] for p in projects]
     selected_name = st.selectbox("Select project to open", project_names, label_visibility="collapsed")

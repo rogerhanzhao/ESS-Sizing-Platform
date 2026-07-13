@@ -5,6 +5,7 @@ from html import escape
 import pandas as pd
 import streamlit as st
 
+from calb_sizing_tool.common.arrow_safe import arrow_safe
 from calb_sizing_tool.domain.enums import StageScope
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.repositories.auth_repository import AuthRepository
@@ -731,7 +732,7 @@ def _render_run_registry(runs: list[dict], context: dict, auth_user) -> None:
 
     table_height = min(430, 40 + 34 * (len(rows) + 1))
     st.dataframe(
-        pd.DataFrame(rows),
+        arrow_safe(pd.DataFrame(rows)),
         hide_index=True,
         use_container_width=True,
         height=table_height,

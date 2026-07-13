@@ -22,6 +22,7 @@ import json
 
 import streamlit as st
 
+from calb_sizing_tool.common.arrow_safe import arrow_safe
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.plugins.registry import get_plugin_registry
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot
@@ -272,7 +273,7 @@ def show() -> None:
             f"{master_layout_readiness['required_count']} prerequisite groups are provided."
         )
     with st.expander("Site Constraint Set readiness details", expanded=False):
-        st.dataframe(readiness_rows, use_container_width=True, hide_index=True)
+        st.dataframe(arrow_safe(readiness_rows), use_container_width=True, hide_index=True)
         st.download_button(
             "Download Site Constraint Set template",
             json.dumps(constraint_template, indent=2, sort_keys=True),

@@ -23,6 +23,7 @@ from typing import Any
 
 import streamlit as st
 
+from calb_sizing_tool.common.arrow_safe import arrow_safe
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.plugins.registry import get_plugin_registry
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot, SldRenderOptions
@@ -713,7 +714,7 @@ def show() -> None:
             hash_rows.append({"artifact_kind": artifact_kind, "content_hash": artifact_hash})
         if hash_rows:
             section_header("Traceability", eyebrow="Output")
-            st.dataframe(hash_rows, use_container_width=True, hide_index=True)
+            st.dataframe(arrow_safe(hash_rows), use_container_width=True, hide_index=True)
         section_header("Downloads", eyebrow="Output")
         if svg_item:
             st.download_button(

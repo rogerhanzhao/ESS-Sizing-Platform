@@ -10,6 +10,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from calb_sizing_tool.common.arrow_safe import arrow_safe
 from calb_sizing_tool.services.auth_service import AuthService
 from calb_sizing_tool.services.product_admin_service import ProductAdminService
 from calb_sizing_tool.utils.files import (
@@ -106,7 +107,7 @@ def _render_import_expander(
             st.error(f"Missing required columns: {', '.join(missing)}")
             return
         st.caption(f"{len(df)} rows detected. Preview (first 5):")
-        st.dataframe(df.head(5), use_container_width=True, hide_index=True)
+        st.dataframe(arrow_safe(df.head(5)), use_container_width=True, hide_index=True)
         if st.button(f"Import {len(df)} {label} rows", key=f"btn_import_{entity}", type="primary"):
             result = service.import_records_from_df(entity, df)
             if result["imported"]:
@@ -444,7 +445,7 @@ def _section_users_access() -> None:
         }
         for row in rows
     ]
-    st.dataframe(display_rows, use_container_width=True, hide_index=True)
+    st.dataframe(arrow_safe(display_rows), use_container_width=True, hide_index=True)
 
     with st.expander("Create User", expanded=False):
         st.info("This prepares registration internally only. No public registration entry is exposed on the login page.")
@@ -548,7 +549,7 @@ def _section_cell_products(service: ProductAdminService, snapshot: dict[str, Any
     st.caption("LFP, NMC and other cell models with electrical, dimensional and density data.")
 
     st.dataframe(
-        _rows(
+        arrow_safe(_rows(
             snapshot["cells"],
             [
                 ("Code", "cell_code"),
@@ -564,7 +565,7 @@ def _section_cell_products(service: ProductAdminService, snapshot: dict[str, Any
                 ("Manufacturer", "manufacturer"),
                 ("Active", "is_active"),
             ],
-        ),
+        )),
         use_container_width=True,
         hide_index=True,
     )
@@ -692,7 +693,7 @@ def _section_dc_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
     st.caption("String/rack/container templates linked to maintained cell products.")
 
     st.dataframe(
-        _rows(
+        arrow_safe(_rows(
             snapshot["dc_blocks"],
             [
                 ("Code", "block_code"),
@@ -711,7 +712,7 @@ def _section_dc_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
                 ("Published", "is_published"),
                 ("Active", "is_active"),
             ],
-        ),
+        )),
         use_container_width=True,
         hide_index=True,
     )
@@ -932,7 +933,7 @@ def _section_ac_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
     st.caption("PCS, transformer and AC-side efficiency template records.")
 
     st.dataframe(
-        _rows(
+        arrow_safe(_rows(
             snapshot["ac_blocks"],
             [
                 ("Code", "block_code"),
@@ -946,7 +947,7 @@ def _section_ac_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
                 ("Peak Eff. %", "peak_efficiency_pct"),
                 ("Active", "is_active"),
             ],
-        ),
+        )),
         use_container_width=True,
         hide_index=True,
     )
@@ -1016,7 +1017,7 @@ def _section_assets(service: ProductAdminService, snapshot: dict[str, Any]) -> N
     st.caption("Structured datasheets and product images used by future proposal product-information sections.")
 
     st.dataframe(
-        _rows(
+        arrow_safe(_rows(
             snapshot["assets"],
             [
                 ("Code", "asset_code"),
@@ -1029,7 +1030,7 @@ def _section_assets(service: ProductAdminService, snapshot: dict[str, Any]) -> N
                 ("Primary", "is_primary"),
                 ("Published", "is_published"),
             ],
-        ),
+        )),
         use_container_width=True,
         hide_index=True,
     )
@@ -1142,7 +1143,7 @@ def _section_degradation(service: ProductAdminService, snapshot: dict[str, Any])
     st.caption("SoH vs cycle/calendar curves under specific operating conditions.")
 
     st.dataframe(
-        _rows(
+        arrow_safe(_rows(
             snapshot["degradation_curves"],
             [
                 ("Code", "curve_code"),
@@ -1157,7 +1158,7 @@ def _section_degradation(service: ProductAdminService, snapshot: dict[str, Any])
                 ("Source", "source"),
                 ("Active", "is_active"),
             ],
-        ),
+        )),
         use_container_width=True,
         hide_index=True,
     )
@@ -1241,7 +1242,7 @@ def _section_rte(service: ProductAdminService, snapshot: dict[str, Any]) -> None
     st.caption("Round-trip efficiency by SoC, temperature and C-rate.")
 
     st.dataframe(
-        _rows(
+        arrow_safe(_rows(
             snapshot["rte_curves"],
             [
                 ("Code", "curve_code"),
@@ -1254,7 +1255,7 @@ def _section_rte(service: ProductAdminService, snapshot: dict[str, Any]) -> None
                 ("Source", "source"),
                 ("Active", "is_active"),
             ],
-        ),
+        )),
         use_container_width=True,
         hide_index=True,
     )
@@ -1321,7 +1322,7 @@ def _section_plugins(service: ProductAdminService, snapshot: dict[str, Any]) -> 
     st.caption("Reserved mount points for PyBaMM, GitHub or internal degradation simulation plugins.")
 
     st.dataframe(
-        _rows(
+        arrow_safe(_rows(
             snapshot["plugins"],
             [
                 ("Key", "plugin_key"),
@@ -1332,7 +1333,7 @@ def _section_plugins(service: ProductAdminService, snapshot: dict[str, Any]) -> 
                 ("Status", "status"),
                 ("Enabled", "enabled"),
             ],
-        ),
+        )),
         use_container_width=True,
         hide_index=True,
     )
