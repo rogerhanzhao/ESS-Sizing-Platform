@@ -9,6 +9,19 @@ import pandas as pd
 from calb_sizing_tool.ui._ui import static_table_html
 
 
+_STREAMLIT_ARROW_SERIALIZATION_METHODS = {
+    "altair_chart",
+    "area_chart",
+    "bar_chart",
+    "data_editor",
+    "dataframe",
+    "line_chart",
+    "scatter_chart",
+    "table",
+    "vega_lite_chart",
+}
+
+
 def test_static_table_html_escapes_headers_and_cell_values() -> None:
     html = static_table_html(pd.DataFrame({"<User>": ["<script>alert(1)</script>"]}))
 
@@ -17,7 +30,7 @@ def test_static_table_html_escapes_headers_and_cell_values() -> None:
     assert "<script>" not in html
 
 
-def test_no_streamlit_arrow_table_calls_remain_in_ui() -> None:
+def test_no_streamlit_arrow_serialization_calls_remain_in_ui() -> None:
     ui_dir = Path("calb_sizing_tool/ui")
     violations: list[str] = []
     for source_path in ui_dir.rglob("*.py"):
@@ -26,7 +39,7 @@ def test_no_streamlit_arrow_table_calls_remain_in_ui() -> None:
             if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
                 continue
             if (
-                node.func.attr in {"dataframe", "table"}
+                node.func.attr in _STREAMLIT_ARROW_SERIALIZATION_METHODS
                 and isinstance(node.func.value, ast.Name)
                 and node.func.value.id == "st"
             ):

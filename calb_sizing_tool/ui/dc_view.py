@@ -19,7 +19,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import altair as alt
 import os
 import io
 from pathlib import Path
@@ -1291,15 +1290,19 @@ def show():
 
                     render_static_table(s2.get("block_config_table"))
                     
-                    # Chart
+                    # Render the chart server-side. Streamlit's Altair element sends the
+                    # Pandas frame through PyArrow, which has native-crashed in production
+                    # and dropped every authenticated session.
                     s3_df_sorted = s3_df.sort_values("Year_Index").reset_index(drop=True)
-                    bars = alt.Chart(s3_df_sorted).mark_bar(color=CALB_SKY_BLUE).encode(
-                        x=alt.X("Year_Index:O", title="Year"),
-                        y=alt.Y("POI_Usable_Energy_MWh:Q", title="POI Usable (MWh)"),
-                        tooltip=["Year_Index", "POI_Usable_Energy_MWh", "SOH_Display_Pct"]
-                    )
-                    rule = alt.Chart(pd.DataFrame({"y": [float(poi_energy)]})).mark_rule(color="red").encode(y="y")
-                    st.altair_chart((bars + rule).properties(height=350), use_container_width=True)
+                    if MATPLOTLIB_AVAILABLE:
+                        chart_png = _plot_poi_usable_png(
+                            s3_df_sorted,
+                            float(poi_energy),
+                            "POI Usable Energy by Year",
+                        )
+                        st.image(chart_png.getvalue(), use_container_width=True)
+                    else:
+                        st.info("POI usable-energy chart is unavailable because the server chart renderer is not installed.")
 
                     # --- RESTORED YEARLY DATA TABLE ---
                     with st.expander("Show yearly data table", expanded=False):
