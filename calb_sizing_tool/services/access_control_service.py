@@ -56,4 +56,8 @@ class AccessControlService:
         project_id = getattr(run, "project_id", None)
         if project_id:
             self.ensure_project_access(project_id)
+        elif not self.is_admin():
+            # Fail closed: a run we cannot attribute to a project must not be
+            # readable by a non-admin on the strength of a missing attribute.
+            raise PermissionError("Run access denied.")
         return load_dc_run_bundle(run_id, db_url=self.db_url)

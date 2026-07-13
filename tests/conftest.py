@@ -22,6 +22,16 @@ def _round_value(value):
     return value
 
 
+@pytest.fixture(autouse=True)
+def _dispose_cached_db_engines():
+    """Dispose engines cached by create_engine_for_url after each test so
+    temporary SQLite files can be deleted and no state leaks between tests."""
+    yield
+    from calb_sizing_tool.infra.db.session import dispose_all_engines
+
+    dispose_all_engines()
+
+
 @pytest.fixture(scope="session")
 def golden_case_dirs() -> list[Path]:
     return sorted(path for path in GOLDEN_CASES_DIR.iterdir() if path.is_dir())

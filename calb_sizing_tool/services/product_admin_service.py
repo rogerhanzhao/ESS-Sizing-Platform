@@ -142,7 +142,9 @@ class ProductAdminService:
                     values[col] = None
                 elif col in _INT_COLUMNS:
                     try:
-                        values[col] = int(val)
+                        # via float() so spreadsheet-style "100.0" coerces to
+                        # 100 instead of silently dropping to None.
+                        values[col] = int(float(val))
                     except (TypeError, ValueError):
                         values[col] = None
                 else:
