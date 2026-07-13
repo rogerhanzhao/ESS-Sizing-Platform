@@ -127,9 +127,35 @@ commit is `7d3ec1f98e949422b146673ccd61bc0541e30f85` or a later documented
 commit on the same branch.  Do not reset, reinitialize, or replace the
 persistent database.
 
-Before retrying the pull, restore the server's HTTPS access to GitHub (DNS,
-route, firewall, proxy, or TLS trust as applicable).  Do not work around that
-condition by copying the repository or a Git bundle from the local machine.
+If the earlier GitHub transport timeout recurs, inspect the server's HTTPS
+access (DNS, route, firewall, proxy, or TLS trust) and retry the same
+server-side Git command.  Do not work around such a condition by copying the
+repository or a Git bundle from the local machine.
+
+### 2026-07-13 — GitHub-only server deployment completed
+
+- A repeat server-side GitHub probe succeeded and returned remote branch head
+  `13791a112b00ffaf8c1d1be92ca0a53959606189`.
+- The server checkout at `/opt/calb-sizingtool/app` was fast-forwarded from
+  GitHub to the same commit.  It contains `81de881`, verified with
+  `git merge-base --is-ancestor 81de881 HEAD`.
+- The CALB-only restart command rebuilt/started the Docker Compose app.  The
+  container `calb-sizingtool-app-1` is running and its server-local health
+  check `curl -fsS http://127.0.0.1:18511/` passed.
+- No source bundle, file copy, database reset, or database reinitialization
+  was used.  The earlier GitHub transport timeouts were transient; the final
+  deployment completed solely by the server pulling `origin`.
+
+### Concurrent worktree boundary after deployment
+
+- During final local verification, unrelated in-progress changes appeared in
+  `calb_sizing_tool/reporting/report_v2.py` and
+  `tests/test_report_v2_smoke.py`, alongside the intentionally untracked
+  `lark-im-resources/`.  They were not staged, committed, reverted, or sent
+  to the server by this task.
+- The local suite nevertheless completed successfully as **246 passed** in
+  79.07 s.  This is a diagnostic result for the then-current mixed worktree,
+  not a replacement for the 222-test release-gate baseline recorded above.
 
 ## Verification plan
 
