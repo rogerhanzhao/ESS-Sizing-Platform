@@ -144,10 +144,16 @@ condition by copying the repository or a Git bundle from the local machine.
 5. Inspect the Workbench page in the local browser session.  Do not clear or
    mutate the production/server database merely to reproduce the empty state.
 
-## Separate known issue — not in this UI change
+## Separate known issue — RESOLVED (2026-07-13)
 
-The server `Product & Database → Cells` page can abort during rendering.  The
-confirmed cause is duplicate automatic Streamlit widget IDs shared by the
-edit form and the import/add form.  The later fix is to give every edit-form
-widget an entity-and-record-specific explicit key and add a regression test.
-Keep this separate from the Workbench UI commit unless explicitly resumed.
+The server `Product & Database → Cells` page could abort during rendering.  The
+confirmed cause was duplicate automatic Streamlit widget IDs shared by the
+edit form and the import/add form.
+
+**Fixed in commit `819aa8d`** ("Fix Cells page abort: explicit entity+record
+keys on edit-form widgets"): every edit-form widget now carries an
+entity-and-record-specific explicit key, with a regression test
+(`tests/test_admin_edit_form_widget_keys.py`).  On 2026-07-13 the real
+`_section_cell_products` page was rendered via Streamlit `AppTest` and produced
+no `DuplicateWidgetID` / abort.  The fix is deployed on the server (release
+`ebd03c0`, which includes `819aa8d`).  No further action required.

@@ -12,7 +12,13 @@ import streamlit as st
 
 from calb_sizing_tool.services.auth_service import AuthService
 from calb_sizing_tool.services.product_admin_service import ProductAdminService
-from calb_sizing_tool.utils.files import safe_child_path, safe_storage_filename
+from calb_sizing_tool.utils.files import (
+    MAX_UPLOAD_BYTES,
+    human_bytes,
+    safe_child_path,
+    safe_storage_filename,
+    upload_exceeds_limit,
+)
 from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.ui._ui import page_header
 
@@ -51,8 +57,14 @@ def _template_csv(columns: list[str]) -> bytes:
     return (",".join(columns) + "\n").encode()
 
 
+_IMPORT_UPLOAD_LIMIT = 25 * 1024 * 1024  # 25 MiB — master-data imports are small
+
+
 def _parse_upload(uploaded_file) -> pd.DataFrame | None:
     """Parse an uploaded CSV or XLSX file. Returns None on failure."""
+    if upload_exceeds_limit(uploaded_file, limit=_IMPORT_UPLOAD_LIMIT):
+        st.error(f"File exceeds the {human_bytes(_IMPORT_UPLOAD_LIMIT)} import limit.")
+        return None
     try:
         name = uploaded_file.name.lower()
         if name.endswith(".xlsx") or name.endswith(".xls"):
@@ -1076,6 +1088,8 @@ def _section_assets(service: ProductAdminService, snapshot: dict[str, Any]) -> N
             if st.form_submit_button("Save Product Asset", use_container_width=True):
                 if not asset_code.strip() or not title.strip():
                     st.error("Asset Code and Title are required.")
+                elif uploaded_asset is not None and upload_exceeds_limit(uploaded_asset):
+                    st.error(f"File exceeds the {human_bytes(MAX_UPLOAD_BYTES)} upload limit.")
                 else:
                     _file_name = file_name.strip() or None
                     _mime_type = mime_type.strip() or None

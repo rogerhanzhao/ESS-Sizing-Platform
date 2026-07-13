@@ -16,6 +16,36 @@ _RESERVED_WINDOWS_NAMES = {
 }
 
 
+MAX_UPLOAD_BYTES = 64 * 1024 * 1024  # 64 MiB hard cap for interactive uploads
+
+
+def upload_size_bytes(uploaded_file) -> int | None:
+    """Best-effort byte size of a Streamlit UploadedFile (its ``.size``)."""
+    size = getattr(uploaded_file, "size", None)
+    return size if isinstance(size, int) and size >= 0 else None
+
+
+def upload_exceeds_limit(uploaded_file, *, limit: int = MAX_UPLOAD_BYTES) -> bool:
+    """True when the upload reports a size larger than ``limit`` bytes.
+
+    Guards interactive uploads before they are read into memory or parsed.
+    A missing/unknown size is treated as within the limit (Streamlit still
+    enforces its own server maxUploadSize as a backstop).
+    """
+    size = upload_size_bytes(uploaded_file)
+    return size is not None and size > limit
+
+
+def human_bytes(num_bytes: int) -> str:
+    """Compact human-readable size, e.g. 25 MB, for user-facing messages."""
+    value = float(num_bytes)
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024 or unit == "GB":
+            return f"{value:.0f} {unit}" if unit != "GB" else f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{num_bytes} B"
+
+
 def safe_storage_filename(filename: str | None, *, fallback: str = "upload.bin") -> str:
     raw_name = str(filename or "").replace("\\", "/")
     candidate = raw_name.rsplit("/", 1)[-1]

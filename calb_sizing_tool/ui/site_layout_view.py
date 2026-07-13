@@ -48,6 +48,30 @@ from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state
 from calb_sizing_tool.state.workspace_state import get_workspace_context
+from calb_sizing_tool.utils.files import human_bytes, upload_exceeds_limit
+
+
+_CONSTRAINT_JSON_UPLOAD_LIMIT = 2 * 1024 * 1024  # 2 MiB — constraint-set JSON is tiny
+_PERSISTED_CONSTRAINT_CACHE_KEY = "_persisted_site_constraint_cache"
+
+
+def _load_persisted_constraint_set_cached(run_id: str) -> dict | None:
+    """Session-cached read of the per-run persisted Site Constraint Set.
+
+    Avoids a DB round-trip on every Streamlit rerun of this page. Keyed on
+    run_id (switching runs reloads) and explicitly invalidated after a new set
+    is registered — see _invalidate_persisted_constraint_cache.
+    """
+    cache = st.session_state.get(_PERSISTED_CONSTRAINT_CACHE_KEY)
+    if isinstance(cache, dict) and cache.get("run_id") == run_id:
+        return cache.get("data")
+    data = load_persisted_site_constraint_set(run_id)
+    st.session_state[_PERSISTED_CONSTRAINT_CACHE_KEY] = {"run_id": run_id, "data": data}
+    return data
+
+
+def _invalidate_persisted_constraint_cache() -> None:
+    st.session_state.pop(_PERSISTED_CONSTRAINT_CACHE_KEY, None)
 
 
 def _resolve_layout_ac_snapshot(
@@ -206,7 +230,7 @@ def show() -> None:
         "No boundary, POI location, access route or clearance is assumed by the tool."
     )
     if not _is_guest:
-        persisted_constraint_set = load_persisted_site_constraint_set(run_id) if run_id else None
+        persisted_constraint_set = _load_persisted_constraint_set_cached(run_id) if run_id else None
         if persisted_constraint_set is not None:
             constraint_set_for_assessment = persisted_constraint_set
             constraint_source = "persisted_run_artifact"
@@ -217,7 +241,13 @@ def show() -> None:
             key="site_constraint_set_assessment_upload",
             help="The upload is assessed in the current session. It is registered only when you click the explicit register button below.",
         )
-        if uploaded_constraint_set is not None:
+        if uploaded_constraint_set is not None and upload_exceeds_limit(
+            uploaded_constraint_set, limit=_CONSTRAINT_JSON_UPLOAD_LIMIT
+        ):
+            st.error(
+                f"Constraint Set JSON exceeds the {human_bytes(_CONSTRAINT_JSON_UPLOAD_LIMIT)} limit."
+            )
+        elif uploaded_constraint_set is not None:
             try:
                 uploaded_payload = json.loads(uploaded_constraint_set.getvalue().decode("utf-8"))
                 if not isinstance(uploaded_payload, dict):
@@ -267,6 +297,9 @@ def show() -> None:
                         constraint_set=constraint_set_for_assessment,
                         actor=auth_user.username,
                     )
+                    # A new versioned set is now persisted; drop the cached read
+                    # so the next rerun reflects it instead of the stale value.
+                    _invalidate_persisted_constraint_cache()
                     st.success(
                         "Site Constraint Set registered as "
                         f"`{registration['constraint_set_status']}`. "

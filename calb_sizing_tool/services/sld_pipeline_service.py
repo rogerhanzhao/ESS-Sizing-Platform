@@ -81,7 +81,14 @@ def _concept_safe_svg(svg_bytes: bytes, document_status: str) -> bytes:
         # The renderer marks unsupplied engineering values as "MISSING: <label>".
         # Match the marker pattern rather than each label so renderer label
         # changes cannot silently leak a MISSING marker into a concept issue.
-        svg_text = re.sub(r"MISSING:\s*[^<]*", "Not specified - concept only", svg_text)
+        # Case/whitespace-insensitive so a formatting drift ("Missing :", …)
+        # cannot leak a raw marker into a NOT-FOR-CONSTRUCTION concept drawing.
+        svg_text = re.sub(
+            r"MISSING\s*:\s*[^<]*",
+            "Not specified - concept only",
+            svg_text,
+            flags=re.IGNORECASE,
+        )
         status_label = "CONCEPT ONLY - NOT FOR CONSTRUCTION"
     else:
         status_label = "DRAFT / OVERRIDE - NOT FOR CONSTRUCTION"
