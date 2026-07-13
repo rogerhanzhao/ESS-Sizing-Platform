@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from html import escape
 
-import pandas as pd
 import streamlit as st
 
-from calb_sizing_tool.common.arrow_safe import arrow_safe
 from calb_sizing_tool.domain.enums import StageScope
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.repositories.auth_repository import AuthRepository
@@ -94,6 +92,31 @@ def _render_workbench_css() -> None:
         }
         .wb-compact-item:first-child {
             border-left: 0;
+        }
+        .wb-run-table-wrap {
+            border: 1px solid #DDE5EF;
+            border-radius: 6px;
+            overflow-x: auto;
+        }
+        .wb-run-table {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 0.88rem;
+        }
+        .wb-run-table th,
+        .wb-run-table td {
+            border-bottom: 1px solid #E8EEF5;
+            padding: 0.48rem 0.62rem;
+            text-align: left;
+            white-space: nowrap;
+        }
+        .wb-run-table th {
+            background: #F4F7FB;
+            color: #23496B;
+            font-weight: 700;
+        }
+        .wb-run-table tr:last-child td {
+            border-bottom: 0;
         }
         .wb-compact-label {
             color: #506F94;
@@ -701,6 +724,28 @@ def _render_latest_run(runs: list[dict], context: dict, auth_user) -> None:
         _restore_run(latest["sizing_run_id"], auth_user)
 
 
+def _run_registry_table_html(rows: list[dict[str, str]]) -> str:
+    """Render a static run registry without Streamlit Arrow serialisation.
+
+    This panel is a read-only overview; run restoration remains in the native
+    selector below. Keeping its rendering outside ``st.dataframe`` prevents a
+    native PyArrow failure from terminating every Streamlit session.
+    """
+    columns = ("Run", "Power", "Energy", "Scenario", "OK", "Status")
+    header_html = "".join(f"<th>{escape(column)}</th>" for column in columns)
+    body_html = "".join(
+        "<tr>"
+        + "".join(f"<td>{escape(str(row.get(column, '')))}</td>" for column in columns)
+        + "</tr>"
+        for row in rows
+    )
+    return (
+        '<div class="wb-run-table-wrap"><table class="wb-run-table">'
+        f"<thead><tr>{header_html}</tr></thead><tbody>{body_html}</tbody>"
+        "</table></div>"
+    )
+
+
 def _render_run_registry(runs: list[dict], context: dict, auth_user) -> None:
     section_header("Run Registry")
     if not context.get("case_id"):
@@ -730,21 +775,7 @@ def _render_run_registry(runs: list[dict], context: dict, auth_user) -> None:
         )
         options[label] = item["sizing_run_id"]
 
-    table_height = min(430, 40 + 34 * (len(rows) + 1))
-    st.dataframe(
-        arrow_safe(pd.DataFrame(rows)),
-        hide_index=True,
-        use_container_width=True,
-        height=table_height,
-        column_config={
-            "Run": st.column_config.TextColumn(width="small"),
-            "Power": st.column_config.TextColumn(width="small"),
-            "Energy": st.column_config.TextColumn(width="small"),
-            "Scenario": st.column_config.TextColumn(width="medium"),
-            "OK": st.column_config.TextColumn(width="small"),
-            "Status": st.column_config.TextColumn(width="small"),
-        },
-    )
+    st.markdown(_run_registry_table_html(rows), unsafe_allow_html=True)
 
     restore_col, button_col = st.columns([3, 1])
     selected_label = restore_col.selectbox(
