@@ -98,6 +98,14 @@ and `st.rerun()` behaviour.
   target resolves to `guoxia@172.16.1.141:22`, but on 2026-07-13 the host did
   not respond to ICMP or TCP/22 from source address `172.20.11.205`; an HTTP
   probe to port 18511 also timed out.  No direct-transfer fallback was used.
+- Later on 2026-07-13, SSH connectivity recovered.  The server application
+  checkout was reachable and confirmed at commit
+  `ebd03c04f8e0427443f8ca0af5f48919facb00eb`.  The direct GitHub path remains
+  blocked on the server: a prior `git pull --ff-only` did not return within
+  64 seconds, and a non-interactive, server-side
+  `timeout 25s git ls-remote --heads origin ops/ubuntu-docker-coexist-20260311`
+  ended without output.  This is an outbound GitHub reachability/egress issue
+  on the server, not an SSH or repository working-tree conflict.
 - A final release-gate rerun after the latest branch updates completed:
   `python -m compileall -q app.py calb_sizing_tool calb_diagrams` clean and
   `python -m pytest tests -q` → **222 passed** in 63.91 s.  The higher count
@@ -118,6 +126,10 @@ Then verify `http://127.0.0.1:18511/` from the server.  The expected release
 commit is `7d3ec1f98e949422b146673ccd61bc0541e30f85` or a later documented
 commit on the same branch.  Do not reset, reinitialize, or replace the
 persistent database.
+
+Before retrying the pull, restore the server's HTTPS access to GitHub (DNS,
+route, firewall, proxy, or TLS trust as applicable).  Do not work around that
+condition by copying the repository or a Git bundle from the local machine.
 
 ## Verification plan
 
