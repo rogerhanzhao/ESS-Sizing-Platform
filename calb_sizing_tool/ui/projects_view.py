@@ -3,7 +3,6 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from calb_sizing_tool.common.arrow_safe import arrow_safe
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.services.access_control_service import AccessControlService
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
@@ -21,7 +20,7 @@ def show() -> None:
         return
     auth_user = get_auth_user()
 
-    from calb_sizing_tool.ui._ui import page_header
+    from calb_sizing_tool.ui._ui import page_header, render_static_table
     page_header("Project Directory", "All accessible projects")
 
     with session_scope() as session:
@@ -50,7 +49,7 @@ def show() -> None:
         }
         for p in projects
     ])
-    st.dataframe(arrow_safe(df), hide_index=True, use_container_width=True)
+    render_static_table(df)
 
     project_names = [p["project_name"] for p in projects]
     selected_name = st.selectbox("Select project to open", project_names, label_visibility="collapsed")

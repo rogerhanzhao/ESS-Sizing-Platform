@@ -23,7 +23,6 @@ from typing import Any
 
 import streamlit as st
 
-from calb_sizing_tool.common.arrow_safe import arrow_safe
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.plugins.registry import get_plugin_registry
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot, SldRenderOptions
@@ -43,6 +42,7 @@ from calb_sizing_tool.services.sld_renderer_mode_service import (
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state
+from calb_sizing_tool.ui._ui import render_static_table
 from calb_sizing_tool.state.workspace_state import get_workspace_context, navigate_now
 from calb_sizing_tool.ui.sld_inputs import render_electrical_inputs
 
@@ -327,7 +327,13 @@ def show() -> None:
 
     workspace = get_workspace_context()
 
-    from calb_sizing_tool.ui._ui import compact_note, page_header, section_header, workspace_status_bar
+    from calb_sizing_tool.ui._ui import (
+        compact_note,
+        page_header,
+        render_pipeline_next_steps,
+        section_header,
+        workspace_status_bar,
+    )
     page_header("Single Line Diagram", "System Schematic & Engineering Export")
 
     _is_guest = auth_context.is_guest
@@ -714,7 +720,7 @@ def show() -> None:
             hash_rows.append({"artifact_kind": artifact_kind, "content_hash": artifact_hash})
         if hash_rows:
             section_header("Traceability", eyebrow="Output")
-            st.dataframe(arrow_safe(hash_rows), use_container_width=True, hide_index=True)
+            render_static_table(hash_rows)
         section_header("Downloads", eyebrow="Output")
         if svg_item:
             st.download_button(
@@ -785,3 +791,5 @@ def show() -> None:
                     item.get("file_name") or fallback_name,
                     media_type,
                 )
+
+    render_pipeline_next_steps("Single Line Diagram", is_guest=_is_guest)

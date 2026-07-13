@@ -3,7 +3,6 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from calb_sizing_tool.common.arrow_safe import arrow_safe
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.services.access_control_service import AccessControlService
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
@@ -35,7 +34,7 @@ def show() -> None:
     case_id = workspace.get("case_id")
     case_name = workspace.get("case_name")
 
-    from calb_sizing_tool.ui._ui import page_header
+    from calb_sizing_tool.ui._ui import page_header, render_static_table
     page_header("Run Registry", "Sizing run history")
 
     if not project_id or not case_id:
@@ -81,7 +80,7 @@ def show() -> None:
             "Converged": "Yes" if summary.get("converged") else "No",
         })
 
-    st.dataframe(arrow_safe(pd.DataFrame(rows)), hide_index=True, use_container_width=True)
+    render_static_table(pd.DataFrame(rows))
 
     # Per-run detail expanders with restore action
     st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)

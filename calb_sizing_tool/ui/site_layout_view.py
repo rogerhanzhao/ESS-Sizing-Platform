@@ -22,7 +22,6 @@ import json
 
 import streamlit as st
 
-from calb_sizing_tool.common.arrow_safe import arrow_safe
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.plugins.registry import get_plugin_registry
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot
@@ -44,6 +43,7 @@ from calb_sizing_tool.services.site_constraint_set_service import (
     load_persisted_site_constraint_set,
     register_site_constraint_set,
 )
+from calb_sizing_tool.ui._ui import render_static_table
 from calb_sizing_tool.services.sld_data_source_service import AcSnapshotResolution, resolve_preferred_ac_snapshot
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import get_project_state, init_project_state
@@ -152,7 +152,12 @@ def show() -> None:
     _is_guest = auth_context.is_guest
     workspace = get_workspace_context()
 
-    from calb_sizing_tool.ui._ui import page_header, section_header, workspace_status_bar
+    from calb_sizing_tool.ui._ui import (
+        page_header,
+        render_pipeline_next_steps,
+        section_header,
+        workspace_status_bar,
+    )
     page_header(
         "Typical AC Block Arrangement",
         "Concept equipment relationship for one AC Block — not a site plan or construction drawing.",
@@ -273,7 +278,7 @@ def show() -> None:
             f"{master_layout_readiness['required_count']} prerequisite groups are provided."
         )
     with st.expander("Site Constraint Set readiness details", expanded=False):
-        st.dataframe(arrow_safe(readiness_rows), use_container_width=True, hide_index=True)
+        render_static_table(readiness_rows)
         st.download_button(
             "Download Site Constraint Set template",
             json.dumps(constraint_template, indent=2, sort_keys=True),
@@ -513,3 +518,5 @@ def show() -> None:
                                 st.success(f"Review saved: {result['status']}")
                             except Exception as exc:
                                 st.error(f"Review failed: {exc}")
+
+    render_pipeline_next_steps("Typical AC Block Arrangement", is_guest=_is_guest)

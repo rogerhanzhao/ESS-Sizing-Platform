@@ -48,6 +48,22 @@ def test_sld_first_visit_no_crash():
     assert len(app.exception) == 0
 
 
+def test_sld_keeps_pipeline_next_steps_visible_and_navigable():
+    app = _app()
+    _login(app)
+    app.run()
+    _go_to(app, "Single Line Diagram")
+
+    buttons = {button.label: button for button in app.button}
+    assert "Typical AC Block Arrangement →" in buttons
+    assert "Report Export →" in buttons
+
+    buttons["Typical AC Block Arrangement →"].click()
+    app.run()
+    assert app.session_state["main_nav"] == "Typical AC Block Arrangement"
+    assert len(app.exception) == 0
+
+
 def test_sld_page_keeps_ac_lv_value_across_pages():
     app = _app()
     _login(app)

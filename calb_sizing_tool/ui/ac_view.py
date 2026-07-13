@@ -41,7 +41,7 @@ from calb_sizing_tool.services.sld_data_source_service import persist_ac_runtime
 from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.state.project_state import bump_run_id_ac, get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
-from calb_sizing_tool.state.workspace_state import get_workspace_context, navigate_now
+from calb_sizing_tool.state.workspace_state import get_workspace_context
 
 
 def _format_float(val, decimals=2) -> str:
@@ -133,25 +133,6 @@ def _render_saved_ac_snapshot(ac_output: dict, *, section_header) -> None:
         col4.metric("Total AC Power", f"{_format_float(ac_output.get('total_ac_mw'), 2)} MW")
 
 
-def _render_ac_next_steps(*, is_guest: bool, section_header) -> None:
-    st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
-    section_header("Next Steps", eyebrow="Continue")
-    if is_guest:
-        cta1, cta2 = st.columns(2)
-        if cta1.button("Single Line Diagram →", use_container_width=True, key="ac_cta_sld"):
-            navigate_now("Single Line Diagram")
-        if cta2.button("Typical AC Block Arrangement →", use_container_width=True, key="ac_cta_layout"):
-            navigate_now("Typical AC Block Arrangement")
-    else:
-        cta1, cta2, cta3 = st.columns(3)
-        if cta1.button("Single Line Diagram →", use_container_width=True, key="ac_cta_sld"):
-            navigate_now("Single Line Diagram")
-        if cta2.button("Typical AC Block Arrangement →", use_container_width=True, key="ac_cta_layout"):
-            navigate_now("Typical AC Block Arrangement")
-        if cta3.button("Report Export →", use_container_width=True, key="ac_cta_report"):
-            navigate_now("Report Export")
-
-
 def show():
     """AC SIZING V2 main entrypoint."""
     state = init_shared_state()
@@ -182,7 +163,13 @@ def show():
             project_state=project_state,
         )
 
-    from calb_sizing_tool.ui._ui import compact_note, page_header, section_header, workspace_status_bar
+    from calb_sizing_tool.ui._ui import (
+        compact_note,
+        page_header,
+        render_pipeline_next_steps,
+        section_header,
+        workspace_status_bar,
+    )
     page_header("AC Sizing", "PCS & AC Block Configuration")
     workspace_status_bar(
         [
@@ -490,4 +477,4 @@ def show():
     latest_ac_output = st.session_state.get("ac_output") if isinstance(st.session_state.get("ac_output"), dict) else ac_results
     if _snapshot_output_matches_run(latest_ac_output, active_run_id):
         auth_ctx = get_auth_context()
-        _render_ac_next_steps(is_guest=bool(auth_ctx and auth_ctx.is_guest), section_header=section_header)
+        render_pipeline_next_steps("AC Sizing", is_guest=bool(auth_ctx and auth_ctx.is_guest))

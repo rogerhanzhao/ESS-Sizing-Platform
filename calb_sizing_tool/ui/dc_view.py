@@ -27,7 +27,6 @@ from pathlib import Path
 # --- Adapted imports for refactor ---
 from calb_sizing_tool.adapters.excel_loader_adapter import bundle_to_legacy_tuple, load_dc_excel_bundle_from_path
 from calb_sizing_tool.config import DC_DATA_PATH, DC_DATA_IS_LEGACY, PROJECT_ROOT
-from calb_sizing_tool.common.arrow_safe import arrow_safe
 from calb_sizing_tool.common.nameplate import apply_block_nameplate_recalc, get_standard_container_mwh
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.schemas.case import SizingCaseInput
@@ -53,6 +52,7 @@ from calb_sizing_tool.services.stage3_service import (
     select_soh_profile as service_select_soh_profile,
 )
 from calb_sizing_tool.ui.stage4_interface import pack_stage13_output
+from calb_sizing_tool.ui._ui import render_static_table
 # Model import for AC/SLD handoff
 from calb_sizing_tool.models import DCBlockResult
 from calb_sizing_tool.state.project_state import bump_run_id_dc, init_project_state
@@ -836,7 +836,7 @@ def show():
     if not rte_issues.empty:
         st.warning(f"RTE curve monotonicity check found {len(rte_issues)} issues.")
         with st.expander("Show RTE monotonicity issues", expanded=False):
-            st.dataframe(arrow_safe(rte_issues), use_container_width=True)
+            render_static_table(rte_issues)
 
     if not auth_context.is_guest:
         with st.expander("Restore saved DC run", expanded=False):
@@ -1289,7 +1289,7 @@ def show():
                     c2.metric("Container Count", int(s2.get('container_count', 0)))
                     c3.metric("Cabinet Count", int(s2.get('cabinet_count', 0)))
 
-                    st.dataframe(arrow_safe(s2.get("block_config_table")), use_container_width=True)
+                    render_static_table(s2.get("block_config_table"))
                     
                     # Chart
                     s3_df_sorted = s3_df.sort_values("Year_Index").reset_index(drop=True)
@@ -1347,13 +1347,8 @@ div[data-testid="stDataFrame"] div[role="rowheader"] {
                             "Guarantee Year": _col_or_nan(s3_df_sorted, "Is_Guarantee_Year").apply(_fmt_bool_text),
                         }).reset_index(drop=True)
 
-                        # Display table with CSS-driven left alignment (sorting stays numeric where possible)
-                        try:
-                            st.dataframe(arrow_safe(disp_show), use_container_width=True, hide_index=True)
-                        except TypeError:
-                            # Fallback for older Streamlit versions without hide_index
-                            disp_show.index = [""] * len(disp_show)
-                            st.dataframe(arrow_safe(disp_show), use_container_width=True)
+                        # Read-only table avoids Streamlit's PyArrow serialization path.
+                        render_static_table(disp_show)
                     # ----------------------------------
 
                     # Pack data for Session State (For AC/SLD)
