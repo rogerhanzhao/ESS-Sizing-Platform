@@ -447,7 +447,7 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
         ("Project Life (Years)", f"{ctx.project_life_years}"),
         ("Cycles per Year (Assumed)", f"{int(_cyc)}" if _cyc else "—"),
         ("Depth of Discharge (DoD)", format_percent(_dod, input_is_fraction=True) if _dod is not None else "—"),
-        ("Self-Consumption (SC) Loss", format_percent(_sc, input_is_fraction=True) if _sc is not None else "—"),
+        ("Shipping & Commissioning (S&C) Loss", format_percent(_sc, input_is_fraction=True) if _sc is not None else "—"),
     ]
     if _sc_months is not None:
         site_rows.append(("FAT-to-COD Duration", f"{int(round(_sc_months))} months"))
@@ -458,11 +458,11 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
     doc.add_heading("3.  Stage 1 – DC Energy Sizing", level=2)
     _keep_next_para(doc.add_paragraph(
         "DC Energy Required (MWh) = POI Energy Requirement ÷ "
-        "((1 − SC loss) × DoD × DC RTEᴰᴵˢᶜʰᵃʳᵏᵉ × One-way Efficiency)"
+        "((1 − S&C loss) × DoD × DC RTEᴰᴵˢᶜʰᵃʳᵏᵉ × One-way Efficiency)"
     ))
     _keep_next_para(doc.add_paragraph(
         f"One-way Efficiency (DC→POI): {format_percent(ctx.efficiency_chain_oneway_frac, input_is_fraction=True)}  |  "
-        f"SC loss: {format_percent(ctx.stage1.get('sc_loss_frac') or 0.0, input_is_fraction=True)}  |  "
+        f"S&C loss: {format_percent(ctx.stage1.get('sc_loss_frac') or 0.0, input_is_fraction=True)}  |  "
         f"DoD: {format_percent(ctx.stage1.get('dod_frac') or 0.0, input_is_fraction=True)}  |  "
         f"DC RTE: {format_percent(ctx.stage1.get('dc_round_trip_efficiency_frac') or 0.0, input_is_fraction=True)}"
     ))

@@ -61,6 +61,12 @@ def test_report_v2_smoke():
     doc = Document(io.BytesIO(report_bytes))
     texts = [p.text for p in doc.paragraphs]
     joined = "\n".join(texts)
+    table_text = "\n".join(
+        cell.text
+        for table in doc.tables
+        for row in table.rows
+        for cell in row.cells
+    )
 
     ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 
@@ -80,5 +86,9 @@ def test_report_v2_smoke():
     assert "Appendix" not in joined
     assert ".xlsx" not in joined
     assert "314 Ah cell database" not in joined
+    assert "Shipping & Commissioning (S&C) Loss" in table_text
+    assert "Self-Consumption (SC) Loss" not in table_text
+    assert "S&C loss:" in joined
+    assert "SC loss:" not in joined
     assert has_logo
     assert len(doc.inline_shapes) >= 2
