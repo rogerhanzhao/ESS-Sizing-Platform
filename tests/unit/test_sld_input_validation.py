@@ -78,7 +78,35 @@ def test_lv_busbar_current_must_cover_transformer_lv_current():
     with pytest.raises(ValidationError) as exc_info:
         SldCanonicalInput.model_validate(payload)
 
-    assert "lv_busbar.rated_a is below the required LV current" in str(exc_info.value)
+    assert "lv_busbar.rated_a is below the required per-winding LV current" in str(exc_info.value)
+
+
+def test_lv_winding_count_defaults_to_one():
+    obj = SldCanonicalInput.model_validate(_base_payload())
+    assert obj.lv_winding_count == 1
+
+
+def test_split_winding_halves_required_lv_current():
+    # base required single-busbar current is ~5020 A (6 MVA / 690 V).
+    payload = _base_payload()
+    payload["equipment_ratings"]["lv_busbar"]["rated_a"] = 2600.0
+
+    # single LV winding: 2600 A busbar is inadequate (needs ~5020 A).
+    payload["lv_winding_count"] = 1
+    with pytest.raises(ValidationError):
+        SldCanonicalInput.model_validate(payload)
+
+    # split (dual) LV winding: current halves to ~2510 A/section -> 2600 A passes.
+    payload["lv_winding_count"] = 2
+    obj = SldCanonicalInput.model_validate(payload)
+    assert obj.lv_winding_count == 2
+
+
+def test_lv_winding_count_must_be_positive():
+    payload = _base_payload()
+    payload["lv_winding_count"] = 0
+    with pytest.raises(ValidationError):
+        SldCanonicalInput.model_validate(payload)
 
 
 def test_strict_mode_rejects_tbd_dc_fuse_spec():

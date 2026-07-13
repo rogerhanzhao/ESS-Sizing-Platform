@@ -199,6 +199,20 @@ class SldInputBuilder:
             legacy_sld_override_preset().get("transformer_uk_percent"),
         )
 
+        # LV winding count (split-winding step-up transformer). Default 1;
+        # a UI override or project setting selects 2 for split-secondary blocks.
+        lv_winding_count = 1
+        _lw_source = None
+        if override_mode and override and override.lv_winding_count:
+            _lw_source = override.lv_winding_count
+        elif project_settings.get("lv_winding_count"):
+            _lw_source = project_settings.get("lv_winding_count")
+        if _lw_source:
+            try:
+                lv_winding_count = max(1, int(_lw_source))
+            except (TypeError, ValueError):
+                lv_winding_count = 1
+
         pcs_count = self._resolve_group_value(
             "pcs_count",
             authoritative_ac.pcs_count_by_block if authoritative_ac else None,
@@ -282,6 +296,7 @@ class SldInputBuilder:
                 transformer_rating_mva=transformer_rating_mva,
                 transformer_vector_group=transformer_vector_group,
                 transformer_uk_percent=transformer_uk_percent,
+                lv_winding_count=lv_winding_count,
                 pcs_count=pcs_count,
                 pcs_rating_kw_list=pcs_rating_kw_list,
                 dc_block_energy_mwh=dc_block_energy_mwh,

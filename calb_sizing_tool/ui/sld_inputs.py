@@ -199,9 +199,9 @@ def render_electrical_inputs(
     )
 
     st.markdown("**LV Busbar**")
-    b1, b2 = st.columns(2)
+    b1, b2, b3 = st.columns(3)
     lv_rated_a = b1.number_input(
-        "Rated current (A)",
+        "Rated current (A, per winding)",
         min_value=0.0,
         value=_safe_float(bus_defaults.get("rated_a"), 2500.0),
         key=_key("lv_rated_a"),
@@ -213,6 +213,19 @@ def render_electrical_inputs(
         value=_safe_float(bus_defaults.get("short_circuit_ka"), 25.0),
         key=_key("lv_short_circuit_ka"),
         step=1.0,
+    )
+    lv_winding_count = b3.number_input(
+        "LV windings (split-secondary)",
+        min_value=1,
+        max_value=4,
+        value=int(_safe_float(defaults.get("lv_winding_count"), 1.0)),
+        key=_key("lv_winding_count"),
+        step=1,
+        help=(
+            "Independent LV secondaries on the step-up transformer. Use 2 for a "
+            "split-winding (dual-secondary) block: the LV current then divides "
+            "across two busbars, and 'Rated current' above is checked per winding."
+        ),
     )
 
     st.markdown("**Cables**")
@@ -251,6 +264,7 @@ def render_electrical_inputs(
     return SldInputOverride(
         transformer_vector_group=tr_vector_group,
         transformer_uk_percent=tr_uk_percent,
+        lv_winding_count=int(lv_winding_count),
         dc_block_voltage_v=dc_block_voltage_v,
         labels=SldLabels(
             to_switchgear=to_switchgear,

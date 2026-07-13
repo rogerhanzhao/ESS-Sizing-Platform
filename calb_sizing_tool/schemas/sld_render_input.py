@@ -102,6 +102,7 @@ class SldInputOverride(CanonicalBaseModel):
     transformer_rating_mva: float | None = None
     transformer_vector_group: str | None = None
     transformer_uk_percent: float | None = None
+    lv_winding_count: int | None = None
     dc_block_voltage_v: float | None = None
     dc_blocks_per_feeder: list[int] | None = None
     labels: SldLabels | None = None
@@ -120,6 +121,12 @@ class SldCanonicalInput(CanonicalBaseModel):
     transformer_rating_mva: float
     transformer_vector_group: str
     transformer_uk_percent: float
+    # Number of independent LV secondaries on the step-up transformer. Real
+    # utility BESS blocks above ~3.45 MW use a split-winding (dual-secondary)
+    # transformer so the LV current divides across separate LV busbars/switchgear
+    # instead of one impractically large busbar. Default 1 = single LV winding
+    # (backward compatible with all existing runs).
+    lv_winding_count: int = 1
     pcs_count: int
     pcs_rating_kw_list: list[float]
     dc_block_energy_mwh: float
@@ -137,7 +144,7 @@ class SldCanonicalInput(CanonicalBaseModel):
     source_trace: dict[str, str] = Field(default_factory=dict)
     draft_warnings: list[str] = Field(default_factory=list)
 
-    @field_validator("group_index", "ac_blocks_total", "pcs_count", "dc_blocks_total_in_group")
+    @field_validator("group_index", "ac_blocks_total", "pcs_count", "dc_blocks_total_in_group", "lv_winding_count")
     @classmethod
     def _positive_int(cls, value: int) -> int:
         if int(value) <= 0:
@@ -202,19 +209,26 @@ class SldCanonicalInput(CanonicalBaseModel):
             fuse_spec = str(self.equipment_ratings.dc_fuse.fuse_spec or "").strip().lower()
             if fuse_spec in {"tbd", "n/a", "na"}:
                 raise ValueError("dc_fuse.fuse_spec must be explicit in strict SLD mode")
+        # LV current divides evenly across the transformer's LV secondaries.
+        # With a split-winding (dual-secondary) transformer each LV busbar/
+        # switchgear section carries only total / lv_winding_count, which is how
+        # high-power blocks stay within standard ACB frames (e.g. 6300 A).
+        windings = max(1, self.lv_winding_count)
         transformer_lv_current_a = self.transformer_rating_mva * 1_000_000.0 / (sqrt(3.0) * self.lv_voltage_v_ll)
         pcs_total_current_a = sum(self.pcs_rating_kw_list) * 1_000.0 / (sqrt(3.0) * self.lv_voltage_v_ll)
-        required_lv_busbar_a = max(transformer_lv_current_a, pcs_total_current_a)
+        required_lv_busbar_a = max(transformer_lv_current_a, pcs_total_current_a) / windings
         if self.equipment_ratings.lv_busbar.rated_a + 1e-6 < required_lv_busbar_a:
             raise ValueError(
-                "lv_busbar.rated_a is below the required LV current "
-                f"({self.equipment_ratings.lv_busbar.rated_a:.0f} A < {required_lv_busbar_a:.0f} A)"
+                "lv_busbar.rated_a is below the required per-winding LV current "
+                f"({self.equipment_ratings.lv_busbar.rated_a:.0f} A < {required_lv_busbar_a:.0f} A"
+                f" across {windings} LV winding(s))"
             )
         return self
 
 
 def legacy_sld_override_preset() -> dict:
     return {
+        "lv_winding_count": 1,
         "labels": {
             "to_switchgear": "To Switchgear",
             "to_other_rmu": "To Other RMU",
