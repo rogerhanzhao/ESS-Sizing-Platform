@@ -49,7 +49,7 @@ and `st.rerun()` behaviour.
   `_render_project_picker`, `_render_case_picker`, `_render_latest_run`,
   `_render_run_registry`, and `show`.
 
-### 2026-07-12 — implementation in progress
+### 2026-07-12 — implementation and verification complete
 
 - Added a compact, responsive three-step visual guide: Project → Case → Run.
   It shows the active step, completed steps, and future locked steps without
@@ -71,7 +71,24 @@ and `st.rerun()` behaviour.
     empty workspace and asserts that deferred Case/Run panels are absent.
   - First test attempt exposed the expected `AppTest.from_function` isolation
     rule: module imports must be inside the rendered function.  Imports were
-    moved there; the focused test now passes `2 passed`.
+  moved there; the focused test passes `2 passed`.
+- Full verification completed successfully:
+  - `python -m compileall -q app.py calb_sizing_tool calb_diagrams`
+  - `python -m pytest tests -q` → **218 passed** in 80.61 s.
+  - `pwsh ./scripts/start_local_web.ps1 -Port 8511` → Alembic migrations
+    completed; Streamlit PID 19796; `http://127.0.0.1:8511` returned HTTP 200.
+  - Browser visual check confirmed the normal populated Workbench renders
+    correctly with project/case/run data.  The intentionally empty-workspace
+    layout is covered by the isolated AppTest; no production data was deleted
+    merely to recreate that state.
+
+### 2026-07-13 — release rule requested by user
+
+- Release path is strictly **local verification → GitHub commit/push → server
+  `git pull` → service restart/HTTP check**.
+- Do not use a local Git bundle, `scp`, or any direct local-to-server source
+  transfer for application-version deployment.  This rule does not change the
+  existing persistent server database or its imported master data.
 
 ## Verification plan
 
@@ -79,7 +96,7 @@ and `st.rerun()` behaviour.
    the no-project state, and assert that the project form is present while
    no Case/Latest Run/Run Registry empty-state cards are emitted.
 2. Run `python -m compileall -q app.py calb_sizing_tool calb_diagrams`.
-3. Run `python -m pytest tests -q` (current expected suite size: 216 tests).
+3. Run `python -m pytest tests -q` (current expected suite size: 218 tests).
 4. Start local Streamlit with `pwsh ./scripts/start_local_web.ps1` (or the
    equivalent documented port-8511 command) and verify HTTP 200 at
    `http://127.0.0.1:8511`.
