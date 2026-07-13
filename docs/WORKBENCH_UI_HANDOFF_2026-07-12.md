@@ -146,6 +146,21 @@ repository or a Git bundle from the local machine.
   was used.  The earlier GitHub transport timeouts were transient; the final
   deployment completed solely by the server pulling `origin`.
 
+### 2026-07-13 — follow-up release completed
+
+- A later already-committed safety update, `0e77ebb` (`Harden Streamlit Arrow
+  serialization`), was pushed together with this handoff record.  It is a
+  descendant of the deployed Workbench change and adds regression coverage for
+  Streamlit dataframe serialization.
+- The server again used only
+  `git pull --ff-only origin ops/ubuntu-docker-coexist-20260311`, advancing
+  from `13791a1` to runtime commit
+  `82073d67519fbc6e5993fd6a252438ec00ebb060`.
+- `calb-serverctl.sh restart` rebuilt the image
+  `sha256:cda4667b2cdda1becdc18f13f235da751398c844da21306991ba92aeb96e984a`,
+  recreated `calb-sizingtool-app-1`, and the server-local HTTP health check
+  again passed.  This is the current deployed application code baseline.
+
 ### Concurrent worktree boundary after deployment
 
 - During final local verification, unrelated in-progress changes appeared in
