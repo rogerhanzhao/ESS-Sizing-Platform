@@ -89,6 +89,35 @@ and `st.rerun()` behaviour.
 - Do not use a local Git bundle, `scp`, or any direct local-to-server source
   transfer for application-version deployment.  This rule does not change the
   existing persistent server database or its imported master data.
+- GitHub remote is `https://github.com/rogerhanzhao/ESS-Sizing-Platform.git`.
+  The current branch was pushed successfully as
+  `ops/ubuntu-docker-coexist-20260311` at `7d3ec1f98e949422b146673ccd61bc0541e30f85`.
+  The Workbench implementation itself is in the already-pushed commit
+  `81de881` (`Workbench onboarding: staged Project -> Case -> Run guidance`).
+- Server deployment is currently pending network recovery.  The configured
+  target resolves to `guoxia@172.16.1.141:22`, but on 2026-07-13 the host did
+  not respond to ICMP or TCP/22 from source address `172.20.11.205`; an HTTP
+  probe to port 18511 also timed out.  No direct-transfer fallback was used.
+- A final release-gate rerun after the latest branch updates completed:
+  `python -m compileall -q app.py calb_sizing_tool calb_diagrams` clean and
+  `python -m pytest tests -q` → **222 passed** in 63.91 s.  The higher count
+  supersedes the earlier 218-test baseline because subsequent already-merged
+  regression coverage is present on this branch.
+
+### Server recovery command
+
+Once `ssh calb-server` is reachable, run this command from the server only:
+
+```bash
+cd /opt/calb-sizingtool/app \
+  && sudo git -c safe.directory=/opt/calb-sizingtool/app pull --ff-only origin ops/ubuntu-docker-coexist-20260311 \
+  && sudo bash deploy/docker/calb-serverctl.sh restart
+```
+
+Then verify `http://127.0.0.1:18511/` from the server.  The expected release
+commit is `7d3ec1f98e949422b146673ccd61bc0541e30f85` or a later documented
+commit on the same branch.  Do not reset, reinitialize, or replace the
+persistent database.
 
 ## Verification plan
 
@@ -96,7 +125,7 @@ and `st.rerun()` behaviour.
    the no-project state, and assert that the project form is present while
    no Case/Latest Run/Run Registry empty-state cards are emitted.
 2. Run `python -m compileall -q app.py calb_sizing_tool calb_diagrams`.
-3. Run `python -m pytest tests -q` (current expected suite size: 218 tests).
+3. Run `python -m pytest tests -q` (current expected suite size: 222 tests).
 4. Start local Streamlit with `pwsh ./scripts/start_local_web.ps1` (or the
    equivalent documented port-8511 command) and verify HTTP 200 at
    `http://127.0.0.1:8511`.
