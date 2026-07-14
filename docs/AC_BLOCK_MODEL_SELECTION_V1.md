@@ -24,6 +24,7 @@ Do not populate production AC Block templates from assumptions. Formal AC Block 
    - `pcs_kw`
    - `block_size_mw = pcs_per_block * pcs_kw / 1000`
    - `ac_block_container_type`
+   - Container rule: one AC Block above `5 MW` uses `40ft`; a block at or below `5 MW` uses `20ft`, independent of PCS quantity.
 6. Total AC power is calculated as:
 
 ```text

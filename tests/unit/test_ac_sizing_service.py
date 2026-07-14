@@ -55,9 +55,9 @@ def test_ac_sizing_service_builds_simplified_ac_block_models_from_pcs_library():
     assert two_pcs_5mw.source == "simplified_dropdown"
 
     four_pcs_5mw = by_pair[(4, 1250)]
-    assert four_pcs_5mw.model_code == "ACBLK-4X1250KW-40FT"
+    assert four_pcs_5mw.model_code == "ACBLK-4X1250KW-20FT"
     assert four_pcs_5mw.block_size_mw == 5.0
-    assert four_pcs_5mw.container_type == "40ft"
+    assert four_pcs_5mw.container_type == "20ft"
     assert "4 x 1250 kW PCS" in four_pcs_5mw.readable
 
 
@@ -73,8 +73,9 @@ def test_ac_sizing_service_builds_authoritative_dc_allocation_plan():
 
 def test_ac_sizing_service_freezes_container_selection_threshold():
     assert select_ac_block_container_type(5.0, 2) == "20ft"
+    assert select_ac_block_container_type(5.0, 4) == "20ft"
     assert select_ac_block_container_type(5.01, 2) == "40ft"
-    assert select_ac_block_container_type(4.0, 4) == "40ft"
+    assert select_ac_block_container_type(4.0, 4) == "20ft"
 
 
 def test_ac_sizing_service_freezes_power_and_energy_thresholds():

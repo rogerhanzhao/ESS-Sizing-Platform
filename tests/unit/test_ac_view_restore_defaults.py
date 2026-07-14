@@ -47,7 +47,7 @@ def test_saved_ac_block_model_choice_index_prefers_persisted_model_code():
     )
     ratio_12 = next(option for option in options if option.ratio == "1:2")
     models = build_simplified_ac_block_models(ratio_12.pcs_recommendations)
-    target = next(model for model in models if model.model_code == "ACBLK-4X1250KW-40FT")
+    target = next(model for model in models if model.model_code == "ACBLK-4X1250KW-20FT")
 
     index = _saved_ac_block_model_choice_index(
         {
@@ -59,7 +59,30 @@ def test_saved_ac_block_model_choice_index_prefers_persisted_model_code():
         custom_index=len(models),
     )
 
-    assert models[index].model_code == "ACBLK-4X1250KW-40FT"
+    assert models[index].model_code == "ACBLK-4X1250KW-20FT"
+
+
+def test_saved_ac_block_model_choice_index_migrates_legacy_wrong_container_code():
+    options = generate_ac_sizing_options(
+        dc_blocks_total=188,
+        target_mw=400,
+        target_mwh=800,
+        dc_block_mwh=800 / 188,
+    )
+    ratio_12 = next(option for option in options if option.ratio == "1:2")
+    models = build_simplified_ac_block_models(ratio_12.pcs_recommendations)
+
+    index = _saved_ac_block_model_choice_index(
+        {
+            "ac_block_model_code": "ACBLK-4X1250KW-40FT",
+            "pcs_per_block": 4,
+            "pcs_kw": 1250,
+        },
+        models,
+        custom_index=len(models),
+    )
+
+    assert models[index].model_code == "ACBLK-4X1250KW-20FT"
 
 
 def test_saved_ac_block_model_choice_index_restores_legacy_pcs_signature():

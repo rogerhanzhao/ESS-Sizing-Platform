@@ -138,6 +138,21 @@ Fix:
 - Added output trace fields: `ac_block_model_code`, `ac_block_model_name`, `ac_block_model_source`, `ac_block_container_type`, and `ac_block_quantity_basis`.
 - Kept the existing downstream contract fields unchanged: `pcs_per_block`, `pcs_kw`, `block_size_mw`, and `total_ac_mw`.
 
+### FT-20260714-04 - Container rule incorrectly treated four PCS as 40ft
+
+Symptom:
+
+- `4 x 1250 kW` is exactly `5.00 MW` per AC Block but was generated as a `40ft` simplified model.
+
+Root cause:
+
+- The container selector combined the valid power threshold with an unsupported `PCS >= 4` condition.
+
+Fix:
+
+- The container selector now uses only one AC Block's power: `> 5 MW` is `40ft`; `<= 5 MW` is `20ft`.
+- Old saved `ACBLK-4X1250KW-40FT` selections recover through their PCS signature as `ACBLK-4X1250KW-20FT`.
+
 ## 4. Current Findings Requiring Business Confirmation
 
 - `Product & Database -> AC Blocks` is empty (`AC Block Templates = 0`). This is not a render failure, but it means AC sizing cannot yet use governed AC Block product records as the source of truth.

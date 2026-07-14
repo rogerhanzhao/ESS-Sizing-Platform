@@ -18,7 +18,6 @@ STANDARD_PCS_RATINGS_KW: tuple[int, ...] = (1250, 1500, 1725, 2000, 2500)
 OPTIMAL_PCS_RATINGS_KW: tuple[int, ...] = (1000, 1250, 1500, 1725, 2000, 2500, 3000, 3500, 4000, 4500, 5000)
 SUGGESTION_PCS_RATINGS_KW: tuple[int, ...] = (1000, 1250, 1500, 1725, 2000, 2500)
 AC_BLOCK_CONTAINER_SWITCH_MW = 5.0
-AC_BLOCK_CONTAINER_SWITCH_PCS_COUNT = 4
 
 
 @dataclass
@@ -277,8 +276,14 @@ def suggest_pcs_count_and_rating(
     return best_pcs_count, best_pcs_kw
 
 
-def select_ac_block_container_type(block_size_mw: float, pcs_per_block: int) -> str:
-    if float(block_size_mw) > AC_BLOCK_CONTAINER_SWITCH_MW or int(pcs_per_block) >= AC_BLOCK_CONTAINER_SWITCH_PCS_COUNT:
+def select_ac_block_container_type(block_size_mw: float, _pcs_per_block: int) -> str:
+    """Return the container class from the power of one AC Block.
+
+    The PCS-count parameter is retained for call compatibility only. A block of
+    5 MW or less uses 20ft regardless of its PCS count; only a block above 5 MW
+    uses 40ft.
+    """
+    if float(block_size_mw) > AC_BLOCK_CONTAINER_SWITCH_MW:
         return "40ft"
     return "20ft"
 
@@ -383,7 +388,6 @@ __all__ = [
     "ACBlockModelOption",
     "ACBlockRatioOption",
     "AC_BLOCK_CONTAINER_SWITCH_MW",
-    "AC_BLOCK_CONTAINER_SWITCH_PCS_COUNT",
     "DCACRatio",
     "DEFAULT_RECOMMENDED_RATIO",
     "K_MAX_PCS_PER_BLOCK",
