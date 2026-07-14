@@ -186,7 +186,7 @@ class AuthRepository:
         role_id = role.role_id if role else None
         member = (
             self.session.query(ProjectMember)
-            .filter_by(project_id=project_id, user_id=user_id)
+            .filter_by(project_id=project_id, user_id=user_id, status="active")
             .one_or_none()
         )
         if member is None:
@@ -219,7 +219,7 @@ class AuthRepository:
     def is_project_member(self, *, project_id: str, user_id: str) -> bool:
         return (
             self.session.query(ProjectMember)
-            .filter_by(project_id=project_id, user_id=user_id)
+            .filter_by(project_id=project_id, user_id=user_id, status="active")
             .one_or_none()
             is not None
         )

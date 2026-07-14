@@ -20,18 +20,39 @@ class CaseRepository:
     ) -> Project:
         row = self.session.query(Project).filter_by(project_code=project_code).one_or_none()
         if row is None:
-            row = Project(
+            row = self.create_project(
                 project_code=project_code,
                 project_name=project_name,
                 description=description,
                 version_tag=version_tag,
                 source_ref=source_ref,
             )
-            self.session.add(row)
         return row
 
     def get_project_by_id(self, project_id: str) -> Project | None:
         return self.session.query(Project).filter_by(project_id=project_id).one_or_none()
+
+    def get_project_by_code(self, project_code: str) -> Project | None:
+        return self.session.query(Project).filter_by(project_code=project_code).one_or_none()
+
+    def create_project(
+        self,
+        *,
+        project_code: str,
+        project_name: str,
+        description: str | None = None,
+        version_tag: str | None = None,
+        source_ref: str | None = None,
+    ) -> Project:
+        row = Project(
+            project_code=project_code,
+            project_name=project_name,
+            description=description,
+            version_tag=version_tag,
+            source_ref=source_ref,
+        )
+        self.session.add(row)
+        return row
 
     def list_projects(self) -> list[Project]:
         return (

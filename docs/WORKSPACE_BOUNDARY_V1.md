@@ -12,6 +12,23 @@ Formal chain:
 
 `Login -> Workbench -> Select/Create Project -> Select/Create Case -> Run DC -> Continue to AC/SLD/Report`
 
+## Data Isolation And Roles
+
+- The application uses one shared database, not one physical database per user.
+- `Project` is the tenant boundary. `Case`, `SizingRun`, input snapshots, output snapshots, and downstream artifacts belong to a Project directly or through its Case.
+- A normal user can read a Project only when an `active` `project_member` row exists for that user. Case, Run History, Run restore, AC, SLD, layout, and report access inherit this Project check.
+- A normal user who creates a Project becomes an active member of that new Project. A same-name Project creates a separate unique Project code; it must not attach the user to an existing Project.
+- An administrator is identified by the `admin` role and can list and read all Projects, Cases, and Runs without a Project membership row. Administrator visibility does not automatically grant normal users access; membership assignment remains explicit.
+- Inactive memberships are denied by the same access check and are excluded from normal-user project lists.
+
+## Business Flow
+
+1. `Project`: create the customer/site/opportunity workspace and assign the creator as an active member.
+2. `Case`: create a named technical option under the active Project. The initial record holds identity and scenario metadata; the first DC sizing run writes the technical input set.
+3. `Run`: execute DC sizing under the active Project and Case. Each successful Run stores an immutable input snapshot and output snapshot; the Case record is updated to the latest successful working input.
+4. `Restore`: load a selected Run only after the Project membership check passes, set the active Project/Case/Run context, restore the saved DC inputs and results, and open DC Sizing. Restore never changes the historical Run snapshot.
+5. `Continue`: AC sizing, SLD, layout, and report pages consume the restored active Run context and repeat the same Project access check when loading persisted data.
+
 ## UI Boundary Rules
 
 - The primary entry page after login is `Workbench`.

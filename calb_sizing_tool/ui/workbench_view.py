@@ -487,9 +487,16 @@ def _render_create_project_form(auth_user, *, form_key: str) -> None:
                 with session_scope() as session:
                     auth_repo = AuthRepository(session)
                     repo = CaseRepository(session)
-                    project = repo.get_or_create_project(
-                        project_code=slugify(proj_name, fallback="project"),
-                        project_name=proj_name.strip(),
+                    project_name = proj_name.strip()
+                    base_project_code = slugify(project_name, fallback="project")
+                    project_code = base_project_code
+                    suffix = 2
+                    while repo.get_project_by_code(project_code) is not None:
+                        project_code = f"{base_project_code}-{suffix}"
+                        suffix += 1
+                    project = repo.create_project(
+                        project_code=project_code,
+                        project_name=project_name,
                         description=proj_desc.strip() or None,
                         source_ref="workbench",
                     )

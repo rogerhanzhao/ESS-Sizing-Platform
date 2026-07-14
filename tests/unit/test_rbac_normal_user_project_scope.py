@@ -27,7 +27,15 @@ def test_rbac_normal_user_project_scope(tmp_path):
         auth_repo = AuthRepository(session)
         auth_repo.ensure_system_roles()
         auth_repo.add_project_member(project_id=project_a.project_id, user_id=user.user_id)
+        inactive_project = case_repo.get_or_create_project(project_code="inactive", project_name="Inactive")
+        session.flush()
+        auth_repo.add_project_member(
+            project_id=inactive_project.project_id,
+            user_id=user.user_id,
+            status="inactive",
+        )
         project_b_id = project_b.project_id
+        inactive_project_id = inactive_project.project_id
 
     with session_scope(db_url) as session:
         access = AccessControlService(session, user)
@@ -35,3 +43,5 @@ def test_rbac_normal_user_project_scope(tmp_path):
         assert [project.project_code for project in projects] == ["alpha"]
         with pytest.raises(PermissionError):
             access.ensure_project_access(project_b_id)
+        with pytest.raises(PermissionError):
+            access.ensure_project_access(inactive_project_id)
