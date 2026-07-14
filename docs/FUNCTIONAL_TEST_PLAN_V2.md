@@ -338,8 +338,42 @@ Export。**无界面显示不全问题**；此前的交互异常确认为嵌入�
 - 测试执行注意：`uitest-p0-case` 中的负功率/1C 垃圾 run 为 FT-09/FT-10
   取证数据（-400 系列、400/400 系列），勿作回归基线。
 
-**下一步**：R2 继续——DC 场景开关联动（hybrid/cabinet 组合）、AC 自定义
-PCS、SLD 渲染模式矩阵、CST 上传注册流、RPT 缺产物场景、ADM 编辑保存。测试库中 3 个 1C run（e9150ca6/449bc681/a4d5fef9）为 FT-07
+- **FT-20260714-11（S3，待修复）— 未收敛 run 无 UI 警示**：guarantee=25
+  > life=20 时 pipeline 迭代 60 次增容仍 `converged=False` 落库，DC 页
+  只显示"保存成功"，无任何未收敛警告（仅 Workbench 面板的 CONVERGED
+  字段可见）。应在 DC 结果区显眼提示未收敛并给出原因。归入 FT-07/09
+  输入守卫批量修复（guarantee ≤ life 校验 + 收敛状态提示）。
+- **DC-INP-08 ✓（行为已记录）/ DC-INP-14 ✓**：hybrid 勾选后产出
+  Hybrid/Container Only 双方案 tabs；hybrid 结果 184 容器 + 10 柜
+  （尾差补柜恰好 ≤ K=10 busbar 上限），converged。
+- **行为确认（非缺陷）**：`Disable Hybrid Threshold` 是 UI 默认推荐语义
+  （容量超阈值时默认不勾 hybrid），用户显式勾选优先；pipeline 不强制禁用。
+- **FT-10 修复后复测 ✓**：Run(400/800) → 改 900 → Run 记录 400/900；
+  改 guarantee/hybrid 等后续迭代均正常生效。
+
+### FT-07/09/11 输入守卫包 — 已实施并验证（2026-07-14，Alex 批准）
+
+- 新增 `services/dc_input_guard_service.py`：
+  1. **运行前** `validate_dc_inputs`（纯输入合理性，不复算 sizing 公式）：
+     功率/容量 > 0、寿命 ≥ 1、循环 ≥ 1、guarantee ∈ [0, life]、S&C ≥ 0、
+     DoD/RTE/五项效率 ∈ (0,100]（兼容百分数与小数写法）。违规 → 明确
+     业务报错、不运行、不落库。
+  2. **运行后持久化前** `validate_soh_curve_support`（数据驱动）：按
+     pipeline 实际选中的 SOH profile 查曲线点数，< 2 点（占位曲线，如
+     当前 1C 系列）→ 拒绝该模式并说明"产品库无该 C 率衰减曲线、无法
+     支撑全寿命 sizing"，不展示误导结果、不落库。支持范围完全由产品库
+     内容决定，未硬编码 C 率清单。
+  3. **FT-11**：结果 tab 顶部对 `converged=False` 显示 NOT CONVERGED
+     显眼警告（含迭代次数与处置指引）。
+- 冻结核心零改动（仅 `ui/dc_view.py` 挂钩 + 新服务）；
+  单元测试 `test_dc_input_guard_service.py`（12 条）；全量 **278 passed**。
+- 浏览器端到端复测：-400 MW → 拒绝不落库 ✓；400/400（1C）→ 曲线库
+  拒绝不落库 ✓；400/800（2h）→ 正常运行（916.18 MWh / 185 容器）✓。
+- FT-07 / FT-09 / FT-11 状态改为 **已修复**。
+
+**下一步**：R2 剩余——SLD 渲染模式矩阵（theme/compact/plugin）、CST 上传
+注册流（9 组 gate）、AC 自定义 PCS 边界、RPT 缺产物场景、ADM 编辑保存、
+Guest 模式（AUTH-05/07、DC-RUN-10）。之后 R3 边界异常与 R4 回归收口。测试库中 3 个 1C run（e9150ca6/449bc681/a4d5fef9）为 FT-07
 取证数据，勿作回归基线。浏览器自动化注意：Streamlit number_input 用 React
 setter + input 事件 + blur 提交；表单内控件变更不即时触发 rerun 属正常。
 

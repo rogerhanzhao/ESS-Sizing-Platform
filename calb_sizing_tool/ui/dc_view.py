@@ -35,6 +35,10 @@ from calb_sizing_tool.schemas.stage1 import Stage1Result
 from calb_sizing_tool.schemas.stage2 import Stage2Result
 from calb_sizing_tool.schemas.stage3 import Stage3Result
 from calb_sizing_tool.services.access_control_service import AccessControlService
+from calb_sizing_tool.services.dc_input_guard_service import (
+    validate_dc_inputs,
+    validate_soh_curve_support,
+)
 from calb_sizing_tool.services.dc_pipeline_service import size_with_guarantee as service_size_with_guarantee
 from calb_sizing_tool.services.run_persistence_service import persist_dc_run
 from calb_sizing_tool.services.stage1_service import run_stage1 as service_run_stage1
@@ -1180,6 +1184,14 @@ def show():
             "poi_guarantee_year": guarantee_year
         }
 
+        guard_errors = validate_dc_inputs(case_input_base)
+        if guard_errors:
+            st.error(
+                "Sizing was not run — the inputs cannot be supported:\n\n"
+                + "\n".join(f"- {msg}" for msg in guard_errors)
+            )
+            st.stop()
+
         with st.spinner("Running DC sizing…"):
             s1 = run_stage1(inputs, defaults)
             modes_to_run = ["container_only"]
@@ -1219,6 +1231,29 @@ def show():
         ok_results = {
             k: v for k, v in results.items() if isinstance(v, tuple) and v[0] != "ERROR"
         }
+        # Data-driven curve support gate (FT-07): reject modes whose selected
+        # SOH profile has no real degradation curve in the product library.
+        unsupported_msgs = []
+        for k in list(ok_results.keys()):
+            s3_meta = ok_results[k][2] if len(ok_results[k]) > 2 else {}
+            support_error = validate_soh_curve_support(
+                df_soh_curve,
+                (s3_meta or {}).get("soh_profile_id"),
+                chosen_c_rate=(s3_meta or {}).get("chosen_soh_c_rate"),
+                effective_c_rate=(s3_meta or {}).get("effective_c_rate"),
+            )
+            if support_error:
+                unsupported_msgs.append(f"{k.replace('_', ' ').title()}: {support_error}")
+                del ok_results[k]
+                results.pop(k, None)
+        modes_to_run = [m for m in modes_to_run if m in results]
+        if unsupported_msgs:
+            st.error(
+                "Sizing rejected — unsupported by the product curve library:\n\n"
+                + "\n".join(f"- {msg}" for msg in unsupported_msgs)
+            )
+        if not ok_results:
+            st.stop()
         report_order = [
             (k, k.replace("_", " ").title()) for k in modes_to_run if k in ok_results
         ]
@@ -1296,7 +1331,15 @@ def show():
                 res = results.get(mode)
                 if isinstance(res, tuple) and res[0] != "ERROR":
                     s2, s3_df, s3_meta, iter_c, poi_g, conv = res
-                    
+
+                    if not conv:
+                        st.warning(
+                            f"NOT CONVERGED: after {iter_c} augmentation iterations this "
+                            "configuration still cannot meet the POI requirement at the "
+                            "guarantee year. Do not use this result for a proposal — "
+                            "review the POI duty, guarantee year, and product selection."
+                        )
+
                     c1, c2, c3 = st.columns(3)
                     c1.metric("Installed DC Nameplate", f"{s2['dc_nameplate_bol_mwh']:.3f} MWh")
                     c2.metric("Container Count", int(s2.get('container_count', 0)))
