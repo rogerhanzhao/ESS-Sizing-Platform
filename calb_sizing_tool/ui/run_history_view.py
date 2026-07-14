@@ -7,7 +7,11 @@ from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.services.access_control_service import AccessControlService
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import init_project_state
-from calb_sizing_tool.state.workspace_state import get_workspace_context, restore_run_bundle_to_session
+from calb_sizing_tool.state.workspace_state import (
+    get_workspace_context,
+    navigate_now,
+    restore_run_bundle_to_session,
+)
 from calb_sizing_tool.utils.text import SCENARIO_LABELS, fmt_dt
 
 
@@ -107,7 +111,7 @@ def show() -> None:
                     "Created": fmt_dt(run["created_at"]),
                 }
             )
-            if st.button("Restore Run", key=f"restore_{run['sizing_run_id']}"):
+            if st.button("Restore Run Inputs", key=f"restore_{run['sizing_run_id']}"):
                 with session_scope() as session:
                     access = AccessControlService(session, auth_user)
                     try:
@@ -119,4 +123,4 @@ def show() -> None:
                     st.error("Run not found.")
                     return
                 restore_run_bundle_to_session(bundle, run["sizing_run_id"])
-                st.success(f"Run {label} restored.")
+                navigate_now("DC Sizing")

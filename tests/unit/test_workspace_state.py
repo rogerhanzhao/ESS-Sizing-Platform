@@ -16,6 +16,7 @@ def _seed_session_state() -> dict:
         "sld_pipeline_meta": {"run_id": "run-stale"},
         "ac_inputs": {"grid_kv": 11.0, "mv_kv": 11.0, "grid_frequency_hz": 50.0},
         "ac_results": {"mv_voltage_kv": 11.0},
+        "dc_inputs": {"poi_power_req_mw": 999.0},
         "dc_results": {},
         "diagram_outputs": SimpleNamespace(
             sld_svg=b"svg",
@@ -29,6 +30,7 @@ def _seed_session_state() -> dict:
             "sld_meta": {"run_id": "run-stale"},
         },
         "project_state": {
+            "dc_inputs": {"poi_power_req_mw": 999.0},
             "ac_inputs": {"grid_kv": 11.0},
             "ac_results": {"mv_voltage_kv": 11.0},
             "ac": {"run_id": "ac-stale", "results": {"foo": "bar"}},
@@ -128,3 +130,82 @@ def test_restore_run_bundle_to_session_clears_stale_ac_state_and_seeds_case_volt
     assert session_state["project_state"]["ac"]["run_id"] is None
     assert session_state["project_state"]["inputs"]["mv_kv"] == 34.5
     assert session_state["project_state"]["inputs"]["poi_freq_hz"] == 60.0
+
+
+def test_restore_run_bundle_to_session_restores_editable_dc_inputs(monkeypatch, sample_excel_path):
+    session_state = _seed_session_state()
+    monkeypatch.setattr(workspace_state, "st", SimpleNamespace(session_state=session_state))
+
+    bundle = _build_run_bundle(sample_excel_path)
+    bundle.input_snapshot.payload["case_input"].update(
+        {
+            "project_name": "Restored Project",
+            "poi_power_req_mw": 125.0,
+            "poi_energy_req_mwh": 500.0,
+            "project_life_years": 25,
+            "poi_nominal_voltage_kv": 34.5,
+            "poi_frequency_hz": 60.0,
+            "poi_frequency_option": 60.0,
+            "cycles_per_year": 300,
+            "poi_guarantee_year": 10,
+            "sc_time_months": 6,
+            "dod_pct": 92.0,
+            "dc_round_trip_efficiency_pct": 93.0,
+            "rte_curve_adjust_pp": -0.4,
+            "rte_monotonic_enforce": False,
+            "enable_hybrid": True,
+            "enable_cabinet_only": False,
+            "hybrid_disable_threshold_mwh": 15.0,
+            "poi_is_dc_side": True,
+            "eff_dc_cables": 100.0,
+            "eff_pcs": 100.0,
+            "eff_mvt": 100.0,
+            "eff_ac_cables_sw_rmu": 100.0,
+            "eff_hvt_others": 100.0,
+        }
+    )
+
+    workspace_state.restore_run_bundle_to_session(bundle, bundle.run_id)
+
+    assert session_state["dc_inputs"]["poi_power_req_mw"] == 125.0
+    assert session_state["dc_inputs"]["poi_energy_req_mwh"] == 500.0
+    assert session_state["dc_inputs"]["project_life_years"] == 25
+    assert session_state["dc_inputs"]["poi_frequency_option"] == 60.0
+    assert session_state["dc_inputs"]["enable_hybrid"] is True
+    assert session_state["dc_inputs"]["poi_is_dc_side"] is True
+    assert session_state["project_state"]["dc_inputs"]["eff_pcs"] == 100.0
+    assert session_state["_pending_dc_input_restore"]["rte_curve_adjust_pp"] == -0.4
+
+    workspace_state.apply_pending_dc_input_restore()
+
+    assert session_state["dc_inputs.poi_power_req_mw"] == 125.0
+    assert session_state["dc_inputs.poi_frequency_option"] == 60.0
+    assert session_state["dc_inputs.rte_monotonic_enforce"] is False
+
+
+def test_switching_case_clears_previous_dc_inputs(monkeypatch):
+    session_state = _seed_session_state()
+    session_state.update(
+        {
+            "active_project_id": "project-1",
+            "active_project_code": "project-1",
+            "active_project_name": "Project 1",
+            "active_case_id": "case-1",
+            "active_case_code": "case-1",
+            "active_case_name": "Case 1",
+            "dc_inputs.poi_power_req_mw": 999.0,
+            "poi_nominal_voltage_kv": 11.0,
+        }
+    )
+    monkeypatch.setattr(workspace_state, "st", SimpleNamespace(session_state=session_state))
+
+    workspace_state.set_active_case(
+        case_id="case-2",
+        case_code="case-2",
+        case_name="Case 2",
+    )
+
+    assert session_state["dc_inputs"] == {}
+    assert session_state["project_state"]["dc_inputs"] == {}
+    assert "dc_inputs.poi_power_req_mw" not in session_state
+    assert "poi_nominal_voltage_kv" not in session_state

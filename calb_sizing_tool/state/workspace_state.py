@@ -11,6 +11,34 @@ from calb_sizing_tool.services.sld_data_source_service import load_persisted_ac_
 
 MAIN_NAV_KEY = "main_nav"
 PENDING_MAIN_NAV_KEY = "_pending_main_nav"
+PENDING_DC_INPUT_RESTORE_KEY = "_pending_dc_input_restore"
+
+# These are the editable DC form fields persisted in the run input snapshot.
+# Keep this list aligned with the DC form and SizingCaseInput schema so restore
+# remains an input restore, not just a result restore.
+_DC_INPUT_FIELDS = (
+    "project_name",
+    "poi_power_req_mw",
+    "poi_energy_req_mwh",
+    "project_life_years",
+    "poi_nominal_voltage_kv",
+    "cycles_per_year",
+    "poi_guarantee_year",
+    "sc_time_months",
+    "dod_pct",
+    "dc_round_trip_efficiency_pct",
+    "rte_curve_adjust_pp",
+    "rte_monotonic_enforce",
+    "enable_hybrid",
+    "enable_cabinet_only",
+    "hybrid_disable_threshold_mwh",
+    "poi_is_dc_side",
+    "eff_dc_cables",
+    "eff_pcs",
+    "eff_mvt",
+    "eff_ac_cables_sw_rmu",
+    "eff_hvt_others",
+)
 
 
 def _clear_sld_runtime_state() -> None:
@@ -54,6 +82,28 @@ def _clear_ac_runtime_state() -> None:
 def _clear_downstream_runtime_state() -> None:
     _clear_ac_runtime_state()
     _clear_sld_runtime_state()
+
+
+def _clear_dc_input_state() -> None:
+    """Remove editable DC form state when the active Case changes."""
+    dc_inputs = st.session_state.get("dc_inputs")
+    if isinstance(dc_inputs, dict):
+        dc_inputs.clear()
+
+    project_state = st.session_state.get("project_state")
+    if isinstance(project_state, dict):
+        project_dc_inputs = project_state.get("dc_inputs")
+        if isinstance(project_dc_inputs, dict):
+            project_dc_inputs.clear()
+
+    for key in list(st.session_state):
+        if str(key).startswith("dc_inputs."):
+            st.session_state.pop(key, None)
+
+    for key in ("poi_nominal_voltage_kv", "poi_frequency_hz", "grid_kv"):
+        st.session_state.pop(key, None)
+
+    st.session_state.pop(PENDING_DC_INPUT_RESTORE_KEY, None)
 
 
 def get_workspace_context() -> dict[str, Any]:
@@ -137,6 +187,7 @@ def set_active_case(*, case_id: str | None, case_code: str | None, case_name: st
     st.session_state["active_case_code"] = case_code
     st.session_state["active_case_name"] = case_name
     if changed:
+        _clear_dc_input_state()
         clear_active_run()
 
 
@@ -145,14 +196,58 @@ def set_active_run(run_id: str | None) -> None:
     st.session_state["dc_last_run_id"] = run_id
 
 
+def _case_input_from_bundle(bundle: DcRunBundle) -> dict[str, Any]:
+    if not bundle.input_snapshot or not isinstance(bundle.input_snapshot.payload, dict):
+        return {}
+    case_input = bundle.input_snapshot.payload.get("case_input")
+    return case_input if isinstance(case_input, dict) else {}
+
+
+def _build_restored_dc_inputs(case_input: dict[str, Any]) -> dict[str, Any]:
+    restored = {
+        field: case_input[field]
+        for field in _DC_INPUT_FIELDS
+        if field in case_input and case_input[field] is not None
+    }
+
+    if "poi_frequency_option" in case_input and case_input["poi_frequency_option"] is not None:
+        restored["poi_frequency_option"] = case_input["poi_frequency_option"]
+    elif "poi_frequency_hz" in case_input:
+        frequency = case_input.get("poi_frequency_hz")
+        restored["poi_frequency_option"] = "TBD" if frequency is None else float(frequency)
+    if "poi_frequency_hz" in case_input:
+        restored["poi_frequency_hz"] = case_input.get("poi_frequency_hz")
+
+    return restored
+
+
+def apply_pending_dc_input_restore() -> dict[str, Any]:
+    """Apply a pending restore before DC widgets are instantiated."""
+    pending = st.session_state.pop(PENDING_DC_INPUT_RESTORE_KEY, None)
+    if not isinstance(pending, dict) or not pending:
+        return {}
+
+    dc_inputs = st.session_state.setdefault("dc_inputs", {})
+    if isinstance(dc_inputs, dict):
+        dc_inputs.update(pending)
+
+    project_state = st.session_state.get("project_state")
+    if isinstance(project_state, dict):
+        project_dc_inputs = project_state.setdefault("dc_inputs", {})
+        if isinstance(project_dc_inputs, dict):
+            project_dc_inputs.update(pending)
+
+    for field, value in pending.items():
+        st.session_state[f"dc_inputs.{field}"] = value
+
+    return pending
+
+
 def restore_run_bundle_to_session(bundle: DcRunBundle, run_id: str) -> None:
     snapshot = bundle.snapshot
-    case_input = (
-        bundle.input_snapshot.payload.get("case_input")
-        if bundle.input_snapshot and isinstance(bundle.input_snapshot.payload, dict)
-        else {}
-    )
-    poi_nominal_voltage_kv = case_input.get("poi_nominal_voltage_kv", 33.0)
+    case_input = _case_input_from_bundle(bundle)
+    restored_dc_inputs = _build_restored_dc_inputs(case_input)
+    poi_nominal_voltage_kv = case_input.get("poi_nominal_voltage_kv") or 33.0
     poi_frequency_hz = case_input.get("poi_frequency_hz")
 
     _clear_downstream_runtime_state()
@@ -168,6 +263,19 @@ def restore_run_bundle_to_session(bundle: DcRunBundle, run_id: str) -> None:
         case_name=bundle.case_name,
     )
     set_active_run(run_id)
+
+    # Store the full editable form payload and apply it on the next DC page
+    # render. The deferred widget update avoids mutating Streamlit widget keys
+    # after a form has already been instantiated in the current script run.
+    dc_inputs = st.session_state.setdefault("dc_inputs", {})
+    if isinstance(dc_inputs, dict):
+        dc_inputs.update(restored_dc_inputs)
+    project_state = st.session_state.get("project_state")
+    if isinstance(project_state, dict):
+        project_dc_inputs = project_state.setdefault("dc_inputs", {})
+        if isinstance(project_dc_inputs, dict):
+            project_dc_inputs.update(restored_dc_inputs)
+    st.session_state[PENDING_DC_INPUT_RESTORE_KEY] = restored_dc_inputs
 
     st.session_state["dc_result_summary"] = build_dc_result_summary(snapshot)
     st.session_state["stage13_output"] = build_stage13_output(

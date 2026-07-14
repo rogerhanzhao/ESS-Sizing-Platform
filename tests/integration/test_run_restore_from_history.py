@@ -72,6 +72,10 @@ def test_run_restore_from_history(sample_excel_path, tmp_path):
     )
 
     with session_scope(db_url) as session:
+        saved_case = CaseRepository(session).get_case_by_id(sizing_case_id)
+        assert saved_case is not None
+        assert saved_case.input_json["poi_power_req_mw"] == 60.0
+        assert saved_case.input_json["poi_energy_req_mwh"] == 240.0
         run_repo = RunRepository(session)
         runs = run_repo.list_runs_by_case(sizing_case_id)
         assert runs

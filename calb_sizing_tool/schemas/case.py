@@ -25,3 +25,10 @@ class SizingCaseInput(CanonicalBaseModel):
     dc_round_trip_efficiency_pct: float | None = None
     rte_curve_adjust_pp: float = 0.0
     rte_monotonic_enforce: bool = True
+    # UI operating choices are persisted with the case so a restored run
+    # reopens with the same search paths and efficiency basis.
+    poi_frequency_option: str | float | None = None
+    enable_hybrid: bool = False
+    enable_cabinet_only: bool = False
+    hybrid_disable_threshold_mwh: float = 20.0
+    poi_is_dc_side: bool = False

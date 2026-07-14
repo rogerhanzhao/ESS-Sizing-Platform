@@ -57,7 +57,12 @@ from calb_sizing_tool.models import DCBlockResult
 from calb_sizing_tool.state.project_state import bump_run_id_dc, init_project_state
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
-from calb_sizing_tool.state.workspace_state import get_workspace_context, navigate_now, restore_run_bundle_to_session
+from calb_sizing_tool.state.workspace_state import (
+    apply_pending_dc_input_restore,
+    get_workspace_context,
+    navigate_now,
+    restore_run_bundle_to_session,
+)
 
 # ==========================================
 # 0. SETUP & LIBRARY CHECK
@@ -674,8 +679,9 @@ def build_report_bytes(stage1: dict, results_dict: dict, report_order: list):
 # 6. MAIN VIEW FUNCTION
 # ==========================================
 def show():
-    state = init_shared_state()
     init_project_state()
+    state = init_shared_state()
+    apply_pending_dc_input_restore()
     dc_inputs = state.dc_inputs
     dc_results = state.dc_results
     ac_inputs = state.ac_inputs
@@ -868,6 +874,7 @@ def show():
                             st.session_state["poi_nominal_voltage_kv"] = poi_nominal_voltage_kv
                             st.session_state["poi_frequency_hz"] = poi_frequency_hz
                             restore_run_bundle_to_session(bundle, run_id)
+                            apply_pending_dc_input_restore()
                             set_run_time("dc_results")
                             st.success(f"DC run ··{run_id[-8:] if len(run_id) >= 8 else run_id} loaded.")
                     except PermissionError:
@@ -1132,6 +1139,7 @@ def show():
             "poi_energy_req_mwh": poi_energy,
             "poi_nominal_voltage_kv": poi_mv_kv,
             "poi_frequency_hz": case_frequency_hz,
+            "poi_frequency_option": poi_frequency,
             "project_life_years": project_life,
             "cycles_per_year": cycles_year,
             "poi_guarantee_year": guarantee_year,
@@ -1145,6 +1153,10 @@ def show():
             "dc_round_trip_efficiency_pct": dc_rte_pct,
             "rte_curve_adjust_pp": rte_adjust_pp,
             "rte_monotonic_enforce": rte_monotonic_enforce,
+            "enable_hybrid": enable_hybrid,
+            "enable_cabinet_only": enable_cabinet_only,
+            "hybrid_disable_threshold_mwh": hybrid_disable_threshold,
+            "poi_is_dc_side": poi_is_dc_side,
         }
 
         sc_loss_pct = calc_sc_loss_pct(sc_time_months)

@@ -8,5 +8,6 @@
 6. Run sizing and confirm a run_id is shown.
 7. Open **Run History**.
 8. Confirm the new run appears with key summary fields.
-9. Click **Restore Run** and confirm DC results populate.
-10. Return to **DC Sizing** and confirm the restored results display.
+9. Click **Restore Run Inputs** and confirm the app routes to **DC Sizing**.
+10. Confirm the restored POI power, POI energy, voltage, frequency, lifetime, efficiency, and scenario inputs are visible.
+11. Confirm the restored DC results display without rerunning.

@@ -23,6 +23,7 @@ Scope: CALB Sizing Tool local browser acceptance for the primary Project -> Case
 - Login as admin.
 - Confirm current project, case, and run context are visible.
 - Restore latest run from Workbench.
+- Confirm DC Sizing opens with the restored POI, lifetime, efficiency, scenario, and advanced input values.
 - Confirm downstream buttons unlock only after an active run is restored.
 
 ### AC Sizing
@@ -153,16 +154,45 @@ Fix:
 - The container selector now uses only one AC Block's power: `> 5 MW` is `40ft`; `<= 5 MW` is `20ft`.
 - Old saved `ACBLK-4X1250KW-40FT` selections recover through their PCS signature as `ACBLK-4X1250KW-20FT`.
 
+### FT-20260714-05 - Restored run did not repopulate DC case inputs
+
+Symptom:
+
+- The run result and voltage were restored, but the DC Sizing form continued to show defaults or the previous Case values.
+
+Root cause:
+
+- Restore only rebuilt runtime result aliases; it did not map the persisted `dc_case_input` payload back to the DC widget state.
+- Run History also stayed on the registry page after restore, so the input form was not visible.
+
+Fix:
+
+- Restore now repopulates the persisted editable DC input payload, including scenario switches and advanced efficiency fields.
+- Workbench and Run History restore actions route to DC Sizing after the state update.
+- Switching Project or Case clears stale DC widget state before the new context is opened.
+
+### FT-20260714-06 - Case input was not kept as the current working configuration
+
+Symptom:
+
+- A newly created Case had an empty `input_json`, and later successful Runs did not update that Case record.
+
+Fix:
+
+- A successful DC Run now updates the Case working input JSON while retaining the Run input snapshot as the immutable historical record.
+
 ## 4. Current Findings Requiring Business Confirmation
 
 - `Product & Database -> AC Blocks` is empty (`AC Block Templates = 0`). This is not a render failure, but it means AC sizing cannot yet use governed AC Block product records as the source of truth.
 - Until product records are confirmed, AC Sizing uses a simplified AC Block Model dropdown derived from PCS count and rating.
 - Adding 5 MW / 10 MW AC Block templates requires business confirmation of PCS configuration, LV winding count, transformer MVA, LV/MV voltage, impedance, and manufacturer/product basis.
+- The current Project -> Case -> Run boundary remains: Case creation stores identity and scenario metadata; DC Sizing creates the first technical input set; each Run retains its own historical snapshot, while the Case record reflects the latest successful working input.
 
 ## 5. Executed Browser Checks
 
 - Login: passed.
 - Workbench latest-run restore: passed.
+- Restored DC input form values: covered by unit regression tests; browser acceptance should confirm the visible values after routing to DC Sizing.
 - AC Sizing restored-run recalculation after fix: passed.
 - SLD generation: passed as Concept / Not for Construction.
 - Typical AC Block Arrangement generation: passed as Concept Only.

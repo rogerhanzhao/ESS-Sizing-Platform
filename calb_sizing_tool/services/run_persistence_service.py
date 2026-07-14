@@ -75,6 +75,15 @@ def _persist_dc_run_with_session(
                 version_tag=version_tag,
                 source_ref=source_ref,
             )
+        else:
+            # Keep the Case's working input aligned with its latest successful
+            # run while retaining each Run's immutable input snapshot below.
+            case_repo.save_case_input(
+                sizing_case.sizing_case_id,
+                case_model.model_dump(mode="python"),
+                version_tag=version_tag,
+                source_ref=source_ref,
+            )
     else:
         sizing_case = case_repo.create_case_if_needed(
             project_id=project.project_id,

@@ -371,7 +371,7 @@ def _restore_run(run_id: str, auth_user) -> None:
         st.error("Run not found.")
         return
     restore_run_bundle_to_session(bundle, run_id)
-    st.rerun()
+    navigate_now("DC Sizing")
 
 
 def _load_projects(auth_user) -> list[dict]:

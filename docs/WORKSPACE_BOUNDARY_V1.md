@@ -39,6 +39,9 @@ Any page that restores a run must update that same context.
   - active run
   - DC summary
   - stage13 output
+  - all persisted editable DC input fields used by the DC Sizing form
+- Switching the active Project or Case clears prior DC widget state so inputs from another Case cannot be reused accidentally.
+- A successful DC Run updates the active Case working input JSON; each Run keeps its own immutable input snapshot for history and audit.
 
 ## Navigation Rules
 
