@@ -183,6 +183,35 @@ def test_restore_run_bundle_to_session_restores_editable_dc_inputs(monkeypatch, 
     assert session_state["dc_inputs.rte_monotonic_enforce"] is False
 
 
+def test_post_run_restore_does_not_stomp_next_form_edit(monkeypatch, sample_excel_path):
+    """FT-20260714-10: after a successful run the post-run refresh must not
+    queue a widget restore — otherwise the user's next form edits are
+    silently reverted to this run's values on the submit rerun."""
+    session_state = _seed_session_state()
+    monkeypatch.setattr(workspace_state, "st", SimpleNamespace(session_state=session_state))
+
+    bundle = _build_run_bundle(sample_excel_path)
+    bundle.input_snapshot.payload["case_input"]["poi_power_req_mw"] = 400.0
+
+    # Post-run refresh (dc_view after persist) must not queue the overwrite,
+    # and must clear any stale pending left by an earlier explicit restore.
+    session_state["_pending_dc_input_restore"] = {"poi_power_req_mw": 999.0}
+    workspace_state.restore_run_bundle_to_session(
+        bundle, bundle.run_id, queue_widget_restore=False
+    )
+    assert "_pending_dc_input_restore" not in session_state
+
+    # User edits the form; the submit rerun applies pending restores first.
+    # With no pending queued, the edited widget value must survive.
+    session_state["dc_inputs.poi_power_req_mw"] = 500.0
+    workspace_state.apply_pending_dc_input_restore()
+    assert session_state["dc_inputs.poi_power_req_mw"] == 500.0
+
+    # Explicit restore flows (default) still queue the widget restore.
+    workspace_state.restore_run_bundle_to_session(bundle, bundle.run_id)
+    assert session_state["_pending_dc_input_restore"]["poi_power_req_mw"] == 400.0
+
+
 def test_switching_case_clears_previous_dc_inputs(monkeypatch):
     session_state = _seed_session_state()
     session_state.update(

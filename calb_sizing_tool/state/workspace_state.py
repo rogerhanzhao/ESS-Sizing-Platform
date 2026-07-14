@@ -243,7 +243,12 @@ def apply_pending_dc_input_restore() -> dict[str, Any]:
     return pending
 
 
-def restore_run_bundle_to_session(bundle: DcRunBundle, run_id: str) -> None:
+def restore_run_bundle_to_session(
+    bundle: DcRunBundle,
+    run_id: str,
+    *,
+    queue_widget_restore: bool = True,
+) -> None:
     snapshot = bundle.snapshot
     case_input = _case_input_from_bundle(bundle)
     restored_dc_inputs = _build_restored_dc_inputs(case_input)
@@ -275,7 +280,14 @@ def restore_run_bundle_to_session(bundle: DcRunBundle, run_id: str) -> None:
         project_dc_inputs = project_state.setdefault("dc_inputs", {})
         if isinstance(project_dc_inputs, dict):
             project_dc_inputs.update(restored_dc_inputs)
-    st.session_state[PENDING_DC_INPUT_RESTORE_KEY] = restored_dc_inputs
+    if queue_widget_restore:
+        st.session_state[PENDING_DC_INPUT_RESTORE_KEY] = restored_dc_inputs
+    else:
+        # Post-run refresh: the form widgets already hold exactly what the
+        # user submitted. Queuing a widget overwrite here would stomp the
+        # user's NEXT form edits on the submit rerun (edits silently revert
+        # to this run's values). Only explicit restore flows queue it.
+        st.session_state.pop(PENDING_DC_INPUT_RESTORE_KEY, None)
 
     st.session_state["dc_result_summary"] = build_dc_result_summary(snapshot)
     st.session_state["stage13_output"] = build_stage13_output(

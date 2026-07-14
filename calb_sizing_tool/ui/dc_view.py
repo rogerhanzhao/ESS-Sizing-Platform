@@ -1281,7 +1281,9 @@ def show():
                         else:
                             st.session_state["poi_nominal_voltage_kv"] = poi_nominal_voltage_kv
                             st.session_state["poi_frequency_hz"] = poi_frequency_hz
-                            restore_run_bundle_to_session(bundle, run_id)
+                            restore_run_bundle_to_session(
+                                bundle, run_id, queue_widget_restore=False
+                            )
                             st.info("DC run saved and restored successfully.")
             except Exception as exc:
                 st.error(f"Failed to persist DC run: {exc}")
