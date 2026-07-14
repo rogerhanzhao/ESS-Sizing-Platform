@@ -102,6 +102,7 @@ without an explicit incident decision.
 | Date | Branch | Previous app SHA | Deployed SHA | Result |
 | --- | --- | --- | --- | --- |
 | 2026-07-14 | `ops/ubuntu-docker-coexist-20260311` | `0fd2a93` | `2d0e29a` | Relay push, server `ff-only`, Docker rebuild/restart, HTTP 200 |
+| 2026-07-14 | `ops/ubuntu-docker-coexist-20260311` | `2c7d5c1` | `24ba9e0` | Project/Case access isolation and Run restore workflow; relay push, server `ff-only`, Docker rebuild/restart, HTTP 200 |
 
 The first attempted full relay push was interrupted after the empty relay had
 received a partial pack. The partial state was discarded before the relay was
