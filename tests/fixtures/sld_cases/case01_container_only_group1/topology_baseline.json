@@ -50,21 +50,44 @@
       "target_node_id": "G01-MV-RING-OUT"
     },
     {
-      "attributes": {},
-      "edge_id": "G01-EDGE-TX-LVBUS",
+      "attributes": {
+        "feeder_span": [
+          1,
+          2
+        ],
+        "winding_index": 1
+      },
+      "edge_id": "G01-EDGE-TX-LVBUS-W01",
       "edge_type": "transformer_to_lv_busbar",
       "feeder_index": null,
       "labels": [],
       "source_node_id": "G01-TX-NODE",
-      "target_node_id": "G01-LV-BUSBAR-NODE"
+      "target_node_id": "G01-LV-BUSBAR-W01-NODE"
     },
     {
-      "attributes": {},
+      "attributes": {
+        "feeder_span": [
+          3,
+          4
+        ],
+        "winding_index": 2
+      },
+      "edge_id": "G01-EDGE-TX-LVBUS-W02",
+      "edge_type": "transformer_to_lv_busbar",
+      "feeder_index": null,
+      "labels": [],
+      "source_node_id": "G01-TX-NODE",
+      "target_node_id": "G01-LV-BUSBAR-W02-NODE"
+    },
+    {
+      "attributes": {
+        "lv_winding_index": 1
+      },
       "edge_id": "G01-F01-EDGE-LVBUS-PCS",
       "edge_type": "lv_busbar_to_pcs",
       "feeder_index": 1,
       "labels": [],
-      "source_node_id": "G01-LV-BUSBAR-NODE",
+      "source_node_id": "G01-LV-BUSBAR-W01-NODE",
       "target_node_id": "G01-F01-PCS-NODE"
     },
     {
@@ -88,12 +111,14 @@
       "target_node_id": "G01-F01-DC-BLOCK-01-NODE"
     },
     {
-      "attributes": {},
+      "attributes": {
+        "lv_winding_index": 1
+      },
       "edge_id": "G01-F02-EDGE-LVBUS-PCS",
       "edge_type": "lv_busbar_to_pcs",
       "feeder_index": 2,
       "labels": [],
-      "source_node_id": "G01-LV-BUSBAR-NODE",
+      "source_node_id": "G01-LV-BUSBAR-W01-NODE",
       "target_node_id": "G01-F02-PCS-NODE"
     },
     {
@@ -117,12 +142,14 @@
       "target_node_id": "G01-F02-DC-BLOCK-01-NODE"
     },
     {
-      "attributes": {},
+      "attributes": {
+        "lv_winding_index": 2
+      },
       "edge_id": "G01-F03-EDGE-LVBUS-PCS",
       "edge_type": "lv_busbar_to_pcs",
       "feeder_index": 3,
       "labels": [],
-      "source_node_id": "G01-LV-BUSBAR-NODE",
+      "source_node_id": "G01-LV-BUSBAR-W02-NODE",
       "target_node_id": "G01-F03-PCS-NODE"
     },
     {
@@ -146,12 +173,14 @@
       "target_node_id": "G01-F03-DC-BLOCK-01-NODE"
     },
     {
-      "attributes": {},
+      "attributes": {
+        "lv_winding_index": 2
+      },
       "edge_id": "G01-F04-EDGE-LVBUS-PCS",
       "edge_type": "lv_busbar_to_pcs",
       "feeder_index": 4,
       "labels": [],
-      "source_node_id": "G01-LV-BUSBAR-NODE",
+      "source_node_id": "G01-LV-BUSBAR-W02-NODE",
       "target_node_id": "G01-F04-PCS-NODE"
     },
     {
@@ -194,12 +223,15 @@
     {
       "attributes": {
         "lv_voltage_v_ll": 690.0,
+        "lv_winding_count": 2,
         "mv_voltage_kv": 33.0,
         "transformer_cooling": "ONAN",
         "transformer_rating_mva": 6.0,
         "transformer_tap_range": "+/-2x2.5%",
+        "transformer_topology": "one_mv_primary_plus_independent_lv_secondaries",
         "transformer_uk_percent": 7.0,
-        "transformer_vector_group": "Dyn11"
+        "transformer_vector_group": "Dyn11",
+        "transformer_winding_count": 3
       },
       "dc_block_index": null,
       "display_name": "Transformer",
@@ -209,18 +241,40 @@
     },
     {
       "attributes": {
+        "feeder_span": [
+          1,
+          2
+        ],
         "rated_a": 6300.0,
-        "short_circuit_ka": 25.0
+        "short_circuit_ka": 25.0,
+        "winding_index": 1
       },
       "dc_block_index": null,
-      "display_name": "LV Busbar",
-      "equipment_id": "G01-LV-BUSBAR",
+      "display_name": "LV Busbar W1",
+      "equipment_id": "G01-LV-BUSBAR-W01",
+      "equipment_type": "lv_busbar",
+      "feeder_index": null
+    },
+    {
+      "attributes": {
+        "feeder_span": [
+          3,
+          4
+        ],
+        "rated_a": 6300.0,
+        "short_circuit_ka": 25.0,
+        "winding_index": 2
+      },
+      "dc_block_index": null,
+      "display_name": "LV Busbar W2",
+      "equipment_id": "G01-LV-BUSBAR-W02",
       "equipment_type": "lv_busbar",
       "feeder_index": null
     },
     {
       "attributes": {
         "lv_voltage_v_ll": 690.0,
+        "lv_winding_index": 1,
         "pcs_rating_kw": 1250.0
       },
       "dc_block_index": null,
@@ -255,6 +309,7 @@
     {
       "attributes": {
         "lv_voltage_v_ll": 690.0,
+        "lv_winding_index": 1,
         "pcs_rating_kw": 1250.0
       },
       "dc_block_index": null,
@@ -289,6 +344,7 @@
     {
       "attributes": {
         "lv_voltage_v_ll": 690.0,
+        "lv_winding_index": 2,
         "pcs_rating_kw": 1250.0
       },
       "dc_block_index": null,
@@ -323,6 +379,7 @@
     {
       "attributes": {
         "lv_voltage_v_ll": 690.0,
+        "lv_winding_index": 2,
         "pcs_rating_kw": 1250.0
       },
       "dc_block_index": null,
@@ -464,7 +521,8 @@
       "attributes": {
         "transformer_rating_mva": 6.0,
         "transformer_uk_percent": 7.0,
-        "transformer_vector_group": "Dyn11"
+        "transformer_vector_group": "Dyn11",
+        "transformer_winding_count": 3
       },
       "dc_block_index": null,
       "display_name": "Transformer",
@@ -476,18 +534,41 @@
     },
     {
       "attributes": {
-        "lv_voltage_v_ll": 690.0
+        "feeder_span": [
+          1,
+          2
+        ],
+        "lv_voltage_v_ll": 690.0,
+        "winding_index": 1
       },
       "dc_block_index": null,
-      "display_name": "LV Busbar",
-      "equipment_id": "G01-LV-BUSBAR",
+      "display_name": "LV Busbar W1",
+      "equipment_id": "G01-LV-BUSBAR-W01",
       "feeder_index": null,
       "labels": [],
-      "node_id": "G01-LV-BUSBAR-NODE",
+      "node_id": "G01-LV-BUSBAR-W01-NODE",
       "node_type": "lv_busbar"
     },
     {
       "attributes": {
+        "feeder_span": [
+          3,
+          4
+        ],
+        "lv_voltage_v_ll": 690.0,
+        "winding_index": 2
+      },
+      "dc_block_index": null,
+      "display_name": "LV Busbar W2",
+      "equipment_id": "G01-LV-BUSBAR-W02",
+      "feeder_index": null,
+      "labels": [],
+      "node_id": "G01-LV-BUSBAR-W02-NODE",
+      "node_type": "lv_busbar"
+    },
+    {
+      "attributes": {
+        "lv_winding_index": 1,
         "pcs_rating_kw": 1250.0
       },
       "dc_block_index": null,
@@ -546,6 +627,7 @@
     },
     {
       "attributes": {
+        "lv_winding_index": 1,
         "pcs_rating_kw": 1250.0
       },
       "dc_block_index": null,
@@ -604,6 +686,7 @@
     },
     {
       "attributes": {
+        "lv_winding_index": 2,
         "pcs_rating_kw": 1250.0
       },
       "dc_block_index": null,
@@ -662,6 +745,7 @@
     },
     {
       "attributes": {
+        "lv_winding_index": 2,
         "pcs_rating_kw": 1250.0
       },
       "dc_block_index": null,
@@ -747,6 +831,7 @@
     "feeder_count": 4,
     "group_index": 1,
     "lv_voltage_v_ll": 690.0,
+    "lv_winding_count": 2,
     "mv_voltage_kv": 33.0,
     "pcs_count": 4,
     "pcs_rating_kw_list": [

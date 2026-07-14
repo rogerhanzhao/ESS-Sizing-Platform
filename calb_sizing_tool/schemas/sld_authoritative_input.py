@@ -69,6 +69,7 @@ class SldAuthoritativeAcOutput(CanonicalBaseModel):
     dc_blocks_total: int | None = None
     dc_total_mwh: float | None = None
     transformer_mva: float
+    lv_winding_count: int
     transformer_count: int | None = None
     pcs_count_total: int | None = None
     mv_voltage_kv: float | None = None
@@ -76,7 +77,7 @@ class SldAuthoritativeAcOutput(CanonicalBaseModel):
     legacy_aliases_used: list[str] = Field(default_factory=list)
     field_sources: dict[str, str] = Field(default_factory=dict)
 
-    @field_validator("num_blocks", "pcs_per_block")
+    @field_validator("num_blocks", "pcs_per_block", "lv_winding_count")
     @classmethod
     def _positive_int(cls, value: int) -> int:
         if int(value) <= 0:
@@ -173,6 +174,9 @@ class SldAuthoritativeAcOutput(CanonicalBaseModel):
     def _validate_consistency(self) -> "SldAuthoritativeAcOutput":
         if len(self.pcs_count_by_block) != self.num_blocks:
             raise ValueError("pcs_count_by_block length must match num_blocks")
+        expected_lv_winding_count = (self.pcs_per_block + 1) // 2
+        if self.lv_winding_count != expected_lv_winding_count:
+            raise ValueError("lv_winding_count must provide one independent LV winding per two PCS feeders")
         if len(self.pcs_rating_kw_list_by_block) != self.num_blocks:
             raise ValueError("pcs_rating_kw_list_by_block length must match num_blocks")
         if len(self.dc_allocation_plan) != self.num_blocks:

@@ -7,6 +7,7 @@ two PCS feeders dangling with no DC source, which is electrically meaningless.
 from __future__ import annotations
 
 from calb_diagrams.sld_engineering_v2_layout import build_sld_engineering_v2_layout_plan
+from calb_diagrams.sld_engineering_v2_renderer import render_sld_engineering_v2_svg
 from calb_diagrams.sld_engineering_v2_validation import validate_sld_engineering_v2_layout
 from calb_sizing_tool.schemas.diagram_inputs import SldRenderOptions
 from calb_sizing_tool.schemas.sld_render_input import SldInputOverride, legacy_sld_override_preset
@@ -54,7 +55,9 @@ def _shared_topology(sample_excel_path):
 
 
 def test_every_pcs_feeder_has_a_dc_source(sample_excel_path):
-    graph = build_sld_engineering_v2_graph(_shared_topology(sample_excel_path))
+    topology = _shared_topology(sample_excel_path)
+    assert topology.summary.lv_winding_count == 2
+    graph = build_sld_engineering_v2_graph(topology)
 
     dc_blocks = [n for n in graph.nodes if n.node_type == "dc_block"]
     assert len(dc_blocks) == 2  # total block count preserved
@@ -66,6 +69,12 @@ def test_every_pcs_feeder_has_a_dc_source(sample_excel_path):
 
     spans = sorted(tuple(n.attributes["feeder_span"]) for n in dc_blocks)
     assert spans == [(1, 2), (3, 4)]
+
+    lv_busbars = sorted(
+        (node for node in graph.nodes if node.node_type == "lv_busbar"),
+        key=lambda node: int(node.attributes["winding_index"]),
+    )
+    assert [node.attributes["feeder_span"] for node in lv_busbars] == [[1, 2], [3, 4]]
 
 
 def test_per_feeder_mode_is_unchanged(sample_excel_path):
@@ -114,3 +123,24 @@ def test_shared_layout_renders_and_passes_acceptance(sample_excel_path):
     allocation_row = next(r for r in plan.equipment_rows if "DC1" in r.spec or "F1=" in r.spec)
     assert "DC1→F1-F2" in allocation_row.spec
     assert "F3=0" not in allocation_row.spec
+
+
+def test_shared_dc_svg_draws_both_outputs_and_split_lv_windings(sample_excel_path, tmp_path):
+    graph = build_sld_engineering_v2_graph(_shared_topology(sample_excel_path))
+    plan = build_sld_engineering_v2_layout_plan(graph, theme="light")
+    svg_path = tmp_path / "shared_dc_split_lv.svg"
+
+    rendered_path, warning = render_sld_engineering_v2_svg(plan, svg_path)
+
+    assert rendered_path == svg_path
+    assert warning is None
+    svg_text = svg_path.read_text(encoding="utf-8")
+    assert "LV Winding 1 / 690 V" in svg_text
+    assert "LV Winding 2 / 690 V" in svg_text
+    assert "3-winding: 1 MV primary + 2 independent LV secondaries" in svg_text
+    assert 'id="transformer-lv-winding-1"' in svg_text
+    assert 'id="transformer-lv-winding-2"' in svg_text
+    assert 'id="shared-dc-G01-DC-BLOCK-01-F01"' in svg_text
+    assert 'id="shared-dc-G01-DC-BLOCK-01-F02"' in svg_text
+    assert 'id="shared-dc-G01-DC-BLOCK-02-F03"' in svg_text
+    assert 'id="shared-dc-G01-DC-BLOCK-02-F04"' in svg_text

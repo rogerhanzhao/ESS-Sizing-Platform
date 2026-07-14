@@ -4,6 +4,7 @@ import hashlib
 import json
 from typing import Any
 
+from calb_sizing_tool.common.allocation import evenly_distribute
 from calb_sizing_tool.schemas.sld_engineering_v2 import (
     SldEngineeringV2Graph,
     SldV2Edge,
@@ -16,6 +17,15 @@ from calb_sizing_tool.schemas.sld_topology import SldTopology
 def _topology_hash(topology: SldTopology) -> str:
     payload = json.dumps(topology.model_dump(mode="python"), sort_keys=True, default=str).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def _feeder_spans_by_winding(pcs_count: int, winding_count: int) -> list[list[int]]:
+    spans: list[list[int]] = []
+    cursor = 1
+    for size in evenly_distribute(pcs_count, winding_count):
+        spans.append(list(range(cursor, cursor + size)))
+        cursor += size
+    return spans
 
 
 def _port(
@@ -85,10 +95,29 @@ def build_sld_engineering_v2_graph(topology: SldTopology) -> SldEngineeringV2Gra
     rmu_tx_feeder_bay_id = f"{group_token}-RMU-BAY-TX-FEEDER"
     rmu_ring_out_bay_id = f"{group_token}-RMU-BAY-RING-OUT"
     transformer_id = f"{group_token}-TRANSFORMER"
-    lv_busbar_id = f"{group_token}-LV-BUSBAR"
     rmu_equipment_id = f"{group_token}-RMU"
     transformer_equipment_id = f"{group_token}-TX"
-    lv_busbar_equipment_id = f"{group_token}-LV-BUSBAR"
+    lv_winding_spans = _feeder_spans_by_winding(summary.pcs_count, summary.lv_winding_count)
+    lv_winding_by_feeder = {
+        feeder_index: winding_index
+        for winding_index, span in enumerate(lv_winding_spans, start=1)
+        for feeder_index in span
+    }
+    transformer_lv_ports = (
+        [_port("lv_port", "Transformer LV Terminal", "lv", "bottom", "lv_ac")]
+        if summary.lv_winding_count == 1
+        else [
+            _port(
+                f"lv_winding_{winding_index:02d}_port",
+                f"LV Winding {winding_index} Terminal",
+                "lv",
+                "bottom",
+                "lv_ac",
+                attributes={"winding_index": winding_index, "feeder_span": feeder_span},
+            )
+            for winding_index, feeder_span in enumerate(lv_winding_spans, start=1)
+        ]
+    )
 
     nodes.extend(
         [
@@ -158,7 +187,7 @@ def build_sld_engineering_v2_graph(topology: SldTopology) -> SldEngineeringV2Gra
                 equipment_id=transformer_equipment_id,
                 ports=[
                     _port("hv_port", "Transformer HV Terminal", "hv", "top", "mv_ac"),
-                    _port("lv_port", "Transformer LV Terminal", "lv", "bottom", "lv_ac"),
+                    *transformer_lv_ports,
                 ],
                 attributes={
                     "mv_voltage_kv": summary.mv_voltage_kv,
@@ -167,38 +196,46 @@ def build_sld_engineering_v2_graph(topology: SldTopology) -> SldEngineeringV2Gra
                     "transformer_vector_group": summary.transformer_vector_group,
                     "transformer_uk_percent": summary.transformer_uk_percent,
                     "transformer_cooling": topology.equipment_ratings.transformer_cooling,
+                    "lv_winding_count": summary.lv_winding_count,
+                    "transformer_winding_count": summary.lv_winding_count + 1,
+                    "transformer_topology": "one_mv_primary_plus_independent_lv_secondaries",
                 },
             ),
         ]
     )
 
-    lv_busbar_ports = [
-        _port("transformer_port", "Transformer Incomer", "input", "top", "lv_ac"),
-    ]
-    for feeder_index in range(1, summary.feeder_count + 1):
-        lv_busbar_ports.append(
-            _port(
-                f"feeder_F{feeder_index:02d}_port",
-                f"Feeder F{feeder_index}",
-                "tap",
-                "bottom",
-                "lv_ac",
-                feeder_index=feeder_index,
+    lv_busbar_id_by_winding: dict[int, str] = {}
+    for winding_index, feeder_span in enumerate(lv_winding_spans, start=1):
+        winding_suffix = f"-W{winding_index:02d}" if summary.lv_winding_count > 1 else ""
+        lv_busbar_id = f"{group_token}-LV-BUSBAR{winding_suffix}"
+        lv_busbar_id_by_winding[winding_index] = lv_busbar_id
+        lv_busbar_ports = [_port("transformer_port", "Transformer Incomer", "input", "top", "lv_ac")]
+        for feeder_index in feeder_span:
+            lv_busbar_ports.append(
+                _port(
+                    f"feeder_F{feeder_index:02d}_port",
+                    f"Feeder F{feeder_index}",
+                    "tap",
+                    "bottom",
+                    "lv_ac",
+                    feeder_index=feeder_index,
+                )
+            )
+        nodes.append(
+            SldV2Node(
+                node_id=lv_busbar_id,
+                node_type="lv_busbar",
+                display_name=f"LV Busbar W{winding_index}",
+                equipment_id=lv_busbar_id,
+                ports=lv_busbar_ports,
+                attributes={
+                    "lv_voltage_v_ll": summary.lv_voltage_v_ll,
+                    "winding_index": winding_index,
+                    "feeder_span": feeder_span,
+                    **topology.equipment_ratings.lv_busbar.model_dump(mode="python"),
+                },
             )
         )
-    nodes.append(
-        SldV2Node(
-            node_id=lv_busbar_id,
-            node_type="lv_busbar",
-            display_name="LV Busbar",
-            equipment_id=lv_busbar_equipment_id,
-            ports=lv_busbar_ports,
-            attributes={
-                "lv_voltage_v_ll": summary.lv_voltage_v_ll,
-                **topology.equipment_ratings.lv_busbar.model_dump(mode="python"),
-            },
-        )
-    )
 
     edges.extend(
         [
@@ -250,16 +287,22 @@ def build_sld_engineering_v2_graph(topology: SldTopology) -> SldEngineeringV2Gra
                 ring_out_terminal_id,
                 "line_port",
             ),
-            _edge(
-                f"{group_token}-E-TX-LV-LVBUS",
-                "transformer_lv_to_lv_busbar",
-                transformer_id,
-                "lv_port",
-                lv_busbar_id,
-                "transformer_port",
-            ),
         ]
     )
+    for winding_index, feeder_span in enumerate(lv_winding_spans, start=1):
+        winding_suffix = f"-W{winding_index:02d}" if summary.lv_winding_count > 1 else ""
+        transformer_port_id = "lv_port" if summary.lv_winding_count == 1 else f"lv_winding_{winding_index:02d}_port"
+        edges.append(
+            _edge(
+                f"{group_token}-E-TX-LV-LVBUS{winding_suffix}",
+                "transformer_lv_to_lv_busbar",
+                transformer_id,
+                transformer_port_id,
+                lv_busbar_id_by_winding[winding_index],
+                "transformer_port",
+                attributes={"winding_index": winding_index, "feeder_span": feeder_span},
+            )
+        )
 
     # DC block -> PCS feeder mapping. When there are fewer DC blocks than PCS
     # feeders (e.g. 2 x 5 MWh blocks feeding 4 x 1250 kW PCS), each block's DC
@@ -271,8 +314,6 @@ def build_sld_engineering_v2_graph(topology: SldTopology) -> SldEngineeringV2Gra
     shared_dc_mode = 0 < dc_total_blocks < pcs_total
     block_feeder_spans: list[list[int]] = []
     if shared_dc_mode:
-        from calb_sizing_tool.common.allocation import evenly_distribute
-
         cursor = 1
         for span_size in evenly_distribute(pcs_total, dc_total_blocks):
             block_feeder_spans.append(list(range(cursor, cursor + span_size)))
@@ -290,6 +331,7 @@ def build_sld_engineering_v2_graph(topology: SldTopology) -> SldEngineeringV2Gra
         start=1,
     ):
         feeder_token = f"{group_token}-F{feeder_index:02d}"
+        winding_index = lv_winding_by_feeder[feeder_index]
         lv_feeder_id = f"{feeder_token}-LV-FEEDER"
         pcs_id = f"{feeder_token}-PCS"
         dc_interface_id = f"{feeder_token}-DC-INTERFACE"
@@ -305,7 +347,7 @@ def build_sld_engineering_v2_graph(topology: SldTopology) -> SldEngineeringV2Gra
                         _port("busbar_port", "LV Busbar Tap", "input", "top", "lv_ac", feeder_index=feeder_index),
                         _port("pcs_port", "PCS AC Terminal", "output", "bottom", "lv_ac", feeder_index=feeder_index),
                     ],
-                    attributes={"feeder_id": f"F{feeder_index}"},
+                    attributes={"feeder_id": f"F{feeder_index}", "lv_winding_index": winding_index},
                 ),
                 SldV2Node(
                     node_id=pcs_id,
@@ -322,6 +364,7 @@ def build_sld_engineering_v2_graph(topology: SldTopology) -> SldEngineeringV2Gra
                         "lv_voltage_v_ll": summary.lv_voltage_v_ll,
                         "project_frequency_hz": summary.project_frequency_hz,
                         "dc_block_voltage_v": summary.dc_block_voltage_v,
+                        "lv_winding_index": winding_index,
                     },
                 ),
                 SldV2Node(
@@ -349,11 +392,12 @@ def build_sld_engineering_v2_graph(topology: SldTopology) -> SldEngineeringV2Gra
                 _edge(
                     f"{feeder_token}-E-LVBUS-LVFEEDER",
                     "lv_busbar_to_lv_feeder",
-                    lv_busbar_id,
+                    lv_busbar_id_by_winding[winding_index],
                     f"feeder_F{feeder_index:02d}_port",
                     lv_feeder_id,
                     "busbar_port",
                     feeder_index=feeder_index,
+                    attributes={"lv_winding_index": winding_index},
                 ),
                 _edge(
                     f"{feeder_token}-E-LVFEEDER-PCS",

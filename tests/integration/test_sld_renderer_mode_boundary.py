@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from calb_sizing_tool.services.sld_pipeline_service import prepare_sld_pipeline_from_run_bundle, render_prepared_sld_pipeline
 from tests.integration.sld_regression_support import build_case_inputs, load_case_definition
 
@@ -33,7 +35,7 @@ def _with_professional_note_specs(project_settings):
     return settings
 
 
-def test_legacy_server_renderer_mode_uses_server_baseline_svg():
+def test_legacy_server_renderer_mode_rejects_split_secondary_topology():
     run_bundle, ac_snapshot, options, project_settings = _case_inputs()
     options = options.model_copy(update={"renderer_mode": "legacy_server"})
 
@@ -43,21 +45,11 @@ def test_legacy_server_renderer_mode_uses_server_baseline_svg():
         options=options,
         project_settings=project_settings,
     )
-    output = render_prepared_sld_pipeline(prepared)
-
-    svg_text = output["svg_bytes"].decode("utf-8")
-    assert output["metadata"]["renderer_mode"] == "legacy_server"
-    assert output["metadata"]["renderer_lineage"] == "legacy_compatibility_patched"
-    assert output["metadata"]["server_baseline_commit"] == "8568af4"
-    assert "BUSBAR A (Ckt A)" not in svg_text
-    assert "BUSBAR B (Ckt B)" not in svg_text
-    assert "2 circuits (A/B)" not in svg_text
-    assert "DC interface" not in svg_text
-    assert "DC Block #1" in svg_text
-    assert "Ring Main Unit (SF6)" in svg_text
+    with pytest.raises(ValueError, match="requires Engineering V2 SLD"):
+        render_prepared_sld_pipeline(prepared)
 
 
-def test_topology_v1_renderer_mode_stays_current_refactored_path():
+def test_topology_v1_renderer_mode_rejects_split_secondary_topology():
     run_bundle, ac_snapshot, options, project_settings = _case_inputs()
     options = options.model_copy(update={"renderer_mode": "topology_v1"})
 
@@ -67,13 +59,8 @@ def test_topology_v1_renderer_mode_stays_current_refactored_path():
         options=options,
         project_settings=project_settings,
     )
-    output = render_prepared_sld_pipeline(prepared)
-
-    svg_text = output["svg_bytes"].decode("utf-8")
-    assert output["metadata"]["renderer_mode"] == "topology_v1"
-    assert output["metadata"]["renderer_lineage"] == "refactored_topology_v1"
-    assert output["metadata"]["server_baseline_commit"] is None
-    assert "RMU / MV Switchgear" in svg_text
+    with pytest.raises(ValueError, match="requires Engineering V2 SLD"):
+        render_prepared_sld_pipeline(prepared)
 
 
 def test_engineering_v2_renderer_mode_uses_port_bay_preview_path():
@@ -94,7 +81,7 @@ def test_engineering_v2_renderer_mode_uses_port_bay_preview_path():
     assert output["metadata"]["server_baseline_commit"] is None
     assert output["metadata"]["engineering_v2_graph_hash"]
     assert output["metadata"]["engineering_v2_layout_hash"]
-    assert output["metadata"]["engineering_v2_node_count"] == 24
+    assert output["metadata"]["engineering_v2_node_count"] == 25
     assert output["metadata"]["engineering_v2_connector_count"] == output["metadata"]["engineering_v2_edge_count"]
     assert output["metadata"]["engineering_v2_layout_issue_count"] == 0
     assert output["metadata"]["engineering_v2_layout_warning_count"] == 4
@@ -134,7 +121,7 @@ def test_engineering_v2_renderer_mode_handles_multi_dc_block_feeders():
     assert output["metadata"]["renderer_mode"] == "engineering_v2"
     assert output["metadata"]["engineering_v2_layout_issue_count"] == 0
     assert output["metadata"]["engineering_v2_layout_warning_count"] == 4
-    assert output["metadata"]["engineering_v2_node_count"] == 26
+    assert output["metadata"]["engineering_v2_node_count"] == 27
     assert output["metadata"]["engineering_v2_png_width"] == 2000
     assert output["metadata"]["engineering_v2_png_height"] == 1160
     assert output["metadata"]["engineering_v2_template"] == "professional_electrical_reference_v1"

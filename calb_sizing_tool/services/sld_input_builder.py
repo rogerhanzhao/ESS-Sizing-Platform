@@ -199,20 +199,6 @@ class SldInputBuilder:
             legacy_sld_override_preset().get("transformer_uk_percent"),
         )
 
-        # LV winding count (split-winding step-up transformer). Default 1;
-        # a UI override or project setting selects 2 for split-secondary blocks.
-        lv_winding_count = 1
-        _lw_source = None
-        if override_mode and override and override.lv_winding_count:
-            _lw_source = override.lv_winding_count
-        elif project_settings.get("lv_winding_count"):
-            _lw_source = project_settings.get("lv_winding_count")
-        if _lw_source:
-            try:
-                lv_winding_count = max(1, int(_lw_source))
-            except (TypeError, ValueError):
-                lv_winding_count = 1
-
         pcs_count = self._resolve_group_value(
             "pcs_count",
             authoritative_ac.pcs_count_by_block if authoritative_ac else None,
@@ -226,6 +212,33 @@ class SldInputBuilder:
             pcs_count,
             errors,
         )
+
+        # The AC->SLD contract fixes the transformer secondary arrangement:
+        # every two PCS feeders use one independent LV winding. This has to
+        # win over an old project/UI default, otherwise a four-PCS block can be
+        # rendered back into one common low-voltage busbar.
+        lv_winding_count = authoritative_ac.lv_winding_count if authoritative_ac is not None else 1
+        configured_lv_winding_count = None
+        if override_mode and override and override.lv_winding_count:
+            configured_lv_winding_count = override.lv_winding_count
+        elif project_settings.get("lv_winding_count"):
+            configured_lv_winding_count = project_settings.get("lv_winding_count")
+        if authoritative_ac is None and configured_lv_winding_count:
+            try:
+                lv_winding_count = max(1, int(configured_lv_winding_count))
+            except (TypeError, ValueError):
+                lv_winding_count = 1
+        elif authoritative_ac is not None and configured_lv_winding_count:
+            try:
+                if int(configured_lv_winding_count) != lv_winding_count:
+                    draft_warnings.append(
+                        "configured LV winding count was ignored; the authoritative AC block "
+                        "uses one independent LV winding per two PCS feeders."
+                    )
+            except (TypeError, ValueError):
+                draft_warnings.append(
+                    "configured LV winding count was invalid and was ignored in favour of the authoritative AC block."
+                )
 
         dc_block_energy_mwh = self._resolve_dc_block_energy(run_bundle, errors)
         dc_blocks_per_feeder = self._resolve_group_feeder_allocation(

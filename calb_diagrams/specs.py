@@ -197,6 +197,11 @@ def build_topology_from_legacy_sld_group_spec(spec: SldGroupSpec) -> SldTopology
     Missing required engineering fields raise immediately.
     """
     equipment_list = spec.equipment_list if isinstance(spec.equipment_list, dict) else {}
+    if spec.pcs_count > 2:
+        raise ValueError(
+            "Legacy SLD GroupSpec cannot represent more than two PCS on one independent LV winding. "
+            "Use Engineering V2 for split-secondary transformer topology."
+        )
     mv_labels = equipment_list.get("mv_labels") if isinstance(equipment_list.get("mv_labels"), dict) else {}
     transformer = equipment_list.get("transformer") if isinstance(equipment_list.get("transformer"), dict) else {}
 

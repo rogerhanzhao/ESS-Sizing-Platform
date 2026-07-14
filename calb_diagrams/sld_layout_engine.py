@@ -188,6 +188,10 @@ def build_sld_layout_plan(
     theme: str,
 ) -> SldLayoutPlan:
     summary = topology.summary
+    if summary.lv_winding_count > 1:
+        raise ValueError(
+            "Topology V1 cannot render independent LV transformer windings. Use Engineering V2 SLD."
+        )
     config = _profile_config(layout_profile)
     panel_rows = _equipment_rows(topology)
     summary_lines = _summary_lines(topology)

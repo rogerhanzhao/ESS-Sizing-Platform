@@ -233,6 +233,50 @@ def _transformer_2w(dwg, x: float, y: float,
     return hv_cy - r, lv_cy + r   # (top connection y, bottom connection y)
 
 
+def _transformer_split_secondary(
+    dwg,
+    x: float,
+    y: float,
+    vector_group: str,
+    text_lines: tuple[str, ...],
+    winding_count: int,
+) -> tuple[float, list[tuple[float, float]]]:
+    """Draw one MV primary plus independent split LV secondary winding symbols."""
+    hv_radius = 28.0
+    lv_radius = 20.0
+    hv_cy = y + hv_radius
+    lv_cy = y + 88.0
+    offsets = [
+        (index - (winding_count - 1) / 2.0) * 92.0
+        for index in range(winding_count)
+    ]
+
+    dwg.add(dwg.circle(center=(x, hv_cy), r=hv_radius, class_="sfill"))
+    _delta_mark(dwg, x, hv_cy, size=13.0)
+    for winding_index, offset in enumerate(offsets, start=1):
+        secondary_x = x + offset
+        dwg.add(dwg.circle(center=(secondary_x, lv_cy), r=lv_radius, class_="sfill"))
+        _wye_grounded_mark(dwg, secondary_x, lv_cy, size=10.0)
+        _text(dwg, f"LV-{winding_index}", secondary_x, lv_cy + lv_radius + 12.0, "tag", anchor="middle")
+
+    _text(dwg, str(vector_group or "Dyn11"), x + 72.0, hv_cy - 4.0, "label")
+    for idx, line in enumerate(text_lines):
+        _text(dwg, line, x + 72.0, hv_cy + 14.0 + idx * 14.0, "label")
+
+    return hv_cy - hv_radius, [(x + offset, lv_cy + lv_radius) for offset in offsets]
+
+
+def _pcs_by_lv_winding(plan: SldV2LayoutPlan) -> dict[int, list[SldV2LayoutBox]]:
+    groups: dict[int, list[SldV2LayoutBox]] = {}
+    for pcs in _boxes_by_type(plan, "pcs"):
+        winding_index = int(pcs.attributes.get("lv_winding_index") or 1)
+        groups.setdefault(winding_index, []).append(pcs)
+    return {
+        winding_index: sorted(boxes, key=lambda box: int(box.feeder_index or 0))
+        for winding_index, boxes in sorted(groups.items())
+    }
+
+
 def _pcs_symbol(dwg, x: float, y: float, width: float, height: float,
                 label: str, subtitle: str = "", tag: str = "") -> None:
     """PCS bidirectional AC/DC converter — BESS industry SLD convention.
@@ -458,6 +502,8 @@ def _draw_mv_rmu_and_transformer(
 ) -> tuple[float, float]:
     rows = _rows(plan)
     transformer = _first_box(plan, "transformer")
+    pcs_by_winding = _pcs_by_lv_winding(plan)
+    winding_count = len(pcs_by_winding)
     mv = sheet.mv
 
     mv_sys = _compact_voltage_label(rows.get("MV System", "MV"))
@@ -558,16 +604,37 @@ def _draw_mv_rmu_and_transformer(
     # Filter standalone vector-group token from text lines (already drawn as winding marks)
     raw_lines = transformer.text_lines[1:] if transformer else ()
     filtered_lines = tuple(ln for ln in raw_lines if ln.strip() != (vg_token or "Dyn11"))
-    tx_top, tx_bot = _transformer_2w(
-        dwg, mv.center_x, mv.transformer_y,
-        vg_token or "Dyn11", filtered_lines,
-    )
+    if winding_count > 1:
+        tx_top, tx_lv_terminals = _transformer_split_secondary(
+            dwg,
+            mv.center_x,
+            mv.transformer_y,
+            vg_token or "Dyn11",
+            filtered_lines,
+            winding_count,
+        )
+    else:
+        tx_top, tx_bot = _transformer_2w(
+            dwg, mv.center_x, mv.transformer_y,
+            vg_token or "Dyn11", filtered_lines,
+        )
+        tx_lv_terminals = [(mv.center_x, tx_bot)]
     _text(dwg, "T-01", mv.center_x - 50.0, mv.transformer_y + 14.0, "tag")
 
     # Short wire connecting feeder branch to HV terminal
     _line(dwg, (mv.center_x, mv.transformer_y - 32.0), (mv.center_x, tx_top), "wire")
-    # Wire from LV terminal to LV bus
-    _line(dwg, (mv.center_x, tx_bot), (mv.center_x, mv.lv_bus_y), "wire")
+    # Separate secondaries are routed independently to their corresponding LV
+    # winding busbars. There is deliberately no common LV conductor between
+    # these paths.
+    for (winding_index, pcs_boxes), terminal in zip(sorted(pcs_by_winding.items()), tx_lv_terminals):
+        target_x = sum(box.x + box.width / 2.0 for box in pcs_boxes) / len(pcs_boxes)
+        elbow_y = terminal[1] + 10.0
+        _poly(
+            dwg,
+            [terminal, (terminal[0], elbow_y), (target_x, elbow_y), (target_x, mv.lv_bus_y)],
+            "wire",
+            id=f"transformer-lv-winding-{winding_index}",
+        )
 
     return mv.center_x, mv.lv_bus_y
 
@@ -580,43 +647,69 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
     pcs_boxes = _boxes_by_type(plan, "pcs")
     dc_boxes  = _boxes_by_type(plan, "dc_block")
 
-    by_feeder: dict[int, list[SldV2LayoutBox]] = {}
-    for blk in dc_boxes:
-        by_feeder.setdefault(int(blk.feeder_index or 0), []).append(blk)
-
     if not pcs_boxes:
         return
 
     lvdc = sheet.lvdc
     mv   = sheet.mv
+    pcs_by_winding = _pcs_by_lv_winding(plan)
+    shared_dc_boxes = [
+        block
+        for block in dc_boxes
+        if len([int(feeder) for feeder in (block.attributes.get("feeder_span") or [])]) > 1
+    ]
+    local_dc_by_feeder: dict[int, list[SldV2LayoutBox]] = {}
+    for block in dc_boxes:
+        if block in shared_dc_boxes:
+            continue
+        local_dc_by_feeder.setdefault(int(block.feeder_index or 0), []).append(block)
 
-    # LV busbar
-    _line(dwg, (lvdc.bus_x1, mv.lv_bus_y), (lvdc.bus_x2, mv.lv_bus_y), "busbar")
     lv_v = _fmt_number(
         (pcs_boxes[0].attributes if pcs_boxes else {}).get("lv_voltage_v_ll"), decimals=0
     )
-    _text(dwg, f"LV Bus  {lv_v} V",
-          lvdc.bus_x2 + 6.0, mv.lv_bus_y + 4.0, "label")
-    _junction(dwg, mv.center_x, mv.lv_bus_y)
+    bus_y_by_winding: dict[int, float] = {}
+    for winding_index, winding_pcs in pcs_by_winding.items():
+        centers = [pcs.x + pcs.width / 2.0 for pcs in winding_pcs]
+        bus_x1 = min(centers) - 90.0
+        bus_x2 = max(centers) + 90.0
+        bus_y = mv.lv_bus_y
+        bus_y_by_winding[winding_index] = bus_y
+        _line(
+            dwg,
+            (bus_x1, bus_y),
+            (bus_x2, bus_y),
+            "busbar",
+            id=f"lv-winding-{winding_index}-busbar",
+        )
+        label = (
+            f"LV Bus  {lv_v} V"
+            if len(pcs_by_winding) == 1
+            else f"LV Winding {winding_index} / {lv_v} V"
+        )
+        _text(dwg, label, bus_x1, bus_y - 8.0, "label")
 
     # Battery bank heading — centred in the clear gap between fuse bottom and BESS box top
     _text(dwg, "BATTERY STORAGE BANK",
           (lvdc.bus_x1 + lvdc.bus_x2) / 2.0,
           lvdc.block_y - 12.0, "title", anchor="middle")
 
+    dc_bottom_by_feeder: dict[int, float] = {}
+    pcs_x_by_feeder: dict[int, float] = {}
     for fi, pcs in enumerate(pcs_boxes, start=1):
         fi = int(pcs.feeder_index or fi)
         px = pcs.x + pcs.width / 2.0
+        winding_index = int(pcs.attributes.get("lv_winding_index") or 1)
+        bus_y = bus_y_by_winding[winding_index]
         pcs_label = pcs.text_lines[0] if pcs.text_lines else f"PCS {fi}"
         pcs_sub   = pcs.text_lines[1] if len(pcs.text_lines) > 1 else ""
 
         # ── LV feeder — segmented conductor, DS open gap visible ─────────────
-        _junction(dwg, px, mv.lv_bus_y)
-        ds_y = mv.lv_bus_y + 28.0
-        cb_y = mv.lv_bus_y + 56.0
+        _junction(dwg, px, bus_y)
+        ds_y = bus_y + 28.0
+        cb_y = bus_y + 56.0
 
         # Segment 1: LV bus → DS moving contact (pivot)
-        _line(dwg, (px, mv.lv_bus_y), (px, ds_y - 8.0), "wire")
+        _line(dwg, (px, bus_y), (px, ds_y - 8.0), "wire")
         _disconnect_switch(dwg, px, ds_y, blade_right=True)
         _text(dwg, f"DS-F{fi:02d}", px - 10.0, ds_y - 6.0, "tag", anchor="end")
 
@@ -640,9 +733,11 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
         dc_top, dc_bot = _dc_isolator_fuse(
             dwg, px, lvdc.dc_device_y, tag=f"F-{fi:02d}"
         )
+        dc_bottom_by_feeder[fi] = dc_bot
+        pcs_x_by_feeder[fi] = px
 
-        # DC blocks for this feeder
-        blocks = sorted(by_feeder.get(fi, []),
+        # Per-feeder DC blocks retain the previous 1:1 / multi-block drawing.
+        blocks = sorted(local_dc_by_feeder.get(fi, []),
                         key=lambda b: b.dc_block_index or 0)
         if not blocks:
             continue
@@ -675,6 +770,45 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
             _bess_block(dwg, bx, lvdc.block_y,
                         lvdc.battery_width, lvdc.battery_height,
                         b_title, b_sub, tag=f"BESS-{gi:02d}")
+
+    # One DC Block can expose two independent DC outputs. Shared blocks are
+    # therefore drawn once, centred between their PCS feeders, with an explicit
+    # branch from every feeder fuse to the same DC block. This prevents the old
+    # false drawing where the second PCS DC side was left electrically dangling.
+    for block in sorted(shared_dc_boxes, key=lambda item: int(item.dc_block_index or 0)):
+        feeder_span = [int(feeder) for feeder in (block.attributes.get("feeder_span") or [])]
+        if not feeder_span or any(feeder not in dc_bottom_by_feeder for feeder in feeder_span):
+            raise ValueError(f"shared DC block has unresolved feeder connection(s): {block.node_id}")
+        branch_y = lvdc.block_y - 36.0
+        block_x = block.x + block.width / 2.0
+        prefix = f"shared-dc-{block.node_id}"
+        span_x = [pcs_x_by_feeder[feeder] for feeder in feeder_span]
+        _line(dwg, (min(span_x), branch_y), (max(span_x), branch_y), "wire", id=f"{prefix}-branch")
+        for feeder_index in feeder_span:
+            feeder_x = pcs_x_by_feeder[feeder_index]
+            _line(
+                dwg,
+                (feeder_x, dc_bottom_by_feeder[feeder_index]),
+                (feeder_x, branch_y),
+                "wire",
+                id=f"{prefix}-F{feeder_index:02d}",
+            )
+            _junction(dwg, feeder_x, branch_y)
+        _line(dwg, (block_x, branch_y), (block_x, lvdc.block_y), "wire", id=f"{prefix}-block")
+        _junction(dwg, block_x, branch_y)
+        b_title = block.text_lines[0] if block.text_lines else "BESS"
+        b_sub = block.text_lines[1] if len(block.text_lines) > 1 else ""
+        dc_block_index = int(block.dc_block_index or 0)
+        _bess_block(
+            dwg,
+            block_x,
+            lvdc.block_y,
+            lvdc.battery_width,
+            lvdc.battery_height,
+            b_title,
+            b_sub,
+            tag=f"BESS-{dc_block_index:02d}",
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -4,11 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from calb_diagrams.sld_pro_renderer import render_sld_pro_svg, render_sld_svg
+from calb_diagrams.sld_engineering_v2_layout import build_sld_engineering_v2_layout_plan
+from calb_diagrams.sld_engineering_v2_renderer import render_sld_engineering_v2_svg
+from calb_diagrams.sld_pro_renderer import render_sld_pro_svg
 from calb_diagrams.specs import SldGroupSpec
 from calb_sizing_tool.schemas.diagram_inputs import SldRenderOptions
 from calb_sizing_tool.schemas.sld_render_input import SldInputOverride, legacy_sld_override_preset
 from calb_sizing_tool.services.sld_input_builder import build_sld_canonical_input
+from calb_sizing_tool.services.sld_engineering_v2_builder import build_sld_engineering_v2_graph
 from calb_sizing_tool.services.sld_topology_builder import build_sld_topology
 from calb_sizing_tool.sld.voltage_contract import resolve_mv_rmu_voltage_contract
 from tests.unit.test_sld_input_contract import _build_run_bundle, _make_ac_snapshot
@@ -71,12 +74,8 @@ def test_renderer_uses_same_rmu_voltage_as_authoritative_mv_input(sample_excel_p
 
     topology = build_sld_topology(canonical)
     svg_path = tmp_path / "rmu_tracks_mv_voltage.svg"
-    result_path, warning = render_sld_svg(
-        topology,
-        layout_profile="engineering_readable",
-        theme="dark",
-        out_svg=svg_path,
-    )
+    plan = build_sld_engineering_v2_layout_plan(build_sld_engineering_v2_graph(topology), theme="dark")
+    result_path, warning = render_sld_engineering_v2_svg(plan, svg_path)
 
     assert result_path == svg_path
     assert warning is None

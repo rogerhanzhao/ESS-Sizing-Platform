@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Sequence
 
 from calb_sizing_tool.adapters.ac_to_sld_adapter import AcToSldAdapterError, normalize_ac_output_for_sld
+from calb_sizing_tool.common.allocation import evenly_distribute
 from calb_sizing_tool.schemas.sld_render_input import (
     SldCanonicalInput,
     SldEquipmentRatings,
@@ -42,6 +43,16 @@ def _normalize_counts(values: Sequence[Any], expected_len: int) -> list[int]:
         return counts[:expected_len]
     counts.extend([0 for _ in range(expected_len - len(counts))])
     return counts
+
+
+def _feeder_spans_by_winding(pcs_count: int, winding_count: int) -> list[list[int]]:
+    """Return contiguous PCS feeder groups served by independent LV windings."""
+    spans: list[list[int]] = []
+    cursor = 1
+    for size in evenly_distribute(pcs_count, winding_count):
+        spans.append(list(range(cursor, cursor + size)))
+        cursor += size
+    return spans
 
 
 def _merge_legacy_equipment_payload(sld_inputs: dict[str, Any]) -> tuple[SldLabels, SldEquipmentRatings, str, float, float]:
@@ -262,6 +273,15 @@ def build_legacy_sld_canonical_input(
 
 def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
     group_token = f"G{canonical_input.group_index:02d}"
+    lv_winding_spans = _feeder_spans_by_winding(
+        canonical_input.pcs_count,
+        canonical_input.lv_winding_count,
+    )
+    lv_winding_by_feeder = {
+        feeder_index: winding_index
+        for winding_index, span in enumerate(lv_winding_spans, start=1)
+        for feeder_index in span
+    }
 
     equipment: list[SldEquipment] = []
     nodes: list[SldNode] = []
@@ -351,6 +371,9 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
                 "transformer_cooling": canonical_input.equipment_ratings.transformer_cooling,
                 "mv_voltage_kv": canonical_input.mv_voltage_kv,
                 "lv_voltage_v_ll": canonical_input.lv_voltage_v_ll,
+                "lv_winding_count": canonical_input.lv_winding_count,
+                "transformer_winding_count": canonical_input.lv_winding_count + 1,
+                "transformer_topology": "one_mv_primary_plus_independent_lv_secondaries",
             },
         )
     )
@@ -364,27 +387,39 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
                 "transformer_rating_mva": canonical_input.transformer_rating_mva,
                 "transformer_vector_group": canonical_input.transformer_vector_group,
                 "transformer_uk_percent": canonical_input.transformer_uk_percent,
+                "transformer_winding_count": canonical_input.lv_winding_count + 1,
             },
         )
     )
 
-    add_equipment(
-        SldEquipment(
-            equipment_id=f"{group_token}-LV-BUSBAR",
-            equipment_type="lv_busbar",
-            display_name="LV Busbar",
-            attributes=canonical_input.equipment_ratings.lv_busbar.model_dump(mode="python"),
+    for winding_index, feeder_span in enumerate(lv_winding_spans, start=1):
+        winding_suffix = f"-W{winding_index:02d}" if canonical_input.lv_winding_count > 1 else ""
+        lv_busbar_id = f"{group_token}-LV-BUSBAR{winding_suffix}"
+        add_equipment(
+            SldEquipment(
+                equipment_id=lv_busbar_id,
+                equipment_type="lv_busbar",
+                display_name=f"LV Busbar W{winding_index}",
+                attributes={
+                    **canonical_input.equipment_ratings.lv_busbar.model_dump(mode="python"),
+                    "winding_index": winding_index,
+                    "feeder_span": feeder_span,
+                },
+            )
         )
-    )
-    add_node(
-        SldNode(
-            node_id=f"{group_token}-LV-BUSBAR-NODE",
-            node_type="lv_busbar",
-            display_name="LV Busbar",
-            equipment_id=f"{group_token}-LV-BUSBAR",
-            attributes={"lv_voltage_v_ll": canonical_input.lv_voltage_v_ll},
+        add_node(
+            SldNode(
+                node_id=f"{lv_busbar_id}-NODE",
+                node_type="lv_busbar",
+                display_name=f"LV Busbar W{winding_index}",
+                equipment_id=lv_busbar_id,
+                attributes={
+                    "lv_voltage_v_ll": canonical_input.lv_voltage_v_ll,
+                    "winding_index": winding_index,
+                    "feeder_span": feeder_span,
+                },
+            )
         )
-    )
 
     add_edge(
         SldEdge(
@@ -419,14 +454,17 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
             target_node_id=f"{group_token}-MV-RING-OUT",
         )
     )
-    add_edge(
-        SldEdge(
-            edge_id=f"{group_token}-EDGE-TX-LVBUS",
-            edge_type="transformer_to_lv_busbar",
-            source_node_id=f"{group_token}-TX-NODE",
-            target_node_id=f"{group_token}-LV-BUSBAR-NODE",
+    for winding_index, feeder_span in enumerate(lv_winding_spans, start=1):
+        winding_suffix = f"-W{winding_index:02d}" if canonical_input.lv_winding_count > 1 else ""
+        add_edge(
+            SldEdge(
+                edge_id=f"{group_token}-EDGE-TX-LVBUS{winding_suffix}",
+                edge_type="transformer_to_lv_busbar",
+                source_node_id=f"{group_token}-TX-NODE",
+                target_node_id=f"{group_token}-LV-BUSBAR{winding_suffix}-NODE",
+                attributes={"winding_index": winding_index, "feeder_span": feeder_span},
+            )
         )
-    )
 
     dc_block_ordinal = 0
     for feeder_index, (pcs_rating_kw, dc_block_count) in enumerate(
@@ -434,6 +472,8 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
         start=1,
     ):
         feeder_token = f"{group_token}-F{feeder_index:02d}"
+        winding_index = lv_winding_by_feeder[feeder_index]
+        winding_suffix = f"-W{winding_index:02d}" if canonical_input.lv_winding_count > 1 else ""
         pcs_equipment_id = f"{feeder_token}-PCS"
         dc_interface_equipment_id = f"{feeder_token}-DC-INTERFACE"
 
@@ -446,6 +486,7 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
                 attributes={
                     "pcs_rating_kw": pcs_rating_kw,
                     "lv_voltage_v_ll": canonical_input.lv_voltage_v_ll,
+                    "lv_winding_index": winding_index,
                 },
             )
         )
@@ -464,7 +505,7 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
                         scope="pcs",
                     )
                 ],
-                attributes={"pcs_rating_kw": pcs_rating_kw},
+                attributes={"pcs_rating_kw": pcs_rating_kw, "lv_winding_index": winding_index},
             )
         )
 
@@ -504,9 +545,10 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
             SldEdge(
                 edge_id=f"{feeder_token}-EDGE-LVBUS-PCS",
                 edge_type="lv_busbar_to_pcs",
-                source_node_id=f"{group_token}-LV-BUSBAR-NODE",
+                source_node_id=f"{group_token}-LV-BUSBAR{winding_suffix}-NODE",
                 target_node_id=f"{feeder_token}-PCS-NODE",
                 feeder_index=feeder_index,
+                attributes={"lv_winding_index": winding_index},
             )
         )
         add_edge(
@@ -588,6 +630,7 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
             transformer_rating_mva=canonical_input.transformer_rating_mva,
             transformer_vector_group=canonical_input.transformer_vector_group,
             transformer_uk_percent=canonical_input.transformer_uk_percent,
+            lv_winding_count=canonical_input.lv_winding_count,
             pcs_rating_kw_list=list(canonical_input.pcs_rating_kw_list),
             dc_block_energy_mwh=canonical_input.dc_block_energy_mwh,
             dc_block_voltage_v=canonical_input.dc_block_voltage_v,

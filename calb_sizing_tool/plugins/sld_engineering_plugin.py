@@ -130,8 +130,14 @@ class SldEngineeringPlugin:
         else:
             topology = build_sld_topology(render_input.canonical_input)
         group_index = topology.summary.group_index
-        sld_spec = build_sld_group_spec_from_topology(topology)
         renderer_mode = normalize_sld_renderer_mode(render_input.options.renderer_mode)
+        shared_dc_mode = 0 < sum(topology.summary.dc_blocks_per_feeder) < topology.summary.pcs_count
+        if renderer_mode != "engineering_v2" and (topology.summary.lv_winding_count > 1 or shared_dc_mode):
+            raise ValueError(
+                "This AC block requires Engineering V2 SLD: independent LV transformer windings "
+                "or shared two-output DC blocks cannot be represented by the legacy renderer."
+            )
+        sld_spec = build_sld_group_spec_from_topology(topology)
         engineering_v2_graph_payload: dict[str, Any] | None = None
         engineering_v2_layout_payload: dict[str, Any] | None = None
         engineering_v2_layout_issues_payload: list[dict[str, Any]] | None = None

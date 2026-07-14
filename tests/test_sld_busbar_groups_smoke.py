@@ -72,14 +72,5 @@ def test_sld_busbar_groups_smoke(tmp_path: Path):
 
     spec = build_sld_group_spec(stage13_output, ac_output, {}, sld_inputs, group_index=1)
     svg_path = tmp_path / "sld_busbars.svg"
-    result_path, warning = render_sld_pro_svg(spec, svg_path)
-    assert result_path is not None
-    assert warning is None or isinstance(warning, str)
-
-    svg_text = svg_path.read_text(encoding="utf-8")
-    assert "RMU / MV Switchgear" in svg_text
-    assert "Transformer Feeder" in svg_text
-    assert "DC Interface" in svg_text
-    assert "DC Isolator/Fuse" in svg_text
-    assert "DC BUSBAR" not in svg_text
-    assert "DC Combiner" not in svg_text
+    with pytest.raises(ValueError, match="Legacy SLD GroupSpec cannot represent"):
+        render_sld_pro_svg(spec, svg_path)

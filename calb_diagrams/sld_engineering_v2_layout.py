@@ -171,6 +171,11 @@ def _equipment_rows(graph: SldEngineeringV2Graph) -> tuple[SldV2EquipmentRow, ..
         f"{summary.transformer_rating_mva:.1f} MVA, {summary.transformer_vector_group}, "
         f"Uk={summary.transformer_uk_percent:.1f}%"
     )
+    if summary.lv_winding_count > 1:
+        transformer += (
+            f", {summary.lv_winding_count + 1}-winding transformer "
+            f"(1 MV primary + {summary.lv_winding_count} independent LV secondaries)"
+        )
     if ratings.transformer_cooling:
         transformer += f", {ratings.transformer_cooling}"
 
@@ -246,7 +251,7 @@ def build_sld_engineering_v2_layout_plan(
     tx_feeder_bay = _node_by_type(graph, "rmu_transformer_feeder_bay")
     ring_out_bay = _node_by_type(graph, "rmu_ring_out_bay")
     transformer = _node_by_type(graph, "transformer")
-    lv_busbar = _node_by_type(graph, "lv_busbar")
+    lv_busbars = _nodes_by_type(graph, "lv_busbar")
 
     rmu_x = ac_section.x + 312.0
     rmu_y = ac_section.y + 54.0
@@ -334,20 +339,43 @@ def build_sld_engineering_v2_layout_plan(
                 f"{summary.mv_voltage_kv:.1f}/{summary.lv_voltage_v_ll / 1000.0:.3f} kV",
                 f"{summary.transformer_rating_mva:.1f} MVA",
                 f"{summary.transformer_vector_group}, Uk={summary.transformer_uk_percent:.1f}%",
+                *(
+                    (
+                        f"{summary.lv_winding_count + 1}-winding: 1 MV primary + "
+                        f"{summary.lv_winding_count} independent LV secondaries",
+                    )
+                    if summary.lv_winding_count > 1
+                    else ()
+                ),
                 *((str(graph.equipment_ratings.transformer_cooling),) if graph.equipment_ratings.transformer_cooling else ()),
             ),
         ),
-        SldV2LayoutBox(
-            node_id=lv_busbar.node_id,
-            node_type=lv_busbar.node_type,
-            section_id="ac_block",
-            x=ac_section.x + 80.0,
-            y=ac_section.y + 330.0,
-            width=ac_section.width - 160.0,
-            height=18.0,
-            text_lines=(f"LV Busbar {summary.lv_voltage_v_ll:.0f} V",),
-        ),
     ]
+
+    for lv_busbar in lv_busbars:
+        feeder_span = [
+            int(feeder_index)
+            for feeder_index in (lv_busbar.attributes.get("feeder_span") or [])
+            if int(feeder_index) in feeder_center_by_index
+        ]
+        if not feeder_span:
+            raise ValueError(f"LV busbar has no assigned PCS feeder span: {lv_busbar.node_id}")
+        x1 = min(feeder_center_by_index[feeder_index] for feeder_index in feeder_span) - 100.0
+        x2 = max(feeder_center_by_index[feeder_index] for feeder_index in feeder_span) + 100.0
+        winding_index = int(lv_busbar.attributes.get("winding_index") or 1)
+        boxes.append(
+            SldV2LayoutBox(
+                node_id=lv_busbar.node_id,
+                node_type=lv_busbar.node_type,
+                section_id="ac_block",
+                x=x1,
+                y=ac_section.y + 330.0,
+                width=x2 - x1,
+                height=18.0,
+                text_lines=(f"LV Winding {winding_index} / {summary.lv_voltage_v_ll:.0f} V",),
+                attributes=dict(lv_busbar.attributes),
+            )
+        )
 
     for node in _nodes_by_type(graph, "lv_feeder"):
         center_x = feeder_center_by_index[int(node.feeder_index or 0)]
@@ -451,11 +479,22 @@ def build_sld_engineering_v2_layout_plan(
         (rmu_switchgear.node_id, "transformer_feeder_bus_port"): (tx_center_x, rmu_y + rmu_h * 0.62),
         (rmu_switchgear.node_id, "ring_out_bus_port"): (ring_out_x + bay_w / 2.0, rmu_y + rmu_h * 0.62),
     }
-    lv_box = box_lookup[lv_busbar.node_id]
-    tx_box = box_lookup[transformer.node_id]
-    custom_port_points[(lv_busbar.node_id, "transformer_port")] = (tx_box.x + tx_box.width / 2.0, lv_box.y)
-    for feeder_index, center_x in feeder_center_by_index.items():
-        custom_port_points[(lv_busbar.node_id, f"feeder_F{feeder_index:02d}_port")] = (center_x, lv_box.y + lv_box.height)
+    for lv_busbar in lv_busbars:
+        lv_box = box_lookup[lv_busbar.node_id]
+        feeder_span = [
+            int(feeder_index)
+            for feeder_index in (lv_busbar.attributes.get("feeder_span") or [])
+            if int(feeder_index) in feeder_center_by_index
+        ]
+        custom_port_points[(lv_busbar.node_id, "transformer_port")] = (
+            lv_box.x + lv_box.width / 2.0,
+            lv_box.y,
+        )
+        for feeder_index in feeder_span:
+            custom_port_points[(lv_busbar.node_id, f"feeder_F{feeder_index:02d}_port")] = (
+                feeder_center_by_index[feeder_index],
+                lv_box.y + lv_box.height,
+            )
 
     anchors: list[SldV2PortAnchor] = []
     for node in graph.nodes:

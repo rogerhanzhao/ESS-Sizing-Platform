@@ -140,7 +140,7 @@ class SldEngineeringV2Graph(CanonicalBaseModel):
             "rmu_ring_in_bay": {"line_port", "bus_port"},
             "rmu_transformer_feeder_bay": {"bus_port", "load_port"},
             "rmu_ring_out_bay": {"bus_port", "line_port"},
-            "transformer": {"hv_port", "lv_port"},
+            "transformer": {"hv_port"},
             "lv_busbar": {"transformer_port"},
             "lv_feeder": {"busbar_port", "pcs_port"},
             "pcs": {"ac_port", "dc_port"},
@@ -156,14 +156,37 @@ class SldEngineeringV2Graph(CanonicalBaseModel):
                     + ", ".join(sorted(missing))
                 )
 
+        transformer = next(node for node in node_lookup.values() if node.node_type == "transformer")
+        transformer_port_ids = {port.port_id for port in transformer.ports}
+        if self.summary.lv_winding_count == 1:
+            expected_transformer_ports = {"lv_port"}
+        else:
+            expected_transformer_ports = {
+                f"lv_winding_{winding_index:02d}_port"
+                for winding_index in range(1, self.summary.lv_winding_count + 1)
+            }
+        missing_transformer_ports = expected_transformer_ports - transformer_port_ids
+        if missing_transformer_ports:
+            raise ValueError(
+                "transformer is missing LV winding port(s): " + ", ".join(sorted(missing_transformer_ports))
+            )
+
         lv_busbars = [node for node in node_lookup.values() if node.node_type == "lv_busbar"]
-        if len(lv_busbars) != 1:
-            raise ValueError("engineering_v2 graph requires exactly one lv_busbar node per AC block group")
-        lv_busbar_ports = {port.port_id for port in lv_busbars[0].ports}
+        if len(lv_busbars) != self.summary.lv_winding_count:
+            raise ValueError("engineering_v2 LV busbar count must match summary.lv_winding_count")
+        feeder_winding_count: dict[int, int] = {}
+        for busbar in lv_busbars:
+            port_ids = {port.port_id for port in busbar.ports}
+            if "transformer_port" not in port_ids:
+                raise ValueError(f"lv_busbar is missing transformer port: {busbar.node_id}")
+            for port in busbar.ports:
+                if port.feeder_index is not None:
+                    feeder_winding_count[port.feeder_index] = feeder_winding_count.get(port.feeder_index, 0) + 1
         for feeder_index in range(1, self.summary.feeder_count + 1):
-            expected_port = f"feeder_F{feeder_index:02d}_port"
-            if expected_port not in lv_busbar_ports:
-                raise ValueError(f"lv_busbar is missing feeder tap port: {expected_port}")
+            if feeder_winding_count.get(feeder_index) != 1:
+                raise ValueError(
+                    f"feeder F{feeder_index} must connect to exactly one independent LV winding"
+                )
 
     def _validate_edges(
         self,

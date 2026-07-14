@@ -22,7 +22,9 @@ def test_engineering_v2_builder_outputs_port_level_graph(sample_excel_path):
     transformer = next(node for node in graph.nodes if node.node_type == "transformer")
     transformer_ports = {port.port_id: port for port in transformer.ports}
     assert transformer_ports["hv_port"].voltage_domain == "mv_ac"
-    assert transformer_ports["lv_port"].voltage_domain == "lv_ac"
+    assert transformer_ports["lv_winding_01_port"].voltage_domain == "lv_ac"
+    assert transformer_ports["lv_winding_02_port"].voltage_domain == "lv_ac"
+    assert len([node for node in graph.nodes if node.node_type == "lv_busbar"]) == 2
 
     assert len([node for node in graph.nodes if node.node_type == "lv_feeder"]) == graph.summary.feeder_count
     assert len([node for node in graph.nodes if node.node_type == "pcs"]) == graph.summary.pcs_count

@@ -16,6 +16,7 @@ AC_TO_SLD_AUTHORITATIVE_FIELDS_V1 = {
     "dc_blocks_total_by_block": "Derived mirror of dc_allocation_plan totals.",
     "dc_blocks_per_feeder_by_block": "Derived mirror of dc_allocation_plan feeder allocations.",
     "transformer_mva": "Required. Transformer rating per AC block.",
+    "lv_winding_count": "Derived LV-secondary count. One independent LV secondary per two PCS feeders; total transformer winding count is LV secondaries plus one MV primary.",
     "transformer_count": "Optional mirror of num_blocks.",
     "pcs_count_total": "Optional mirror of sum(pcs_count_by_block).",
     "dc_blocks_total": "Optional mirror of sum(dc_blocks_total_by_block).",
@@ -31,6 +32,7 @@ AC_TO_SLD_LEGACY_ALIASES_V1 = {
     "pcs_kw": ("pcs_power_kw", "pcs_rating_kw_each"),
     "dc_allocation_plan": ("dc_block_allocation",),
     "transformer_mva": ("transformer_rating_mva", "transformer_kva"),
+    "lv_winding_count": ("transformer_lv_winding_count",),
     "pcs_count_total": ("total_pcs",),
     "mv_voltage_kv": ("mv_kv", "grid_kv"),
     "lv_voltage_v": ("lv_v", "inverter_lv_v"),
@@ -341,6 +343,21 @@ def normalize_ac_output_for_sld(ac_output: dict[str, Any]) -> SldAuthoritativeAc
 
     pcs_count_by_block = [pcs_per_block for _ in range(num_blocks)]
     pcs_rating_kw_list_by_block = [[pcs_kw for _ in range(pcs_per_block)] for _ in range(num_blocks)]
+    # Engineering topology contract: each independent LV secondary serves no
+    # more than two PCS feeders. A four-PCS AC block is therefore always a
+    # dual-secondary transformer block, never one common LV busbar.
+    derived_lv_winding_count = (pcs_per_block + 1) // 2
+    lv_winding_count = _resolve_optional_int(
+        "lv_winding_count", ac_output, field_sources, legacy_aliases_used
+    )
+    if lv_winding_count is None:
+        lv_winding_count = derived_lv_winding_count
+        field_sources["lv_winding_count"] = "derived_from_pcs_per_block_two_pcs_per_winding"
+    elif lv_winding_count != derived_lv_winding_count:
+        errors.append(
+            "lv_winding_count conflicts with the two-PCS-per-independent-LV-winding "
+            "AC-to-SLD topology rule."
+        )
     dc_allocation_plan = _resolve_dc_allocation_plan(
         ac_output,
         num_blocks=num_blocks,
@@ -401,6 +418,7 @@ def normalize_ac_output_for_sld(ac_output: dict[str, Any]) -> SldAuthoritativeAc
             dc_blocks_total=dc_blocks_total,
             dc_total_mwh=dc_total_mwh,
             transformer_mva=transformer_mva,
+            lv_winding_count=lv_winding_count,
             transformer_count=transformer_count,
             pcs_count_total=pcs_count_total,
             mv_voltage_kv=mv_voltage_kv,

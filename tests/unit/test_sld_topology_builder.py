@@ -116,7 +116,8 @@ def test_sld_topology_builder_outputs_stable_graph(sample_excel_path):
     assert "G01-MV-TX-FEEDER" in node_ids
     assert "G01-MV-RING-OUT" in node_ids
     assert "G01-TX-NODE" in node_ids
-    assert "G01-LV-BUSBAR-NODE" in node_ids
+    assert "G01-LV-BUSBAR-W01-NODE" in node_ids
+    assert "G01-LV-BUSBAR-W02-NODE" in node_ids
     assert "G01-F01-PCS-NODE" in node_ids
     assert "G01-F01-DC-INTERFACE-NODE" in node_ids
 
@@ -124,6 +125,7 @@ def test_sld_topology_builder_outputs_stable_graph(sample_excel_path):
     assert len([node for node in topology.nodes if node.node_type == "mv_switchgear"]) == 1
     assert len([node for node in topology.nodes if node.node_type == "mv_transformer_feeder"]) == 1
     assert len([node for node in topology.nodes if node.node_type == "mv_ring_out"]) == 1
+    assert len([node for node in topology.nodes if node.node_type == "lv_busbar"]) == 2
     assert len([node for node in topology.nodes if node.node_type == "pcs"]) == 4
     assert len([node for node in topology.nodes if node.node_type == "dc_interface"]) == 4
     assert len([node for node in topology.nodes if node.node_type == "dc_block"]) == 4
@@ -134,6 +136,7 @@ def test_sld_topology_builder_outputs_stable_graph(sample_excel_path):
     assert len([edge for edge in topology.edges if edge.edge_type == "switchgear_to_transformer_feeder"]) == 1
     assert len([edge for edge in topology.edges if edge.edge_type == "transformer_feeder_to_transformer"]) == 1
     assert len([edge for edge in topology.edges if edge.edge_type == "switchgear_to_ring_out"]) == 1
+    assert len([edge for edge in topology.edges if edge.edge_type == "transformer_to_lv_busbar"]) == 2
     assert len([edge for edge in topology.edges if edge.edge_type == "lv_busbar_to_pcs"]) == 4
     assert len([edge for edge in topology.edges if edge.edge_type == "pcs_to_dc_interface"]) == 4
     assert len([edge for edge in topology.edges if edge.edge_type == "dc_interface_to_dc_block"]) == 4

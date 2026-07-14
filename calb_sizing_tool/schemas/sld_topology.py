@@ -81,6 +81,9 @@ class SldTopologySummary(CanonicalBaseModel):
     transformer_rating_mva: float
     transformer_vector_group: str
     transformer_uk_percent: float
+    # Historical topology payloads did not carry LV winding topology. Keep the
+    # deserialization default; current AC-to-SLD construction provides it.
+    lv_winding_count: int = 1
     pcs_rating_kw_list: list[float]
     dc_block_energy_mwh: float
     dc_block_voltage_v: float
@@ -125,4 +128,8 @@ class SldTopology(CanonicalBaseModel):
             raise ValueError("topology DC block equipment count must match summary.dc_blocks_total_in_group")
         if self.summary.feeder_count != self.summary.pcs_count:
             raise ValueError("feeder_count must match pcs_count")
+        expected_lv_busbars = self.summary.lv_winding_count
+        lv_busbars = [item for item in self.equipment if item.equipment_type == "lv_busbar"]
+        if len(lv_busbars) != expected_lv_busbars:
+            raise ValueError("topology LV busbar equipment count must match summary.lv_winding_count")
         return self

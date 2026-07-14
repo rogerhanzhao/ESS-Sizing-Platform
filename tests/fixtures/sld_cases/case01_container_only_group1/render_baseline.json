@@ -1,18 +1,18 @@
 {
   "metadata": {
     "artifact_mode": "official",
-    "engineering_v2_connector_count": 23,
-    "engineering_v2_edge_count": 23,
-    "engineering_v2_graph_hash": "e6ca83cceb1ab30eaa8b13c08d578d4fb56f7778f8f1e0f13c31ab7e4936fa84",
-    "engineering_v2_layout_hash": "d0a221f1874c3f7e28b0d02cc4a8984d8a1f673097a45f01d8ac5bd14378e2df",
+    "engineering_v2_connector_count": 24,
+    "engineering_v2_edge_count": 24,
+    "engineering_v2_graph_hash": "b92b6e1d513f84308a61a201dffd53d44087e1e6ff7698781c5ced98ab7d3b2c",
+    "engineering_v2_layout_hash": "06689fee90c741e077f14b13f24fc50e9951b73d04a724cfa53b637197e42cee",
     "engineering_v2_layout_issue_count": 0,
     "engineering_v2_layout_warning_count": 4,
-    "engineering_v2_node_count": 24,
+    "engineering_v2_node_count": 25,
     "engineering_v2_png_height": 1160,
     "engineering_v2_png_width": 2000,
     "engineering_v2_template": "professional_electrical_reference_v1",
     "group_index": 1,
-    "input_hash": "819ed19753f9db055e7e3937da0c5e88508c9018e2ec8366eff5ed362a69671e",
+    "input_hash": "e79797a0c16a50cf64889277e14fde28c6fc40d7f9ba0a3efbb9d69e37cd7e96",
     "render_spec_hash": "7f2c78d43d364225e1f95bf39db62f2d467d4689a80cefbb7c37deef3f7fcd9f",
     "renderer_lineage": "port_bay_engineering_v2_preview",
     "renderer_mode": "engineering_v2",
@@ -20,9 +20,9 @@
     "run_id": "sld-regression-case01",
     "scenario_id": "container_only",
     "server_baseline_commit": null,
-    "topology_edge_count": 17,
-    "topology_hash": "6ef93afc2348d5dbb590d702f9a40f712f4e2d053e2403e0628423c5cee5d009",
-    "topology_node_count": 18,
+    "topology_edge_count": 18,
+    "topology_hash": "c10bff04619d4bcfbbde7b98246b9d65d8614633c158a7557e14d08a0a2fd563",
+    "topology_node_count": 19,
     "validation_mode": "strict"
   },
   "spec": {
@@ -100,31 +100,31 @@
   "svg": {
     "class_counts": {
       "bg": 1,
-      "busbar": 2,
-      "dot": 8,
-      "label": 36,
-      "notes": 15,
+      "busbar": 3,
+      "dot": 7,
+      "label": 38,
+      "notes": 16,
       "ntitle": 8,
       "outline": 11,
-      "sfill": 46,
-      "tag": 28,
+      "sfill": 47,
+      "tag": 30,
       "tb": 8,
       "tbh": 3,
       "tbtitle": 1,
-      "thin": 125,
+      "thin": 132,
       "title": 3,
-      "wire": 50
+      "wire": 51
     },
     "element_counts": {
       "circle": 24,
       "defs": 1,
-      "line": 173,
+      "line": 180,
       "polygon": 2,
-      "polyline": 4,
+      "polyline": 6,
       "rect": 40,
       "style": 1,
       "svg": 1,
-      "text": 102
+      "text": 107
     },
     "geometry": [
       {
@@ -250,7 +250,7 @@
       {
         "class": "ntitle",
         "tag": "text",
-        "text": "Power Cable — 33kV",
+        "text": "Power Cable \u2014 33kV",
         "text-anchor": "start",
         "x": 46.0,
         "y": 250.0
@@ -314,10 +314,18 @@
       {
         "class": "notes",
         "tag": "text",
-        "text": "ONAN",
+        "text": "3-winding: 1 MV primary + 2 independent LV secondaries",
         "text-anchor": "start",
         "x": 48.0,
         "y": 374.0
+      },
+      {
+        "class": "notes",
+        "tag": "text",
+        "text": "ONAN",
+        "text-anchor": "start",
+        "x": 48.0,
+        "y": 390.0
       },
       {
         "class": "sfill",
@@ -378,7 +386,7 @@
       {
         "class": "notes",
         "tag": "text",
-        "text": "PCS — 1250 kW × 4",
+        "text": "PCS \u2014 1250 kW \u00d7 4",
         "text-anchor": "start",
         "x": 48.0,
         "y": 478.0
@@ -450,7 +458,7 @@
       {
         "class": "notes",
         "tag": "text",
-        "text": "4 BESS containers (0.836 MWh × 4)",
+        "text": "4 BESS containers (0.836 MWh \u00d7 4)",
         "text-anchor": "start",
         "x": 48.0,
         "y": 634.0
@@ -1048,13 +1056,6 @@
         "tag": "circle"
       },
       {
-        "class": "sfill",
-        "cx": 1117.0,
-        "cy": 560.0,
-        "r": 28.0,
-        "tag": "circle"
-      },
-      {
         "class": "thin",
         "tag": "line",
         "x1": 1117.0,
@@ -1079,67 +1080,153 @@
         "y2": 500.2
       },
       {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1117.0,
-        "x2": 1117.0,
-        "y1": 560.0,
-        "y2": 553.4
+        "class": "sfill",
+        "cx": 1071.0,
+        "cy": 568.0,
+        "r": 20.0,
+        "tag": "circle"
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1117.0,
-        "x2": 1111.0,
-        "y1": 560.0,
-        "y2": 564.56
+        "x1": 1071.0,
+        "x2": 1071.0,
+        "y1": 568.0,
+        "y2": 562.5
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1117.0,
-        "x2": 1123.0,
-        "y1": 560.0,
-        "y2": 564.56
+        "x1": 1071.0,
+        "x2": 1066.0,
+        "y1": 568.0,
+        "y2": 571.8
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1117.0,
-        "x2": 1117.0,
-        "y1": 564.0,
-        "y2": 572.0
+        "x1": 1071.0,
+        "x2": 1076.0,
+        "y1": 568.0,
+        "y2": 571.8
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1107.0,
-        "x2": 1127.0,
+        "x1": 1071.0,
+        "x2": 1071.0,
         "y1": 572.0,
-        "y2": 572.0
+        "y2": 580.0
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1110.5,
-        "x2": 1123.5,
-        "y1": 577.0,
-        "y2": 577.0
+        "x1": 1061.0,
+        "x2": 1081.0,
+        "y1": 580.0,
+        "y2": 580.0
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1114.0,
-        "x2": 1120.0,
-        "y1": 582.0,
-        "y2": 582.0
+        "x1": 1064.5,
+        "x2": 1077.5,
+        "y1": 585.0,
+        "y2": 585.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1068.0,
+        "x2": 1074.0,
+        "y1": 590.0,
+        "y2": 590.0
+      },
+      {
+        "class": "tag",
+        "tag": "text",
+        "text": "LV-1",
+        "text-anchor": "middle",
+        "x": 1071.0,
+        "y": 600.0
+      },
+      {
+        "class": "sfill",
+        "cx": 1163.0,
+        "cy": 568.0,
+        "r": 20.0,
+        "tag": "circle"
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1163.0,
+        "x2": 1163.0,
+        "y1": 568.0,
+        "y2": 562.5
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1163.0,
+        "x2": 1158.0,
+        "y1": 568.0,
+        "y2": 571.8
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1163.0,
+        "x2": 1168.0,
+        "y1": 568.0,
+        "y2": 571.8
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1163.0,
+        "x2": 1163.0,
+        "y1": 572.0,
+        "y2": 580.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1153.0,
+        "x2": 1173.0,
+        "y1": 580.0,
+        "y2": 580.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1156.5,
+        "x2": 1169.5,
+        "y1": 585.0,
+        "y2": 585.0
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1160.0,
+        "x2": 1166.0,
+        "y1": 590.0,
+        "y2": 590.0
+      },
+      {
+        "class": "tag",
+        "tag": "text",
+        "text": "LV-2",
+        "text-anchor": "middle",
+        "x": 1163.0,
+        "y": 600.0
       },
       {
         "class": "label",
         "tag": "text",
         "text": "Dyn11",
         "text-anchor": "start",
-        "x": 1153.0,
+        "x": 1189.0,
         "y": 504.0
       },
       {
@@ -1147,7 +1234,7 @@
         "tag": "text",
         "text": "33.0/0.690 kV",
         "text-anchor": "start",
-        "x": 1153.0,
+        "x": 1189.0,
         "y": 522.0
       },
       {
@@ -1155,7 +1242,7 @@
         "tag": "text",
         "text": "6.0 MVA",
         "text-anchor": "start",
-        "x": 1153.0,
+        "x": 1189.0,
         "y": 536.0
       },
       {
@@ -1163,16 +1250,24 @@
         "tag": "text",
         "text": "Dyn11, Uk=7.0%",
         "text-anchor": "start",
-        "x": 1153.0,
+        "x": 1189.0,
         "y": 550.0
+      },
+      {
+        "class": "label",
+        "tag": "text",
+        "text": "3-winding: 1 MV primary + 2 independent LV secondaries",
+        "text-anchor": "start",
+        "x": 1189.0,
+        "y": 564.0
       },
       {
         "class": "label",
         "tag": "text",
         "text": "ONAN",
         "text-anchor": "start",
-        "x": 1153.0,
-        "y": 564.0
+        "x": 1189.0,
+        "y": 578.0
       },
       {
         "class": "tag",
@@ -1192,34 +1287,45 @@
       },
       {
         "class": "wire",
-        "tag": "line",
-        "x1": 1117.0,
-        "x2": 1117.0,
-        "y1": 588.0,
-        "y2": 610.0
+        "points": "1071.0,588.0 1071.0,598.0 885.8333333333334,598.0 885.8333333333334,610.0",
+        "tag": "polyline"
+      },
+      {
+        "class": "wire",
+        "points": "1163.0,588.0 1163.0,598.0 1569.1666666666667,598.0 1569.1666666666667,610.0",
+        "tag": "polyline"
       },
       {
         "class": "busbar",
         "tag": "line",
-        "x1": 575.0,
-        "x2": 1880.0,
+        "x1": 625.0,
+        "x2": 1146.666667,
         "y1": 610.0,
         "y2": 610.0
       },
       {
         "class": "label",
         "tag": "text",
-        "text": "LV Bus 690 V",
+        "text": "LV Winding 1 / 690 V",
         "text-anchor": "start",
-        "x": 1886.0,
-        "y": 614.0
+        "x": 625.0,
+        "y": 602.0
       },
       {
-        "class": "dot",
-        "cx": 1117.0,
-        "cy": 610.0,
-        "r": 3.5,
-        "tag": "circle"
+        "class": "busbar",
+        "tag": "line",
+        "x1": 1308.333333,
+        "x2": 1830.0,
+        "y1": 610.0,
+        "y2": 610.0
+      },
+      {
+        "class": "label",
+        "tag": "text",
+        "text": "LV Winding 2 / 690 V",
+        "text-anchor": "start",
+        "x": 1308.333333,
+        "y": 602.0
       },
       {
         "class": "title",
@@ -2752,7 +2858,7 @@
       {
         "class": "tbtitle",
         "tag": "text",
-        "text": "SINGLE LINE DIAGRAM — BATTERY ENERGY STORAGE SYSTEM (BESS)",
+        "text": "SINGLE LINE DIAGRAM \u2014 BATTERY ENERGY STORAGE SYSTEM (BESS)",
         "text-anchor": "start",
         "x": 50.0,
         "y": 1070.0
@@ -2760,7 +2866,7 @@
       {
         "class": "tb",
         "tag": "text",
-        "text": "33kV MV Grid Connection | 33.0/0.690 kV, 6.0 MVA, Dyn11, Uk=7.0%, ONAN",
+        "text": "33kV MV Grid Connection | 33.0/0.690 kV, 6.0 MVA, Dyn11, Uk=7.0%, 3-winding transformer (1 MV primary + 2 independent LV secondaries), ONAN",
         "text-anchor": "start",
         "x": 50.0,
         "y": 1105.0
@@ -2859,22 +2965,23 @@
       "DS: 33 kV, 630 A, 25.0 kA/3s",
       "CT: 200/1, 5P20, 10 VA",
       "With DC, ES, & Live Displayer",
-      "Power Cable — 33kV",
+      "Power Cable \u2014 33kV",
       "MISSING: MV cable spec",
       "Step-up Transformer (OIL)",
       "33.0/0.690 kV",
       "6.0 MVA",
       "Dyn11, Uk=7.0%",
+      "3-winding: 1 MV primary + 2 independent LV secondaries",
       "ONAN",
       "LV Connecting Cable",
       "MISSING: LV cable spec",
       "Power Converter System (PCS)",
-      "PCS — 1250 kW × 4",
+      "PCS \u2014 1250 kW \u00d7 4",
       "AC 690 V 50 Hz DC 1500 V",
       "DC Power Cable",
       "MISSING: DC cable spec",
       "Battery Energy Storage System",
-      "4 BESS containers (0.836 MWh × 4)",
+      "4 BESS containers (0.836 MWh \u00d7 4)",
       "Cell: MISSING: BESS cell spec",
       "PCS & MVT SKID (AC BLOCK)",
       "RMU-01 / MV Switchgear",
@@ -2891,13 +2998,17 @@
       "DS-TX",
       "52-TX",
       "CT-TX",
+      "LV-1",
+      "LV-2",
       "Dyn11",
       "33.0/0.690 kV",
       "6.0 MVA",
       "Dyn11, Uk=7.0%",
+      "3-winding: 1 MV primary + 2 independent LV secondaries",
       "ONAN",
       "T-01",
-      "LV Bus 690 V",
+      "LV Winding 1 / 690 V",
+      "LV Winding 2 / 690 V",
       "BATTERY STORAGE BANK",
       "DS-F01",
       "52-F01",
@@ -2943,8 +3054,8 @@
       "DC Block #4",
       "0.836 MWh",
       "BESS-04",
-      "SINGLE LINE DIAGRAM — BATTERY ENERGY STORAGE SYSTEM (BESS)",
-      "33kV MV Grid Connection | 33.0/0.690 kV, 6.0 MVA, Dyn11, Uk=7.0%, ONAN",
+      "SINGLE LINE DIAGRAM \u2014 BATTERY ENERGY STORAGE SYSTEM (BESS)",
+      "33kV MV Grid Connection | 33.0/0.690 kV, 6.0 MVA, Dyn11, Uk=7.0%, 3-winding transformer (1 MV primary + 2 independent LV secondaries), ONAN",
       "DRG NO.",
       "SLD-BESS-001",
       "DATE",

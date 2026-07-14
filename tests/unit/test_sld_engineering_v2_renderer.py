@@ -34,7 +34,8 @@ def test_engineering_v2_renderer_emits_svg_from_layout_plan(sample_excel_path, t
     assert "RMU-01" in svg_text
     assert "Transformer Feeder" in svg_text
     assert "Dyn11" in svg_text
-    assert "LV Bus" in svg_text
+    assert "LV Winding 1" in svg_text
+    assert "LV Winding 2" in svg_text
     assert "INV-01" in svg_text
     assert "BESS-01" in svg_text
     assert "T-01" in svg_text
@@ -51,7 +52,8 @@ def test_engineering_v2_renderer_draws_port_anchored_connectors(sample_excel_pat
     svg_text = svg_path.read_text(encoding="utf-8")
 
     assert 'id="edge-G01-E-RINGIN-TERM-BAY"' in svg_text
-    assert 'id="edge-G01-E-TX-LV-LVBUS"' in svg_text
+    assert 'id="edge-G01-E-TX-LV-LVBUS-W01"' in svg_text
+    assert 'id="edge-G01-E-TX-LV-LVBUS-W02"' in svg_text
     assert 'id="edge-G01-F01-E-LVFEEDER-PCS"' in svg_text
     assert 'id="edge-G01-F01-E-PCS-DCIF"' in svg_text
     assert 'id="port-G01-TRANSFORMER-hv_port"' in svg_text
