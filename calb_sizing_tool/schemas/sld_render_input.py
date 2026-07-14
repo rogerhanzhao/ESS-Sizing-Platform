@@ -223,6 +223,30 @@ class SldCanonicalInput(CanonicalBaseModel):
                 f"({self.equipment_ratings.lv_busbar.rated_a:.0f} A < {required_lv_busbar_a:.0f} A"
                 f" across {windings} LV winding(s))"
             )
+
+        # Electrical consistency gates: hard errors in strict mode, recorded as
+        # draft warnings otherwise so a concept drawing still renders.
+        electrical_issues: list[str] = []
+        pcs_total_mva = sum(self.pcs_rating_kw_list) / 1000.0
+        if self.transformer_rating_mva + 1e-6 < pcs_total_mva:
+            # MVA >= sum(PCS kW)/1000 is the engineering floor: with any power
+            # factor below 1 the PCS apparent power only grows beyond this.
+            electrical_issues.append(
+                f"transformer_rating_mva {self.transformer_rating_mva:.2f} MVA is below "
+                f"the PCS total {pcs_total_mva:.2f} MVA"
+            )
+        transformer_mv_current_a = self.transformer_rating_mva * 1_000_000.0 / (
+            sqrt(3.0) * self.mv_voltage_kv * 1000.0
+        )
+        if self.equipment_ratings.rmu.rated_a + 1e-6 < transformer_mv_current_a:
+            electrical_issues.append(
+                f"rmu.rated_a {self.equipment_ratings.rmu.rated_a:.0f} A is below the "
+                f"transformer MV current {transformer_mv_current_a:.0f} A"
+            )
+        if electrical_issues:
+            if self.validation_mode == "strict":
+                raise ValueError("; ".join(electrical_issues))
+            self.draft_warnings.extend(electrical_issues)
         return self
 
 

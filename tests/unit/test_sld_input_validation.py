@@ -109,6 +109,40 @@ def test_lv_winding_count_must_be_positive():
         SldCanonicalInput.model_validate(payload)
 
 
+def test_strict_rejects_transformer_below_pcs_total():
+    # 4 x 1250 kW = 5.0 MVA floor; a 4.0 MVA transformer is undersized.
+    payload = _base_payload()
+    payload["transformer_rating_mva"] = 4.0
+
+    with pytest.raises(ValidationError) as exc_info:
+        SldCanonicalInput.model_validate(payload)
+
+    assert "below the PCS total" in str(exc_info.value)
+
+
+def test_strict_rejects_rmu_below_transformer_mv_current():
+    # 6 MVA at 33 kV -> ~105 A; a 100 A RMU cannot carry it.
+    payload = _base_payload()
+    payload["equipment_ratings"]["rmu"]["rated_a"] = 100.0
+
+    with pytest.raises(ValidationError) as exc_info:
+        SldCanonicalInput.model_validate(payload)
+
+    assert "below the transformer MV current" in str(exc_info.value)
+
+
+def test_draft_mode_downgrades_electrical_gates_to_warnings():
+    payload = _base_payload()
+    payload["validation_mode"] = "draft"
+    payload["transformer_rating_mva"] = 4.0
+    # 4 MVA at 33 kV -> ~70 A MV current; 50 A RMU still undersized.
+    payload["equipment_ratings"]["rmu"]["rated_a"] = 50.0
+    obj = SldCanonicalInput.model_validate(payload)
+
+    assert any("below the PCS total" in w for w in obj.draft_warnings)
+    assert any("below the transformer MV current" in w for w in obj.draft_warnings)
+
+
 def test_strict_mode_rejects_tbd_dc_fuse_spec():
     payload = _base_payload()
     payload["equipment_ratings"]["dc_fuse"]["fuse_spec"] = "TBD"
