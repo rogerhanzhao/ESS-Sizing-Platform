@@ -172,7 +172,7 @@ def build_professional_sld_sheet(plan: SldV2LayoutPlan) -> ProfessionalSldSheet:
         ProfessionalNotesSection(
             "Battery Energy Storage System",
             (
-                f"1~{len(dc_blocks)} BESS containers ({dc_energy} × {len(dc_blocks)})"
+                f"{len(dc_blocks)} BESS containers ({dc_energy} × {len(dc_blocks)})"
                 if len(dc_blocks) > 1
                 else f"1 BESS container ({dc_energy})",
                 f"Cell: {rows.get('BESS Cell', 'MISSING: BESS cell spec')}",

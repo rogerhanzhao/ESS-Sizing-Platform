@@ -261,6 +261,29 @@ def build_sld_engineering_v2_graph(topology: SldTopology) -> SldEngineeringV2Gra
         ]
     )
 
+    # DC block -> PCS feeder mapping. When there are fewer DC blocks than PCS
+    # feeders (e.g. 2 x 5 MWh blocks feeding 4 x 1250 kW PCS), each block's DC
+    # combiner feeds a contiguous span of PCS feeders through that feeder's own
+    # isolator/fuse — a PCS feeder without any DC source is not a valid
+    # electrical topology and must not be drawn dangling.
+    pcs_total = len(summary.pcs_rating_kw_list)
+    dc_total_blocks = sum(int(count) for count in summary.dc_blocks_per_feeder)
+    shared_dc_mode = 0 < dc_total_blocks < pcs_total
+    block_feeder_spans: list[list[int]] = []
+    if shared_dc_mode:
+        from calb_sizing_tool.common.allocation import evenly_distribute
+
+        cursor = 1
+        for span_size in evenly_distribute(pcs_total, dc_total_blocks):
+            block_feeder_spans.append(list(range(cursor, cursor + span_size)))
+            cursor += span_size
+        feeder_dc_count = {fi: 1 for span in block_feeder_spans for fi in span}
+    else:
+        feeder_dc_count = {
+            index: int(count)
+            for index, count in enumerate(summary.dc_blocks_per_feeder, start=1)
+        }
+
     dc_block_ordinal = 0
     for feeder_index, (pcs_rating_kw, dc_blocks_for_feeder) in enumerate(
         zip(summary.pcs_rating_kw_list, summary.dc_blocks_per_feeder),
@@ -312,9 +335,10 @@ def build_sld_engineering_v2_graph(topology: SldTopology) -> SldEngineeringV2Gra
                         _port("block_port", "DC Block Terminal", "output", "bottom", "dc", feeder_index=feeder_index),
                     ],
                     attributes={
-                        "dc_block_count": dc_blocks_for_feeder,
+                        "dc_block_count": feeder_dc_count.get(feeder_index, 0),
                         "dc_block_voltage_v": summary.dc_block_voltage_v,
                         "fuse_spec": topology.equipment_ratings.dc_fuse.fuse_spec,
+                        "shared_dc_block": shared_dc_mode,
                     },
                 ),
             ]
@@ -352,7 +376,7 @@ def build_sld_engineering_v2_graph(topology: SldTopology) -> SldEngineeringV2Gra
             ]
         )
 
-        for local_block_index in range(1, int(dc_blocks_for_feeder) + 1):
+        for local_block_index in range(1, (0 if shared_dc_mode else int(dc_blocks_for_feeder)) + 1):
             dc_block_ordinal += 1
             dc_block_id = f"{feeder_token}-DC-BLOCK-{local_block_index:02d}"
             nodes.append(
@@ -394,6 +418,53 @@ def build_sld_engineering_v2_graph(topology: SldTopology) -> SldEngineeringV2Gra
                     attributes={"local_block_index": local_block_index},
                 )
             )
+
+    if shared_dc_mode:
+        for span in block_feeder_spans:
+            dc_block_ordinal += 1
+            anchor_feeder = span[0]
+            dc_block_id = f"{group_token}-DC-BLOCK-{dc_block_ordinal:02d}"
+            nodes.append(
+                SldV2Node(
+                    node_id=dc_block_id,
+                    node_type="dc_block",
+                    display_name=f"DC Block #{dc_block_ordinal}",
+                    equipment_id=dc_block_id,
+                    feeder_index=anchor_feeder,
+                    dc_block_index=dc_block_ordinal,
+                    ports=[
+                        _port(
+                            "input_port",
+                            "DC Input",
+                            "input",
+                            "top",
+                            "dc",
+                            feeder_index=anchor_feeder,
+                            dc_block_index=dc_block_ordinal,
+                        )
+                    ],
+                    attributes={
+                        "local_block_index": dc_block_ordinal,
+                        "dc_block_energy_mwh": summary.dc_block_energy_mwh,
+                        "dc_block_voltage_v": summary.dc_block_voltage_v,
+                        "feeder_span": list(span),
+                    },
+                )
+            )
+            for feeder_index in span:
+                edges.append(
+                    _edge(
+                        f"{group_token}-F{feeder_index:02d}-E-DCIF-BLOCK",
+                        "dc_interface_to_dc_block",
+                        f"{group_token}-F{feeder_index:02d}-DC-INTERFACE",
+                        "block_port",
+                        dc_block_id,
+                        "input_port",
+                        feeder_index=feeder_index,
+                        dc_block_index=dc_block_ordinal,
+                        attributes={"shared_dc_block": True},
+                    )
+                )
 
     return SldEngineeringV2Graph(
         run_id=topology.run_id,

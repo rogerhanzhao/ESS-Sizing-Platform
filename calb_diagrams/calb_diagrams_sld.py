@@ -525,7 +525,7 @@ def _build_dark_equipment_sections(spec: SldGroupSpec) -> list[tuple[str, list[s
 
     dc_blocks_total = _safe_int(spec.dc_blocks_total_in_group, 0)
     if dc_blocks_total > 0:
-        bess_line = f"1~{dc_blocks_total} BESS"
+        bess_line = f"{dc_blocks_total} BESS"
     else:
         bess_line = "BESS TBD"
 

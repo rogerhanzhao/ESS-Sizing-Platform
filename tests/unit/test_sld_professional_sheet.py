@@ -34,7 +34,7 @@ def test_professional_sheet_builds_reference_note_panel(sample_excel_path):
     assert "690" in pcs_section.lines[1]
 
     bess_section = sheet.notes.sections[6]
-    assert bess_section.lines[0].startswith("1~4 BESS containers (")
+    assert bess_section.lines[0].startswith("4 BESS containers (")
     assert "MWh" in bess_section.lines[0]
 
 

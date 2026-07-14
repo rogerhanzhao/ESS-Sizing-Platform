@@ -152,7 +152,20 @@ def _contains(section: SldV2LayoutSection, box: SldV2LayoutBox) -> bool:
 def _equipment_rows(graph: SldEngineeringV2Graph) -> tuple[SldV2EquipmentRow, ...]:
     summary = graph.summary
     ratings = graph.equipment_ratings
-    allocation = ", ".join(f"F{index}={count}" for index, count in enumerate(summary.dc_blocks_per_feeder, start=1))
+    shared_spans = [
+        [int(fi) for fi in (node.attributes.get("feeder_span") or [])]
+        for node in graph.nodes
+        if node.node_type == "dc_block" and node.attributes.get("feeder_span")
+    ]
+    if shared_spans:
+        # Shared DC blocks: report which PCS feeders each block supplies
+        # instead of a per-feeder count that would misread as dangling feeders.
+        allocation = ", ".join(
+            f"DC{index}→F{span[0]}-F{span[-1]}" if len(span) > 1 else f"DC{index}→F{span[0]}"
+            for index, span in enumerate(shared_spans, start=1)
+        )
+    else:
+        allocation = ", ".join(f"F{index}={count}" for index, count in enumerate(summary.dc_blocks_per_feeder, start=1))
     transformer = (
         f"{summary.mv_voltage_kv:.1f}/{summary.lv_voltage_v_ll / 1000.0:.3f} kV, "
         f"{summary.transformer_rating_mva:.1f} MVA, {summary.transformer_vector_group}, "
@@ -395,8 +408,19 @@ def build_sld_engineering_v2_layout_plan(
         center_x = feeder_center_by_index[int(feeder_index)]
         local_count = len(nodes)
         for local_index, node in enumerate(nodes, start=1):
+            # A shared DC block (split across several PCS feeders through their
+            # own fuses) is centred between the feeders it supplies.
+            feeder_span = [int(fi) for fi in (node.attributes.get("feeder_span") or []) if int(fi) in feeder_center_by_index]
+            node_center_x = (
+                sum(feeder_center_by_index[fi] for fi in feeder_span) / len(feeder_span)
+                if feeder_span
+                else center_x
+            )
+            text_lines = [node.display_name, f"{summary.dc_block_energy_mwh:.3f} MWh"]
+            if len(feeder_span) > 1:
+                text_lines.append(f"Feeds F{feeder_span[0]}-F{feeder_span[-1]}")
             x, y, block_width, block_height = _local_dc_block_position(
-                center_x,
+                node_center_x,
                 local_index,
                 local_count,
                 battery_section.y + 130.0,
@@ -410,7 +434,7 @@ def build_sld_engineering_v2_layout_plan(
                     y=y,
                     width=block_width,
                     height=block_height,
-                    text_lines=(node.display_name, f"{summary.dc_block_energy_mwh:.3f} MWh"),
+                    text_lines=tuple(text_lines),
                     feeder_index=node.feeder_index,
                     dc_block_index=node.dc_block_index,
                     attributes=dict(node.attributes),

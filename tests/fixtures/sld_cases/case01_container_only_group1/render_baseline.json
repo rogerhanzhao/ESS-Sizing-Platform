@@ -3,8 +3,8 @@
     "artifact_mode": "official",
     "engineering_v2_connector_count": 23,
     "engineering_v2_edge_count": 23,
-    "engineering_v2_graph_hash": "38ebeb26e9cea71698a4008a81cbffe281df09cd137b13664af699c912d017c6",
-    "engineering_v2_layout_hash": "47a9ba4d9eebbdea9bc399706ecd06db754dfd36fec8020d7f15da475bfa7c26",
+    "engineering_v2_graph_hash": "e6ca83cceb1ab30eaa8b13c08d578d4fb56f7778f8f1e0f13c31ab7e4936fa84",
+    "engineering_v2_layout_hash": "d0a221f1874c3f7e28b0d02cc4a8984d8a1f673097a45f01d8ac5bd14378e2df",
     "engineering_v2_layout_issue_count": 0,
     "engineering_v2_layout_warning_count": 4,
     "engineering_v2_node_count": 24,
@@ -250,7 +250,7 @@
       {
         "class": "ntitle",
         "tag": "text",
-        "text": "Power Cable \u2014 33kV",
+        "text": "Power Cable — 33kV",
         "text-anchor": "start",
         "x": 46.0,
         "y": 250.0
@@ -378,7 +378,7 @@
       {
         "class": "notes",
         "tag": "text",
-        "text": "PCS \u2014 1250 kW \u00d7 4",
+        "text": "PCS — 1250 kW × 4",
         "text-anchor": "start",
         "x": 48.0,
         "y": 478.0
@@ -450,7 +450,7 @@
       {
         "class": "notes",
         "tag": "text",
-        "text": "1~4 BESS containers (0.836 MWh \u00d7 4)",
+        "text": "4 BESS containers (0.836 MWh × 4)",
         "text-anchor": "start",
         "x": 48.0,
         "y": 634.0
@@ -2752,7 +2752,7 @@
       {
         "class": "tbtitle",
         "tag": "text",
-        "text": "SINGLE LINE DIAGRAM \u2014 BATTERY ENERGY STORAGE SYSTEM (BESS)",
+        "text": "SINGLE LINE DIAGRAM — BATTERY ENERGY STORAGE SYSTEM (BESS)",
         "text-anchor": "start",
         "x": 50.0,
         "y": 1070.0
@@ -2859,7 +2859,7 @@
       "DS: 33 kV, 630 A, 25.0 kA/3s",
       "CT: 200/1, 5P20, 10 VA",
       "With DC, ES, & Live Displayer",
-      "Power Cable \u2014 33kV",
+      "Power Cable — 33kV",
       "MISSING: MV cable spec",
       "Step-up Transformer (OIL)",
       "33.0/0.690 kV",
@@ -2869,12 +2869,12 @@
       "LV Connecting Cable",
       "MISSING: LV cable spec",
       "Power Converter System (PCS)",
-      "PCS \u2014 1250 kW \u00d7 4",
+      "PCS — 1250 kW × 4",
       "AC 690 V 50 Hz DC 1500 V",
       "DC Power Cable",
       "MISSING: DC cable spec",
       "Battery Energy Storage System",
-      "1~4 BESS containers (0.836 MWh \u00d7 4)",
+      "4 BESS containers (0.836 MWh × 4)",
       "Cell: MISSING: BESS cell spec",
       "PCS & MVT SKID (AC BLOCK)",
       "RMU-01 / MV Switchgear",
@@ -2943,7 +2943,7 @@
       "DC Block #4",
       "0.836 MWh",
       "BESS-04",
-      "SINGLE LINE DIAGRAM \u2014 BATTERY ENERGY STORAGE SYSTEM (BESS)",
+      "SINGLE LINE DIAGRAM — BATTERY ENERGY STORAGE SYSTEM (BESS)",
       "33kV MV Grid Connection | 33.0/0.690 kV, 6.0 MVA, Dyn11, Uk=7.0%, ONAN",
       "DRG NO.",
       "SLD-BESS-001",
