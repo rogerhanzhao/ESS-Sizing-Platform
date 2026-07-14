@@ -5,6 +5,7 @@ from calb_sizing_tool.services.ac_sizing_service import (
     STANDARD_PCS_COUNTS,
     STANDARD_PCS_RATINGS_KW,
     SUPPORTED_AC_DC_RATIOS,
+    build_simplified_ac_block_models,
     build_dc_allocation_plan,
     calculate_optimal_pcs_rating,
     evaluate_ac_sizing_feasibility,
@@ -41,6 +42,23 @@ def test_ac_sizing_service_freezes_standard_pcs_library():
     ]
 
     assert [(item.pcs_count, item.pcs_kw) for item in recommendations] == expected_pairs
+
+
+def test_ac_sizing_service_builds_simplified_ac_block_models_from_pcs_library():
+    models = build_simplified_ac_block_models(standard_pcs_recommendations())
+    by_pair = {(model.pcs_count, model.pcs_kw): model for model in models}
+
+    two_pcs_5mw = by_pair[(2, 2500)]
+    assert two_pcs_5mw.model_code == "ACBLK-2X2500KW-20FT"
+    assert two_pcs_5mw.block_size_mw == 5.0
+    assert two_pcs_5mw.container_type == "20ft"
+    assert two_pcs_5mw.source == "simplified_dropdown"
+
+    four_pcs_5mw = by_pair[(4, 1250)]
+    assert four_pcs_5mw.model_code == "ACBLK-4X1250KW-40FT"
+    assert four_pcs_5mw.block_size_mw == 5.0
+    assert four_pcs_5mw.container_type == "40ft"
+    assert "4 x 1250 kW PCS" in four_pcs_5mw.readable
 
 
 def test_ac_sizing_service_builds_authoritative_dc_allocation_plan():

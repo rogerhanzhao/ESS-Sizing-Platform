@@ -21,11 +21,17 @@ def build_dc_result_summary(snapshot: DcPipelineRunSnapshot) -> dict[str, Any]:
     guarantee_poi = (
         float(guarantee_row["POI_Usable_Energy_MWh"].iloc[0]) if not guarantee_row.empty else 0.0
     )
+    dc_blocks_total = int(stage2.container_count + stage2.cabinet_count)
     return {
         "target_mw": stage1.poi_power_req_mw,
         "mwh": stage1.poi_energy_req_mwh,
         "dc_nameplate_bol_mwh": stage2.dc_nameplate_bol_mwh,
-        "dc_blocks_total": stage2.container_count + stage2.cabinet_count,
+        "dc_blocks_total": dc_blocks_total,
+        # Legacy AC page restore contract. Keep these aliases until AC sizing
+        # reads the canonical snapshot directly instead of session_state.
+        "total_blocks": dc_blocks_total,
+        "container_count": int(stage2.container_count),
+        "cabinet_count": int(stage2.cabinet_count),
         "guarantee_year_poi_usable_mwh": guarantee_poi,
         "iterations": snapshot.iteration_count,
         "converged": snapshot.converged,

@@ -30,11 +30,11 @@ from calb_sizing_tool.models import DCBlockResult
 from calb_sizing_tool.reporting.export_docx import make_report_filename
 from calb_sizing_tool.reporting.report_v2 import export_report_v2_1
 from calb_sizing_tool.services.ac_sizing_service import (
+    build_simplified_ac_block_models,
     build_dc_allocation_plan,
     evaluate_ac_sizing_feasibility,
     generate_ac_sizing_options,
     select_ac_block_container_type,
-    suggest_pcs_count_and_rating,
 )
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot
 from calb_sizing_tool.services.sld_data_source_service import persist_ac_runtime_snapshot, resolve_preferred_ac_snapshot
@@ -131,6 +131,69 @@ def _render_saved_ac_snapshot(ac_output: dict, *, section_header) -> None:
         col2.metric("PCS per Block", int(ac_output.get("pcs_per_block") or 0))
         col3.metric("PCS Rating", f"{_format_float(ac_output.get('pcs_kw'), 0)} kW")
         col4.metric("Total AC Power", f"{_format_float(ac_output.get('total_ac_mw'), 2)} MW")
+        model_name = ac_output.get("ac_block_model_name") or ac_output.get("ac_block_template_id")
+        if model_name:
+            st.caption(f"Saved AC Block model: {model_name}")
+
+
+def _saved_pcs_choice_index(ac_output: dict | None, recommendations: list) -> int:
+    if not isinstance(ac_output, dict):
+        return 0
+    try:
+        saved_pcs_per_block = int(ac_output.get("pcs_per_block") or 0)
+        saved_pcs_kw = float(ac_output.get("pcs_kw") or ac_output.get("pcs_rating_kw_each") or 0)
+    except Exception:
+        return 0
+    if saved_pcs_per_block <= 0 or saved_pcs_kw <= 0:
+        return 0
+    for idx, rec in enumerate(recommendations):
+        if int(getattr(rec, "pcs_count", 0) or 0) != saved_pcs_per_block:
+            continue
+        try:
+            rec_pcs_kw = float(getattr(rec, "pcs_kw", 0) or 0)
+        except Exception:
+            continue
+        if abs(rec_pcs_kw - saved_pcs_kw) < 1e-6:
+            return idx
+    return 0
+
+
+def _saved_ac_block_model_choice_index(
+    ac_output: dict | None,
+    model_options: list,
+    *,
+    custom_index: int | None = None,
+) -> int:
+    if not isinstance(ac_output, dict):
+        return 0
+
+    saved_code = str(ac_output.get("ac_block_model_code") or "").strip()
+    if saved_code:
+        for idx, model in enumerate(model_options):
+            if str(getattr(model, "model_code", "")).strip() == saved_code:
+                return idx
+
+    try:
+        saved_pcs_per_block = int(ac_output.get("pcs_per_block") or 0)
+        saved_pcs_kw = float(ac_output.get("pcs_kw") or ac_output.get("pcs_rating_kw_each") or 0)
+    except Exception:
+        return 0
+    if saved_pcs_per_block <= 0 or saved_pcs_kw <= 0:
+        return 0
+
+    for idx, model in enumerate(model_options):
+        if int(getattr(model, "pcs_count", 0) or 0) != saved_pcs_per_block:
+            continue
+        try:
+            model_pcs_kw = float(getattr(model, "pcs_kw", 0) or 0)
+        except Exception:
+            continue
+        if abs(model_pcs_kw - saved_pcs_kw) < 1e-6:
+            return idx
+
+    if custom_index is not None:
+        return custom_index
+    return 0
 
 
 def show():
@@ -289,55 +352,78 @@ def show():
 
     st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
 
-    # ========== STEP 3: Configure PCS for Selected Ratio ==========
+    # ========== STEP 3: Configure AC Block model for Selected Ratio ==========
     if selected_option:
         with st.container(border=True):
             section_header(
-                "PCS Configuration per AC Block",
-                "Choose PCS count and PCS rating inside each AC Block. This does not change the AC/DC block grouping.",
+                "AC Block Model per AC Block",
+                "Choose the simplified AC Block model. This sets PCS count, PCS rating, and container basis.",
                 eyebrow="Step 2",
             )
-            compact_note(f"Selected AC/DC block grouping: {_ac_block_grouping_label(selected_option.ratio)}.")
+            compact_note(
+                f"Selected AC/DC block grouping: {_ac_block_grouping_label(selected_option.ratio)}. "
+                "AC Block quantity comes from Step 1; the model below defines one AC Block only."
+            )
+            model_options = build_simplified_ac_block_models(selected_option.pcs_recommendations)
 
             with st.form("ac_config_form"):
-                # PCS rating selection from recommendations
-                pcs_options = [f"{rec.readable}" for rec in selected_option.pcs_recommendations]
-                pcs_options.append("Custom PCS Rating...")
+                model_labels = [model.readable for model in model_options]
+                model_labels.append("Custom AC Block Model...")
 
-                pcs_choice = st.selectbox(
-                    "Select PCS Configuration",
-                    range(len(pcs_options)),
-                    format_func=lambda i: pcs_options[i],
-                    help="Select from recommended configurations or enter custom PCS rating",
+                model_choice = st.selectbox(
+                    "Select AC Block Model",
+                    range(len(model_labels)),
+                    index=_saved_ac_block_model_choice_index(
+                        saved_ac_output,
+                        model_options,
+                        custom_index=len(model_options),
+                    ),
+                    format_func=lambda i: model_labels[i],
+                    help="Simplified dropdown model derived from PCS count and rating; not a governed Product DB record.",
                 )
 
-                if pcs_choice < len(selected_option.pcs_recommendations):
-                    chosen_rec = selected_option.pcs_recommendations[pcs_choice]
-                    pcs_per_ac = chosen_rec.pcs_count
-                    pcs_kw = chosen_rec.pcs_kw
-                    compact_note(f"Selected PCS configuration: {pcs_per_ac} x {pcs_kw} kW.")
+                if model_choice < len(model_options):
+                    chosen_model = model_options[model_choice]
+                    pcs_per_ac = int(chosen_model.pcs_count)
+                    pcs_kw = int(chosen_model.pcs_kw)
+                    single_block_ac_power = float(chosen_model.block_size_mw)
+                    auto_container = chosen_model.container_type
+                    ac_block_model_code = chosen_model.model_code
+                    ac_block_model_name = chosen_model.display_name
+                    ac_block_model_source = chosen_model.source
+                    compact_note(f"Selected AC Block model: {chosen_model.display_name}.")
                 else:
                     custom_col1, custom_col2 = st.columns(2)
-                    pcs_per_ac = custom_col1.number_input(
-                        "PCS Count per AC Block",
-                        min_value=1,
-                        max_value=6,
-                        value=2,
-                        step=1,
-                        key="custom_pcs_count",
+                    pcs_per_ac = int(
+                        custom_col1.number_input(
+                            "PCS Count per AC Block",
+                            min_value=1,
+                            max_value=6,
+                            value=2,
+                            step=1,
+                            key="custom_pcs_count",
+                        )
                     )
-                    pcs_kw = custom_col2.number_input(
-                        "PCS Rating (kW)",
-                        min_value=1000,
-                        max_value=5000,
-                        value=1500,
-                        step=100,
-                        key="custom_pcs_kw",
+                    pcs_kw = int(
+                        custom_col2.number_input(
+                            "PCS Rating (kW)",
+                            min_value=1000,
+                            max_value=5000,
+                            value=1500,
+                            step=100,
+                            key="custom_pcs_kw",
+                        )
                     )
+                    single_block_ac_power = pcs_per_ac * pcs_kw / 1000.0
+                    auto_container = select_ac_block_container_type(single_block_ac_power, pcs_per_ac)
+                    ac_block_model_code = f"CUSTOM-{pcs_per_ac}X{pcs_kw}KW-{auto_container.upper()}"
+                    ac_block_model_name = (
+                        f"Custom {single_block_ac_power:.2f} MW AC Block - "
+                        f"{pcs_per_ac} x {pcs_kw} kW PCS - {auto_container}"
+                    )
+                    ac_block_model_source = "custom"
 
                 # Container size info - based on single AC block size
-                single_block_ac_power = pcs_per_ac * pcs_kw / 1000
-                auto_container = select_ac_block_container_type(single_block_ac_power, pcs_per_ac)
                 compact_note(
                     f"AC Block Container: {auto_container} "
                     f"(single block {single_block_ac_power:.2f} MW, "
@@ -396,7 +482,7 @@ def show():
             _dc2.metric("DC per AC Block (avg)", f"{dc_blocks_total / num_blocks:.1f}")
             _dc3.metric("Total DC Energy", f"{total_energy:.1f} MWh")
             compact_note(
-                f"Container type: {select_ac_block_container_type(block_size_mw, pcs_per_block)} per AC Block."
+                f"AC Block model: {ac_block_model_name}. Container type: {auto_container} per AC Block."
             )
 
             # --- DETAILED DC ALLOCATION ---
@@ -418,10 +504,17 @@ def show():
                 "selected_ratio": selected_option.ratio,
                 "ac_block_grouping_ratio": selected_option.ratio,
                 "ac_block_grouping_label": _ac_block_grouping_label(selected_option.ratio),
+                "ac_block_quantity_basis": "dc_block_grouping_ratio",
+                "ac_block_model_code": ac_block_model_code,
+                "ac_block_model_name": ac_block_model_name,
+                "ac_block_model_source": ac_block_model_source,
+                "ac_block_container_type": auto_container,
+                "ac_block_template_id": f"{pcs_per_block}x{int(round(pcs_kw))}kw",
                 "num_blocks": num_blocks,
                 "pcs_per_block": pcs_per_block,
                 "pcs_count_by_block": [pcs_per_block for _ in range(num_blocks)],
                 "pcs_kw": pcs_kw,
+                "pcs_power_kw": pcs_kw,
                 "pcs_rating_kw_each": pcs_kw,
                 "block_size_mw": block_size_mw,
                 "total_ac_mw": total_ac_mw,

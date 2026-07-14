@@ -34,6 +34,31 @@ class PCSRecommendation:
         return f"{self.pcs_count} x {self.pcs_kw}kW = {self.total_kw}kW"
 
 
+SIMPLIFIED_AC_BLOCK_MODEL_SOURCE = "simplified_dropdown"
+
+
+@dataclass(frozen=True)
+class ACBlockModelOption:
+    """Simplified AC Block model used before governed product records exist."""
+
+    model_code: str
+    display_name: str
+    pcs_count: int
+    pcs_kw: int
+    block_size_mw: float
+    container_type: str
+    source: str = SIMPLIFIED_AC_BLOCK_MODEL_SOURCE
+    is_optimal: bool = False
+
+    @property
+    def total_kw(self) -> int:
+        return int(round(self.pcs_count * self.pcs_kw))
+
+    @property
+    def readable(self) -> str:
+        return self.display_name
+
+
 @dataclass
 class ACBlockRatioOption:
     ratio: str
@@ -71,6 +96,50 @@ def standard_pcs_recommendations() -> List[PCSRecommendation]:
     for pcs_count in STANDARD_PCS_COUNTS:
         recommendations.extend(STANDARD_PCS_RECOMMENDATIONS_BY_COUNT[pcs_count])
     return recommendations
+
+
+def _build_ac_block_model_code(pcs_count: int, pcs_kw: int, container_type: str) -> str:
+    return f"ACBLK-{int(pcs_count)}X{int(pcs_kw)}KW-{str(container_type).upper()}"
+
+
+def build_simplified_ac_block_models(recommendations: List[PCSRecommendation]) -> List[ACBlockModelOption]:
+    """Convert PCS recommendations into selectable simplified AC Block models.
+
+    The model list deliberately derives from the frozen PCS recommendation library.
+    It is not a product database source and does not imply approved equipment data.
+    """
+    models: List[ACBlockModelOption] = []
+    seen: set[tuple[int, int, str]] = set()
+
+    for rec in recommendations:
+        pcs_count = int(getattr(rec, "pcs_count", 0) or 0)
+        pcs_kw = int(getattr(rec, "pcs_kw", 0) or 0)
+        if pcs_count <= 0 or pcs_kw <= 0:
+            continue
+        block_size_mw = pcs_count * pcs_kw / 1000.0
+        container_type = select_ac_block_container_type(block_size_mw, pcs_count)
+        key = (pcs_count, pcs_kw, container_type)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        model_code = _build_ac_block_model_code(pcs_count, pcs_kw, container_type)
+        models.append(
+            ACBlockModelOption(
+                model_code=model_code,
+                display_name=(
+                    f"{block_size_mw:.2f} MW AC Block - "
+                    f"{pcs_count} x {pcs_kw} kW PCS - {container_type} simplified model"
+                ),
+                pcs_count=pcs_count,
+                pcs_kw=pcs_kw,
+                block_size_mw=block_size_mw,
+                container_type=container_type,
+                is_optimal=bool(getattr(rec, "is_optimal", False)),
+            )
+        )
+
+    return models
 
 
 def calculate_optimal_pcs_rating(
@@ -311,6 +380,7 @@ def allocate_dc_blocks_to_pcs(dc_blocks_total: int, pcs_count: int) -> Dict[int,
 
 __all__ = [
     "ACBlockConfig",
+    "ACBlockModelOption",
     "ACBlockRatioOption",
     "AC_BLOCK_CONTAINER_SWITCH_MW",
     "AC_BLOCK_CONTAINER_SWITCH_PCS_COUNT",
@@ -326,11 +396,13 @@ __all__ = [
     "SUGGESTION_PCS_RATINGS_KW",
     "SUPPORTED_AC_DC_RATIOS",
     "allocate_dc_blocks_to_pcs",
+    "build_simplified_ac_block_models",
     "build_dc_allocation_plan",
     "calculate_optimal_pcs_rating",
     "evaluate_ac_sizing_feasibility",
     "generate_ac_sizing_options",
     "select_ac_block_container_type",
+    "SIMPLIFIED_AC_BLOCK_MODEL_SOURCE",
     "standard_pcs_recommendations",
     "suggest_pcs_count_and_rating",
 ]

@@ -112,6 +112,13 @@ def test_restore_run_bundle_to_session_clears_stale_ac_state_and_seeds_case_volt
     assert "sld_artifacts" not in session_state
     assert session_state["active_run_id"] == bundle.run_id
     assert session_state["dc_last_run_id"] == bundle.run_id
+    assert session_state["dc_result_summary"]["dc_blocks_total"] > 0
+    assert session_state["dc_result_summary"]["total_blocks"] == session_state["dc_result_summary"]["dc_blocks_total"]
+    assert (
+        session_state["dc_result_summary"]["container_count"]
+        + session_state["dc_result_summary"]["cabinet_count"]
+        == session_state["dc_result_summary"]["dc_blocks_total"]
+    )
     assert session_state["poi_nominal_voltage_kv"] == 34.5
     assert session_state["grid_kv"] == 34.5
     assert session_state["poi_frequency_hz"] == 60.0

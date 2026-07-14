@@ -1,8 +1,10 @@
 from calb_sizing_tool.services.access_control_service import AccessControlService
 from calb_sizing_tool.services.ac_sizing_service import (
     ACBlockConfig,
+    ACBlockModelOption,
     ACBlockRatioOption,
     PCSRecommendation,
+    build_simplified_ac_block_models,
     build_dc_allocation_plan,
     evaluate_ac_sizing_feasibility,
     generate_ac_sizing_options,
@@ -42,11 +44,13 @@ from calb_sizing_tool.services.stage3_service import run_stage3
 __all__ = [
     "AccessControlService",
     "ACBlockConfig",
+    "ACBlockModelOption",
     "ACBlockRatioOption",
     "PCSRecommendation",
     "persist_artifacts",
     "AuthService",
     "AuthUser",
+    "build_simplified_ac_block_models",
     "build_dc_allocation_plan",
     "evaluate_ac_sizing_feasibility",
     "generate_ac_sizing_options",

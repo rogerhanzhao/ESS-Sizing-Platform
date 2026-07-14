@@ -1,4 +1,5 @@
 from calb_sizing_tool.sizing.ac_logic import (
+    build_simplified_ac_block_models,
     build_dc_allocation_plan,
     derive_ac_template_fields,
     evaluate_ac_sizing_feasibility,
@@ -25,6 +26,7 @@ __all__ = [
     "build_config_cabinet_only",
     "build_config_container_only",
     "build_config_hybrid",
+    "build_simplified_ac_block_models",
     "build_dc_allocation_plan",
     "calc_sc_loss_pct",
     "derive_ac_template_fields",
