@@ -43,6 +43,10 @@ from calb_sizing_tool.state.project_state import bump_run_id_ac, get_project_sta
 from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
 from calb_sizing_tool.state.workspace_state import get_workspace_context
 
+# Custom AC Block PCS counts must divide evenly across the split-secondary
+# transformer's two LV windings — odd counts cannot be terminated.
+_CUSTOM_PCS_COUNT_CHOICES = (2, 4, 6)
+
 
 def _format_float(val, decimals=2) -> str:
     try:
@@ -366,71 +370,78 @@ def show():
             )
             model_options = build_simplified_ac_block_models(selected_option.pcs_recommendations)
 
-            with st.form("ac_config_form"):
-                model_labels = [model.readable for model in model_options]
-                model_labels.append("Custom AC Block Model...")
+            # Model selection lives outside any st.form so a change reruns
+            # immediately: picking "Custom..." must reveal the PCS inputs
+            # before anything is executed (FT-20260714-12).
+            model_labels = [model.readable for model in model_options]
+            model_labels.append("Custom AC Block Model...")
 
-                model_choice = st.selectbox(
-                    "Select AC Block Model",
-                    range(len(model_labels)),
-                    index=_saved_ac_block_model_choice_index(
-                        saved_ac_output,
-                        model_options,
-                        custom_index=len(model_options),
-                    ),
-                    format_func=lambda i: model_labels[i],
-                    help="Simplified dropdown model derived from PCS count and rating; not a governed Product DB record.",
+            model_choice = st.selectbox(
+                "Select AC Block Model",
+                range(len(model_labels)),
+                index=_saved_ac_block_model_choice_index(
+                    saved_ac_output,
+                    model_options,
+                    custom_index=len(model_options),
+                ),
+                format_func=lambda i: model_labels[i],
+                key="ac_block_model_choice",
+                help="Simplified dropdown model derived from PCS count and rating; not a governed Product DB record.",
+            )
+
+            if model_choice < len(model_options):
+                chosen_model = model_options[model_choice]
+                pcs_per_ac = int(chosen_model.pcs_count)
+                pcs_kw = int(chosen_model.pcs_kw)
+                single_block_ac_power = float(chosen_model.block_size_mw)
+                auto_container = chosen_model.container_type
+                ac_block_model_code = chosen_model.model_code
+                ac_block_model_name = chosen_model.display_name
+                ac_block_model_source = chosen_model.source
+                compact_note(f"Selected AC Block model: {chosen_model.display_name}.")
+            else:
+                custom_col1, custom_col2 = st.columns(2)
+                # Split-secondary MV transformers carry two LV windings, so
+                # the PCS count per AC Block must divide evenly across them —
+                # odd counts (e.g. 3) cannot be terminated electrically.
+                if st.session_state.get("custom_pcs_count") not in _CUSTOM_PCS_COUNT_CHOICES:
+                    st.session_state.pop("custom_pcs_count", None)
+                pcs_per_ac = int(
+                    custom_col1.selectbox(
+                        "PCS Count per AC Block",
+                        _CUSTOM_PCS_COUNT_CHOICES,
+                        index=0,
+                        key="custom_pcs_count",
+                        help="Even counts only: the dual-LV-winding (split-secondary) transformer cannot terminate an odd number of PCS.",
+                    )
                 )
-
-                if model_choice < len(model_options):
-                    chosen_model = model_options[model_choice]
-                    pcs_per_ac = int(chosen_model.pcs_count)
-                    pcs_kw = int(chosen_model.pcs_kw)
-                    single_block_ac_power = float(chosen_model.block_size_mw)
-                    auto_container = chosen_model.container_type
-                    ac_block_model_code = chosen_model.model_code
-                    ac_block_model_name = chosen_model.display_name
-                    ac_block_model_source = chosen_model.source
-                    compact_note(f"Selected AC Block model: {chosen_model.display_name}.")
-                else:
-                    custom_col1, custom_col2 = st.columns(2)
-                    pcs_per_ac = int(
-                        custom_col1.number_input(
-                            "PCS Count per AC Block",
-                            min_value=1,
-                            max_value=6,
-                            value=2,
-                            step=1,
-                            key="custom_pcs_count",
-                        )
+                pcs_kw = int(
+                    custom_col2.number_input(
+                        "PCS Rating (kW)",
+                        min_value=1000,
+                        max_value=5000,
+                        value=1500,
+                        step=100,
+                        key="custom_pcs_kw",
                     )
-                    pcs_kw = int(
-                        custom_col2.number_input(
-                            "PCS Rating (kW)",
-                            min_value=1000,
-                            max_value=5000,
-                            value=1500,
-                            step=100,
-                            key="custom_pcs_kw",
-                        )
-                    )
-                    single_block_ac_power = pcs_per_ac * pcs_kw / 1000.0
-                    auto_container = select_ac_block_container_type(single_block_ac_power, pcs_per_ac)
-                    ac_block_model_code = f"CUSTOM-{pcs_per_ac}X{pcs_kw}KW-{auto_container.upper()}"
-                    ac_block_model_name = (
-                        f"Custom {single_block_ac_power:.2f} MW AC Block - "
-                        f"{pcs_per_ac} x {pcs_kw} kW PCS - {auto_container}"
-                    )
-                    ac_block_model_source = "custom"
-
-                # Container size info - based on single AC block size
-                compact_note(
-                    f"AC Block Container: {auto_container} "
-                    f"(single block {single_block_ac_power:.2f} MW, "
-                    f"total AC {selected_option.ac_block_count * single_block_ac_power:.2f} MW)."
                 )
+                single_block_ac_power = pcs_per_ac * pcs_kw / 1000.0
+                auto_container = select_ac_block_container_type(single_block_ac_power, pcs_per_ac)
+                ac_block_model_code = f"CUSTOM-{pcs_per_ac}X{pcs_kw}KW-{auto_container.upper()}"
+                ac_block_model_name = (
+                    f"Custom {single_block_ac_power:.2f} MW AC Block - "
+                    f"{pcs_per_ac} x {pcs_kw} kW PCS - {auto_container}"
+                )
+                ac_block_model_source = "custom"
 
-                submitted = st.form_submit_button("Run AC Sizing", use_container_width=True)
+            # Container size info - based on single AC block size
+            compact_note(
+                f"AC Block Container: {auto_container} "
+                f"(single block {single_block_ac_power:.2f} MW, "
+                f"total AC {selected_option.ac_block_count * single_block_ac_power:.2f} MW)."
+            )
+
+            submitted = st.button("Run AC Sizing", use_container_width=True, type="primary")
 
         # ========== STEP 4: Calculation & Validation ==========
         if submitted:
