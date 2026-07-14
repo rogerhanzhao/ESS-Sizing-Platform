@@ -371,9 +371,37 @@ Export。**无界面显示不全问题**；此前的交互异常确认为嵌入�
   拒绝不落库 ✓；400/800（2h）→ 正常运行（916.18 MWh / 185 容器）✓。
 - FT-07 / FT-09 / FT-11 状态改为 **已修复**。
 
-**下一步**：R2 剩余——SLD 渲染模式矩阵（theme/compact/plugin）、CST 上传
-注册流（9 组 gate）、AC 自定义 PCS 边界、RPT 缺产物场景、ADM 编辑保存、
-Guest 模式（AUTH-05/07、DC-RUN-10）。之后 R3 边界异常与 R4 回归收口。测试库中 3 个 1C run（e9150ca6/449bc681/a4d5fef9）为 FT-07
+### R2 后半段执行记录（2026-07-14 下午）
+
+- **AC-04/05/08 ✓**：Custom AC Block 模型输入带 min/max 约束（1-6 台、
+  1000-5000 kW，比 DC 表单规范）；Custom 3×2000 = 6.00 MW 正确判 40ft
+  （>5 MW 规则）；总功率 558 MW 保存成功；功率不足场景（2×1500=279 MW
+  < 400 MW）给出明确业务错误不崩溃。
+- **FT-20260714-12（S3，待修复）— Custom 模型输入框不即时出现**：
+  AC 模型下拉在 st.form 内，选择 "Custom AC Block Model..." 后条件渲染的
+  两个 PCS 输入框在表单提交前不出现；用户必须先用隐藏默认值（2×1500）
+  "盲跑"一次才能配置。修复方向：模型选择移出 form，或 Custom 输入恒显
+  （非 Custom 时禁用）。
+- **SLD-04/05/08 ✓**：light 主题 + Compact + Draw Summary 组合生成正常；
+  custom 6 MW 模型正确渲染为 3×2000 kW PCS + 6.7 MVA 三绕组变压器
+  （1 MV + 2 LV secondaries，PCS 2+1 分配）+ 2 容器/块；水印保持。
+  其余 renderer mode × plugin 全组合留 R3。
+- **CST-02/03/04/05 全通过 ✓**：
+  - schema_version 错误（`site_constraint_set_v1` vs 正确的
+    `site_constraint_set.v1`）被明确拒绝（schema 防线生效）；
+  - 不完整集（3/9 组）注册为 `draft_incomplete`，artifact
+    `site_constraint_set.draft.json`；
+  - run_id 不匹配注册被拒（明确报出两个 run id）；
+  - 完整 9/9 注册为 `ready_for_constraint_validation`，artifact
+    `site_constraint_set.ready.json`，且明示 "Master Layout renderer is
+    not yet enabled"（P2 边界 / FUT-01 挂点保持）。
+  - DB 版本化审计：两个状态的 artifacts 依次入库 ✓。
+- **RPT-04 ✓**：未生成排布的 run，报告预览如实显示
+  "○ Layout (not generated)"，不虚构章节。
+
+**R2 剩余**：ADM-04/05（测试库上的编辑/新增保存）、Guest 模式
+（AUTH-05/06/07、DC-RUN-10）、SLD renderer mode × plugin 全矩阵（并入
+R3）。之后 R3 边界异常与 R4 回归收口。测试库中 3 个 1C run（e9150ca6/449bc681/a4d5fef9）为 FT-07
 取证数据，勿作回归基线。浏览器自动化注意：Streamlit number_input 用 React
 setter + input 事件 + blur 提交；表单内控件变更不即时触发 rerun 属正常。
 
