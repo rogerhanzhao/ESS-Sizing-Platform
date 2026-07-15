@@ -3,7 +3,8 @@
 Rendering conventions:
 - Black-on-white monochrome (print-ready).
 - All electrical symbols follow ANSI/IEEE Std 315-1975 (R1993).
-- Transformer shown as two-winding interlocked circles with Dyn11 vector group.
+- Transformer shown as either two-winding interlocked circles or one MV
+  primary with separately identified LV-A/LV-B secondary windings.
 - Equipment tags follow NEMA/industry convention: T-01, INV-01, BESS-01, RMU-01.
 - Title block per ANSI Y14.1 (no company / logo — added at report-generation time).
 """
@@ -257,7 +258,10 @@ def _transformer_split_secondary(
         secondary_x = x + offset
         dwg.add(dwg.circle(center=(secondary_x, lv_cy), r=lv_radius, class_="sfill"))
         _wye_grounded_mark(dwg, secondary_x, lv_cy, size=10.0)
-        _text(dwg, f"LV-{chr(64 + winding_index)}", secondary_x, lv_cy + lv_radius + 12.0, "tag", anchor="middle")
+        # Put the secondary identifier above the winding: a large draft
+        # watermark is intentionally overlaid below the transformer and must
+        # not hide the distinction between LV-A and LV-B.
+        _text(dwg, f"LV-{chr(64 + winding_index)}", secondary_x, lv_cy - lv_radius - 8.0, "tag", anchor="middle")
 
     _text(dwg, str(vector_group or "Dyn11"), x + 72.0, hv_cy - 4.0, "label")
     for idx, line in enumerate(text_lines):
@@ -275,6 +279,15 @@ def _pcs_by_lv_winding(plan: SldV2LayoutPlan) -> dict[int, list[SldV2LayoutBox]]
         winding_index: sorted(boxes, key=lambda box: int(box.feeder_index or 0))
         for winding_index, boxes in sorted(groups.items())
     }
+
+
+def _feeder_span_text(boxes: list[SldV2LayoutBox]) -> str:
+    feeder_indices = sorted(int(box.feeder_index or 0) for box in boxes if box.feeder_index)
+    if not feeder_indices:
+        return "Feeders TBD"
+    if len(feeder_indices) == 1:
+        return f"Feeder F{feeder_indices[0]}"
+    return f"Feeders F{feeder_indices[0]}–F{feeder_indices[-1]}"
 
 
 def _pcs_symbol(dwg, x: float, y: float, width: float, height: float,
@@ -668,12 +681,36 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
         (pcs_boxes[0].attributes if pcs_boxes else {}).get("lv_voltage_v_ll"), decimals=0
     )
     bus_y_by_winding: dict[int, float] = {}
+    winding_bus_extents: list[tuple[int, float, float]] = []
+    split_secondary = len(pcs_by_winding) > 1
     for winding_index, winding_pcs in pcs_by_winding.items():
         centers = [pcs.x + pcs.width / 2.0 for pcs in winding_pcs]
         bus_x1 = min(centers) - 90.0
         bus_x2 = max(centers) + 90.0
         bus_y = mv.lv_bus_y
         bus_y_by_winding[winding_index] = bus_y
+        winding_bus_extents.append((winding_index, bus_x1, bus_x2))
+
+        # A three-winding transformer has two independent LV secondary
+        # distribution sections.  Give each one a visible boundary and a
+        # feeder range so it cannot be mistaken for a single common busbar.
+        panel_y = bus_y - 40.0
+        panel_bottom = lvdc.pcs_y + lvdc.converter_height + 22.0
+        panel_x = bus_x1 - 20.0
+        panel_width = bus_x2 - bus_x1 + 40.0
+        _rect(dwg, panel_x, panel_y, panel_width, panel_bottom - panel_y, "outline")
+        section_label = (
+            f"LV-{chr(64 + winding_index)} DISTRIBUTION SECTION"
+            if split_secondary
+            else "LV DISTRIBUTION SECTION — COMMON BUS"
+        )
+        secondary_label = (
+            f"Secondary LV-{chr(64 + winding_index)}  •  {_feeder_span_text(winding_pcs)}"
+            if split_secondary
+            else _feeder_span_text(winding_pcs)
+        )
+        _text(dwg, section_label, panel_x + 12.0, bus_y - 20.0, "title")
+        _text(dwg, secondary_label, panel_x + 12.0, bus_y - 6.0, "label")
         _line(
             dwg,
             (bus_x1, bus_y),
@@ -681,12 +718,14 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
             "busbar",
             id=f"lv-winding-{winding_index}-busbar",
         )
-        label = (
-            f"LV Bus  {lv_v} V"
-            if len(pcs_by_winding) == 1
-            else f"LV-{chr(64 + winding_index)} bus / {lv_v} V"
-        )
-        _text(dwg, label, bus_x1, bus_y - 8.0, "label")
+        label = f"LV-{chr(64 + winding_index)} BUS / {lv_v} V" if split_secondary else f"LV BUS / {lv_v} V"
+        _text(dwg, label, bus_x2 - 8.0, bus_y - 6.0, "label", anchor="end")
+
+    if split_secondary and len(winding_bus_extents) == 2:
+        _, left_x1, left_x2 = winding_bus_extents[0]
+        _, right_x1, right_x2 = winding_bus_extents[1]
+        if left_x2 < right_x1:
+            _text(dwg, "NO LV BUS TIE", (left_x2 + right_x1) / 2.0, mv.lv_bus_y - 6.0, "tag", anchor="middle")
 
     # Battery bank heading — centred in the clear gap between fuse bottom and BESS box top
     _text(dwg, "BATTERY STORAGE BANK",

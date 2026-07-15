@@ -34,8 +34,9 @@ def test_engineering_v2_renderer_emits_svg_from_layout_plan(sample_excel_path, t
     assert "RMU-01" in svg_text
     assert "Transformer Feeder" in svg_text
     assert "Dyn11" in svg_text
-    assert "LV-A bus" in svg_text
-    assert "LV-B bus" in svg_text
+    assert "LV-A DISTRIBUTION SECTION" in svg_text
+    assert "LV-B DISTRIBUTION SECTION" in svg_text
+    assert "NO LV BUS TIE" in svg_text
     assert "INV-01" in svg_text
     assert "BESS-01" in svg_text
     assert "T-01" in svg_text

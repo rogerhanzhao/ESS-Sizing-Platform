@@ -199,7 +199,10 @@ def build_professional_sld_sheet(plan: SldV2LayoutPlan) -> ProfessionalSldSheet:
         top_y=62.0,
         bus_y=290.0,
         transformer_y=480.0,
-        lv_bus_y=610.0,
+        # Keep the LV distribution drawing below the draft watermark band and
+        # leave enough vertical clearance for visibly separate secondary
+        # sections, feeder protection, PCS and BESS symbols.
+        lv_bus_y=670.0,
     )
 
     centers = [box.x + box.width / 2.0 for box in pcs_boxes]
@@ -213,9 +216,9 @@ def build_professional_sld_sheet(plan: SldV2LayoutPlan) -> ProfessionalSldSheet:
     lvdc = ProfessionalLvDcGeometry(
         bus_x1=bus_x1,
         bus_x2=bus_x2,
-        pcs_y=mv.lv_bus_y + 90.0,
-        dc_device_y=mv.lv_bus_y + 195.0,
-        block_y=mv.lv_bus_y + 260.0,
+        pcs_y=mv.lv_bus_y + 110.0,
+        dc_device_y=mv.lv_bus_y + 220.0,
+        block_y=mv.lv_bus_y + 280.0,
         converter_width=80.0,
         converter_height=60.0,
         battery_width=90.0,

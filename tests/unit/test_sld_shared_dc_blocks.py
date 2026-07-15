@@ -135,8 +135,11 @@ def test_shared_dc_svg_draws_both_outputs_and_split_lv_windings(sample_excel_pat
     assert rendered_path == svg_path
     assert warning is None
     svg_text = svg_path.read_text(encoding="utf-8")
-    assert "LV-A bus / 690 V" in svg_text
-    assert "LV-B bus / 690 V" in svg_text
+    assert "LV-A DISTRIBUTION SECTION" in svg_text
+    assert "LV-B DISTRIBUTION SECTION" in svg_text
+    assert "NO LV BUS TIE" in svg_text
+    assert "LV-A BUS / 690 V" in svg_text
+    assert "LV-B BUS / 690 V" in svg_text
     assert "3-winding: 1 MV primary + 2 independent LV secondaries" in svg_text
     assert 'id="transformer-lv-winding-1"' in svg_text
     assert 'id="transformer-lv-winding-2"' in svg_text
