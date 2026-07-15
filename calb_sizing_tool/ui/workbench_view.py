@@ -3,6 +3,7 @@ from __future__ import annotations
 from html import escape
 
 import streamlit as st
+from sqlalchemy.exc import IntegrityError
 
 from calb_sizing_tool.domain.enums import StageScope
 from calb_sizing_tool.infra.db.session import session_scope
@@ -577,25 +578,38 @@ def _render_create_case_form(context: dict, auth_user, *, form_key: str) -> None
                 proj_code = context.get("project_code") or slugify(
                     context.get("project_name") or "project", fallback="project"
                 )
-                with session_scope() as session:
-                    repo = CaseRepository(session)
-                    AccessControlService(session, auth_user).ensure_project_access(context["project_id"])
-                    case = repo.create_case(
-                        project_id=context["project_id"],
-                        case_code=f"{proj_code}-{slugify(case_name_input, fallback='case')}",
-                        case_name=case_name_input.strip(),
-                        stage_scope=StageScope.DC,
-                        scenario_mode=scenario_mode,
-                        input_json={},
-                        source_ref="workbench",
-                    )
-                    session.flush()
-                    set_active_case(
-                        case_id=case.sizing_case_id,
-                        case_code=case.case_code,
-                        case_name=case.case_name,
-                    )
-                st.rerun()
+                case_code = f"{proj_code}-{slugify(case_name_input, fallback='case')}"
+                duplicate_case = False
+                case = None
+                try:
+                    with session_scope() as session:
+                        repo = CaseRepository(session)
+                        AccessControlService(session, auth_user).ensure_project_access(context["project_id"])
+                        duplicate_case = repo.get_case_by_code(case_code) is not None
+                        if not duplicate_case:
+                            case = repo.create_case(
+                                project_id=context["project_id"],
+                                case_code=case_code,
+                                case_name=case_name_input.strip(),
+                                stage_scope=StageScope.DC,
+                                scenario_mode=scenario_mode,
+                                input_json={},
+                                source_ref="workbench",
+                            )
+                            session.flush()
+                            set_active_case(
+                                case_id=case.sizing_case_id,
+                                case_code=case.case_code,
+                                case_name=case.case_name,
+                            )
+                except IntegrityError:
+                    # Keep the race-condition fallback user-facing as well.
+                    duplicate_case = True
+
+                if duplicate_case:
+                    st.error("A case with the same name already exists in this project.")
+                elif case is not None:
+                    st.rerun()
 
 
 def _render_case_picker(cases: list[dict], context: dict, auth_user) -> None:

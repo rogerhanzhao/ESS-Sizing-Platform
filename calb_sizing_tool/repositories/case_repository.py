@@ -101,6 +101,9 @@ class CaseRepository:
     def get_case_by_id(self, sizing_case_id: str) -> SizingCase | None:
         return self.session.query(SizingCase).filter_by(sizing_case_id=sizing_case_id).one_or_none()
 
+    def get_case_by_code(self, case_code: str) -> SizingCase | None:
+        return self.session.query(SizingCase).filter_by(case_code=case_code).one_or_none()
+
     def save_case_input(
         self,
         sizing_case_id: str,

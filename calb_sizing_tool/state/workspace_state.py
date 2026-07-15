@@ -42,6 +42,9 @@ _DC_INPUT_FIELDS = (
 
 
 def _clear_sld_runtime_state() -> None:
+    # These controls are keyed widgets. Their values otherwise win over the
+    # current active-run default after a workspace/run switch.
+    st.session_state.pop("sld_run_id_override", None)
     st.session_state.pop("sld_artifacts", None)
     st.session_state.pop("sld_pipeline_meta", None)
 
@@ -56,6 +59,12 @@ def _clear_sld_runtime_state() -> None:
         artifacts["sld_png_bytes"] = None
         artifacts["sld_svg_bytes"] = None
         artifacts["sld_meta"] = {}
+
+
+def _clear_layout_runtime_state() -> None:
+    """Remove layout output and its explicit run selector on run changes."""
+    st.session_state.pop("layout_run_id_override", None)
+    st.session_state.pop("layout_artifacts", None)
 
 
 def _clear_ac_runtime_state() -> None:
@@ -82,6 +91,7 @@ def _clear_ac_runtime_state() -> None:
 def _clear_downstream_runtime_state() -> None:
     _clear_ac_runtime_state()
     _clear_sld_runtime_state()
+    _clear_layout_runtime_state()
 
 
 def _clear_dc_input_state() -> None:
@@ -149,6 +159,9 @@ def clear_active_run() -> None:
             st.session_state.get("ac_output"),
             st.session_state.get("sld_artifacts"),
             st.session_state.get("sld_pipeline_meta"),
+            st.session_state.get("layout_artifacts"),
+            st.session_state.get("sld_run_id_override"),
+            st.session_state.get("layout_run_id_override"),
         )
     )
     st.session_state.pop("active_run_id", None)
@@ -192,6 +205,9 @@ def set_active_case(*, case_id: str | None, case_code: str | None, case_name: st
 
 
 def set_active_run(run_id: str | None) -> None:
+    current_run_id = st.session_state.get("active_run_id") or st.session_state.get("dc_last_run_id")
+    if current_run_id != run_id:
+        _clear_downstream_runtime_state()
     st.session_state["active_run_id"] = run_id
     st.session_state["dc_last_run_id"] = run_id
 

@@ -553,29 +553,38 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
 
     s3_df = ctx.stage3_df
     if s3_df is not None and not s3_df.empty:
-        doc.add_paragraph(
-            "System RTE = DC RTE × (One-way Efficiency)², "
-            "where one-way efficiency is the DC→POI chain defined in Section 3.1."
+        rte_columns = ["DC_RTE_Pct", "System_RTE_Pct"]
+        rte_frame = (
+            s3_df.loc[:, rte_columns].apply(pd.to_numeric, errors="coerce").dropna()
+            if set(rte_columns).issubset(s3_df.columns)
+            else pd.DataFrame()
         )
-        rte_dc = s3_df["DC_RTE_Pct"].astype(float)
-        rte_sys = s3_df["System_RTE_Pct"].astype(float)
-        rte_dc_min, rte_dc_max = float(rte_dc.min()), float(rte_dc.max())
-        rte_sys_min, rte_sys_max = float(rte_sys.min()), float(rte_sys.max())
+        if not rte_frame.empty:
+            doc.add_paragraph(
+                "System RTE = DC RTE × (One-way Efficiency)², "
+                "where one-way efficiency is the DC→POI chain defined in Section 3.1."
+            )
+            rte_dc = rte_frame["DC_RTE_Pct"]
+            rte_sys = rte_frame["System_RTE_Pct"]
+            rte_dc_min, rte_dc_max = float(rte_dc.min()), float(rte_dc.max())
+            rte_sys_min, rte_sys_max = float(rte_sys.min()), float(rte_sys.max())
 
-        if abs(rte_dc_min - rte_dc_max) < 1e-6:
-            doc.add_paragraph(f"DC RTE: {format_percent(rte_dc_min, input_is_fraction=False)} (constant over project life)")
+            if abs(rte_dc_min - rte_dc_max) < 1e-6:
+                doc.add_paragraph(f"DC RTE: {format_percent(rte_dc_min, input_is_fraction=False)} (constant over project life)")
+            else:
+                doc.add_paragraph(
+                    f"DC RTE: {format_percent(rte_dc_min, input_is_fraction=False)} "
+                    f"to {format_percent(rte_dc_max, input_is_fraction=False)} over project life"
+                )
+            if abs(rte_sys_min - rte_sys_max) < 1e-6:
+                doc.add_paragraph(f"System RTE: {format_percent(rte_sys_min, input_is_fraction=False)} (constant over project life)")
+            else:
+                doc.add_paragraph(
+                    f"System RTE: {format_percent(rte_sys_min, input_is_fraction=False)} "
+                    f"to {format_percent(rte_sys_max, input_is_fraction=False)} over project life"
+                )
         else:
-            doc.add_paragraph(
-                f"DC RTE: {format_percent(rte_dc_min, input_is_fraction=False)} "
-                f"to {format_percent(rte_dc_max, input_is_fraction=False)} over project life"
-            )
-        if abs(rte_sys_min - rte_sys_max) < 1e-6:
-            doc.add_paragraph(f"System RTE: {format_percent(rte_sys_min, input_is_fraction=False)} (constant over project life)")
-        else:
-            doc.add_paragraph(
-                f"System RTE: {format_percent(rte_sys_min, input_is_fraction=False)} "
-                f"to {format_percent(rte_sys_max, input_is_fraction=False)} over project life"
-            )
+            doc.add_paragraph("DC and system RTE ranges are unavailable for the supplied Stage 3 dataset.")
         doc.add_paragraph("")
 
         s3_df = s3_df.copy()
@@ -634,6 +643,7 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
             "System_RTE_Pct": lambda v: format_percent(v, input_is_fraction=False),
             "Meets_Guarantee": lambda v: "Yes" if v else "No",
         }
+        s3_columns = [column for column in s3_columns if column in s3_df.columns]
         _add_dataframe_table(doc, s3_df, s3_columns, s3_headers, s3_formatters, keep_together=False)
 
     # --- Section 6: Stage 4 - AC Block Sizing ---

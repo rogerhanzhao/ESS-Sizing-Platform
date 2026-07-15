@@ -45,7 +45,7 @@ Supersedes: `FUNCTIONAL_TEST_PLAN_V1.md`（V1 为已执行的验收记录，保�
 | AUTH-04 | P1 | 首次建库时 Create Admin Account 表单（用户名、显示名、密码、确认密码、token） | 密码不一致/缺 token 被拒；成功后可登录（在全新空库实例上验证一次） |
 | AUTH-05 | P1 | Guest 模式进入 | 导航仅含 guest 允许页面（默认落在 DC Sizing）；Workbench 等受限页不可达 |
 | AUTH-06 | P1 | Guest 会话残留 `main_nav="Workbench"` 时刷新 | 导航被钳制回允许页（app.py nav clamp 逻辑） |
-| AUTH-07 | P1 | Guest 打开 Report Export | 显示 “Sign In to Enable Export” 按钮，点击跳转登录 |
+| AUTH-07 | P1 | Guest 尝试访问 Report Export（残留导航/直接设定） | 导航钳制回 DC Sizing；不暴露导出或登录引导入口 |
 | AUTH-08 | P2 | 登出后回退/刷新 | 不能继续访问受限页面 |
 
 ## 4. TG-B 工作台 Workbench（WB）
@@ -154,7 +154,7 @@ Project Directory / Case Directory（`projects_view.py`、`cases_view.py`）。
 | SLD-03 | P1 | Group Index 下拉 | 各分组可切换渲染 |
 | SLD-04 | P1 | Theme 下拉 dark/light | 两主题均正常渲染 |
 | SLD-05 | P1 | Compact Mode / Draw Summary 勾选（4 组合） | 均无渲染错误 |
-| SLD-06 | P1 | Renderer Mode 下拉 | 各模式生成成功；retired 模式不出现（`SLD_RENDERER_MODE_RETIREMENT_V2.md`） |
+| SLD-06 | P1 | Renderer Mode 下拉 | `engineering_v2` 对当前拓扑生成成功；legacy 对比模式在不支持的拓扑上明确拒绝；retired 模式不出现（`SLD_RENDERER_MODE_RETIREMENT_V2.md`） |
 | SLD-07 | P1 | Override Mode 勾选 | 覆盖规则符合 `SLD_UI_OVERRIDE_RULES_V1.md`；关闭后回到默认 |
 | SLD-08 | P1 | Plugin 下拉切换 | 各插件可生成 |
 | SLD-09 | P0 | Generate SLD（按钮禁用逻辑：无 run 或无 AC 快照时禁用） | 禁用逻辑正确；生成后 artifacts 注册 |
@@ -185,7 +185,7 @@ Project Directory / Case Directory（`projects_view.py`、`cases_view.py`）。
 | CST-03 | P1 | 上传不完整 JSON | 判为 `draft_incomplete` 持久化并有审计记录 |
 | CST-04 | P1 | 上传完整 9 组输入 JSON → Register 按钮 | 注册成功、解锁条件之一达成 |
 | CST-05 | P1 | `source_run.run_id` 指向其他 run 的 JSON | 注册被拒绝 |
-| CST-06 | P2 | 超大 JSON 上传 | 记录行为（已知无大小上限，见状态文档 Deferred #2）——若无限制则记为改进项 |
+| CST-06 | P2 | 超大 JSON 上传 | 超过 2 MiB 时在解析前明确拒绝；等于上限时允许继续校验 |
 | CST-07 | P2 | 每次 rerun 重复从 DB+磁盘加载（Deferred #1） | 观察性能，不作为缺陷，记录数据 |
 
 ## 10. TG-H 报告导出 / 工程设置 / 运行登记（RPT / ENG / RH）
@@ -409,6 +409,297 @@ R3）。之后 R3 边界异常与 R4 回归收口。测试库中 3 个 1C run（
 取证数据，勿作回归基线。浏览器自动化注意：Streamlit number_input 用 React
 setter + input 事件 + blur 提交；表单内控件变更不即时触发 rerun 属正常。
 
+### R2 Guest 模式续测（2026-07-14 晚）
+
+- **AUTH-05 ✓**：从登录页进入 Guest 后，默认落在 DC Sizing；侧边栏仅保留
+  AC Sizing、Single Line Diagram、Typical AC Block Arrangement 三个可切换的
+  sizing 页面（当前页 DC Sizing 以静态 active 标识显示），Workbench、Project/
+  Case/Run 管理、Engineering Settings 与 Report Export 均不暴露。
+- **AUTH-06 ✓**：Guest session 人为残留 `main_nav="Workbench"` 后重新执行页面，
+  `app.py` 将其钳制回 `DC Sizing`；同样对 `main_nav="Report Export"` 生效。
+- **DC-RUN-10 ✓**：Guest 默认 DC 输入成功运行，无 exception/error；结果写入
+  `guest_dc_run_snapshot` 和 `dc_last_run_id`，没有走项目/Case/run 持久化路径。
+- 新增页面回归 `tests/test_guest_mode_smoke.py`，覆盖 Guest 进入、Workbench/
+  Report Export 受限导航钳制，以及 Guest DC session snapshot；单文件 **4 passed**。
+- **AUTH-07 ✓（产品策略确认，2026-07-14）**：Guest 不能导出报告，Report Export
+  保持完全不可达。测试用例已改为负向访问控制：正常导航不暴露导出页，任何残留/直设
+  `main_nav="Report Export"` 都必须钳制回 DC Sizing，且不显示登录引导 CTA。
+
+### R2 Admin Portal 续测（2026-07-14 晚）
+
+- **ADM-04 ✓**：在从 `var/_uitest_copy.sqlite` 复制出的临时数据库中，以 admin
+  身份进入 Product & Database > Cells，修改首条 Cell Product 的 Model Name 并点击
+  `Save Changes`；页面无 exception，服务快照确认新值已落库。随后通过服务层恢复
+  原值，并在临时库中复核恢复成功；8599 实例的测试库未被修改。
+- **ADM-05 ✓**：在同一隔离副本提交空的 Add Cell Product 表单，页面给出必填字段
+  错误、无 exception，Cell Products 数量保持不变。临时数据库副本已删除。
+- R2 管理端页面级 P1/P2 项已完成；其余 SLD 页面操作与 renderer mode × plugin
+  组合矩阵并入 R3。
+
+### R3 SLD Renderer / Plugin 矩阵（2026-07-14 晚）
+
+- **SLD-04/05/08 ✓**：当前公开 SLD SVG 插件仅有 `sld_engineering_v1`。以
+  `case01_container_only_group1` 的 authoritative fixture，对 Engineering V2 执行
+  dark/light × Compact Mode on/off × Draw Summary on/off 共 **8** 组渲染；每组均
+  输出非空 SVG/PNG，`engineering_v2_layout_issue_count=0`。
+- **SLD-06 ✓（边界澄清）**：同一 fixture 使用双低压绕组（split-secondary）拓扑。
+  `legacy_server` 按 renderer boundary 明确拒绝并提示 `requires Engineering V2 SLD`；
+  这是受支持拓扑边界，而不是渲染崩溃。公开 selector 仅含 `engineering_v2` 与
+  `legacy_server`，`topology_v1` 仍为 retired/reserved 值而不向新预览开放。
+- **SLD-07 ✓**：Override Mode 开启后出现非官方草稿提示与额外覆盖输入；关闭后两者
+  均撤回，页面无 exception。产物模式分离集成测试进一步确认 strict 输出为
+  `concept`、override 输出为 `draft_override`，文件名分别含 `.concept.` / `.draft.`。
+- **SLD-02 ✓**：在隔离库的有效 workspace run 上将 Run ID 改为不存在的值后，页面
+  保留输入以便修正、显示运行时来源告警，`Generate SLD` 变为 disabled，且无 exception；
+  因此不会以无效 run 生成图。
+- **SLD-03 ✓**：同一 persisted AC snapshot 提供 93 个 AC Block Group；在临时库实际
+  生成首组（1）与末组（93），两次 artifact 均非空，`sld_pipeline_meta.group_index`
+  精确等于所选分组，页面无 error/exception。
+- **SLD-13 ✓**：以隔离测试库中的已保存 project/case/run 进入页面，预置有效
+  `sld_artifacts` 与 `sld_pipeline_meta` 后点击 `Clear Preview`；按钮可用，两个缓存
+  对象均被清除，页面无 exception。
+- **SLD-14 ✓**：同一运行上下文下 `Open Engineering Settings` 按钮存在且可点击；
+  点击后主导航切换至 `Engineering Settings`，且 Settings 页的 `Go to Single Line Diagram`
+  可正确返回；跳转前后均无 page exception。
+- **SLD-16 ✓**：隔离库对同一 Run 依次保存 4 PCS/4 feeders 与 2 PCS/2 feeders 的 AC
+  snapshot 后实际生成 SLD；第二次严格 canonical input 为 `pcs_count=2`、`[2, 2]` feeder
+  分配，并产生非空产物，确认重新生成优先采用最新已保存 AC snapshot。
+- 将 SLD-13/14 页面操作纳入 `tests/test_sld_page_state_smoke.py` 回归；Guest
+  访问边界纳入 `tests/test_guest_mode_smoke.py`。本轮全量回归为 **285 passed**。
+
+### R3 Typical AC Block Arrangement 控制与产物（2026-07-14 晚）
+
+- **ARR-02/03/06 ✓**：临时复制的测试数据库中，以已保存 AC snapshot 实际生成
+  `Auto`、`2x2`、`1x4`、`4x1` 四种 DC Block arrangement；覆盖 Typical AC Block
+  的首项/末项（1 / 93）及 `Show PCS&MVT SKID` 的 on/off。每次均生成非空的 SVG、PNG、
+  spec JSON 与 Master Layout readiness manifest，页面无 exception，四个下载入口均存在。
+- 无 AC snapshot 的页面复核：Typical AC Block、DC Block arrangement、Show PCS&MVT
+  SKID 和 Generate 按钮全部 disabled，无 exception。因此 ARR-03 的可用/禁用边界
+  与 ARR-04 的禁用前置条件均符合预期。
+- **ARR-07 ✓**：以有效偶数 PCS run 生成概念排布后，`Generate Prompt Payload` 生成的
+  payload 绑定同一 `run_id`，并显示 `layout_prompt_payload.json` 与 `prompt.txt` 两个
+  下载入口；页面无 exception。
+- **ARR-08 ✓（服务闭环）**：外部 AI concept 提交与 layout review 的集成测试
+  `test_external_artifact_submission_flow.py`、`test_layout_review_workflow.py` 均通过，
+  覆盖提交、审核决策与权限校验。
+- **CST-06 ✓**：Site Constraint Set JSON 已有 2 MiB 前置限制，不存在大纲旧注释所称的
+  “无大小上限”行为。等于 2 MiB 的上传允许继续校验，超过 1 byte 即由
+  `upload_exceeds_limit` 拒绝，页面在 JSON 解析前显示明确错误。
+- **CST-07 ✓**：以 AppTest 对约束集的底层加载器计数；同一 Run 首次读取后连续 10 次 rerun
+  仍只发生 1 次加载。切换 Run 或显式失效缓存均会重新加载，验证缓存不会跨 Run 串用。
+- 上述临时数据库在验证后已删除；`var/_uitest_copy.sqlite` 与 8599 实例未被写入。
+
+### R3 Report Export 模板与连续导出（2026-07-14 晚）
+
+- **RPT-01/03 ✓（有效 run 全链路复测）**：在临时库为同一有效偶数 PCS run 生成
+  SLD 与 Typical AC Block Arrangement 后，Report Export 同时识别 DC、AC、SLD Image
+  与 Typical AC Block Arrangement，并提供 `Download Combined Report V2.1`；页面无
+  exception。
+- **RPT-02 ✓**：恢复隔离会话的 DC/AC 快照后，`Report Template` 可在
+  `V2.1 (Beta)` 和 `V2.1 (Guoxia)` 间切换；下载按钮文案分别为
+  `Download Combined Report V2.1` 与 `Download Combined Report V2.1 (Guoxia)`。
+- **RPT-05 ✓**：按 Beta → Guoxia → Beta 连续三次渲染导出入口，始终只出现与当前
+  模板匹配的一个按钮，页面无 exception，未见模板状态串扰。
+- 本 run 不含 Layout artifact，页面仍如实提示 Layout 未生成；该缺失产物分支已由
+  RPT-04 覆盖，不影响本次模板/连续导出结论。
+- **RPT-03 / DC-RUN-06 深度复核 ✓（2026-07-15）**：使用实际 DC sizing 管线生成
+  Technical Sizing Report（82,807 bytes）和 UI 使用的 Combined Report V2.1（85,904 bytes）。
+  两份 DOCX 均可由 `python-docx` 解析；逐项核对项目/POI 输入、90 × 5.016 = 451.440 MWh、
+  20 × 5 MW = 100 MW、Year 0 的 402.49 MWh 满足 400 MWh 保证，以及 Year 20 的
+  284.16 MWh 标记为不满足。所有表格均无空数据行、无 TODO/TBD/None/Error 占位文本；
+  报告内嵌 CALB 标识和 POI 年度能量图均可读。没有 SLD 或布局产物时，V2.1 明确说明
+  未生成，不会伪造图片或章节。
+- **FT-20260715-17（P2，已修复 ✓）**：Stage 3 降级数据仅含年份和 POI 能量、缺少
+  `DC_RTE_Pct` / `System_RTE_Pct` 时，V2.1 曾无条件取列并以 `KeyError` 中断导出。
+  现仅在两列齐全且可解析时输出 RTE 范围；否则明确提示 RTE 范围不可用，并只渲染已有
+  的寿命表列。修复仅涉及报告展示的容错处理，不改变 sizing 或保证判定；报告专项回归
+  **24 passed**，全量回归 **288 passed**。
+
+### R3 Authentication 异常与初始建账（2026-07-14 晚）
+
+- **AUTH-02 ✓**：在临时库创建已知用户后，错误密码与不存在用户均只返回
+  `Invalid credentials.`；两者提示一致、不建立 `auth_context`、页面无 exception，
+  不泄漏用户名是否存在。
+- **AUTH-03 ✓**：用户名/密码均留空提交时同样被拒绝为 `Invalid credentials.`，无
+  traceback 或登录态建立。
+- **AUTH-04 ✓**：全新空库显示 Create Admin Account；密码不一致时提示
+  `Passwords do not match.` 且不创建用户，确认一致后成功创建 admin、自动路由 Workbench，
+  新账号可立即认证。两份临时数据库均已删除。
+- **AUTH-08 ✓**：从残留 `main_nav="Report Export"` 的管理员会话登出后，
+  `auth_context` 被清除并回到 Login 表单；Workbench、Report Export、Engineering
+  Settings、Project/Case/Run 管理入口均不再显示，页面无 exception。
+- **ADM-06 ✓**：普通用户会话即便残留 `__admin_portal__=True`，app 仍拒绝激活
+  Product & Database 管理页；管理入口与 Back to Sizing 均不显示，页面无 exception。
+
+### R3 Workbench 案例切换与 Run Registry（2026-07-14 晚）
+
+- **WB-07 ✓**：在临时库给已有 project 加入第二个 Case 后，点击其 `Use` 正确切换
+  active case；先前的 active run、`dc_last_run_id`、`ac_output` 与 `sld_artifacts`
+  均被清除，页面无 exception，避免跨 Case 陈旧状态串用。
+- **WB-10 ✓**：已有 run 的 Case 显示 Run Registry，Restore run selector 展示最新
+  **10** 条（符合页面上限），无序列化/渲染异常。临时库随后删除。
+- **WB-03/05（部分 ✓）**：在全新临时库中，空 Project/Case 名称分别提示
+  `Name is required.`；包含中文、斜杠和引号的名称能安全落库并自动成为 active
+  project/case，页面无 exception。
+- **WB-03（Project 重名/超长 ✓）**：同名 Project 连续创建两次，得到两个安全的
+  project code（基础 code 和 `-2` 后缀），两次页面均无 exception；300 字符 Project Name
+  也能在隔离 SQLite 测试库落库，页面无 exception。该长度行为仅为当前 SQLite 运行时取证，
+  未替代其他数据库后端的字段长度验证。
+- **WB-05（初测失败，后续已由 FT-20260715-16 修复）**：先创建 Case 后再以相同名称提交，第二次页面出现
+  `sqlite3.IntegrityError: UNIQUE constraint failed: sizing_case.case_code`。临时库中仅保留
+  第一条记录（无重复脏数据），但用户看到的是技术异常而非可恢复的校验提示。
+- **WB-11 ✓**：隔离库中同一 Project 的两个 Case 均在 selector 中以独立名称可见；为其中
+  一个 Case 构造 3 条明确时间戳的 Run 后，Run Registry 显示为 `#1 11:00`、`#2 10:00`、
+  `#3 09:00`，最新在前且标签可区分，页面无 exception。
+
+### R3 Directory 空态与跳转（2026-07-15）
+
+- **DIR-01 ✓**：隔离库中从 Project Directory 选择另一个 Project 并点击 `Open Project`，
+  active project 正确更新、active case 被清除并路由至 Workbench，页面无 exception。
+- **DIR-03 ✓**：同一 Project 下从 Case Directory 选择非当前 Case 并点击 `Open Case`，
+  active case 正确更新并路由至 Workbench，页面无 exception。
+- **DIR-02 ✓**：无项目权限的普通用户打开 Project Directory 时显示 `No projects found.`，
+  `Go to Workbench to create one` 可点击并路由至 Workbench，页面无 exception。
+- **DIR-04 ✓**：无 active project 时打开 Case Directory 显示 `No project is active.`，
+  `Go to Workbench` 可点击并路由至 Workbench，页面无 exception。两项均为只读会话验证，
+  未创建项目或 Case。
+- **DIR-05 ✓**：隔离库中仅被授予一个 Project 的普通用户打开 Project Directory 时，
+  selector 仅含已授权项目；未授权项目不显示，页面无 exception。
+
+### R3 Engineering Settings 持久化（2026-07-15）
+
+- **ENG-01 ✓**：在隔离数据库的有效 Project/Case 中修改 `BESS cell spec`、提交
+  `Save Engineering Settings` 后页面无 exception；重新从服务读取时来源为
+  `dedicated_table`、修改值保持一致，并存在 `save_sld_project_settings` 审计历史。
+- **ENG-02 ✓**：在隔离库保存带标记的正式 `BESS cell spec` 后，从该 Case 的已保存 Run
+  实际执行严格模式 SLD 生成；服务重载设置、canonical input 与生成 SVG 均包含
+  `FT-ENG-SLD-20260715`，并产生非空产物及 readiness manifest，确认设置已进入真实渲染链路。
+- **ENG-03 ✓**：`Go to Single Line Diagram` 的实际跳转已在 SLD-14 往返测试中确认；
+  无 active Case 时转到 Workbench 的空态跳转由目录/Workbench 空态测试补充覆盖。
+
+### R3 Run Registry 恢复（2026-07-15）
+
+- **RH-01 ✓**：隔离库中从 Run Registry 点击 `Restore Run Inputs` 后，正确路由至
+  DC Sizing；active run 与所点 run 一致，`dc_inputs` 已回填，且 SLD/布局缓存均被清除。
+  页面无 exception，验证本轮 active-run reset 修复不影响历史 Run 恢复。
+- **RH-03 ✓**：从隔离库的历史 Run 读取恢复输入、修改 POI duty 后通过真实 DC sizing
+  管线再次持久化；同一 Case 下得到两条不同 Run，原 Run 的输入/输出快照及 content hash
+  均保持不变，新 Run 正确保存 60 MW / 240 MWh 的更新输入。
+
+### R3 平台级导航遍历（2026-07-15）
+
+- **PLAT-01 ✓**：真实 admin 会话依次只读打开 Workbench、Project Directory、Case Directory、
+  DC Sizing、AC Sizing、Single Line Diagram、Typical AC Block Arrangement、Report Export、
+  Engineering Settings 与 Run Registry，均无 exception。遗留 `Site Layout` 导航值正确钳制为
+  `Typical AC Block Arrangement`。未点击生成、保存或导出入口。
+- **PLAT-02 ✓**：带有效 Project/Case/Run 的隔离会话跨越 Workbench、DC、AC、SLD、布局、
+  Report、Engineering Settings 和 Run Registry 后，active project/case/run 与
+  `dc_last_run_id` 均保持不变，页面均无 exception。
+- **PLAT-05 ✓**：以全新临时 SQLite 数据库执行 `scripts/start_local_web.ps1 -Port 8600`；
+  Alembic 从初始版本连续升级至 head，Streamlit 成功监听，HTTP 探活返回 200。测试服务及
+  临时数据库随后均已清理，未影响仍在运行的本地 8599 实例。
+- **PLAT-04 ✓（持久化并发边界）**：隔离 SQLite 中以同一 Project/Case 并发执行两条完整
+  DC sizing + Run 持久化工作流；两条新 Run 均成功保存，Case 共保留 3 条不同 Run，全部
+  输入/输出快照可重载。Case working input 按最后完成的提交更新为其中一个有效值（61 或 62 MW），
+  未发生快照丢失或数据损坏。
+- **PLAT-06 ✓**：隔离 AppTest admin 会话中实际提交一次 `Run Sizing` 后连续执行 10 次
+  Streamlit rerun；全过程无 exception/error，Case 始终只有该次提交生成的 1 条 Run，且输入/输出
+  快照完整，未出现重复落库或死锁。
+- **PLAT-07 ✓**：执行 UI 表格渲染回归（6 passed）；静态检查确认 UI 层未遗留
+  `st.dataframe`/`st.table`/Chart 等 Arrow 序列化入口，Run Registry 使用静态 HTML 表格且
+  AppTest 无 exception。PLAT-06 的实际 DC 结果页亦无序列化错误。
+
+### R3 AC 配置持久化（2026-07-14 晚）
+
+- **AC-09 ✓**：临时库中通过 `ac_view` 使用的 `persist_ac_runtime_snapshot` 保存
+  已有 run 的 AC 配置，再以空白会话调用同一加载优先级链；保存的模型标识与输出被完整
+  取回，且优先级为 `persisted_run_snapshot`，不会被 project/session 的不同旧值覆盖。
+- **AC-05/08 ✓**：AC sizing service 边界回归 **10 passed**；实际调用确认单个 AC Block
+  恰为 5.00 MW 时选用 20ft、5.01 MW 才切为 40ft。80 MW 对 100 MW 目标返回明确
+  `Insufficient power` 业务错误且无异常/虚假告警。
+- 页面级 AppTest 在渲染 Streamlit `segmented_control` 时触发测试适配器的
+  `content: "1" is not in list` 序列化错误，发生于提交前，未作为产品失败计入；
+  该保存按钮的真实 Chrome 提交已在 R1 复核，服务持久化/重载链本轮重新验证通过。
+- **AC-06 ✓**：`tests/unit/test_ac_view_restore_defaults.py` 以旧存档
+  `ACBLK-4X1250KW-40FT` 验证恢复选择，按 PCS 签名迁移为
+  `ACBLK-4X1250KW-20FT`；连同 AC sizing service 回归共 **16 passed**。
+- **AC-07 ✓**：使用有效的偶数 PCS 基线 run `5f1b…` 读取 persisted snapshot，
+  trace 为 `ACBLK-2X2500KW-20FT` / `simplified_dropdown` / `20ft` /
+  `dc_block_grouping_ratio`，且 `source_run_id` 与当前 run 一致。
+- **AC-10 ✓**：无 active run 进入 AC 页面时给出“DC sizing results not found”与先运行
+  DC sizing 的引导，不出现 exception。
+
+### R3 DC 结果下载与后续入口（2026-07-14 晚）
+
+- **DC-RUN-06 ✓**：在临时库中实际完成一次合法 DC sizing 后，结果渲染周期出现
+  `Export Technical Sizing Report` 下载入口，页面无 error/exception；并通过该按钮使用的
+  `build_report_bytes` 生成链路读取下载流（82,814 bytes），确认 DOCX 可打开，且包含项目名、
+  Equipment Summary 与 Lifetime POI Usable Energy 结果章节。
+- **DC-RUN-07（部分取证）**：结果页中 `dc_cta_ac` 与 `dc_cta_sld` 两个 CTA 均存在，
+  源码均调用已验证的 `navigate_now`。点击后的 AppTest rerun 被 DC 表单陈旧 widget state
+  的框架 KeyError 中断，不能据此归类为产品路由失败；待 Chrome 控制桥恢复后补一次真实
+  浏览器点击取证。
+- **DC-RUN-09 ✓**：隔离 AppTest admin 会话在同一 Case 连续提交两次 DC sizing，并将
+  POI 功率从 100 MW 改为 60 MW；生成两条不同 Run，两个输入快照分别保留 100/60 MW，
+  active run 指向第二条，页面无 exception/error。
+- **DC-RUN-08 ✓（计算管线极值）**：使用与页面相同的 DC 数据加载与 `size_with_guarantee`
+  管线进行不持久化复测。5 MW / 10 MWh 得到 3 个 DC blocks、`poi_g=13.352 MWh`；
+  1000 MW / 4000 MWh 得到 895 个 DC blocks、`poi_g=4002.546 MWh`；两者均在 1 次迭代
+  收敛，无异常或静默拒绝。该结论覆盖 sizing pipeline；页面表单提交/Run Registry 持久化
+  已由 DC-RUN-01~06 覆盖。
+
+### FT-20260714-14 — 切换 active run 后 SLD Run ID 覆盖值陈旧（S2，已修复 ✓）
+
+- **Symptom / SLD-16**：页面已打开并以 `run-old` 生成/保留预览时，将工作区
+  `active_run_id` / `dc_last_run_id` 切换为 `run-new`，Run ID 文本框、预览控制签名与
+  预览缓存仍保持 `run-old`。页面没有异常或拒绝提示；若继续生成，存在将旧 AC run
+  的 SLD 当作新工作区结果的风险。
+- **Evidence**：隔离测试库页面级复现中，切换前后 session 的 active run 分别为
+  `run-old` / `run-new`，而 `sld_preview_control_signature.run_id` 两次均为
+  `run-old`，且 `sld_artifacts` 未被清除。
+- **Root cause**：`sld_run_id_override` 使用带 key 的 `st.text_input`。其 widget
+  state 在 active run 切换后优先于新的 `run_id_default`，而
+  `restore_run_bundle_to_session` / `set_active_run` 未清除此 override key；因此
+  `_sync_sld_preview_control_signature()` 看不到 run 变化。
+- **Fix & regression（2026-07-15）✓**：`set_active_run()` 现在仅在 Run ID 实际变化时清理
+  下游运行态；SLD 侧同时移除 `sld_run_id_override`、预览与 pipeline 缓存。相同 Run 的
+  显式追溯值不会被清除。`tests/unit/test_workspace_state.py` 已覆盖 Run 切换、同 Run 保留
+  与 Restore Run 路径。
+- **Disposition**：SLD-16 已关闭；修复仅管理 UI/runtime state，不涉及 sizing 公式。
+
+### FT-20260715-15 — 切换 active run 后 Typical Arrangement 仍显示旧 Run（S2，已修复 ✓）
+
+- **Symptom / ARR-09**：在布局页已经以 `layout-run-old` 生成/保留预览后，将工作区
+  `active_run_id` / `dc_last_run_id` 切换到 `layout-run-new`，Run ID 文本框仍为
+  `layout-run-old`，`layout_artifacts.run_id` 也仍为 `layout-run-old`。两次页面渲染均无
+  exception 或陈旧状态提示，页面继续保留旧布局预览/下载区域。
+- **Evidence**：隔离 AppTest 会话的两次采样分别得到：切换前
+  `layout_run_id_override=layout-run-old`、artifact run 为 `layout-run-old`；切换后这两个值
+  均未变更（exception count 均为 0）。测试不写入现有数据库。
+- **Root cause**：`site_layout_view.py` 的 `layout_run_id_override` 是固定 key 的
+  `st.text_input`，已有 widget state 优先于新的 `run_id_default`；同时
+  `set_active_run()` 仅更新 active run 字段，`_clear_downstream_runtime_state()` 只清理 AC 与
+  SLD，不清理 `layout_artifacts` 或该 override key。
+- **Fix & regression（2026-07-15）✓**：与 FT-20260714-14 共用 Run 切换 reset 策略；
+  `layout_run_id_override` 与 `layout_artifacts` 均在真实 Run 变化或 Restore Run 前清除。
+  workspace-state 回归同时断言 SLD 与布局产物不会跨 Run 保留。
+- **Disposition**：ARR-09 已关闭；跨运行工程产物陈旧风险已消除。
+
+### FT-20260715-16 — Workbench 重名 Case 直接暴露数据库异常（S3，已修复 ✓）
+
+- **Symptom / WB-05**：同一 project 下先创建一个 Case，再提交相同 Case Name 时，页面
+  不显示可恢复的“名称已存在”提示，而是出现 `sqlite3.IntegrityError` traceback。
+- **Evidence**：隔离数据库页面级复测中，第一次创建无 exception；第二次的
+  `app.exception` count 为 1，原始错误为 `UNIQUE constraint failed: sizing_case.case_code`。
+  事务回滚正确，库中该 Case Name 仅有一条记录。
+- **Root cause**：`_render_create_case_form()` 直接使用由名称派生的唯一 `case_code` 调用
+  `CaseRepository.create_case()`，未在 `session.flush()` 边界处理唯一约束冲突。
+- **Fix & regression（2026-07-15）✓**：Case 创建先检查派生的 `case_code`，并保留
+  `IntegrityError` 兜底以覆盖并发提交。隔离数据库页面复测确认：第一次创建无 exception；
+  第二次显示 `A case with the same name already exists in this project.`、无 exception，且仅
+  保留一条记录。`tests/test_workbench_onboarding.py` 覆盖预检分支。
+- **Disposition**：本项已关闭；修复不涉及 sizing core。
+
 ### FT-20260714-07 — 1C 输入被静默接受并输出零衰减结果（S3，已确认为缺陷）
 
 - **Symptom**: 输入 400 MW / 400 MWh（1C，1 小时系统）时 DC Sizing 正常收敛，
@@ -430,5 +721,5 @@ setter + input 事件 + blur 提交；表单内控件变更不即时触发 rerun
 
 - P0/P1 用例 100% 通过；P2 通过率 ≥ 90%，未通过项均有记录与处置决定。
 - 无未关闭的 S1/S2 缺陷。
-- 全量 pytest 通过（当前基线 246 tests）。
+- 全量 pytest 通过（当前基线 288 tests）。
 - FUT 章节挂点确认无误并保留。

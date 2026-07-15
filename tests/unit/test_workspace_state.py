@@ -14,6 +14,9 @@ def _seed_session_state() -> dict:
         "selected_ac_ratio": "1:2",
         "sld_artifacts": {"artifacts": ["stale"]},
         "sld_pipeline_meta": {"run_id": "run-stale"},
+        "sld_run_id_override": "run-stale",
+        "layout_artifacts": {"run_id": "run-stale", "artifacts": ["stale"]},
+        "layout_run_id_override": "run-stale",
         "ac_inputs": {"grid_kv": 11.0, "mv_kv": 11.0, "grid_frequency_hz": 50.0},
         "ac_results": {"mv_voltage_kv": 11.0},
         "dc_inputs": {"poi_power_req_mw": 999.0},
@@ -50,11 +53,40 @@ def test_clear_active_run_clears_downstream_runtime_state(monkeypatch):
     assert "dc_last_run_id" not in session_state
     assert "ac_output" not in session_state
     assert "sld_artifacts" not in session_state
+    assert "layout_artifacts" not in session_state
+    assert "sld_run_id_override" not in session_state
+    assert "layout_run_id_override" not in session_state
     assert session_state["ac_inputs"] == {}
     assert session_state["ac_results"] == {}
     assert session_state["project_state"]["ac"]["run_id"] is None
     assert session_state["diagram_outputs"].sld_svg is None
     assert session_state["artifacts"]["sld_meta"] == {}
+
+
+def test_set_active_run_resets_diagram_runtime_state_only_when_run_changes(monkeypatch):
+    session_state = _seed_session_state()
+    monkeypatch.setattr(workspace_state, "st", SimpleNamespace(session_state=session_state))
+
+    workspace_state.set_active_run("run-new")
+
+    assert session_state["active_run_id"] == "run-new"
+    assert session_state["dc_last_run_id"] == "run-new"
+    assert "sld_artifacts" not in session_state
+    assert "layout_artifacts" not in session_state
+    assert "sld_run_id_override" not in session_state
+    assert "layout_run_id_override" not in session_state
+
+
+def test_set_active_run_keeps_explicit_diagram_trace_for_same_run(monkeypatch):
+    session_state = _seed_session_state()
+    monkeypatch.setattr(workspace_state, "st", SimpleNamespace(session_state=session_state))
+
+    workspace_state.set_active_run("run-stale")
+
+    assert session_state["sld_artifacts"] == {"artifacts": ["stale"]}
+    assert session_state["layout_artifacts"] == {"run_id": "run-stale", "artifacts": ["stale"]}
+    assert session_state["sld_run_id_override"] == "run-stale"
+    assert session_state["layout_run_id_override"] == "run-stale"
 
 
 def test_navigate_to_sets_main_and_pending_nav(monkeypatch):
@@ -112,6 +144,9 @@ def test_restore_run_bundle_to_session_clears_stale_ac_state_and_seeds_case_volt
 
     assert "ac_output" not in session_state
     assert "sld_artifacts" not in session_state
+    assert "layout_artifacts" not in session_state
+    assert "sld_run_id_override" not in session_state
+    assert "layout_run_id_override" not in session_state
     assert session_state["active_run_id"] == bundle.run_id
     assert session_state["dc_last_run_id"] == bundle.run_id
     assert session_state["dc_result_summary"]["dc_blocks_total"] > 0

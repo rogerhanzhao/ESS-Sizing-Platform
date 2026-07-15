@@ -21,6 +21,8 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from calb_sizing_tool.schemas.diagram_inputs import DiagramArtifactBundle
+
 
 def _app() -> AppTest:
     return AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py", default_timeout=10)
@@ -76,3 +78,66 @@ def test_sld_page_keeps_ac_lv_value_across_pages():
     _go_to(app, "Site Layout")
     _go_to(app, "Single Line Diagram")
     assert app.session_state["ac_inputs"]["lv_voltage_v"] == pytest.approx(690.0)
+
+
+def test_sld_clear_preview_removes_runtime_artifacts():
+    app = _app()
+    _login(app)
+    _go_to(app, "Single Line Diagram")
+
+    app.session_state["sld_artifacts"] = DiagramArtifactBundle(
+        plugin_id="sld_engineering_v1",
+        plugin_version="1.3.0",
+        run_id="run-test",
+        metadata={},
+        artifacts=[],
+    )
+    app.session_state["sld_pipeline_meta"] = {"run_id": "run-test", "artifact_mode": "concept"}
+    app.run()
+
+    clear_button = next(button for button in app.button if button.label == "Clear Preview")
+    assert not clear_button.disabled
+
+    clear_button.click()
+    app.run()
+    assert "sld_artifacts" not in app.session_state
+    assert "sld_pipeline_meta" not in app.session_state
+    assert not app.exception
+
+def test_sld_open_engineering_settings_navigates_to_settings_page():
+    app = _app()
+    _login(app)
+    app.session_state["active_case_id"] = "case-test"
+    app.session_state["active_case_name"] = "Case Test"
+    _go_to(app, "Single Line Diagram")
+
+    settings_button = next(button for button in app.button if button.label == "Open Engineering Settings")
+    settings_button.click()
+    app.run()
+
+    assert app.session_state["main_nav"] == "Engineering Settings"
+    assert not app.exception
+
+
+def test_sld_override_mode_reveals_and_hides_draft_controls():
+    app = _app()
+    _login(app)
+    _go_to(app, "Single Line Diagram")
+
+    override = next(item for item in app.checkbox if item.label == "Enable Engineering Override Mode")
+    base_number_inputs = len(app.number_input)
+    base_text_inputs = len(app.text_input)
+
+    override.set_value(True)
+    app.run()
+
+    assert next(item for item in app.checkbox if item.label == "Enable Engineering Override Mode").value is True
+    assert any("non-official draft" in str(item.value) for item in app.warning)
+    assert len(app.number_input) > base_number_inputs or len(app.text_input) > base_text_inputs
+
+    next(item for item in app.checkbox if item.label == "Enable Engineering Override Mode").set_value(False)
+    app.run()
+
+    assert next(item for item in app.checkbox if item.label == "Enable Engineering Override Mode").value is False
+    assert not any("non-official draft" in str(item.value) for item in app.warning)
+    assert not app.exception

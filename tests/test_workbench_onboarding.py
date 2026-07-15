@@ -51,6 +51,26 @@ def _run_registry_app() -> None:
     )
 
 
+def _duplicate_case_form_app() -> None:
+    from calb_sizing_tool.services.auth_service import AuthUser
+    from calb_sizing_tool.ui import workbench_view
+
+    workbench_view._render_create_case_form(
+        {
+            "project_id": "project-1",
+            "project_code": "project-1",
+            "project_name": "Project 1",
+        },
+        AuthUser(
+            user_id="test-user",
+            username="test-user",
+            display_name="Test User",
+            roles=["normal_user"],
+        ),
+        form_key="duplicate_case_form",
+    )
+
+
 def test_first_project_onboarding_focuses_on_the_next_action():
     app = AppTest.from_function(_first_project_onboarding_app, default_timeout=10)
     app.run()
@@ -84,3 +104,49 @@ def test_run_registry_avoids_streamlit_arrow_dataframe_serialisation():
     assert len(app.dataframe) == 0
     assert [item.label for item in app.selectbox] == ["Restore run"]
     assert any("wb-run-table" in item.value for item in app.markdown)
+
+
+def test_duplicate_case_is_rejected_without_a_technical_exception(monkeypatch):
+    from contextlib import contextmanager
+
+    from calb_sizing_tool.ui import workbench_view
+
+    observed_case_codes = []
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    class ExistingCaseRepository:
+        def __init__(self, _session):
+            pass
+
+        def get_case_by_code(self, case_code):
+            observed_case_codes.append(case_code)
+            return object()
+
+        def create_case(self, **_kwargs):
+            raise AssertionError("Duplicate case must not be persisted")
+
+    class AllowProjectAccess:
+        def __init__(self, _session, _auth_user):
+            pass
+
+        def ensure_project_access(self, _project_id):
+            return None
+
+    monkeypatch.setattr(workbench_view, "session_scope", fake_session_scope)
+    monkeypatch.setattr(workbench_view, "CaseRepository", ExistingCaseRepository)
+    monkeypatch.setattr(workbench_view, "AccessControlService", AllowProjectAccess)
+
+    app = AppTest.from_function(_duplicate_case_form_app, default_timeout=10)
+    app.run()
+    app.text_input[0].set_value("Existing Case")
+    app.button[0].click()
+    app.run()
+
+    assert observed_case_codes == ["project-1-existing-case"]
+    assert not app.exception
+    assert [item.value for item in app.error] == [
+        "A case with the same name already exists in this project."
+    ]
