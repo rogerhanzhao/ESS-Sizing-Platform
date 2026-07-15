@@ -50,4 +50,10 @@ def test_layout_block_smoke(tmp_path: Path):
     assert "Block 1" in svg_text
     assert "PCS&amp;MVT SKID" in svg_text
     assert "Transformer" in svg_text
-    assert "DC Block" in svg_text
+    # Every container carries its own tag inside its outline (no floating
+    # "DC Block" labels that collided with row gaps / dimension lines).
+    assert "BESS-01" in svg_text
+    assert "BESS-04" in svg_text
+    assert ">DC Block<" not in svg_text
+    # Overall footprint dimensions and the container-size note are present.
+    assert "DC container 6.058 m x 2.438 m" in svg_text

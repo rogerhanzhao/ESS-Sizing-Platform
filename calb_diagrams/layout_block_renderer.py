@@ -106,28 +106,63 @@ def _resolve_block_count(spec: LayoutBlockSpec, block_index: int) -> int:
     return max(1, _safe_int(spec.dc_blocks_per_block, 1))
 
 
+def _dim_text_width(text) -> float:
+    return len(str(text)) * 5.5
+
+
 def _draw_h_dimension(dwg, x1, x2, y, ext_y, text):
+    """Horizontal dimension per ISO 129: when the span is too small for the
+    arrowheads and text, arrows are placed OUTSIDE pointing inward and the
+    text sits beside the dimension — never crammed inside the gap."""
     arrow = 6
     dwg.add(dwg.line((x1, ext_y), (x1, y), class_="thin"))
     dwg.add(dwg.line((x2, ext_y), (x2, y), class_="thin"))
-    dwg.add(dwg.line((x1, y), (x2, y), class_="thin"))
-    dwg.add(dwg.line((x1, y), (x1 + arrow, y - arrow / 2), class_="thin"))
-    dwg.add(dwg.line((x1, y), (x1 + arrow, y + arrow / 2), class_="thin"))
-    dwg.add(dwg.line((x2, y), (x2 - arrow, y - arrow / 2), class_="thin"))
-    dwg.add(dwg.line((x2, y), (x2 - arrow, y + arrow / 2), class_="thin"))
-    dwg.add(dwg.text(text, insert=((x1 + x2) / 2, y - 4), class_="dim-text", text_anchor="middle"))
+    span = abs(x2 - x1)
+    if span >= _dim_text_width(text) + 4 * arrow:
+        dwg.add(dwg.line((x1, y), (x2, y), class_="thin"))
+        dwg.add(dwg.line((x1, y), (x1 + arrow, y - arrow / 2), class_="thin"))
+        dwg.add(dwg.line((x1, y), (x1 + arrow, y + arrow / 2), class_="thin"))
+        dwg.add(dwg.line((x2, y), (x2 - arrow, y - arrow / 2), class_="thin"))
+        dwg.add(dwg.line((x2, y), (x2 - arrow, y + arrow / 2), class_="thin"))
+        dwg.add(dwg.text(text, insert=((x1 + x2) / 2, y - 4), class_="dim-text", text_anchor="middle"))
+    else:
+        # Small feature: dimension line runs through and past the extension
+        # lines; arrowheads outside pointing inward; text to the right.
+        dwg.add(dwg.line((x1 - 2 * arrow, y), (x2 + 2 * arrow, y), class_="thin"))
+        dwg.add(dwg.line((x1 - arrow, y - arrow / 2), (x1, y), class_="thin"))
+        dwg.add(dwg.line((x1 - arrow, y + arrow / 2), (x1, y), class_="thin"))
+        dwg.add(dwg.line((x2 + arrow, y - arrow / 2), (x2, y), class_="thin"))
+        dwg.add(dwg.line((x2 + arrow, y + arrow / 2), (x2, y), class_="thin"))
+        dwg.add(dwg.text(text, insert=(x2 + 2 * arrow + 4, y + 3), class_="dim-text"))
 
 
-def _draw_v_dimension(dwg, y1, y2, x, ext_x, text):
+def _draw_v_dimension(dwg, y1, y2, x, ext_x, text, rotate_text: bool = False):
+    """Vertical dimension per ISO 129. Small spans get outside arrows with the
+    text beside the line; large spans (overall sizes) can rotate the text to
+    run along the dimension line."""
     arrow = 6
     dwg.add(dwg.line((ext_x, y1), (x, y1), class_="thin"))
     dwg.add(dwg.line((ext_x, y2), (x, y2), class_="thin"))
-    dwg.add(dwg.line((x, y1), (x, y2), class_="thin"))
-    dwg.add(dwg.line((x, y1), (x - arrow / 2, y1 + arrow), class_="thin"))
-    dwg.add(dwg.line((x, y1), (x + arrow / 2, y1 + arrow), class_="thin"))
-    dwg.add(dwg.line((x, y2), (x - arrow / 2, y2 - arrow), class_="thin"))
-    dwg.add(dwg.line((x, y2), (x + arrow / 2, y2 - arrow), class_="thin"))
-    dwg.add(dwg.text(text, insert=(x + 6, (y1 + y2) / 2), class_="dim-text"))
+    span = abs(y2 - y1)
+    mid = (y1 + y2) / 2
+    if span >= 4 * arrow + 12:
+        dwg.add(dwg.line((x, y1), (x, y2), class_="thin"))
+        dwg.add(dwg.line((x, y1), (x - arrow / 2, y1 + arrow), class_="thin"))
+        dwg.add(dwg.line((x, y1), (x + arrow / 2, y1 + arrow), class_="thin"))
+        dwg.add(dwg.line((x, y2), (x - arrow / 2, y2 - arrow), class_="thin"))
+        dwg.add(dwg.line((x, y2), (x + arrow / 2, y2 - arrow), class_="thin"))
+    else:
+        dwg.add(dwg.line((x, y1 - 2 * arrow), (x, y2 + 2 * arrow), class_="thin"))
+        dwg.add(dwg.line((x - arrow / 2, y1 - arrow), (x, y1), class_="thin"))
+        dwg.add(dwg.line((x + arrow / 2, y1 - arrow), (x, y1), class_="thin"))
+        dwg.add(dwg.line((x - arrow / 2, y2 + arrow), (x, y2), class_="thin"))
+        dwg.add(dwg.line((x + arrow / 2, y2 + arrow), (x, y2), class_="thin"))
+    if rotate_text:
+        tx, ty = x - 5, mid
+        dwg.add(dwg.text(text, insert=(tx, ty), class_="dim-text", text_anchor="middle",
+                         transform=f"rotate(-90, {tx}, {ty})"))
+    else:
+        dwg.add(dwg.text(text, insert=(x + 8, mid + 3), class_="dim-text"))
 
 
 def _draw_dc_interior(
@@ -139,6 +174,7 @@ def _draw_dc_interior(
     mirrored: bool = False,
     cooling_align: str = "right",
     dark_mode: bool = False,
+    tag: str = "",
 ):
     """
     Draw DC Block (BESS) interior with 6 battery module racks + Liquid Cooling.
@@ -199,36 +235,44 @@ def _draw_dc_interior(
         return
 
     pad = min(10.0, max(4.0, w * 0.06))
-    
+
+    # Reserved identification band along the container top: every container
+    # carries its own tag (BESS-nn) INSIDE its outline, so labels can never
+    # collide with row gaps, dimensions or neighbouring containers.
+    tag_band = 15.0 if tag else 0.0
+    if tag:
+        dwg.add(dwg.text(tag, insert=(x + w / 2, y + pad + 10.0),
+                         class_="dim-text", text_anchor="middle"))
+
     # Liquid Cooling strip (approx 10% width, smaller as requested)
     cooling_w = w * 0.10
-    
+
     if cooling_align == "left":
         cooling_x = x + pad
     else:
         cooling_x = x + w - pad - cooling_w
 
-    cooling_y = y + pad
-    cooling_h = h - 2 * pad
-    
+    cooling_y = y + pad + tag_band
+    cooling_h = h - 2 * pad - tag_band
+
     dwg.add(dwg.rect(insert=(cooling_x, cooling_y), size=(cooling_w, cooling_h), class_="thin"))
     # Add text "COOLING" vertically or small text
     cx = cooling_x + cooling_w/2
     cy = cooling_y + cooling_h/2
-    dwg.add(dwg.text("COOLING", insert=(cx, cy), 
+    dwg.add(dwg.text("COOLING", insert=(cx, cy),
                      class_="dim-text", text_anchor="middle", transform=f"rotate(90, {cx}, {cy})"))
 
     # Battery modules grid: 1 row x 6 columns = 6 modules
     # Grid occupies remaining area
     grid_w = w - 2 * pad - cooling_w - pad
-    grid_h = h - 2 * pad
-    
+    grid_h = h - 2 * pad - tag_band
+
     if cooling_align == "left":
         grid_x_start = x + pad + cooling_w + pad
     else:
         grid_x_start = x + pad
 
-    grid_y_start = y + pad
+    grid_y_start = y + pad + tag_band
     
     cols = 6
     rows = 1
@@ -846,7 +890,9 @@ def render_layout_block_svg(
     inner_pad = 10
     title_h = 22
     dim_band_h = 0 if dark_mode else 18
-    label_h = 18
+    # Bottom band holds the BESS caption, skid labels AND the overall-width
+    # dimension (bottom edge + 44 + text) — keep the block tall enough.
+    label_h = 18 if dark_mode else 34
 
     use_template = bool(getattr(spec, "use_template", False))
     dc_template_uri = None
@@ -963,6 +1009,12 @@ svg {{ font-family: {LAYOUT_FONT_FAMILY}; font-size: {LAYOUT_FONT_SIZE}px; }}
         except Exception:
             title_text = block_title_template
         dwg.add(dwg.text(title_text, insert=(block_x + 6, block_y + 16), class_="label title"))
+        if not dark_mode:
+            container_note = (
+                f"DC container {_safe_float(spec.container_length_mm, 6058) / 1000.0:.3f} m "
+                f"x {_safe_float(spec.container_width_mm, 2438) / 1000.0:.3f} m  |  NTS"
+            )
+            dwg.add(dwg.text(container_note, insert=(block_x + 6, block_y + 32), class_="dim-text"))
 
         content_x = block_x + perimeter_px + inner_pad
         content_y = block_y + perimeter_px + title_h + dim_band_h + 6
@@ -983,6 +1035,9 @@ svg {{ font-family: {LAYOUT_FONT_FAMILY}; font-size: {LAYOUT_FONT_SIZE}px; }}
                 cooling_align = "left" if (c % 2 == 0) else "right"
                 mirrored = mirror_vertical and (r % 2 == 1)
 
+                # Tag drawn INSIDE the container outline (top band): floating
+                # labels above containers collided with row gaps / dimensions.
+                cell_tag = f"BESS-{start + idx:02d}"
                 if use_template and dc_template_uri and not spec.dc_block_mirrored:
                     dwg.add(
                         dwg.image(
@@ -1000,6 +1055,7 @@ svg {{ font-family: {LAYOUT_FONT_FAMILY}; font-size: {LAYOUT_FONT_SIZE}px; }}
                         mirrored=mirrored,
                         cooling_align=cooling_align,
                         dark_mode=dark_mode,
+                        tag=cell_tag,
                     )
                 else:
                     dwg.add(
@@ -1018,15 +1074,8 @@ svg {{ font-family: {LAYOUT_FONT_FAMILY}; font-size: {LAYOUT_FONT_SIZE}px; }}
                         mirrored=mirrored,
                         cooling_align=cooling_align,
                         dark_mode=dark_mode,
+                        tag=cell_tag,
                     )
-                dwg.add(
-                    dwg.text(
-                        "DC Block",
-                        insert=(cell_x + container_len / 2, cell_y - 8),
-                        class_="dim-text",
-                        text_anchor="middle",
-                    )
-                )
 
         bess_text = bess_text_template.format(start=start, end=end)
         dwg.add(dwg.text(bess_text, insert=(dc_array_x + dc_w / 2, dc_array_y + dc_h + 18), class_="label", text_anchor="middle"))
@@ -1070,9 +1119,12 @@ svg {{ font-family: {LAYOUT_FONT_FAMILY}; font-size: {LAYOUT_FONT_SIZE}px; }}
                 x2 = dc_array_x + container_len + dc_gap
                 _draw_h_dimension(dwg, x1, x2, dim_y_main, dc_array_y, dc_text)
             if rows > 1:
+                # Row-gap dimension on the RIGHT of the DC array (the AC gap /
+                # free area) — on the left it collided with the container
+                # outline and the overall-height dimension.
                 y1 = dc_array_y + container_w
                 y2 = dc_array_y + container_w + dc_gap
-                _draw_v_dimension(dwg, y1, y2, dc_array_x - 6, dc_array_x, dc_text)
+                _draw_v_dimension(dwg, y1, y2, dc_array_x + dc_w + 8, dc_array_x + dc_w, dc_text)
 
             if spec.show_skid:
                 x1 = dc_array_x + dc_w
@@ -1080,6 +1132,32 @@ svg {{ font-family: {LAYOUT_FONT_FAMILY}; font-size: {LAYOUT_FONT_SIZE}px; }}
                 _draw_h_dimension(
                     dwg, x1, x2, dim_y_secondary if cols > 1 else dim_y_main, dc_array_y, ac_text
                 )
+
+            # Overall footprint dimensions (reviewers cannot check a layout
+            # without them): total content width below, DC array depth left.
+            def _px_to_m_text(px: float) -> str:
+                return f"{px / (1000.0 * scale):.2f} m"
+
+            content_w_px = block["content_w"]
+            content_h_px = block["content_h"]
+            bottom_edge = dc_array_y + content_h_px
+            _draw_h_dimension(
+                dwg,
+                dc_array_x,
+                dc_array_x + content_w_px,
+                bottom_edge + 44.0,
+                bottom_edge,
+                _px_to_m_text(content_w_px),
+            )
+            _draw_v_dimension(
+                dwg,
+                dc_array_y,
+                dc_array_y + dc_h,
+                dc_array_x - 26.0,
+                dc_array_x,
+                _px_to_m_text(dc_h),
+                rotate_text=True,
+            )
 
         current_y += block["block_h"] + gap_y
 
