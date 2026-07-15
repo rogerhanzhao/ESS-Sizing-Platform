@@ -147,3 +147,44 @@ def test_shared_dc_svg_draws_both_outputs_and_split_lv_windings(sample_excel_pat
     assert 'id="shared-dc-G01-DC-BLOCK-01-F02"' in svg_text
     assert 'id="shared-dc-G01-DC-BLOCK-02-F03"' in svg_text
     assert 'id="shared-dc-G01-DC-BLOCK-02-F04"' in svg_text
+
+
+def _shared_branch_points(svg_text: str, poly_id: str) -> list[tuple[float, float]]:
+    import re
+
+    match = re.search(rf'<polyline[^>]*id="{poly_id}"[^>]*>', svg_text)
+    assert match, f"polyline {poly_id} not found"
+    points_attr = re.search(r'points="([^"]+)"', match.group(0)).group(1)
+    return [
+        (float(pair.split(",")[0]), float(pair.split(",")[1]))
+        for pair in points_attr.replace(", ", ",").split()
+    ]
+
+
+def test_pcs_dc_sides_never_share_a_dc_busbar(sample_excel_path, tmp_path):
+    """ELECTRICAL RULE (owner, 2026-07-13): a PCS DC input must never share a
+    DC busbar with another PCS. A shared DC Block connects each PCS through its
+    own independent output circuit — the drawing must not contain a common
+    conductor joining two PCS DC sides outside the block."""
+    graph = build_sld_engineering_v2_graph(_shared_topology(sample_excel_path))
+    plan = build_sld_engineering_v2_layout_plan(graph, theme="light")
+    svg_path = tmp_path / "shared_dc_rule.svg"
+    render_sld_engineering_v2_svg(plan, svg_path)
+    svg_text = svg_path.read_text(encoding="utf-8")
+
+    # The old (electrically wrong) drawing joined the feeders with a horizontal
+    # "branch" bus and a block riser tapping it. Neither may exist any more.
+    assert "-branch" not in svg_text
+    assert "shared-dc-G01-DC-BLOCK-01-block" not in svg_text
+
+    f01 = _shared_branch_points(svg_text, "shared-dc-G01-DC-BLOCK-01-F01")
+    f02 = _shared_branch_points(svg_text, "shared-dc-G01-DC-BLOCK-01-F02")
+
+    # Each branch lands on its own discrete terminal on the block top.
+    assert f01[-1][1] == f02[-1][1]              # both reach the block top edge
+    assert f01[-1][0] != f02[-1][0]              # ...at different terminals
+    # The two branches never touch: no shared vertex between the polylines.
+    assert not (set(f01) & set(f02)), "PCS DC branches must not share any conductor point"
+    # Discrete output circuits are labelled.
+    assert ">OUT-1<" in svg_text
+    assert ">OUT-2<" in svg_text

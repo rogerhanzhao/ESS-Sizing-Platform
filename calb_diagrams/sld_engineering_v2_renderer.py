@@ -911,36 +911,51 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
                         lvdc.battery_width, lvdc.battery_height,
                         b_title, b_sub, tag=f"BESS-{gi:02d}")
 
-    # One DC Block can expose two independent DC outputs. Shared blocks are
-    # therefore drawn once, centred between their PCS feeders, with an explicit
-    # branch from every feeder fuse to the same DC block. This prevents the old
-    # false drawing where the second PCS DC side was left electrically dangling.
+    # ELECTRICAL RULE (owner decision, 2026-07-13 session): a PCS DC input must
+    # NEVER share a DC busbar with another PCS. A shared DC Block exposes
+    # independent output circuits (its common bus lives INSIDE the block), so
+    # each PCS feeder is routed as its own branch to its own output terminal
+    # on the block — there is deliberately no common conductor, junction dot or
+    # horizontal "branch bus" joining two PCS DC sides outside the block.
     for block in sorted(shared_dc_boxes, key=lambda item: int(item.dc_block_index or 0)):
         feeder_span = [int(feeder) for feeder in (block.attributes.get("feeder_span") or [])]
         if not feeder_span or any(feeder not in dc_bottom_by_feeder for feeder in feeder_span):
             raise ValueError(f"shared DC block has unresolved feeder connection(s): {block.node_id}")
-        # Same invariant as per-feeder branches: horizontal run stays below
-        # every participating fuse outlet.
-        branch_y = max(
-            lvdc.block_y - 36.0,
-            max(dc_bottom_by_feeder[feeder] for feeder in feeder_span) + 8.0,
-        )
+        output_circuits = int(block.attributes.get("output_circuit_count") or len(feeder_span))
+        if len(feeder_span) > output_circuits:
+            raise ValueError(
+                f"DC block {block.node_id} feeds {len(feeder_span)} PCS but exposes "
+                f"only {output_circuits} output circuit(s)"
+            )
         block_x = block.x + block.width / 2.0
         prefix = f"shared-dc-{block.node_id}"
-        span_x = [pcs_x_by_feeder[feeder] for feeder in feeder_span]
-        _line(dwg, (min(span_x), branch_y), (max(span_x), branch_y), "wire", id=f"{prefix}-branch")
-        for feeder_index in feeder_span:
+        # Independent branch elbows sit below every participating fuse outlet.
+        elbow_y = max(
+            lvdc.block_y - 10.0,
+            max(dc_bottom_by_feeder[feeder] for feeder in feeder_span) + 8.0,
+        )
+        # One discrete output terminal per connected PCS, spread on the block top.
+        terminal_xs = [
+            block_x + (index - (len(feeder_span) - 1) / 2.0) * 44.0
+            for index in range(len(feeder_span))
+        ]
+        for circuit_index, (feeder_index, terminal_x) in enumerate(
+            zip(feeder_span, terminal_xs), start=1
+        ):
             feeder_x = pcs_x_by_feeder[feeder_index]
-            _line(
+            _poly(
                 dwg,
-                (feeder_x, dc_bottom_by_feeder[feeder_index]),
-                (feeder_x, branch_y),
+                [
+                    (feeder_x, dc_bottom_by_feeder[feeder_index]),
+                    (feeder_x, elbow_y),
+                    (terminal_x, elbow_y),
+                    (terminal_x, lvdc.block_y),
+                ],
                 "wire",
                 id=f"{prefix}-F{feeder_index:02d}",
             )
-            _junction(dwg, feeder_x, branch_y)
-        _line(dwg, (block_x, branch_y), (block_x, lvdc.block_y), "wire", id=f"{prefix}-block")
-        _junction(dwg, block_x, branch_y)
+            _text(dwg, f"OUT-{circuit_index}", terminal_x, elbow_y - 5.0,
+                  "tag", anchor="middle")
         b_title = block.text_lines[0] if block.text_lines else "BESS"
         b_sub = block.text_lines[1] if len(block.text_lines) > 1 else ""
         dc_block_index = int(block.dc_block_index or 0)

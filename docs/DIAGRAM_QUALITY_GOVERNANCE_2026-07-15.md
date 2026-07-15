@@ -64,7 +64,25 @@ All in the SLD engine / diagram renderer domain; frozen sizing core untouched.
   a returned warning) and into unit tests (hard assertions), with a
   planted-defect test proving the gate catches regressions.
 
+## 2.2 Shared DC Block correction (same day, follow-up)
+
+The first pass of the shared-DC drawing violated a standing owner rule
+(recorded in the 2026-07-13 Codex session): **a PCS DC input must never share
+a DC busbar with another PCS.** The drawing joined both PCS fuse outlets with
+a horizontal conductor and junction dots — electrically a common external DC
+bus. Corrected: each PCS feeder now routes as an independent branch to its own
+labelled output terminal (`OUT-1` / `OUT-2`) on the DC Block; the block's
+common bus exists only inside the block. Renderer refuses to draw more PCS
+connections than the block's `output_circuit_count`. Regression test
+`test_pcs_dc_sides_never_share_a_dc_busbar` asserts the two branches share no
+conductor point and the old branch-bus ids are gone.
+
 ## 3. Rules for all future diagram work (SLD and Layout)
+
+0. **Electrical rules outrank visual rules.** Standing owner decisions
+   (e.g. independent PCS DC inputs; two-winding = one common LV bus;
+   three-winding = two independent LV buses, no tie) are binding contract:
+   encode each as a regression test the first time it is stated.
 
 1. **Every visual requirement must exist as a geometric assertion.** If a
    review says "these two shapes must touch/never overlap", encode it as a
