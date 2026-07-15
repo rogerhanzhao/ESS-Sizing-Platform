@@ -517,7 +517,7 @@
         "text": "Ring In",
         "text-anchor": "end",
         "x": 896.0,
-        "y": 128.0
+        "y": 132.0
       },
       {
         "class": "label",
@@ -525,7 +525,7 @@
         "text": "Transformer Feeder",
         "text-anchor": "middle",
         "x": 1117.0,
-        "y": 128.0
+        "y": 132.0
       },
       {
         "class": "label",
@@ -533,7 +533,7 @@
         "text": "Ring Out",
         "text-anchor": "start",
         "x": 1338.0,
-        "y": 128.0
+        "y": 132.0
       },
       {
         "class": "thin",

@@ -639,10 +639,11 @@ def _draw_mv_rmu_and_transformer(
           mv.center_x, rmu_box_y + 14.0, "title", anchor="middle")
     _text(dwg, mv_sys,
           mv.center_x, rmu_box_y + 28.0, "label", anchor="middle")
-    # Bay labels — Ring In/Out offset away from the feeder wire that runs through the title band
-    _text(dwg, "Ring In",          mv.ring_in_x  - 14.0, rmu_box_y + 38.0, "label", anchor="end")
-    _text(dwg, "Transformer Feeder", mv.center_x, rmu_box_y + 38.0, "label", anchor="middle")
-    _text(dwg, "Ring Out",         mv.ring_out_x + 14.0, rmu_box_y + 38.0, "label", anchor="start")
+    # Bay labels — Ring In/Out offset away from the feeder wire that runs through
+    # the title band; 42 keeps a clear gap below the "33kV" system label above.
+    _text(dwg, "Ring In",          mv.ring_in_x  - 14.0, rmu_box_y + 42.0, "label", anchor="end")
+    _text(dwg, "Transformer Feeder", mv.center_x, rmu_box_y + 42.0, "label", anchor="middle")
+    _text(dwg, "Ring Out",         mv.ring_out_x + 14.0, rmu_box_y + 42.0, "label", anchor="start")
 
     # Horizontal rule separating title band from equipment band
     rule_y = rmu_box_y + rmu_title_h
