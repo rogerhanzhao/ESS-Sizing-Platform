@@ -95,7 +95,7 @@ def test_per_feeder_mode_is_unchanged(sample_excel_path):
     graph = build_sld_engineering_v2_graph(build_sld_topology(canonical))
     dc_blocks = [n for n in graph.nodes if n.node_type == "dc_block"]
     assert len(dc_blocks) == 4
-    assert all("feeder_span" not in n.attributes for n in dc_blocks)
+    assert sorted(tuple(n.attributes["feeder_span"]) for n in dc_blocks) == [(1,), (2,), (3,), (4,)]
 
 
 def test_shared_layout_renders_and_passes_acceptance(sample_excel_path):
@@ -135,8 +135,8 @@ def test_shared_dc_svg_draws_both_outputs_and_split_lv_windings(sample_excel_pat
     assert rendered_path == svg_path
     assert warning is None
     svg_text = svg_path.read_text(encoding="utf-8")
-    assert "LV Winding 1 / 690 V" in svg_text
-    assert "LV Winding 2 / 690 V" in svg_text
+    assert "LV-A bus / 690 V" in svg_text
+    assert "LV-B bus / 690 V" in svg_text
     assert "3-winding: 1 MV primary + 2 independent LV secondaries" in svg_text
     assert 'id="transformer-lv-winding-1"' in svg_text
     assert 'id="transformer-lv-winding-2"' in svg_text

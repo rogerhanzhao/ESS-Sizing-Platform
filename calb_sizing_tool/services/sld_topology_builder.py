@@ -467,6 +467,7 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
         )
 
     dc_block_ordinal = 0
+    has_explicit_dc_mapping = bool(canonical_input.dc_block_connections)
     for feeder_index, (pcs_rating_kw, dc_block_count) in enumerate(
         zip(canonical_input.pcs_rating_kw_list, canonical_input.dc_blocks_per_feeder),
         start=1,
@@ -561,6 +562,9 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
             )
         )
 
+        if has_explicit_dc_mapping:
+            continue
+
         for local_block_index in range(1, dc_block_count + 1):
             dc_block_ordinal += 1
             dc_block_equipment_id = f"{feeder_token}-DC-BLOCK-{local_block_index:02d}"
@@ -610,6 +614,68 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
                 )
             )
 
+    if has_explicit_dc_mapping:
+        for connection in canonical_input.dc_block_connections:
+            dc_block_ordinal = connection.dc_block_index
+            feeder_span = list(connection.feeder_indices)
+            anchor_feeder = feeder_span[0]
+            dc_block_equipment_id = f"{group_token}-DC-BLOCK-{dc_block_ordinal:02d}"
+            add_equipment(
+                SldEquipment(
+                    equipment_id=dc_block_equipment_id,
+                    equipment_type="dc_block",
+                    display_name=f"DC Block {dc_block_ordinal}",
+                    feeder_index=anchor_feeder,
+                    dc_block_index=dc_block_ordinal,
+                    attributes={
+                        "dc_block_energy_mwh": canonical_input.dc_block_energy_mwh,
+                        "dc_block_voltage_v": canonical_input.dc_block_voltage_v,
+                        "feeder_span": feeder_span,
+                        "output_circuit_count": connection.output_circuit_count,
+                        "internal_dc_busbar_mode": connection.internal_dc_busbar_mode,
+                    },
+                )
+            )
+            add_node(
+                SldNode(
+                    node_id=f"{dc_block_equipment_id}-NODE",
+                    node_type="dc_block",
+                    display_name=f"DC Block {dc_block_ordinal}",
+                    equipment_id=dc_block_equipment_id,
+                    feeder_index=anchor_feeder,
+                    dc_block_index=dc_block_ordinal,
+                    labels=[
+                        SldLabel(
+                            label_id=f"{dc_block_equipment_id}-LABEL",
+                            semantic_key="dc_block_energy_mwh",
+                            text=f"{canonical_input.dc_block_energy_mwh:.3f} MWh",
+                            scope="dc_block",
+                        )
+                    ],
+                    attributes={
+                        "dc_block_energy_mwh": canonical_input.dc_block_energy_mwh,
+                        "dc_block_voltage_v": canonical_input.dc_block_voltage_v,
+                        "feeder_span": feeder_span,
+                        "output_circuit_count": connection.output_circuit_count,
+                        "internal_dc_busbar_mode": connection.internal_dc_busbar_mode,
+                    },
+                )
+            )
+            for feeder_index in feeder_span:
+                feeder_token = f"{group_token}-F{feeder_index:02d}"
+                add_edge(
+                    SldEdge(
+                        edge_id=f"{dc_block_equipment_id}-EDGE-F{feeder_index:02d}",
+                        edge_type="dc_interface_to_dc_block",
+                        source_node_id=f"{feeder_token}-DC-INTERFACE-NODE",
+                        target_node_id=f"{dc_block_equipment_id}-NODE",
+                        feeder_index=feeder_index,
+                        attributes={
+                            "shared_dc_block": len(feeder_span) > 1,
+                            "output_circuit_count": connection.output_circuit_count,
+                        },
+                    )
+                )
     return SldTopology(
         run_id=canonical_input.run_id,
         project_name=canonical_input.project_name,
@@ -630,7 +696,9 @@ def build_sld_topology(canonical_input: SldCanonicalInput) -> SldTopology:
             transformer_rating_mva=canonical_input.transformer_rating_mva,
             transformer_vector_group=canonical_input.transformer_vector_group,
             transformer_uk_percent=canonical_input.transformer_uk_percent,
+            transformer_topology=canonical_input.transformer_topology,
             lv_winding_count=canonical_input.lv_winding_count,
+            dc_block_connections=list(canonical_input.dc_block_connections),
             pcs_rating_kw_list=list(canonical_input.pcs_rating_kw_list),
             dc_block_energy_mwh=canonical_input.dc_block_energy_mwh,
             dc_block_voltage_v=canonical_input.dc_block_voltage_v,

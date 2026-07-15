@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 
+from calb_sizing_tool.common.allocation import evenly_distribute
+from calb_sizing_tool.schemas.ac_electrical_topology import DcBlockConnection, TransformerTopology
 from calb_sizing_tool.schemas.common import CanonicalBaseModel
 
 
@@ -103,6 +105,7 @@ class SldInputOverride(CanonicalBaseModel):
     transformer_vector_group: str | None = None
     transformer_uk_percent: float | None = None
     lv_winding_count: int | None = None
+    transformer_topology: TransformerTopology | None = None
     dc_block_voltage_v: float | None = None
     dc_blocks_per_feeder: list[int] | None = None
     labels: SldLabels | None = None
@@ -121,17 +124,17 @@ class SldCanonicalInput(CanonicalBaseModel):
     transformer_rating_mva: float
     transformer_vector_group: str
     transformer_uk_percent: float
-    # Number of independent LV secondaries on the step-up transformer. Real
-    # utility BESS blocks above ~3.45 MW use a split-winding (dual-secondary)
-    # transformer so the LV current divides across separate LV busbars/switchgear
-    # instead of one impractically large busbar. Default 1 = single LV winding
-    # (backward compatible with all existing runs).
+    # Selected electrical topology: two winding = one common LV busbar;
+    # three winding = two independent LV secondary busbars.  It is never
+    # inferred from the number of PCS feeders.
+    transformer_topology: TransformerTopology | None = None
     lv_winding_count: int = 1
     pcs_count: int
     pcs_rating_kw_list: list[float]
     dc_block_energy_mwh: float
     dc_blocks_total_in_group: int
     dc_blocks_per_feeder: list[int]
+    dc_block_connections: list[DcBlockConnection] = Field(default_factory=list)
     dc_block_voltage_v: float
     equipment_ratings: SldEquipmentRatings
     labels: SldLabels
@@ -203,25 +206,46 @@ class SldCanonicalInput(CanonicalBaseModel):
             raise ValueError("pcs_count must match pcs_rating_kw_list length")
         if len(self.dc_blocks_per_feeder) != self.pcs_count:
             raise ValueError("dc_blocks_per_feeder length must match pcs_count")
-        if sum(self.dc_blocks_per_feeder) != self.dc_blocks_total_in_group:
+        if self.transformer_topology is not None:
+            expected_windings = 1 if self.transformer_topology == "two_winding" else 2
+            if self.lv_winding_count != expected_windings:
+                raise ValueError("lv_winding_count conflicts with transformer_topology")
+        if self.dc_block_connections:
+            if len(self.dc_block_connections) != self.dc_blocks_total_in_group:
+                raise ValueError("dc_blocks_total_in_group must equal dc_block_connections count")
+            actual_counts = [
+                sum(1 for connection in self.dc_block_connections if feeder_index in connection.feeder_indices)
+                for feeder_index in range(1, self.pcs_count + 1)
+            ]
+            if actual_counts != self.dc_blocks_per_feeder:
+                raise ValueError("dc_blocks_per_feeder must equal DC Block output-branch counts by PCS feeder")
+            if any(count <= 0 for count in actual_counts):
+                raise ValueError("every PCS feeder must have at least one DC Block output branch")
+        elif sum(self.dc_blocks_per_feeder) != self.dc_blocks_total_in_group:
             raise ValueError("dc_blocks_total_in_group must equal sum(dc_blocks_per_feeder)")
         if self.validation_mode == "strict":
             fuse_spec = str(self.equipment_ratings.dc_fuse.fuse_spec or "").strip().lower()
             if fuse_spec in {"tbd", "n/a", "na"}:
                 raise ValueError("dc_fuse.fuse_spec must be explicit in strict SLD mode")
-        # LV current divides evenly across the transformer's LV secondaries.
-        # With a split-winding (dual-secondary) transformer each LV busbar/
-        # switchgear section carries only total / lv_winding_count, which is how
-        # high-power blocks stay within standard ACB frames (e.g. 6300 A).
-        windings = max(1, self.lv_winding_count)
-        transformer_lv_current_a = self.transformer_rating_mva * 1_000_000.0 / (sqrt(3.0) * self.lv_voltage_v_ll)
-        pcs_total_current_a = sum(self.pcs_rating_kw_list) * 1_000.0 / (sqrt(3.0) * self.lv_voltage_v_ll)
-        required_lv_busbar_a = max(transformer_lv_current_a, pcs_total_current_a) / windings
+        # Check each actual LV feeder group.  A three-winding transformer is
+        # not assumed to have two equal secondary ratings simply because it has
+        # two secondary terminals; that manufacturer data remains an official
+        # design-input gate.  This SLD gate verifies the PCS current carried by
+        # each rendered LV busbar only.
+        winding_count = max(1, self.lv_winding_count)
+        cursor = 0
+        required_lv_busbar_a = 0.0
+        for feeder_span_size in evenly_distribute(self.pcs_count, winding_count):
+            pcs_current_a = sum(self.pcs_rating_kw_list[cursor:cursor + feeder_span_size]) * 1_000.0 / (
+                sqrt(3.0) * self.lv_voltage_v_ll
+            )
+            required_lv_busbar_a = max(required_lv_busbar_a, pcs_current_a)
+            cursor += feeder_span_size
         if self.equipment_ratings.lv_busbar.rated_a + 1e-6 < required_lv_busbar_a:
             raise ValueError(
                 "lv_busbar.rated_a is below the required per-winding LV current "
                 f"({self.equipment_ratings.lv_busbar.rated_a:.0f} A < {required_lv_busbar_a:.0f} A"
-                f" across {windings} LV winding(s))"
+                f" for the assigned PCS feeder group(s))"
             )
 
         # Electrical consistency gates: hard errors in strict mode, recorded as
@@ -253,6 +277,7 @@ class SldCanonicalInput(CanonicalBaseModel):
 def legacy_sld_override_preset() -> dict:
     return {
         "lv_winding_count": 1,
+        "transformer_topology": "two_winding",
         "labels": {
             "to_switchgear": "To Switchgear",
             "to_other_rmu": "To Other RMU",

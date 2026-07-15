@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from calb_sizing_tool.adapters.ac_to_sld_adapter import AcToSldAdapterError, normalize_ac_output_for_sld
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot, SldRenderOptions
+from calb_sizing_tool.schemas.ac_electrical_topology import DcBlockConnection
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
 from calb_sizing_tool.schemas.sld_render_input import (
     SldCanonicalInput,
@@ -214,10 +215,10 @@ class SldInputBuilder:
         )
 
         # The AC->SLD contract fixes the transformer secondary arrangement:
-        # every two PCS feeders use one independent LV winding. This has to
-        # win over an old project/UI default, otherwise a four-PCS block can be
-        # rendered back into one common low-voltage busbar.
+        # it is selected as part of the AC Block electrical topology, not
+        # inferred from the number of PCS feeders.
         lv_winding_count = authoritative_ac.lv_winding_count if authoritative_ac is not None else 1
+        transformer_topology = authoritative_ac.transformer_topology if authoritative_ac is not None else None
         configured_lv_winding_count = None
         if override_mode and override and override.lv_winding_count:
             configured_lv_winding_count = override.lv_winding_count
@@ -233,7 +234,7 @@ class SldInputBuilder:
                 if int(configured_lv_winding_count) != lv_winding_count:
                     draft_warnings.append(
                         "configured LV winding count was ignored; the authoritative AC block "
-                        "uses one independent LV winding per two PCS feeders."
+                        "topology controls the LV busbar arrangement."
                     )
             except (TypeError, ValueError):
                 draft_warnings.append(
@@ -248,14 +249,40 @@ class SldInputBuilder:
             errors,
             override_available=bool(override_mode and override and override.dc_blocks_per_feeder),
         )
-        dc_blocks_per_feeder = self._fill_list_from_override_if_missing(
-            "dc_blocks_per_feeder",
-            dc_blocks_per_feeder,
-            override_mode,
-            override.dc_blocks_per_feeder if override else None,
-            errors,
-        )
-        dc_blocks_total_in_group = sum(dc_blocks_per_feeder or [])
+        dc_block_connections = []
+        if authoritative_ac is not None:
+            connection_index = max(0, group_index - 1)
+            if connection_index < len(authoritative_ac.dc_block_connections_by_block):
+                dc_block_connections = list(authoritative_ac.dc_block_connections_by_block[connection_index])
+
+        # A draft SLD override is allowed to replace the persisted DC mapping
+        # only when the user explicitly turns on override mode.  Convert the
+        # legacy per-feeder counts into a fully explicit one-output-per-DCB
+        # mapping so every later layer still consumes the same physical model.
+        override_dc_blocks_per_feeder = override.dc_blocks_per_feeder if override else None
+        if override_mode and override_dc_blocks_per_feeder is not None:
+            parsed_override = [_safe_int(value) for value in override_dc_blocks_per_feeder]
+            if (
+                pcs_count is None
+                or len(parsed_override) != pcs_count
+                or not all(value is not None and value >= 0 for value in parsed_override)
+            ):
+                errors.append("dc_blocks_per_feeder draft override must contain one non-negative value per PCS feeder.")
+            else:
+                dc_blocks_per_feeder = [int(value) for value in parsed_override if value is not None]
+                dc_block_connections = self._build_dedicated_dc_block_connections(dc_blocks_per_feeder)
+                draft_warnings.append(
+                    "draft DC allocation override replaced the authoritative DC Block output mapping for this SLD only."
+                )
+        else:
+            dc_blocks_per_feeder = self._fill_list_from_override_if_missing(
+                "dc_blocks_per_feeder",
+                dc_blocks_per_feeder,
+                override_mode,
+                override_dc_blocks_per_feeder,
+                errors,
+            )
+        dc_blocks_total_in_group = len(dc_block_connections) if dc_block_connections else sum(dc_blocks_per_feeder or [])
 
         dc_block_voltage_v = self._optional_float([project_settings.get("dc_block_voltage_v")])
         dc_block_voltage_v = self._fill_float_from_override_or_draft(
@@ -309,12 +336,14 @@ class SldInputBuilder:
                 transformer_rating_mva=transformer_rating_mva,
                 transformer_vector_group=transformer_vector_group,
                 transformer_uk_percent=transformer_uk_percent,
+                transformer_topology=transformer_topology,
                 lv_winding_count=lv_winding_count,
                 pcs_count=pcs_count,
                 pcs_rating_kw_list=pcs_rating_kw_list,
                 dc_block_energy_mwh=dc_block_energy_mwh,
                 dc_blocks_total_in_group=dc_blocks_total_in_group,
                 dc_blocks_per_feeder=dc_blocks_per_feeder,
+                dc_block_connections=dc_block_connections,
                 dc_block_voltage_v=dc_block_voltage_v,
                 equipment_ratings=equipment_ratings,
                 labels=labels,
@@ -396,6 +425,26 @@ class SldInputBuilder:
                 "dc_block_energy_mwh is ambiguous in the current run data. Provide an explicit canonical source before rendering."
             )
         return None
+
+    @staticmethod
+    def _build_dedicated_dc_block_connections(
+        dc_blocks_per_feeder: list[int],
+    ) -> list[DcBlockConnection]:
+        """Translate a legacy draft allocation into explicit physical branches."""
+        connections: list[DcBlockConnection] = []
+        dc_block_index = 1
+        for feeder_index, count in enumerate(dc_blocks_per_feeder, start=1):
+            for _ in range(count):
+                connections.append(
+                    DcBlockConnection(
+                        dc_block_index=dc_block_index,
+                        feeder_indices=[feeder_index],
+                        output_circuit_count=1,
+                        internal_dc_busbar_mode="common",
+                    )
+                )
+                dc_block_index += 1
+        return connections
 
     def _resolve_group_feeder_allocation(
         self,

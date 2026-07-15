@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Tuple
 
-from calb_sizing_tool.common.allocation import allocate_dc_blocks, evenly_distribute
+from calb_sizing_tool.common.allocation import evenly_distribute
+from calb_sizing_tool.schemas.ac_electrical_topology import build_dc_block_connection_plan
 
 
 SUPPORTED_AC_DC_RATIOS: tuple[str, ...] = ("1:1", "1:2", "1:4")
@@ -18,6 +19,7 @@ STANDARD_PCS_RATINGS_KW: tuple[int, ...] = (1250, 1500, 1725, 2000, 2500)
 OPTIMAL_PCS_RATINGS_KW: tuple[int, ...] = (1000, 1250, 1500, 1725, 2000, 2500, 3000, 3500, 4000, 4500, 5000)
 SUGGESTION_PCS_RATINGS_KW: tuple[int, ...] = (1000, 1250, 1500, 1725, 2000, 2500)
 AC_BLOCK_CONTAINER_SWITCH_MW = 5.0
+DEFAULT_DC_BLOCK_OUTPUT_CIRCUITS = 2
 
 
 @dataclass
@@ -318,16 +320,31 @@ def evaluate_ac_sizing_feasibility(
     return errors, warnings
 
 
-def build_dc_allocation_plan(dc_blocks_total: int, ac_block_count: int, pcs_per_block: int) -> list[dict]:
+def build_dc_allocation_plan(
+    dc_blocks_total: int,
+    ac_block_count: int,
+    pcs_per_block: int,
+    *,
+    dc_block_output_circuits: int = DEFAULT_DC_BLOCK_OUTPUT_CIRCUITS,
+) -> list[dict]:
     dc_blocks_per_ac_block = evenly_distribute(dc_blocks_total, ac_block_count)
     allocation_plan = []
     for index, dc_blocks_in_group in enumerate(dc_blocks_per_ac_block, start=1):
-        feeder_allocations = allocate_dc_blocks(dc_blocks_in_group, pcs_per_block)
+        dc_block_connections = build_dc_block_connection_plan(
+            dc_blocks_in_group,
+            pcs_per_block,
+            output_circuit_count=dc_block_output_circuits,
+        )
+        feeder_allocations = [
+            sum(1 for connection in dc_block_connections if feeder_index in connection["feeder_indices"])
+            for feeder_index in range(1, pcs_per_block + 1)
+        ]
         allocation_plan.append(
             {
                 "ac_block_index": index,
                 "dc_blocks_total": dc_blocks_in_group,
                 "feeder_allocations": feeder_allocations,
+                "dc_block_connections": dc_block_connections,
             }
         )
     return allocation_plan
@@ -401,6 +418,7 @@ __all__ = [
     "SUPPORTED_AC_DC_RATIOS",
     "allocate_dc_blocks_to_pcs",
     "build_simplified_ac_block_models",
+    "build_dc_block_connection_plan",
     "build_dc_allocation_plan",
     "calculate_optimal_pcs_rating",
     "evaluate_ac_sizing_feasibility",

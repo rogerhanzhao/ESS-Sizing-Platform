@@ -78,8 +78,8 @@ seams; maintenance should exploit them instead of scanning everything.
 
 | Domain | Packages | Size | Change frequency |
 | --- | --- | --- | --- |
-| Sizing core (FROZEN) | `services/stage*_service`, `dc_pipeline`, AC sizing services | part of `services/` (29 files, 6.3k lines) | Frozen — no edits without explicit logic-upgrade approval |
-| SLD engine | `sld/` (18 files, 3.1k), `services/sld_*`, `schemas/sld_*` | ~6k lines | High — most active area |
+| Sizing core (FROZEN) | `services/stage*_service`, `dc_pipeline`, AC capacity/calculation services | part of `services/` (29 files, 6.3k lines) | Frozen — no edits without explicit logic-upgrade approval |
+| SLD engine | `sld/` (18 files, 3.1k), `services/sld_*`, `schemas/sld_*`, `schemas/ac_electrical_topology.py`, `adapters/ac_to_sld_adapter.py` | ~6k lines | High — owns AC-to-SLD physical topology contract and remains the most active area |
 | Diagram renderers | `calb_diagrams/` (12 files, 6.6k) | 6.6k lines | Medium — renderer/template work only |
 | Layout / constraint gate | `plugins/layout_*`, `services/site_constraint_*` | ~1k lines | Medium — P2 Master Layout work lands here |
 | Reporting | `reporting/` (5 files, 2.0k) | 2k lines | Low — wording/section changes |

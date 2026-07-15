@@ -43,9 +43,10 @@ from calb_sizing_tool.state.project_state import bump_run_id_ac, get_project_sta
 from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
 from calb_sizing_tool.state.workspace_state import get_workspace_context
 
-# Custom AC Block PCS counts must divide evenly across the split-secondary
-# transformer's two LV windings — odd counts cannot be terminated.
-_CUSTOM_PCS_COUNT_CHOICES = (2, 4, 6)
+# Transformer topology is now selected explicitly. A two-winding transformer
+# can serve any supported PCS count on one common LV busbar; a three-winding
+# transformer balances the PCS feeders across two independent LV secondaries.
+_CUSTOM_PCS_COUNT_CHOICES = (1, 2, 3, 4, 5, 6)
 
 
 def _format_float(val, decimals=2) -> str:
@@ -401,9 +402,6 @@ def show():
                 compact_note(f"Selected AC Block model: {chosen_model.display_name}.")
             else:
                 custom_col1, custom_col2 = st.columns(2)
-                # Split-secondary MV transformers carry two LV windings, so
-                # the PCS count per AC Block must divide evenly across them —
-                # odd counts (e.g. 3) cannot be terminated electrically.
                 if st.session_state.get("custom_pcs_count") not in _CUSTOM_PCS_COUNT_CHOICES:
                     st.session_state.pop("custom_pcs_count", None)
                 pcs_per_ac = int(
@@ -412,7 +410,7 @@ def show():
                         _CUSTOM_PCS_COUNT_CHOICES,
                         index=0,
                         key="custom_pcs_count",
-                        help="Even counts only: the dual-LV-winding (split-secondary) transformer cannot terminate an odd number of PCS.",
+                        help="PCS count is independent of transformer topology. The LV busbar arrangement is selected below.",
                     )
                 )
                 pcs_kw = int(
@@ -433,6 +431,41 @@ def show():
                     f"{pcs_per_ac} x {pcs_kw} kW PCS - {auto_container}"
                 )
                 ac_block_model_source = "custom"
+
+            electrical_col1, electrical_col2 = st.columns(2)
+            saved_transformer_topology = str((saved_ac_output or {}).get("transformer_topology") or "")
+            if saved_transformer_topology not in {"two_winding", "three_winding"}:
+                saved_transformer_topology = "three_winding" if pcs_per_ac > 2 else "two_winding"
+            transformer_topology = electrical_col1.selectbox(
+                "Transformer LV Topology",
+                ("two_winding", "three_winding"),
+                index=(0 if saved_transformer_topology == "two_winding" else 1),
+                format_func=lambda value: (
+                    "2-winding — one common LV busbar for all PCS"
+                    if value == "two_winding"
+                    else "3-winding — two independent LV secondary busbars"
+                ),
+                key="ac_transformer_topology",
+                help="Select the actual transformer secondary arrangement. It is not inferred from PCS count.",
+            )
+            saved_dc_outputs = int((saved_ac_output or {}).get("dc_block_output_circuits") or 2)
+            if saved_dc_outputs not in (1, 2):
+                saved_dc_outputs = 2
+            dc_block_output_circuits = int(
+                electrical_col2.selectbox(
+                    "DC Block Output Circuits",
+                    (1, 2),
+                    index=(0 if saved_dc_outputs == 1 else 1),
+                    format_func=lambda value: f"{value} protected PCS branch{'es' if value > 1 else ''} per DC Block",
+                    key="ac_dc_block_output_circuits",
+                    help="Default 2 for the 5 MWh DC Block. Select 1 only for a confirmed single-output product.",
+                )
+            )
+            compact_note(
+                "Electrical topology: "
+                + ("one common LV busbar" if transformer_topology == "two_winding" else "two independent LV secondary busbars")
+                + f"; each DC Block has {dc_block_output_circuits} protected PCS output branch(es)."
+            )
 
             # Container size info - based on single AC block size
             compact_note(
@@ -497,7 +530,16 @@ def show():
             )
 
             # --- DETAILED DC ALLOCATION ---
-            dc_allocation_plan = build_dc_allocation_plan(dc_blocks_total, num_blocks, pcs_per_block)
+            try:
+                dc_allocation_plan = build_dc_allocation_plan(
+                    dc_blocks_total,
+                    num_blocks,
+                    pcs_per_block,
+                    dc_block_output_circuits=dc_block_output_circuits,
+                )
+            except ValueError as exc:
+                st.error(f"Invalid DC-to-PCS electrical topology: {exc}")
+                st.stop()
             dc_blocks_per_ac_block_list = [int(plan["dc_blocks_total"]) for plan in dc_allocation_plan]
 
             mv_kv = float(mv_kv_value or 33.0)
@@ -535,6 +577,9 @@ def show():
                 "dc_blocks_per_feeder_by_block": [
                     list(plan.get("feeder_allocations", [])) for plan in dc_allocation_plan
                 ],
+                "dc_block_connections_by_block": [
+                    list(plan.get("dc_block_connections", [])) for plan in dc_allocation_plan
+                ],
                 "dc_allocation_plan": dc_allocation_plan,
                 "dc_blocks_total": dc_blocks_total,
                 "dc_total_mwh": total_energy,
@@ -547,6 +592,14 @@ def show():
                 "lv_voltage_v": lv_v,
                 "inverter_lv_v": lv_v,
                 "transformer_mva": transformer_mva,
+                "transformer_topology": transformer_topology,
+                "lv_winding_count": 1 if transformer_topology == "two_winding" else 2,
+                "lv_busbar_topology": (
+                    "common_single_lv_busbar"
+                    if transformer_topology == "two_winding"
+                    else "independent_lv_busbars"
+                ),
+                "dc_block_output_circuits": dc_block_output_circuits,
                 "transformer_count": num_blocks,
                 "pcs_count_total": num_blocks * pcs_per_block,
                 "source_project_id": workspace.get("project_id"),

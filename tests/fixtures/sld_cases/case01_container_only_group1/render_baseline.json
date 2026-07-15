@@ -3,8 +3,8 @@
     "artifact_mode": "official",
     "engineering_v2_connector_count": 24,
     "engineering_v2_edge_count": 24,
-    "engineering_v2_graph_hash": "b92b6e1d513f84308a61a201dffd53d44087e1e6ff7698781c5ced98ab7d3b2c",
-    "engineering_v2_layout_hash": "06689fee90c741e077f14b13f24fc50e9951b73d04a724cfa53b637197e42cee",
+    "engineering_v2_graph_hash": "cdfa02596d3ca2cb33dcd43d7dad07958e4210957f8015134ffb073721076509",
+    "engineering_v2_layout_hash": "c63cf0b13b1a7c7d91a05d39ac37ecbed69f6de1785937290b16c19d9acc3bdf",
     "engineering_v2_layout_issue_count": 0,
     "engineering_v2_layout_warning_count": 4,
     "engineering_v2_node_count": 25,
@@ -12,7 +12,7 @@
     "engineering_v2_png_width": 2000,
     "engineering_v2_template": "professional_electrical_reference_v1",
     "group_index": 1,
-    "input_hash": "e79797a0c16a50cf64889277e14fde28c6fc40d7f9ba0a3efbb9d69e37cd7e96",
+    "input_hash": "d853ecc71b2f22618bed741a3042a088b8d0843b0e7546505d278fc3243f7238",
     "render_spec_hash": "7f2c78d43d364225e1f95bf39db62f2d467d4689a80cefbb7c37deef3f7fcd9f",
     "renderer_lineage": "port_bay_engineering_v2_preview",
     "renderer_mode": "engineering_v2",
@@ -21,7 +21,7 @@
     "scenario_id": "container_only",
     "server_baseline_commit": null,
     "topology_edge_count": 18,
-    "topology_hash": "c10bff04619d4bcfbbde7b98246b9d65d8614633c158a7557e14d08a0a2fd563",
+    "topology_hash": "c4e01c849770406c29243068c05a78f5bf16f4a1768717d9ca9cce0f9cdb77c2",
     "topology_node_count": 19,
     "validation_mode": "strict"
   },
@@ -1145,7 +1145,7 @@
       {
         "class": "tag",
         "tag": "text",
-        "text": "LV-1",
+        "text": "LV-A",
         "text-anchor": "middle",
         "x": 1071.0,
         "y": 600.0
@@ -1216,7 +1216,7 @@
       {
         "class": "tag",
         "tag": "text",
-        "text": "LV-2",
+        "text": "LV-B",
         "text-anchor": "middle",
         "x": 1163.0,
         "y": 600.0
@@ -1306,7 +1306,7 @@
       {
         "class": "label",
         "tag": "text",
-        "text": "LV Winding 1 / 690 V",
+        "text": "LV-A bus / 690 V",
         "text-anchor": "start",
         "x": 625.0,
         "y": 602.0
@@ -1322,7 +1322,7 @@
       {
         "class": "label",
         "tag": "text",
-        "text": "LV Winding 2 / 690 V",
+        "text": "LV-B bus / 690 V",
         "text-anchor": "start",
         "x": 1308.333333,
         "y": 602.0
@@ -2998,8 +2998,8 @@
       "DS-TX",
       "52-TX",
       "CT-TX",
-      "LV-1",
-      "LV-2",
+      "LV-A",
+      "LV-B",
       "Dyn11",
       "33.0/0.690 kV",
       "6.0 MVA",
@@ -3007,8 +3007,8 @@
       "3-winding: 1 MV primary + 2 independent LV secondaries",
       "ONAN",
       "T-01",
-      "LV Winding 1 / 690 V",
-      "LV Winding 2 / 690 V",
+      "LV-A bus / 690 V",
+      "LV-B bus / 690 V",
       "BATTERY STORAGE BANK",
       "DS-F01",
       "52-F01",

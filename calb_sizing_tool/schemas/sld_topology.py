@@ -4,6 +4,7 @@ from typing import Any, Literal
 
 from pydantic import Field, model_validator
 
+from calb_sizing_tool.schemas.ac_electrical_topology import DcBlockConnection, TransformerTopology
 from calb_sizing_tool.schemas.common import CanonicalBaseModel
 from calb_sizing_tool.schemas.sld_render_input import SldEquipmentRatings, SldLabels
 
@@ -81,9 +82,11 @@ class SldTopologySummary(CanonicalBaseModel):
     transformer_rating_mva: float
     transformer_vector_group: str
     transformer_uk_percent: float
+    transformer_topology: TransformerTopology | None = None
     # Historical topology payloads did not carry LV winding topology. Keep the
     # deserialization default; current AC-to-SLD construction provides it.
     lv_winding_count: int = 1
+    dc_block_connections: list[DcBlockConnection] = Field(default_factory=list)
     pcs_rating_kw_list: list[float]
     dc_block_energy_mwh: float
     dc_block_voltage_v: float

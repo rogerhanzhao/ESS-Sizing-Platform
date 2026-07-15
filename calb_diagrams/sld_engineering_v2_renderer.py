@@ -257,7 +257,7 @@ def _transformer_split_secondary(
         secondary_x = x + offset
         dwg.add(dwg.circle(center=(secondary_x, lv_cy), r=lv_radius, class_="sfill"))
         _wye_grounded_mark(dwg, secondary_x, lv_cy, size=10.0)
-        _text(dwg, f"LV-{winding_index}", secondary_x, lv_cy + lv_radius + 12.0, "tag", anchor="middle")
+        _text(dwg, f"LV-{chr(64 + winding_index)}", secondary_x, lv_cy + lv_radius + 12.0, "tag", anchor="middle")
 
     _text(dwg, str(vector_group or "Dyn11"), x + 72.0, hv_cy - 4.0, "label")
     for idx, line in enumerate(text_lines):
@@ -684,7 +684,7 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
         label = (
             f"LV Bus  {lv_v} V"
             if len(pcs_by_winding) == 1
-            else f"LV Winding {winding_index} / {lv_v} V"
+            else f"LV-{chr(64 + winding_index)} bus / {lv_v} V"
         )
         _text(dwg, label, bus_x1, bus_y - 8.0, "label")
 

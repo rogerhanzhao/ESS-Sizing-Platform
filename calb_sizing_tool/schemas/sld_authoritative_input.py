@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import Field, field_validator, model_validator
 
+from calb_sizing_tool.schemas.ac_electrical_topology import DcBlockConnection, TransformerTopology
 from calb_sizing_tool.schemas.common import CanonicalBaseModel
 
 
@@ -13,6 +14,7 @@ class SldAcBlockAllocation(CanonicalBaseModel):
     pcs_rating_kw: float
     dc_blocks_total: int
     feeder_allocations: list[int]
+    dc_block_connections: list[DcBlockConnection] = Field(default_factory=list)
 
     @field_validator("ac_block_index", "pcs_count")
     @classmethod
@@ -51,8 +53,24 @@ class SldAcBlockAllocation(CanonicalBaseModel):
     def _validate_consistency(self) -> "SldAcBlockAllocation":
         if len(self.feeder_allocations) != self.pcs_count:
             raise ValueError("feeder_allocations length must match pcs_count")
-        if sum(self.feeder_allocations) != self.dc_blocks_total:
-            raise ValueError("dc_blocks_total must equal sum(feeder_allocations)")
+        if not self.dc_block_connections:
+            if sum(self.feeder_allocations) != self.dc_blocks_total:
+                raise ValueError("dc_blocks_total must equal sum(feeder_allocations)")
+            return self
+        if len(self.dc_block_connections) != self.dc_blocks_total:
+            raise ValueError("dc_blocks_total must equal dc_block_connections count")
+        if [item.dc_block_index for item in self.dc_block_connections] != list(range(1, self.dc_blocks_total + 1)):
+            raise ValueError("dc_block_connections must be ordered with contiguous dc_block_index values")
+        actual_counts = [
+            sum(1 for connection in self.dc_block_connections if feeder_index in connection.feeder_indices)
+            for feeder_index in range(1, self.pcs_count + 1)
+        ]
+        if actual_counts != self.feeder_allocations:
+            raise ValueError("feeder_allocations must equal DC Block output-branch counts by PCS feeder")
+        if any(feeder_index > self.pcs_count for connection in self.dc_block_connections for feeder_index in connection.feeder_indices):
+            raise ValueError("DC Block connection references a PCS feeder outside this AC Block")
+        if any(count <= 0 for count in actual_counts):
+            raise ValueError("every PCS feeder must have at least one DC Block output branch")
         return self
 
 
@@ -70,6 +88,8 @@ class SldAuthoritativeAcOutput(CanonicalBaseModel):
     dc_total_mwh: float | None = None
     transformer_mva: float
     lv_winding_count: int
+    transformer_topology: TransformerTopology | None = None
+    dc_block_connections_by_block: list[list[DcBlockConnection]] = Field(default_factory=list)
     transformer_count: int | None = None
     pcs_count_total: int | None = None
     mv_voltage_kv: float | None = None
@@ -174,9 +194,10 @@ class SldAuthoritativeAcOutput(CanonicalBaseModel):
     def _validate_consistency(self) -> "SldAuthoritativeAcOutput":
         if len(self.pcs_count_by_block) != self.num_blocks:
             raise ValueError("pcs_count_by_block length must match num_blocks")
-        expected_lv_winding_count = (self.pcs_per_block + 1) // 2
-        if self.lv_winding_count != expected_lv_winding_count:
-            raise ValueError("lv_winding_count must provide one independent LV winding per two PCS feeders")
+        if self.transformer_topology is not None:
+            expected_lv_winding_count = 1 if self.transformer_topology == "two_winding" else 2
+            if self.lv_winding_count != expected_lv_winding_count:
+                raise ValueError("lv_winding_count conflicts with transformer_topology")
         if len(self.pcs_rating_kw_list_by_block) != self.num_blocks:
             raise ValueError("pcs_rating_kw_list_by_block length must match num_blocks")
         if len(self.dc_allocation_plan) != self.num_blocks:
@@ -185,6 +206,10 @@ class SldAuthoritativeAcOutput(CanonicalBaseModel):
             raise ValueError("dc_blocks_total_by_block length must match num_blocks")
         if len(self.dc_blocks_per_feeder_by_block) != self.num_blocks:
             raise ValueError("dc_blocks_per_feeder_by_block length must match num_blocks")
+        if not self.dc_block_connections_by_block:
+            self.dc_block_connections_by_block = [list(item.dc_block_connections) for item in self.dc_allocation_plan]
+        if len(self.dc_block_connections_by_block) != self.num_blocks:
+            raise ValueError("dc_block_connections_by_block length must match num_blocks")
 
         derived_block_size_mw = round(self.pcs_per_block * self.pcs_kw / 1000.0, 6)
         if abs(self.block_size_mw - derived_block_size_mw) > 1e-6:
@@ -215,6 +240,8 @@ class SldAuthoritativeAcOutput(CanonicalBaseModel):
                 raise ValueError("dc_blocks_total_by_block must match dc_allocation_plan")
             if self.dc_blocks_per_feeder_by_block[block_idx - 1] != self.dc_allocation_plan[block_idx - 1].feeder_allocations:
                 raise ValueError("dc_blocks_per_feeder_by_block must match dc_allocation_plan")
+            if self.dc_block_connections_by_block[block_idx - 1] != self.dc_allocation_plan[block_idx - 1].dc_block_connections:
+                raise ValueError("dc_block_connections_by_block must match dc_allocation_plan")
 
         if self.dc_blocks_total is not None and self.dc_blocks_total != sum(self.dc_blocks_total_by_block):
             raise ValueError("dc_blocks_total must equal sum(dc_blocks_total_by_block)")

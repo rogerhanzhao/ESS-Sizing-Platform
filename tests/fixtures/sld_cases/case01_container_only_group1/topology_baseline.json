@@ -101,17 +101,6 @@
     },
     {
       "attributes": {
-        "local_block_index": 1
-      },
-      "edge_id": "G01-F01-DC-BLOCK-01-EDGE",
-      "edge_type": "dc_interface_to_dc_block",
-      "feeder_index": 1,
-      "labels": [],
-      "source_node_id": "G01-F01-DC-INTERFACE-NODE",
-      "target_node_id": "G01-F01-DC-BLOCK-01-NODE"
-    },
-    {
-      "attributes": {
         "lv_winding_index": 1
       },
       "edge_id": "G01-F02-EDGE-LVBUS-PCS",
@@ -129,17 +118,6 @@
       "labels": [],
       "source_node_id": "G01-F02-PCS-NODE",
       "target_node_id": "G01-F02-DC-INTERFACE-NODE"
-    },
-    {
-      "attributes": {
-        "local_block_index": 1
-      },
-      "edge_id": "G01-F02-DC-BLOCK-01-EDGE",
-      "edge_type": "dc_interface_to_dc_block",
-      "feeder_index": 2,
-      "labels": [],
-      "source_node_id": "G01-F02-DC-INTERFACE-NODE",
-      "target_node_id": "G01-F02-DC-BLOCK-01-NODE"
     },
     {
       "attributes": {
@@ -163,17 +141,6 @@
     },
     {
       "attributes": {
-        "local_block_index": 1
-      },
-      "edge_id": "G01-F03-DC-BLOCK-01-EDGE",
-      "edge_type": "dc_interface_to_dc_block",
-      "feeder_index": 3,
-      "labels": [],
-      "source_node_id": "G01-F03-DC-INTERFACE-NODE",
-      "target_node_id": "G01-F03-DC-BLOCK-01-NODE"
-    },
-    {
-      "attributes": {
         "lv_winding_index": 2
       },
       "edge_id": "G01-F04-EDGE-LVBUS-PCS",
@@ -194,14 +161,51 @@
     },
     {
       "attributes": {
-        "local_block_index": 1
+        "output_circuit_count": 2,
+        "shared_dc_block": false
       },
-      "edge_id": "G01-F04-DC-BLOCK-01-EDGE",
+      "edge_id": "G01-DC-BLOCK-01-EDGE-F01",
+      "edge_type": "dc_interface_to_dc_block",
+      "feeder_index": 1,
+      "labels": [],
+      "source_node_id": "G01-F01-DC-INTERFACE-NODE",
+      "target_node_id": "G01-DC-BLOCK-01-NODE"
+    },
+    {
+      "attributes": {
+        "output_circuit_count": 2,
+        "shared_dc_block": false
+      },
+      "edge_id": "G01-DC-BLOCK-02-EDGE-F02",
+      "edge_type": "dc_interface_to_dc_block",
+      "feeder_index": 2,
+      "labels": [],
+      "source_node_id": "G01-F02-DC-INTERFACE-NODE",
+      "target_node_id": "G01-DC-BLOCK-02-NODE"
+    },
+    {
+      "attributes": {
+        "output_circuit_count": 2,
+        "shared_dc_block": false
+      },
+      "edge_id": "G01-DC-BLOCK-03-EDGE-F03",
+      "edge_type": "dc_interface_to_dc_block",
+      "feeder_index": 3,
+      "labels": [],
+      "source_node_id": "G01-F03-DC-INTERFACE-NODE",
+      "target_node_id": "G01-DC-BLOCK-03-NODE"
+    },
+    {
+      "attributes": {
+        "output_circuit_count": 2,
+        "shared_dc_block": false
+      },
+      "edge_id": "G01-DC-BLOCK-04-EDGE-F04",
       "edge_type": "dc_interface_to_dc_block",
       "feeder_index": 4,
       "labels": [],
       "source_node_id": "G01-F04-DC-INTERFACE-NODE",
-      "target_node_id": "G01-F04-DC-BLOCK-01-NODE"
+      "target_node_id": "G01-DC-BLOCK-04-NODE"
     }
   ],
   "equipment": [
@@ -297,17 +301,6 @@
     },
     {
       "attributes": {
-        "dc_block_energy_mwh": 0.836,
-        "dc_block_voltage_v": 1500.0
-      },
-      "dc_block_index": 1,
-      "display_name": "DC Block 1",
-      "equipment_id": "G01-F01-DC-BLOCK-01",
-      "equipment_type": "dc_block",
-      "feeder_index": 1
-    },
-    {
-      "attributes": {
         "lv_voltage_v_ll": 690.0,
         "lv_winding_index": 1,
         "pcs_rating_kw": 1250.0
@@ -332,17 +325,6 @@
     },
     {
       "attributes": {
-        "dc_block_energy_mwh": 0.836,
-        "dc_block_voltage_v": 1500.0
-      },
-      "dc_block_index": 2,
-      "display_name": "DC Block 2",
-      "equipment_id": "G01-F02-DC-BLOCK-01",
-      "equipment_type": "dc_block",
-      "feeder_index": 2
-    },
-    {
-      "attributes": {
         "lv_voltage_v_ll": 690.0,
         "lv_winding_index": 2,
         "pcs_rating_kw": 1250.0
@@ -363,17 +345,6 @@
       "display_name": "DC Interface 3",
       "equipment_id": "G01-F03-DC-INTERFACE",
       "equipment_type": "dc_interface",
-      "feeder_index": 3
-    },
-    {
-      "attributes": {
-        "dc_block_energy_mwh": 0.836,
-        "dc_block_voltage_v": 1500.0
-      },
-      "dc_block_index": 3,
-      "display_name": "DC Block 3",
-      "equipment_id": "G01-F03-DC-BLOCK-01",
-      "equipment_type": "dc_block",
       "feeder_index": 3
     },
     {
@@ -403,11 +374,64 @@
     {
       "attributes": {
         "dc_block_energy_mwh": 0.836,
-        "dc_block_voltage_v": 1500.0
+        "dc_block_voltage_v": 1500.0,
+        "feeder_span": [
+          1
+        ],
+        "internal_dc_busbar_mode": "common",
+        "output_circuit_count": 2
+      },
+      "dc_block_index": 1,
+      "display_name": "DC Block 1",
+      "equipment_id": "G01-DC-BLOCK-01",
+      "equipment_type": "dc_block",
+      "feeder_index": 1
+    },
+    {
+      "attributes": {
+        "dc_block_energy_mwh": 0.836,
+        "dc_block_voltage_v": 1500.0,
+        "feeder_span": [
+          2
+        ],
+        "internal_dc_busbar_mode": "common",
+        "output_circuit_count": 2
+      },
+      "dc_block_index": 2,
+      "display_name": "DC Block 2",
+      "equipment_id": "G01-DC-BLOCK-02",
+      "equipment_type": "dc_block",
+      "feeder_index": 2
+    },
+    {
+      "attributes": {
+        "dc_block_energy_mwh": 0.836,
+        "dc_block_voltage_v": 1500.0,
+        "feeder_span": [
+          3
+        ],
+        "internal_dc_busbar_mode": "common",
+        "output_circuit_count": 2
+      },
+      "dc_block_index": 3,
+      "display_name": "DC Block 3",
+      "equipment_id": "G01-DC-BLOCK-03",
+      "equipment_type": "dc_block",
+      "feeder_index": 3
+    },
+    {
+      "attributes": {
+        "dc_block_energy_mwh": 0.836,
+        "dc_block_voltage_v": 1500.0,
+        "feeder_span": [
+          4
+        ],
+        "internal_dc_busbar_mode": "common",
+        "output_circuit_count": 2
       },
       "dc_block_index": 4,
       "display_name": "DC Block 4",
-      "equipment_id": "G01-F04-DC-BLOCK-01",
+      "equipment_id": "G01-DC-BLOCK-04",
       "equipment_type": "dc_block",
       "feeder_index": 4
     }
@@ -607,26 +631,6 @@
     },
     {
       "attributes": {
-        "dc_block_energy_mwh": 0.836,
-        "dc_block_voltage_v": 1500.0
-      },
-      "dc_block_index": 1,
-      "display_name": "DC Block 1",
-      "equipment_id": "G01-F01-DC-BLOCK-01",
-      "feeder_index": 1,
-      "labels": [
-        {
-          "label_id": "G01-F01-DC-BLOCK-01-LABEL",
-          "scope": "dc_block",
-          "semantic_key": "dc_block_energy_mwh",
-          "text": "0.836 MWh"
-        }
-      ],
-      "node_id": "G01-F01-DC-BLOCK-01-NODE",
-      "node_type": "dc_block"
-    },
-    {
-      "attributes": {
         "lv_winding_index": 1,
         "pcs_rating_kw": 1250.0
       },
@@ -666,26 +670,6 @@
     },
     {
       "attributes": {
-        "dc_block_energy_mwh": 0.836,
-        "dc_block_voltage_v": 1500.0
-      },
-      "dc_block_index": 2,
-      "display_name": "DC Block 2",
-      "equipment_id": "G01-F02-DC-BLOCK-01",
-      "feeder_index": 2,
-      "labels": [
-        {
-          "label_id": "G01-F02-DC-BLOCK-01-LABEL",
-          "scope": "dc_block",
-          "semantic_key": "dc_block_energy_mwh",
-          "text": "0.836 MWh"
-        }
-      ],
-      "node_id": "G01-F02-DC-BLOCK-01-NODE",
-      "node_type": "dc_block"
-    },
-    {
-      "attributes": {
         "lv_winding_index": 2,
         "pcs_rating_kw": 1250.0
       },
@@ -722,26 +706,6 @@
       ],
       "node_id": "G01-F03-DC-INTERFACE-NODE",
       "node_type": "dc_interface"
-    },
-    {
-      "attributes": {
-        "dc_block_energy_mwh": 0.836,
-        "dc_block_voltage_v": 1500.0
-      },
-      "dc_block_index": 3,
-      "display_name": "DC Block 3",
-      "equipment_id": "G01-F03-DC-BLOCK-01",
-      "feeder_index": 3,
-      "labels": [
-        {
-          "label_id": "G01-F03-DC-BLOCK-01-LABEL",
-          "scope": "dc_block",
-          "semantic_key": "dc_block_energy_mwh",
-          "text": "0.836 MWh"
-        }
-      ],
-      "node_id": "G01-F03-DC-BLOCK-01-NODE",
-      "node_type": "dc_block"
     },
     {
       "attributes": {
@@ -785,21 +749,101 @@
     {
       "attributes": {
         "dc_block_energy_mwh": 0.836,
-        "dc_block_voltage_v": 1500.0
+        "dc_block_voltage_v": 1500.0,
+        "feeder_span": [
+          1
+        ],
+        "internal_dc_busbar_mode": "common",
+        "output_circuit_count": 2
       },
-      "dc_block_index": 4,
-      "display_name": "DC Block 4",
-      "equipment_id": "G01-F04-DC-BLOCK-01",
-      "feeder_index": 4,
+      "dc_block_index": 1,
+      "display_name": "DC Block 1",
+      "equipment_id": "G01-DC-BLOCK-01",
+      "feeder_index": 1,
       "labels": [
         {
-          "label_id": "G01-F04-DC-BLOCK-01-LABEL",
+          "label_id": "G01-DC-BLOCK-01-LABEL",
           "scope": "dc_block",
           "semantic_key": "dc_block_energy_mwh",
           "text": "0.836 MWh"
         }
       ],
-      "node_id": "G01-F04-DC-BLOCK-01-NODE",
+      "node_id": "G01-DC-BLOCK-01-NODE",
+      "node_type": "dc_block"
+    },
+    {
+      "attributes": {
+        "dc_block_energy_mwh": 0.836,
+        "dc_block_voltage_v": 1500.0,
+        "feeder_span": [
+          2
+        ],
+        "internal_dc_busbar_mode": "common",
+        "output_circuit_count": 2
+      },
+      "dc_block_index": 2,
+      "display_name": "DC Block 2",
+      "equipment_id": "G01-DC-BLOCK-02",
+      "feeder_index": 2,
+      "labels": [
+        {
+          "label_id": "G01-DC-BLOCK-02-LABEL",
+          "scope": "dc_block",
+          "semantic_key": "dc_block_energy_mwh",
+          "text": "0.836 MWh"
+        }
+      ],
+      "node_id": "G01-DC-BLOCK-02-NODE",
+      "node_type": "dc_block"
+    },
+    {
+      "attributes": {
+        "dc_block_energy_mwh": 0.836,
+        "dc_block_voltage_v": 1500.0,
+        "feeder_span": [
+          3
+        ],
+        "internal_dc_busbar_mode": "common",
+        "output_circuit_count": 2
+      },
+      "dc_block_index": 3,
+      "display_name": "DC Block 3",
+      "equipment_id": "G01-DC-BLOCK-03",
+      "feeder_index": 3,
+      "labels": [
+        {
+          "label_id": "G01-DC-BLOCK-03-LABEL",
+          "scope": "dc_block",
+          "semantic_key": "dc_block_energy_mwh",
+          "text": "0.836 MWh"
+        }
+      ],
+      "node_id": "G01-DC-BLOCK-03-NODE",
+      "node_type": "dc_block"
+    },
+    {
+      "attributes": {
+        "dc_block_energy_mwh": 0.836,
+        "dc_block_voltage_v": 1500.0,
+        "feeder_span": [
+          4
+        ],
+        "internal_dc_busbar_mode": "common",
+        "output_circuit_count": 2
+      },
+      "dc_block_index": 4,
+      "display_name": "DC Block 4",
+      "equipment_id": "G01-DC-BLOCK-04",
+      "feeder_index": 4,
+      "labels": [
+        {
+          "label_id": "G01-DC-BLOCK-04-LABEL",
+          "scope": "dc_block",
+          "semantic_key": "dc_block_energy_mwh",
+          "text": "0.836 MWh"
+        }
+      ],
+      "node_id": "G01-DC-BLOCK-04-NODE",
       "node_type": "dc_block"
     }
   ],
@@ -817,6 +861,40 @@
   "summary": {
     "ac_blocks_total": 1,
     "compact_mode": false,
+    "dc_block_connections": [
+      {
+        "dc_block_index": 1,
+        "feeder_indices": [
+          1
+        ],
+        "internal_dc_busbar_mode": "common",
+        "output_circuit_count": 2
+      },
+      {
+        "dc_block_index": 2,
+        "feeder_indices": [
+          2
+        ],
+        "internal_dc_busbar_mode": "common",
+        "output_circuit_count": 2
+      },
+      {
+        "dc_block_index": 3,
+        "feeder_indices": [
+          3
+        ],
+        "internal_dc_busbar_mode": "common",
+        "output_circuit_count": 2
+      },
+      {
+        "dc_block_index": 4,
+        "feeder_indices": [
+          4
+        ],
+        "internal_dc_busbar_mode": "common",
+        "output_circuit_count": 2
+      }
+    ],
     "dc_block_energy_mwh": 0.836,
     "dc_block_voltage_v": 1500.0,
     "dc_blocks_per_feeder": [
@@ -843,6 +921,7 @@
     "project_frequency_hz": 50.0,
     "theme": "dark",
     "transformer_rating_mva": 6.0,
+    "transformer_topology": "three_winding",
     "transformer_uk_percent": 7.0,
     "transformer_vector_group": "Dyn11"
   },

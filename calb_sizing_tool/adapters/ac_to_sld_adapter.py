@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from calb_sizing_tool.schemas.ac_electrical_topology import build_dc_block_connection_plan
 from calb_sizing_tool.schemas.sld_authoritative_input import SldAcBlockAllocation, SldAuthoritativeAcOutput
 
 
@@ -12,11 +13,12 @@ AC_TO_SLD_AUTHORITATIVE_FIELDS_V1 = {
     "pcs_per_block": "Required. Uniform PCS count per AC block in SLD V1.",
     "pcs_kw": "Required. Uniform PCS rating per feeder in kW.",
     "block_size_mw": "Required. Must equal pcs_per_block * pcs_kw / 1000. The adapter must not derive it silently.",
-    "dc_allocation_plan": "Required. Authoritative AC block allocation plan with feeder_allocations.",
+    "dc_allocation_plan": "Required. Authoritative physical DC Block output-circuit to PCS-feeder allocation.",
     "dc_blocks_total_by_block": "Derived mirror of dc_allocation_plan totals.",
     "dc_blocks_per_feeder_by_block": "Derived mirror of dc_allocation_plan feeder allocations.",
     "transformer_mva": "Required. Transformer rating per AC block.",
-    "lv_winding_count": "Derived LV-secondary count. One independent LV secondary per two PCS feeders; total transformer winding count is LV secondaries plus one MV primary.",
+    "transformer_topology": "Required for new AC runs: two_winding (one common LV busbar) or three_winding (two independent LV secondary busbars).",
+    "lv_winding_count": "Mirror of the selected transformer topology, never inferred from PCS count for new AC runs.",
     "transformer_count": "Optional mirror of num_blocks.",
     "pcs_count_total": "Optional mirror of sum(pcs_count_by_block).",
     "dc_blocks_total": "Optional mirror of sum(dc_blocks_total_by_block).",
@@ -33,6 +35,7 @@ AC_TO_SLD_LEGACY_ALIASES_V1 = {
     "dc_allocation_plan": ("dc_block_allocation",),
     "transformer_mva": ("transformer_rating_mva", "transformer_kva"),
     "lv_winding_count": ("transformer_lv_winding_count",),
+    "transformer_topology": ("transformer_winding_topology",),
     "pcs_count_total": ("total_pcs",),
     "mv_voltage_kv": ("mv_kv", "grid_kv"),
     "lv_voltage_v": ("lv_v", "inverter_lv_v"),
@@ -170,6 +173,7 @@ def _build_allocation_entry(
     pcs_rating_kw: float,
     dc_blocks_total: int,
     feeder_allocations: list[int],
+    dc_block_connections: list[dict[str, Any]] | None,
     errors: list[str],
 ) -> SldAcBlockAllocation | None:
     try:
@@ -179,6 +183,7 @@ def _build_allocation_entry(
             pcs_rating_kw=pcs_rating_kw,
             dc_blocks_total=dc_blocks_total,
             feeder_allocations=feeder_allocations,
+            dc_block_connections=dc_block_connections or [],
         )
     except ValidationError as exc:
         for item in exc.errors():
@@ -186,6 +191,28 @@ def _build_allocation_entry(
             suffix = f".{location}" if location else ""
             errors.append(f"{source_name}{suffix}: {item.get('msg')}")
         return None
+
+
+def _build_dedicated_connections_from_legacy_allocation(
+    feeder_allocations: list[int],
+    *,
+    output_circuit_count: int,
+) -> list[dict[str, Any]]:
+    """Preserve legacy one-DC-Block-per-feeder allocation detail exactly."""
+    connections: list[dict[str, Any]] = []
+    dc_block_index = 1
+    for feeder_index, count in enumerate(feeder_allocations, start=1):
+        for _ in range(count):
+            connections.append(
+                {
+                    "dc_block_index": dc_block_index,
+                    "feeder_indices": [feeder_index],
+                    "output_circuit_count": output_circuit_count,
+                    "internal_dc_busbar_mode": "common",
+                }
+            )
+            dc_block_index += 1
+    return connections
 
 
 def _resolve_dc_allocation_plan(
@@ -197,6 +224,7 @@ def _resolve_dc_allocation_plan(
     errors: list[str],
     field_sources: dict[str, str],
     legacy_aliases_used: set[str],
+    dc_block_output_circuits: int,
 ) -> list[SldAcBlockAllocation] | None:
     direct_plan = payload.get("dc_allocation_plan")
     if isinstance(direct_plan, list) and direct_plan:
@@ -206,13 +234,46 @@ def _resolve_dc_allocation_plan(
             if not isinstance(entry, dict):
                 errors.append("dc_allocation_plan entries must be dicts.")
                 return None
-            feeder_allocations = _normalize_non_negative_int_list(entry.get("feeder_allocations"))
-            if feeder_allocations is None or len(feeder_allocations) != pcs_per_block:
-                errors.append("dc_allocation_plan feeder_allocations must exist and match pcs_per_block.")
-                return None
             dc_blocks_total = _safe_int(entry.get("dc_blocks_total"))
-            if dc_blocks_total is None:
+            feeder_allocations = _normalize_non_negative_int_list(entry.get("feeder_allocations"))
+            raw_connections = entry.get("dc_block_connections")
+            if dc_blocks_total is None and isinstance(raw_connections, list):
+                dc_blocks_total = len(raw_connections)
+            if dc_blocks_total is None and feeder_allocations is not None:
                 dc_blocks_total = sum(feeder_allocations)
+            if dc_blocks_total is None or dc_blocks_total <= 0:
+                errors.append("dc_allocation_plan dc_blocks_total must be > 0.")
+                return None
+            if not isinstance(raw_connections, list) or not raw_connections:
+                if feeder_allocations is not None and sum(feeder_allocations) != dc_blocks_total:
+                    # Preserve the previous contract error. A physical mapping
+                    # must not silently repair conflicting legacy mirrors.
+                    raw_connections = None
+                else:
+                    try:
+                        if feeder_allocations is not None and dc_blocks_total >= pcs_per_block:
+                            raw_connections = _build_dedicated_connections_from_legacy_allocation(
+                                feeder_allocations,
+                                output_circuit_count=dc_block_output_circuits,
+                            )
+                        else:
+                            # Historic under-populated feeder counts (for
+                            # example [1, 1, 0, 0]) did not express shared DC
+                            # outputs. Translate those safely so every PCS has
+                            # a protected DC source in the new SLD model.
+                            raw_connections = build_dc_block_connection_plan(
+                                dc_blocks_total,
+                                pcs_per_block,
+                                output_circuit_count=dc_block_output_circuits,
+                            )
+                    except ValueError as exc:
+                        errors.append(f"dc_allocation_plan[{block_index - 1}]: {exc}")
+                        return None
+            if isinstance(raw_connections, list) and raw_connections:
+                feeder_allocations = [
+                    sum(1 for connection in raw_connections if feeder_index in connection.get("feeder_indices", []))
+                    for feeder_index in range(1, pcs_per_block + 1)
+                ]
             plan_entry = _build_allocation_entry(
                 source_name=f"dc_allocation_plan[{block_index - 1}]",
                 ac_block_index=_safe_int(entry.get("ac_block_index")) or block_index,
@@ -220,6 +281,7 @@ def _resolve_dc_allocation_plan(
                 pcs_rating_kw=pcs_kw,
                 dc_blocks_total=dc_blocks_total,
                 feeder_allocations=feeder_allocations,
+                dc_block_connections=raw_connections,
                 errors=errors,
             )
             if plan_entry is None:
@@ -262,8 +324,9 @@ def _resolve_dc_allocation_plan(
                     ac_block_index=_safe_int(entry.get("ac_block_index")) or block_index,
                     pcs_count=pcs_per_block,
                     pcs_rating_kw=pcs_kw,
-                    dc_blocks_total=dc_blocks_total,
-                    feeder_allocations=feeder_allocations,
+                dc_blocks_total=dc_blocks_total,
+                feeder_allocations=feeder_allocations,
+                dc_block_connections=None,
                     errors=errors,
                 )
                 if plan_entry is None:
@@ -343,21 +406,32 @@ def normalize_ac_output_for_sld(ac_output: dict[str, Any]) -> SldAuthoritativeAc
 
     pcs_count_by_block = [pcs_per_block for _ in range(num_blocks)]
     pcs_rating_kw_list_by_block = [[pcs_kw for _ in range(pcs_per_block)] for _ in range(num_blocks)]
-    # Engineering topology contract: each independent LV secondary serves no
-    # more than two PCS feeders. A four-PCS AC block is therefore always a
-    # dual-secondary transformer block, never one common LV busbar.
-    derived_lv_winding_count = (pcs_per_block + 1) // 2
+    transformer_topology_raw = _resolve_field("transformer_topology", ac_output, field_sources, legacy_aliases_used)
+    transformer_topology = str(transformer_topology_raw or "").strip() or None
     lv_winding_count = _resolve_optional_int(
         "lv_winding_count", ac_output, field_sources, legacy_aliases_used
     )
+    if transformer_topology not in {None, "two_winding", "three_winding"}:
+        errors.append("transformer_topology must be two_winding or three_winding.")
+    if transformer_topology is None:
+        # Compatibility only for historic runs. New AC sizing output always
+        # provides the topology explicitly.
+        if lv_winding_count is None:
+            lv_winding_count = (pcs_per_block + 1) // 2
+            field_sources["lv_winding_count"] = "legacy_derived_from_pcs_per_block"
+        transformer_topology = "three_winding" if lv_winding_count > 1 else "two_winding"
+        field_sources["transformer_topology"] = "legacy_derived_from_lv_winding_count"
+    expected_windings = 1 if transformer_topology == "two_winding" else 2
     if lv_winding_count is None:
-        lv_winding_count = derived_lv_winding_count
-        field_sources["lv_winding_count"] = "derived_from_pcs_per_block_two_pcs_per_winding"
-    elif lv_winding_count != derived_lv_winding_count:
-        errors.append(
-            "lv_winding_count conflicts with the two-PCS-per-independent-LV-winding "
-            "AC-to-SLD topology rule."
-        )
+        lv_winding_count = expected_windings
+        field_sources["lv_winding_count"] = "derived_from_transformer_topology"
+    elif lv_winding_count != expected_windings:
+        errors.append("lv_winding_count conflicts with transformer_topology.")
+    dc_block_output_circuits = _resolve_optional_int(
+        "dc_block_output_circuits", ac_output, field_sources, legacy_aliases_used
+    ) or 2
+    if dc_block_output_circuits not in (1, 2):
+        errors.append("dc_block_output_circuits must be 1 or 2.")
     dc_allocation_plan = _resolve_dc_allocation_plan(
         ac_output,
         num_blocks=num_blocks,
@@ -366,12 +440,14 @@ def normalize_ac_output_for_sld(ac_output: dict[str, Any]) -> SldAuthoritativeAc
         errors=errors,
         field_sources=field_sources,
         legacy_aliases_used=legacy_aliases_used,
+        dc_block_output_circuits=dc_block_output_circuits,
     )
     if dc_allocation_plan is None:
         raise AcToSldAdapterError(errors)
 
     dc_blocks_total_by_block = [entry.dc_blocks_total for entry in dc_allocation_plan]
     dc_blocks_per_feeder_by_block = [list(entry.feeder_allocations) for entry in dc_allocation_plan]
+    dc_block_connections_by_block = [list(entry.dc_block_connections) for entry in dc_allocation_plan]
     transformer_count = _resolve_optional_int("transformer_count", ac_output, field_sources, legacy_aliases_used)
     if transformer_count is None:
         transformer_count = num_blocks
@@ -419,6 +495,8 @@ def normalize_ac_output_for_sld(ac_output: dict[str, Any]) -> SldAuthoritativeAc
             dc_total_mwh=dc_total_mwh,
             transformer_mva=transformer_mva,
             lv_winding_count=lv_winding_count,
+            transformer_topology=transformer_topology,
+            dc_block_connections_by_block=dc_block_connections_by_block,
             transformer_count=transformer_count,
             pcs_count_total=pcs_count_total,
             mv_voltage_kv=mv_voltage_kv,

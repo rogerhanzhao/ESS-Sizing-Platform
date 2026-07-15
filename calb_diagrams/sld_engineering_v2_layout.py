@@ -153,7 +153,10 @@ def _equipment_rows(graph: SldEngineeringV2Graph) -> tuple[SldV2EquipmentRow, ..
     summary = graph.summary
     ratings = graph.equipment_ratings
     shared_spans = [
-        [int(fi) for fi in (node.attributes.get("feeder_span") or [])]
+        (
+            [int(fi) for fi in (node.attributes.get("feeder_span") or [])],
+            int(node.attributes.get("output_circuit_count") or 1),
+        )
         for node in graph.nodes
         if node.node_type == "dc_block" and node.attributes.get("feeder_span")
     ]
@@ -161,8 +164,12 @@ def _equipment_rows(graph: SldEngineeringV2Graph) -> tuple[SldV2EquipmentRow, ..
         # Shared DC blocks: report which PCS feeders each block supplies
         # instead of a per-feeder count that would misread as dangling feeders.
         allocation = ", ".join(
-            f"DC{index}→F{span[0]}-F{span[-1]}" if len(span) > 1 else f"DC{index}→F{span[0]}"
-            for index, span in enumerate(shared_spans, start=1)
+            (
+                f"DC{index}→F{span[0]}-F{span[-1]} ({outputs} outputs)"
+                if len(span) > 1
+                else f"DC{index}→F{span[0]} ({outputs} output)"
+            )
+            for index, (span, outputs) in enumerate(shared_spans, start=1)
         )
     else:
         allocation = ", ".join(f"F{index}={count}" for index, count in enumerate(summary.dc_blocks_per_feeder, start=1))
@@ -372,7 +379,7 @@ def build_sld_engineering_v2_layout_plan(
                 y=ac_section.y + 330.0,
                 width=x2 - x1,
                 height=18.0,
-                text_lines=(f"LV Winding {winding_index} / {summary.lv_voltage_v_ll:.0f} V",),
+                text_lines=(f"LV-{chr(64 + winding_index)} bus / {summary.lv_voltage_v_ll:.0f} V",),
                 attributes=dict(lv_busbar.attributes),
             )
         )

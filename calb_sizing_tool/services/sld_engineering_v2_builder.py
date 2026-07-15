@@ -304,16 +304,20 @@ def build_sld_engineering_v2_graph(topology: SldTopology) -> SldEngineeringV2Gra
             )
         )
 
-    # DC block -> PCS feeder mapping. When there are fewer DC blocks than PCS
-    # feeders (e.g. 2 x 5 MWh blocks feeding 4 x 1250 kW PCS), each block's DC
-    # combiner feeds a contiguous span of PCS feeders through that feeder's own
-    # isolator/fuse — a PCS feeder without any DC source is not a valid
-    # electrical topology and must not be drawn dangling.
+    # DC Block -> PCS mapping is authoritative when supplied by AC sizing.
+    # Legacy snapshots retain the former compatibility inference below.
     pcs_total = len(summary.pcs_rating_kw_list)
     dc_total_blocks = sum(int(count) for count in summary.dc_blocks_per_feeder)
-    shared_dc_mode = 0 < dc_total_blocks < pcs_total
+    explicit_dc_connections = list(summary.dc_block_connections)
+    shared_dc_mode = bool(explicit_dc_connections) or (0 < dc_total_blocks < pcs_total)
     block_feeder_spans: list[list[int]] = []
-    if shared_dc_mode:
+    if explicit_dc_connections:
+        block_feeder_spans = [list(connection.feeder_indices) for connection in explicit_dc_connections]
+        feeder_dc_count = {
+            feeder_index: sum(1 for span in block_feeder_spans if feeder_index in span)
+            for feeder_index in range(1, pcs_total + 1)
+        }
+    elif shared_dc_mode:
         cursor = 1
         for span_size in evenly_distribute(pcs_total, dc_total_blocks):
             block_feeder_spans.append(list(range(cursor, cursor + span_size)))
@@ -464,7 +468,7 @@ def build_sld_engineering_v2_graph(topology: SldTopology) -> SldEngineeringV2Gra
             )
 
     if shared_dc_mode:
-        for span in block_feeder_spans:
+        for connection_index, span in enumerate(block_feeder_spans, start=1):
             dc_block_ordinal += 1
             anchor_feeder = span[0]
             dc_block_id = f"{group_token}-DC-BLOCK-{dc_block_ordinal:02d}"
@@ -492,13 +496,21 @@ def build_sld_engineering_v2_graph(topology: SldTopology) -> SldEngineeringV2Gra
                         "dc_block_energy_mwh": summary.dc_block_energy_mwh,
                         "dc_block_voltage_v": summary.dc_block_voltage_v,
                         "feeder_span": list(span),
+                        "output_circuit_count": (
+                            explicit_dc_connections[connection_index - 1].output_circuit_count
+                            if explicit_dc_connections else len(span)
+                        ),
+                        "internal_dc_busbar_mode": (
+                            explicit_dc_connections[connection_index - 1].internal_dc_busbar_mode
+                            if explicit_dc_connections else "common"
+                        ),
                     },
                 )
             )
             for feeder_index in span:
                 edges.append(
                     _edge(
-                        f"{group_token}-F{feeder_index:02d}-E-DCIF-BLOCK",
+                        f"{group_token}-F{feeder_index:02d}-E-DCIF-BLOCK-{dc_block_ordinal:02d}",
                         "dc_interface_to_dc_block",
                         f"{group_token}-F{feeder_index:02d}-DC-INTERFACE",
                         "block_port",

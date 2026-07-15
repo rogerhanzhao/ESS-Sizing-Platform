@@ -6,6 +6,7 @@ from calb_sizing_tool.services.ac_sizing_service import (
     STANDARD_PCS_RATINGS_KW,
     SUPPORTED_AC_DC_RATIOS,
     build_simplified_ac_block_models,
+    build_dc_block_connection_plan,
     build_dc_allocation_plan,
     calculate_optimal_pcs_rating,
     evaluate_ac_sizing_feasibility,
@@ -64,10 +65,22 @@ def test_ac_sizing_service_builds_simplified_ac_block_models_from_pcs_library():
 def test_ac_sizing_service_builds_authoritative_dc_allocation_plan():
     allocation_plan = build_dc_allocation_plan(dc_blocks_total=12, ac_block_count=3, pcs_per_block=4)
 
-    assert allocation_plan == [
-        {"ac_block_index": 1, "dc_blocks_total": 4, "feeder_allocations": [1, 1, 1, 1]},
-        {"ac_block_index": 2, "dc_blocks_total": 4, "feeder_allocations": [1, 1, 1, 1]},
-        {"ac_block_index": 3, "dc_blocks_total": 4, "feeder_allocations": [1, 1, 1, 1]},
+    assert [
+        (item["ac_block_index"], item["dc_blocks_total"], item["feeder_allocations"])
+        for item in allocation_plan
+    ] == [(1, 4, [1, 1, 1, 1]), (2, 4, [1, 1, 1, 1]), (3, 4, [1, 1, 1, 1])]
+    assert allocation_plan[0]["dc_block_connections"] == [
+        {"dc_block_index": 1, "feeder_indices": [1], "output_circuit_count": 2, "internal_dc_busbar_mode": "common"},
+        {"dc_block_index": 2, "feeder_indices": [2], "output_circuit_count": 2, "internal_dc_busbar_mode": "common"},
+        {"dc_block_index": 3, "feeder_indices": [3], "output_circuit_count": 2, "internal_dc_busbar_mode": "common"},
+        {"dc_block_index": 4, "feeder_indices": [4], "output_circuit_count": 2, "internal_dc_busbar_mode": "common"},
+    ]
+
+
+def test_dc_block_connection_plan_models_two_protected_outputs_from_one_common_bus():
+    assert build_dc_block_connection_plan(2, 4) == [
+        {"dc_block_index": 1, "feeder_indices": [1, 2], "output_circuit_count": 2, "internal_dc_busbar_mode": "common"},
+        {"dc_block_index": 2, "feeder_indices": [3, 4], "output_circuit_count": 2, "internal_dc_busbar_mode": "common"},
     ]
 
 
