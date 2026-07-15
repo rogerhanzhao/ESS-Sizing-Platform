@@ -29,4 +29,3 @@ python -m pytest tests -q     # all 215 must pass
 ```
 
 - Active branch: `ops/ubuntu-docker-coexist-20260311` (main branch: `master`).
-- `lark-im-resources/` is unrelated local material — never stage it.

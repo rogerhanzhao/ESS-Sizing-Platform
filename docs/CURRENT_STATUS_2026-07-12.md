@@ -55,8 +55,6 @@ reference; this document supersedes it only for SLD/Layout document governance.
 3. Concept value scrubbing is a post-render regex in
    `sld_pipeline_service._concept_safe_svg`; the cleaner design is for the
    renderer to emit placeholder text directly from `document_status`.
-4. `lark-im-resources/` is unrelated local material and intentionally
-   untracked.
 
 ## 2.1 SLD drawing quality hardening (2026-07-15)
 

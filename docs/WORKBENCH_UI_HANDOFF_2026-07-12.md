@@ -44,7 +44,6 @@ and `st.rerun()` behaviour.
 
 - Read `AGENTS.md` and `docs/CURRENT_STATUS_2026-07-12.md`.
 - Confirmed branch: `ops/ubuntu-docker-coexist-20260311`.
-- Confirmed unrelated local material: `?? lark-im-resources/`; do not stage it.
 - Located the issue in `calb_sizing_tool/ui/workbench_view.py`, especially
   `_render_project_picker`, `_render_case_picker`, `_render_latest_run`,
   `_render_run_registry`, and `show`.
@@ -165,8 +164,7 @@ repository or a Git bundle from the local machine.
 
 - During final local verification, unrelated in-progress changes appeared in
   `calb_sizing_tool/reporting/report_v2.py` and
-  `tests/test_report_v2_smoke.py`, alongside the intentionally untracked
-  `lark-im-resources/`.  They were not staged, committed, reverted, or sent
+  `tests/test_report_v2_smoke.py`.  They were not staged, committed, reverted, or sent
   to the server by this task.
 - The local suite nevertheless completed successfully as **246 passed** in
   79.07 s.  This is a diagnostic result for the then-current mixed worktree,
