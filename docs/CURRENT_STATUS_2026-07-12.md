@@ -58,6 +58,16 @@ reference; this document supersedes it only for SLD/Layout document governance.
 4. `lark-im-resources/` is unrelated local material and intentionally
    untracked.
 
+## 2.1 SLD drawing quality hardening (2026-07-15)
+
+Professional redraw of the transformer symbols (3-winding = three interlocked
+equal circles per IEC 60617/ANSI 315; winding marks derived from the vector
+group), label/wire collision fixes, and a rendered-SVG quality gate
+(`validate_rendered_sld_svg`) that asserts geometry on the actual SVG output.
+Root-cause analysis and binding rules for all future diagram work (including
+P2 Master Layout): `DIAGRAM_QUALITY_GOVERNANCE_2026-07-15.md`. Regression
+baseline case01 regenerated.
+
 ## 3. Next boundary
 
 The package deliberately stops before a Concept Master Layout. Unlocking it

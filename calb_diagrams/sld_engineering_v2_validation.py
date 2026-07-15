@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from itertools import combinations
 
@@ -154,6 +156,112 @@ def validate_sld_engineering_v2_layout(plan: SldV2LayoutPlan) -> list[SldV2Layou
     connector_ids = [connector.edge_id for connector in plan.connectors]
     if len(connector_ids) != len(set(connector_ids)):
         issues.append(SldV2LayoutIssue("duplicate_connector_id", "error", "layout contains duplicate connector IDs"))
+
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# Rendered-SVG quality gate
+#
+# The layout-plan checks above validate coordinates that the renderer partly
+# re-derives with its own sheet geometry. This gate inspects the *rendered*
+# SVG instead, so drawing regressions (label collisions, detached transformer
+# winding circles) fail even when the plan looks clean.
+# ---------------------------------------------------------------------------
+
+_TITLE_BLOCK_TEXT_CLASSES = {"tb", "tbh", "tbtitle"}
+_TITLE_BLOCK_BAND_HEIGHT = 120.0
+_CANVAS_MARGIN = 20.0
+
+
+def _local_tag(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def validate_rendered_sld_svg(svg_markup: str) -> list[SldV2LayoutIssue]:
+    """Geometric quality checks on the rendered SVG markup.
+
+    - no non-title-block text may intrude into the title-block band;
+    - all text anchors stay inside the drawing frame;
+    - transformer winding circles (ids ``tx-*``) must share one radius and
+      every pair must interlock (one device, not detached satellites).
+    """
+    issues: list[SldV2LayoutIssue] = []
+    try:
+        root = ET.fromstring(svg_markup)
+    except ET.ParseError as exc:
+        return [SldV2LayoutIssue("svg_parse_error", "error", f"rendered SVG is not parseable: {exc}")]
+
+    view_box = (root.attrib.get("viewBox") or "").split()
+    if len(view_box) == 4:
+        width, height = float(view_box[2]), float(view_box[3])
+    else:
+        width = float(str(root.attrib.get("width", "0")).replace("px", "") or 0)
+        height = float(str(root.attrib.get("height", "0")).replace("px", "") or 0)
+    if not width or not height:
+        return [SldV2LayoutIssue("svg_size_unknown", "error", "rendered SVG has no resolvable canvas size")]
+
+    title_block_top = height - _TITLE_BLOCK_BAND_HEIGHT
+    winding_circles: dict[str, tuple[float, float, float]] = {}
+
+    for element in root.iter():
+        tag = _local_tag(element.tag)
+        if tag == "text":
+            css_class = element.attrib.get("class", "")
+            try:
+                x = float(element.attrib.get("x", "0"))
+                y = float(element.attrib.get("y", "0"))
+            except ValueError:
+                continue
+            label = " ".join((element.text or "").split())
+            if css_class not in _TITLE_BLOCK_TEXT_CLASSES and y > title_block_top:
+                issues.append(
+                    SldV2LayoutIssue(
+                        issue_id=f"text_in_title_block:{label[:40]}",
+                        severity="error",
+                        message=f"text '{label}' (y={y:.0f}) intrudes into the title-block band (y>{title_block_top:.0f})",
+                    )
+                )
+            if not (_CANVAS_MARGIN <= x <= width - _CANVAS_MARGIN):
+                issues.append(
+                    SldV2LayoutIssue(
+                        issue_id=f"text_outside_frame:{label[:40]}",
+                        severity="error",
+                        message=f"text '{label}' anchored at x={x:.0f} lies outside the drawing frame",
+                    )
+                )
+        elif tag == "circle":
+            circle_id = element.attrib.get("id", "")
+            if circle_id.startswith("tx-"):
+                winding_circles[circle_id] = (
+                    float(element.attrib.get("cx", "0")),
+                    float(element.attrib.get("cy", "0")),
+                    float(element.attrib.get("r", "0")),
+                )
+
+    if len(winding_circles) >= 2:
+        radii = {round(r, 3) for _, _, r in winding_circles.values()}
+        if len(radii) > 1:
+            issues.append(
+                SldV2LayoutIssue(
+                    issue_id="winding_circles_unequal",
+                    severity="error",
+                    message=f"transformer winding circles have unequal radii: {sorted(radii)}",
+                )
+            )
+        for (id_a, a), (id_b, b) in combinations(sorted(winding_circles.items()), 2):
+            distance = math.hypot(a[0] - b[0], a[1] - b[1])
+            if distance >= a[2] + b[2]:
+                issues.append(
+                    SldV2LayoutIssue(
+                        issue_id=f"winding_circles_detached:{id_a}:{id_b}",
+                        severity="error",
+                        message=(
+                            f"transformer winding circles {id_a} and {id_b} do not interlock "
+                            f"(centre distance {distance:.1f} >= {a[2] + b[2]:.1f})"
+                        ),
+                    )
+                )
 
     return issues
 

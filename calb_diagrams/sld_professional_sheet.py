@@ -218,11 +218,13 @@ def build_professional_sld_sheet(plan: SldV2LayoutPlan) -> ProfessionalSldSheet:
         bus_x2=bus_x2,
         pcs_y=mv.lv_bus_y + 110.0,
         dc_device_y=mv.lv_bus_y + 220.0,
-        block_y=mv.lv_bus_y + 280.0,
+        # block_y + battery_height + two label lines must stay above the
+        # title block top edge (plan.height - 120): 944 + 66 + 24 = 1034 < 1040.
+        block_y=mv.lv_bus_y + 274.0,
         converter_width=80.0,
         converter_height=60.0,
         battery_width=90.0,
-        battery_height=70.0,
+        battery_height=66.0,
         multi_block_spacing_base=104.0,
         multi_block_spacing_max=128.0,
     )

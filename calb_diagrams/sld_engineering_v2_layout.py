@@ -356,6 +356,7 @@ def build_sld_engineering_v2_layout_plan(
                 ),
                 *((str(graph.equipment_ratings.transformer_cooling),) if graph.equipment_ratings.transformer_cooling else ()),
             ),
+            attributes={"lv_winding_count": summary.lv_winding_count},
         ),
     ]
 

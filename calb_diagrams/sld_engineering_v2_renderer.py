@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime
 import math
+import re
 from pathlib import Path
 from typing import Iterable
 
@@ -36,6 +37,7 @@ from calb_diagrams.sld_professional_sheet import (
     first_box as _first_box,
     format_number as _fmt_number,
 )
+from calb_diagrams.sld_engineering_v2_validation import validate_rendered_sld_svg
 from calb_diagrams.specs import SLD_FONT_FAMILY
 from calb_diagrams.symbol_library import resolve_palette
 
@@ -184,51 +186,104 @@ def _delta_mark(dwg, x: float, y: float, size: float = 14.0) -> None:
 
 
 def _wye_grounded_mark(dwg, x: float, y: float, size: float = 14.0) -> None:
-    """Grounded-wye (Yg) for transformer LV winding annotation."""
-    ctr = (x, y)
-    _line(dwg, ctr, (x, y - size * 0.55), "thin")
-    _line(dwg, ctr, (x - size * 0.50, y + size * 0.38), "thin")
-    _line(dwg, ctr, (x + size * 0.50, y + size * 0.38), "thin")
-    # Ground symbol below Y centre
-    _ground(dwg, x, y + 4.0)
+    """Grounded-wye (yn) winding mark — Y with the neutral leg brought down to
+    ground bars. Total extent stays within ~0.85*size of the centre so the mark
+    never bleeds outside its winding circle."""
+    arm = size * 0.55
+    _line(dwg, (x, y), (x - arm * 0.87, y - arm * 0.50), "thin")
+    _line(dwg, (x, y), (x + arm * 0.87, y - arm * 0.50), "thin")
+    neutral_y = y + size * 0.40
+    _line(dwg, (x, y), (x, neutral_y), "thin")
+    for i, half in enumerate((size * 0.36, size * 0.23, size * 0.10)):
+        gy = neutral_y + i * size * 0.15
+        _line(dwg, (x - half, gy), (x + half, gy), "thin")
+
+
+def _wye_mark(dwg, x: float, y: float, size: float = 14.0) -> None:
+    """Ungrounded-wye (y) winding mark — plain Y, no earth bars."""
+    arm = size * 0.60
+    _line(dwg, (x, y), (x - arm * 0.87, y - arm * 0.50), "thin")
+    _line(dwg, (x, y), (x + arm * 0.87, y - arm * 0.50), "thin")
+    _line(dwg, (x, y), (x, y + arm), "thin")
+
+
+_VG_HV_TOKEN = re.compile(r"^(ZN|YN|Z|Y|D)")
+_VG_LV_TOKEN = re.compile(r"(zn|yn|z|y|d)(\d{0,2})")
+
+
+def _parse_vector_group(vector_group: str, secondary_count: int) -> tuple[str, list[str]]:
+    """Split an IEC vector group string into HV token + one token per secondary.
+
+    'Dyn11'   → ('D', ['yn11'])           (2-winding)
+    'Dyn11'   → ('D', ['yn11', 'yn11'])   (3-winding: identical secondaries)
+    'YNd11y0' → ('YN', ['d11', 'y0'])
+
+    Returns ('', []) when the string cannot be parsed — callers must then fall
+    back to a text annotation so the symbol never contradicts the nameplate.
+    """
+    vg = str(vector_group or "").strip()
+    if not vg:
+        return "", []
+    hv_match = _VG_HV_TOKEN.match(vg)
+    if not hv_match:
+        return "", []
+    hv_kind = hv_match.group(1)
+    rest = vg[hv_match.end():]
+    lv_tokens = [kind + clock for kind, clock in _VG_LV_TOKEN.findall(rest)]
+    if not lv_tokens:
+        return "", []
+    while len(lv_tokens) < secondary_count:
+        lv_tokens.append(lv_tokens[-1])
+    return hv_kind, lv_tokens[:secondary_count]
+
+
+def _winding_mark(dwg, x: float, y: float, token: str, size: float = 14.0,
+                  fallback_text: str = "") -> None:
+    """Draw the winding-connection mark matching a vector-group token.
+
+    Symbol selection is driven by the parsed token so the graphic can never
+    contradict the nameplate text. Unknown tokens are annotated as text.
+    """
+    kind = re.sub(r"\d+$", "", str(token or "")).lower()
+    if kind == "d":
+        _delta_mark(dwg, x, y, size=size)
+    elif kind in ("yn", "zn"):
+        _wye_grounded_mark(dwg, x, y, size=size)
+    elif kind in ("y", "z"):
+        _wye_mark(dwg, x, y, size=size)
+    else:
+        _text(dwg, fallback_text or str(token), x, y + 4.0, "label", anchor="middle")
 
 
 def _transformer_2w(dwg, x: float, y: float,
                     vector_group: str, text_lines: tuple[str, ...]) -> None:
-    """ANSI two-winding transformer: two interlocked circles with vector group annotation.
+    """ANSI/IEC two-winding transformer: two clearly interlocked equal circles.
 
-    HV (primary) circle on top with delta mark; LV (secondary) below with grounded-wye mark.
-    Wire entry at top of HV circle, exit at bottom of LV circle.
+    HV (primary) circle on top, LV (secondary) below; winding marks are derived
+    from the vector group via _parse_vector_group -> _winding_mark
+    (_delta_mark / _wye_grounded_mark / _wye_mark). Wire entry at top of the HV
+    circle, exit at bottom of the LV circle.
     """
     r = 28.0
-    gap = 4.0          # overlap between circles
+    overlap = 16.0     # classic interlocked-circles look (~0.57 r)
     hv_cy = y + r
-    lv_cy = hv_cy + 2 * r - gap
+    lv_cy = hv_cy + 2 * r - overlap
 
-    dwg.add(dwg.circle(center=(x, hv_cy), r=r, class_="sfill"))
-    dwg.add(dwg.circle(center=(x, lv_cy), r=r, class_="sfill"))
+    dwg.add(dwg.circle(center=(x, hv_cy), r=r, class_="sfill", id="tx-hv-winding"))
+    dwg.add(dwg.circle(center=(x, lv_cy), r=r, class_="sfill", id="tx-lv-winding-1"))
 
-    # Winding type marks inside each circle
     vg = str(vector_group or "Dyn11").strip()
-    hv_type = "D" if vg and vg[0].upper() in ("D",) else "Y"
-    lv_type = "yn" if "yn" in vg.lower() else ("d" if "d" in vg[1:].lower() else "y")
+    hv_token, lv_tokens = _parse_vector_group(vg, 1)
+    mark = r * 0.62
+    # Marks sit in the non-overlapped part of each circle
+    _winding_mark(dwg, x, hv_cy - overlap * 0.35, hv_token, size=mark, fallback_text=vg)
+    _winding_mark(dwg, x, lv_cy + overlap * 0.35, lv_tokens[0] if lv_tokens else "",
+                  size=mark, fallback_text=vg)
 
-    if hv_type == "D":
-        _delta_mark(dwg, x, hv_cy, size=13.0)
-    else:
-        _wye_grounded_mark(dwg, x, hv_cy, size=12.0)
-
-    if "yn" in lv_type.lower() or "y" in lv_type.lower():
-        _wye_grounded_mark(dwg, x, lv_cy, size=12.0)
-    else:
-        _delta_mark(dwg, x, lv_cy, size=13.0)
-
-    # Vector group label
-    _text(dwg, vg, x + r + 8.0, hv_cy - 4.0, "label")
-
-    # Spec lines to the right
+    # Nameplate lines to the right (vector group already appears in these
+    # lines - do not print it a second time)
     for idx, line in enumerate(text_lines):
-        _text(dwg, line, x + r + 8.0, hv_cy + 14.0 + idx * 14.0, "label")
+        _text(dwg, line, x + r + 12.0, hv_cy - 4.0 + idx * 14.0, "label")
 
     # Return connection y coordinates for caller
     return hv_cy - r, lv_cy + r   # (top connection y, bottom connection y)
@@ -242,32 +297,64 @@ def _transformer_split_secondary(
     text_lines: tuple[str, ...],
     winding_count: int,
 ) -> tuple[float, list[tuple[float, float]]]:
-    """Draw one MV primary plus independent split LV secondary winding symbols."""
-    hv_radius = 28.0
-    lv_radius = 20.0
-    hv_cy = y + hv_radius
-    lv_cy = y + 88.0
-    offsets = [
-        (index - (winding_count - 1) / 2.0) * 92.0
-        for index in range(winding_count)
-    ]
+    """Three-winding transformer per IEC 60617 / ANSI 315: three equal circles
+    forming one interlocked cluster - HV primary on top, the independent LV
+    secondaries below-left and below-right, every pair of circles overlapping.
 
-    dwg.add(dwg.circle(center=(x, hv_cy), r=hv_radius, class_="sfill"))
-    _delta_mark(dwg, x, hv_cy, size=13.0)
-    for winding_index, offset in enumerate(offsets, start=1):
-        secondary_x = x + offset
-        dwg.add(dwg.circle(center=(secondary_x, lv_cy), r=lv_radius, class_="sfill"))
-        _wye_grounded_mark(dwg, secondary_x, lv_cy, size=10.0)
-        # Put the secondary identifier above the winding: a large draft
-        # watermark is intentionally overlaid below the transformer and must
-        # not hide the distinction between LV-A and LV-B.
-        _text(dwg, f"LV-{chr(64 + winding_index)}", secondary_x, lv_cy - lv_radius - 8.0, "tag", anchor="middle")
+    Returns (hv connection y, [(x, y) LV terminal per winding]).
+    """
+    if winding_count != 2:
+        raise ValueError(
+            f"split-secondary transformer symbol supports exactly 2 LV windings, got {winding_count}"
+        )
+    r = 26.0
+    dx = 24.0          # horizontal half-spread of the LV circles
+    dy = 34.0          # vertical drop of LV centres below the HV centre
+    hv_cy = y + r      # HV top connection stays exactly at y
+    lv_cy = hv_cy + dy
+    # Overlap guarantees: HV-LV centre distance = sqrt(24^2 + 34^2) ~ 41.6 < 2r = 52;
+    # LV-LV centre distance = 48 < 52. All three circles interlock as one device.
 
-    _text(dwg, str(vector_group or "Dyn11"), x + 72.0, hv_cy - 4.0, "label")
+    vg = str(vector_group or "Dyn11").strip()
+    hv_token, lv_tokens = _parse_vector_group(vg, winding_count)
+    mark = r * 0.60
+
+    dwg.add(dwg.circle(center=(x, hv_cy), r=r, class_="sfill", id="tx-hv-winding"))
+    _winding_mark(dwg, x, hv_cy - r * 0.28, hv_token, size=mark, fallback_text=vg)
+
+    terminals: list[tuple[float, float]] = []
+    for winding_index in range(1, winding_count + 1):
+        sign = -1.0 if winding_index == 1 else 1.0
+        cx = x + sign * dx
+        dwg.add(dwg.circle(center=(cx, lv_cy), r=r, class_="sfill",
+                           id=f"tx-lv-winding-{winding_index}"))
+        lv_token = lv_tokens[winding_index - 1] if lv_tokens else ""
+        _winding_mark(dwg, cx + sign * r * 0.20, lv_cy + r * 0.16, lv_token,
+                      size=mark, fallback_text=vg)
+        # Identify each secondary beside its own outgoing lead, on the outer
+        # side, below the symbol: the draft watermark band sits over the
+        # transformer and must not hide the LV-A / LV-B distinction.
+        terminal = (cx, lv_cy + r)
+        terminals.append(terminal)
+        label_anchor = "end" if sign < 0 else "start"
+        _text(dwg, f"LV-{chr(64 + winding_index)}",
+              cx + sign * 10.0, terminal[1] + 12.0, "tag", anchor=label_anchor)
+
+    # Nameplate block to the right, top-aligned with the symbol and clear of
+    # both the LV-B circle (right edge x+dx+r) and the LV routing elbows below.
+    plate_x = x + dx + r + 28.0
     for idx, line in enumerate(text_lines):
-        _text(dwg, line, x + 72.0, hv_cy + 14.0 + idx * 14.0, "label")
+        _text(dwg, line, plate_x, y + 6.0 + idx * 13.0, "label")
+    if lv_tokens:
+        if len(set(lv_tokens)) == 1:
+            secondaries_note = f"Secondaries: {winding_count} x {lv_tokens[0]} (LV-A, LV-B)"
+        else:
+            secondaries_note = "Secondaries: " + ", ".join(
+                f"LV-{chr(65 + i)}: {token}" for i, token in enumerate(lv_tokens)
+            )
+        _text(dwg, secondaries_note, plate_x, y + 6.0 + len(text_lines) * 13.0, "label")
 
-    return hv_cy - hv_radius, [(x + offset, lv_cy + lv_radius) for offset in offsets]
+    return hv_cy - r, terminals
 
 
 def _pcs_by_lv_winding(plan: SldV2LayoutPlan) -> dict[int, list[SldV2LayoutBox]]:
@@ -401,9 +488,9 @@ def _bess_block(dwg, x: float, y: float, width: float, height: float,
     _text(dwg, "-", x - width * 0.38, y + height * 0.80, "label")
 
     # Labels below box
-    _text(dwg, title, x, y + height + 13.0, "label", anchor="middle")
+    _text(dwg, title, x, y + height + 12.0, "label", anchor="middle")
     if subtitle:
-        _text(dwg, subtitle, x, y + height + 25.0, "label", anchor="middle")
+        _text(dwg, subtitle, x, y + height + 24.0, "label", anchor="middle")
     if tag:
         _text(dwg, tag, x + width / 2.0 + 6.0, y + 12.0, "tag", anchor="start")
 
@@ -487,7 +574,7 @@ def _feeder_terminal(dwg, x: float, y_top: float, y_bus: float,
 
 def _draw_notes_panel(dwg, sheet: ProfessionalSldSheet) -> None:
     notes = sheet.notes
-    panel_h = notes.height + 40.0
+    panel_h = notes.height + 26.0   # 26 = title band; no stray empty band below
     _rect(dwg, notes.x, notes.y, notes.width, panel_h, "sfill")
     dwg.add(dwg.rect(insert=(notes.x, notes.y), size=(notes.width, panel_h), class_="outline"))
 
@@ -614,6 +701,16 @@ def _draw_mv_rmu_and_transformer(
     _cable_3phase(dwg, mv.center_x, mv.transformer_y - 40.0)
 
     # ── Transformer ────────────────────────────────────────────────────────
+    # Defensive gate: a transformer that declares N LV windings must resolve to
+    # exactly N PCS groups, otherwise the drawing would silently show fewer
+    # secondaries than the equipment list promises.
+    declared_windings = int((transformer.attributes if transformer else {}).get("lv_winding_count") or 0)
+    if declared_windings > 1 and declared_windings != winding_count:
+        raise ValueError(
+            f"transformer declares {declared_windings} LV windings but PCS groups "
+            f"resolve to {winding_count} — refusing to draw an incomplete secondary"
+        )
+
     # Filter standalone vector-group token from text lines (already drawn as winding marks)
     raw_lines = transformer.text_lines[1:] if transformer else ()
     filtered_lines = tuple(ln for ln in raw_lines if ln.strip() != (vg_token or "Dyn11"))
@@ -632,22 +729,24 @@ def _draw_mv_rmu_and_transformer(
             vg_token or "Dyn11", filtered_lines,
         )
         tx_lv_terminals = [(mv.center_x, tx_bot)]
-    _text(dwg, "T-01", mv.center_x - 50.0, mv.transformer_y + 14.0, "tag")
+    _text(dwg, "T-01", mv.center_x - 62.0, mv.transformer_y + 18.0, "tag", anchor="end")
 
     # Short wire connecting feeder branch to HV terminal
     _line(dwg, (mv.center_x, mv.transformer_y - 32.0), (mv.center_x, tx_top), "wire")
     # Separate secondaries are routed independently to their corresponding LV
     # winding busbars. There is deliberately no common LV conductor between
-    # these paths.
+    # these paths. Elbows run below the LV-A/LV-B lead labels so the wires
+    # never cross the transformer nameplate text.
     for (winding_index, pcs_boxes), terminal in zip(sorted(pcs_by_winding.items()), tx_lv_terminals):
         target_x = sum(box.x + box.width / 2.0 for box in pcs_boxes) / len(pcs_boxes)
-        elbow_y = terminal[1] + 10.0
+        elbow_y = terminal[1] + 24.0
         _poly(
             dwg,
             [terminal, (terminal[0], elbow_y), (target_x, elbow_y), (target_x, mv.lv_bus_y)],
             "wire",
             id=f"transformer-lv-winding-{winding_index}",
         )
+        _junction(dwg, target_x, mv.lv_bus_y)
 
     return mv.center_x, mv.lv_bus_y
 
@@ -782,7 +881,9 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
             continue
 
         multi = len(blocks) > 1
-        branch_y = lvdc.block_y - (30.0 if multi else 10.0)
+        # The horizontal branch must sit BELOW the fuse outlet (dc_bot),
+        # otherwise the drop wire would double back up across the fuse stub.
+        branch_y = max(lvdc.block_y - (30.0 if multi else 10.0), dc_bot + 8.0)
 
         if multi:
             spc = min(lvdc.multi_block_spacing_max,
@@ -818,7 +919,12 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
         feeder_span = [int(feeder) for feeder in (block.attributes.get("feeder_span") or [])]
         if not feeder_span or any(feeder not in dc_bottom_by_feeder for feeder in feeder_span):
             raise ValueError(f"shared DC block has unresolved feeder connection(s): {block.node_id}")
-        branch_y = lvdc.block_y - 36.0
+        # Same invariant as per-feeder branches: horizontal run stays below
+        # every participating fuse outlet.
+        branch_y = max(
+            lvdc.block_y - 36.0,
+            max(dc_bottom_by_feeder[feeder] for feeder in feeder_span) + 8.0,
+        )
         block_x = block.x + block.width / 2.0
         prefix = f"shared-dc-{block.node_id}"
         span_x = [pcs_x_by_feeder[feeder] for feeder in feeder_span]
@@ -959,15 +1065,26 @@ def render_sld_engineering_v2_svg(
     out_svg.parent.mkdir(parents=True, exist_ok=True)
     dwg.saveas(str(out_svg))
 
-    png_warning = None
+    # Rendered-output quality gate: geometric defects (winding circles that do
+    # not interlock, text intruding into the title block) surface as a warning
+    # so callers and tests see them even when the layout plan validated clean.
+    gate_issues = [
+        issue for issue in validate_rendered_sld_svg(dwg.tostring())
+        if issue.severity == "error"
+    ]
+    warnings: list[str] = []
+    if gate_issues:
+        warnings.append(
+            "Rendered-SVG quality gate: " + "; ".join(issue.message for issue in gate_issues)
+        )
     if out_png is not None:
         out_png = Path(out_png)
         out_png.parent.mkdir(parents=True, exist_ok=True)
         try:
             _write_png(out_svg, out_png)
         except ImportError:
-            png_warning = "Missing dependency: cairosvg. PNG export skipped."
+            warnings.append("Missing dependency: cairosvg. PNG export skipped.")
         except Exception:
-            png_warning = "PNG export failed."
+            warnings.append("PNG export failed.")
 
-    return out_svg, png_warning
+    return out_svg, ("; ".join(warnings) if warnings else None)
