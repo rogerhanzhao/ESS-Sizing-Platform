@@ -65,3 +65,6 @@ deploy/systemd/calb-ngrok@.service.d/override.conf
 
 # local-only ops records (contain infra details; repo is public)
 docs/ops-local/
+
+# Lark IM downloads (internal company material; repo is public)
+lark-im-resources/
