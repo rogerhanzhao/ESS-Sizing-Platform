@@ -103,6 +103,7 @@ without an explicit incident decision.
 | --- | --- | --- | --- | --- |
 | 2026-07-14 | `ops/ubuntu-docker-coexist-20260311` | `0fd2a93` | `2d0e29a` | Relay push, server `ff-only`, Docker rebuild/restart, HTTP 200 |
 | 2026-07-14 | `ops/ubuntu-docker-coexist-20260311` | `2c7d5c1` | `24ba9e0` | Project/Case access isolation and Run restore workflow; relay push, server `ff-only`, Docker rebuild/restart, HTTP 200 |
+| 2026-07-16 | `ops/ubuntu-docker-coexist-20260311` | `eb8b68f` | `7bc4191` | SLD/Layout drawing-quality hardening batch (13 commits). Direct server→GitHub pull re-tested first: port 443 still times out (admin ticket open), so relay path used. Relay push, server `ff-only`, Docker rebuild/restart, HTTP 200 |
 
 The first attempted full relay push was interrupted after the empty relay had
 received a partial pack. The partial state was discarded before the relay was
