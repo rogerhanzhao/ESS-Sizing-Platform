@@ -24,7 +24,7 @@ from pathlib import Path
 import pandas as pd
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Inches, Pt
+from docx.shared import Inches, Pt, RGBColor
 
 # Monkeypatch compatibility: allow xpath(..., namespaces=...) calls on
 # docx OXML elements where the underlying xpath implementation does not
@@ -118,6 +118,42 @@ def _apply_footer(doc: Document, footer_lines: list[str] | None) -> None:
         run_footer.font.size = Pt(8)
 
 
+def _add_page_number_footer(doc: Document) -> None:
+    """Append a right-aligned 'Page X of Y' field to every section footer.
+
+    Existing footer content is preserved; this adds a new paragraph after it.
+    """
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    def _field_run(paragraph, instr: str):
+        run = paragraph.add_run()
+        fld_begin = OxmlElement("w:fldChar")
+        fld_begin.set(qn("w:fldCharType"), "begin")
+        instr_text = OxmlElement("w:instrText")
+        instr_text.set(qn("xml:space"), "preserve")
+        instr_text.text = instr
+        fld_end = OxmlElement("w:fldChar")
+        fld_end.set(qn("w:fldCharType"), "end")
+        run._r.append(fld_begin)
+        run._r.append(instr_text)
+        run._r.append(fld_end)
+        run.font.size = Pt(8)
+        return run
+
+    for section in doc.sections:
+        footer = section.footer
+        footer.is_linked_to_previous = False
+        para = footer.add_paragraph()
+        para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        lead = para.add_run("Page ")
+        lead.font.size = Pt(8)
+        _field_run(para, "PAGE")
+        mid = para.add_run(" of ")
+        mid.font.size = Pt(8)
+        _field_run(para, "NUMPAGES")
+
+
 def _setup_header(
     doc: Document,
     title: str = "Confidential Sizing Report",
@@ -188,7 +224,28 @@ def _keep_lines_para(para):
     return para
 
 
-def _add_table(doc: Document, rows, headers, *, keep_together: bool | None = None):
+HEADER_FILL = "1F4E79"  # CALB dark blue
+ZEBRA_FILL = "F2F6FA"   # light blue-grey for alternate rows on long tables
+_CONTENT_WIDTH_INCHES = 6.9  # US Letter minus 0.8" margins
+
+
+def _shade_cell(cell, fill_hex: str) -> None:
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+    cell._tc.get_or_add_tcPr().append(
+        parse_xml(f'<w:shd {nsdecls("w")} w:val="clear" w:fill="{fill_hex}"/>')
+    )
+
+
+def _add_table(
+    doc: Document,
+    rows,
+    headers,
+    *,
+    keep_together: bool | None = None,
+    col_width_fracs: list[float] | None = None,
+    align_right_cols: list[int] | None = None,
+):
     if not rows:
         doc.add_paragraph("No data available.")
         return None
@@ -201,14 +258,33 @@ def _add_table(doc: Document, rows, headers, *, keep_together: bool | None = Non
     for j, col in enumerate(headers):
         hdr[j].text = str(col)
     for cell in hdr:
+        _shade_cell(cell, HEADER_FILL)
         for para in cell.paragraphs:
             for run in para.runs:
                 run.bold = True
+                run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
 
-    for row in rows:
+    align_right = set(align_right_cols or [])
+    for i, row in enumerate(rows):
         rc = tbl.add_row().cells
         for j, val in enumerate(row):
             rc[j].text = "" if val is None else str(val)
+            if j in align_right:
+                for para in rc[j].paragraphs:
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            if len(rows) > 8 and i % 2 == 1:
+                _shade_cell(rc[j], ZEBRA_FILL)
+
+    # Label/value two-column tables default to a 62/38 split so values do not
+    # float in a half-empty column.
+    if col_width_fracs is None and len(headers) == 2:
+        col_width_fracs = [0.62, 0.38]
+    if col_width_fracs and len(col_width_fracs) == len(headers):
+        tbl.autofit = False
+        widths = [Inches(_CONTENT_WIDTH_INCHES * frac) for frac in col_width_fracs]
+        for row in tbl.rows:
+            for j, cell in enumerate(row.cells):
+                cell.width = widths[j]
 
     # Prevent any row from splitting mid-row across a page boundary
     for row in tbl.rows:

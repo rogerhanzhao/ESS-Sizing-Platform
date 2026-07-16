@@ -25,7 +25,14 @@ import pandas as pd
 from docx import Document
 from docx.shared import Inches
 
-from calb_sizing_tool.reporting.export_docx import _add_cover_page, _add_table, _doc_to_bytes, _keep_next_para, _setup_header, _setup_margins
+from calb_sizing_tool.reporting.export_docx import (
+    _add_page_number_footer,
+    _add_table,
+    _doc_to_bytes,
+    _keep_next_para,
+    _setup_header,
+    _setup_margins,
+)
 from calb_sizing_tool.reporting.formatter import format_percent, format_value
 from calb_sizing_tool.reporting.report_context import ReportContext
 
@@ -86,7 +93,11 @@ def _add_dataframe_table(doc: Document, df: Optional[pd.DataFrame], columns, hea
         rows.append([formatters.get(col, _default_formatter)(row.get(col)) for col in columns])
 
     headers = [headers_map.get(col, col) for col in columns]
-    _add_table(doc, rows, headers, keep_together=keep_together)
+    numeric_cols = [
+        j for j, col in enumerate(columns)
+        if col in df.columns and pd.api.types.is_numeric_dtype(df[col])
+    ]
+    _add_table(doc, rows, headers, keep_together=keep_together, align_right_cols=numeric_cols)
 
 
 def _plot_poi_usable_png(df: pd.DataFrame, poi_target: float, title: str) -> Optional[io.BytesIO]:
@@ -105,6 +116,11 @@ def _plot_poi_usable_png(df: pd.DataFrame, poi_target: float, title: str) -> Opt
         ax.set_xlabel("Year (from COD)")
         ax.set_ylabel("POI Usable Energy (MWh)")
         ax.set_xticks(x)
+        # Headroom above the tallest bar / target line so the red guarantee
+        # line never sits on the plot border.
+        top = max(max(y) if y else 0.0, float(poi_target or 0.0))
+        if top > 0:
+            ax.set_ylim(0, top * 1.12)
         ax.grid(True, axis="y", linestyle="--", alpha=0.35)
 
         buf = io.BytesIO()
@@ -121,41 +137,90 @@ def _plot_dc_capacity_bar_png(
     bol_mwh: Optional[float],
     s3_df: Optional[pd.DataFrame],
     guarantee_year: int,
+    poi_target: Optional[float],
     title: str,
 ) -> Optional[io.BytesIO]:
-    """Bar chart: DC Nameplate (BOL) vs POI Usable at COD and at guarantee year.
+    """Bar chart: installed DC nameplate vs deliverable POI energy at key milestones.
 
-    Note: BOL is a DC-side metric; COD and Yx values are POI-side.
-    This chart is retained for internal/debugging use; the main report uses
-    _plot_poi_usable_png which shows a consistent POI-only view.
+    BOL is a DC-side metric; all other bars are POI-side. The two measurement
+    planes use distinct colors and an explicit legend so the DC/POI distinction
+    is unambiguous, and the guarantee target line is drawn across the POI bars
+    only (the target does not apply to the DC plane).
     """
     if not MATPLOTLIB_AVAILABLE:
         return None
     try:
-        cod = None
-        yx = None
-        if s3_df is not None and not s3_df.empty:
-            year0 = s3_df[s3_df["Year_Index"] == 0]
-            if not year0.empty:
-                cod = float(year0["POI_Usable_Energy_MWh"].iloc[0])
-            g_row = s3_df[s3_df["Year_Index"] == int(guarantee_year)]
-            if not g_row.empty:
-                yx = float(g_row["POI_Usable_Energy_MWh"].iloc[0])
+        from matplotlib.lines import Line2D
+        from matplotlib.patches import Patch
 
-        labels = ["DC Nameplate\n(BOL)", "POI Usable\n(COD)", f"POI Usable\n(Y{int(guarantee_year)})"]
-        values = [
-            float(bol_mwh) if bol_mwh is not None else 0.0,
-            float(cod) if cod is not None else 0.0,
-            float(yx) if yx is not None else 0.0,
-        ]
+        if s3_df is None or s3_df.empty or bol_mwh is None:
+            return None
 
-        fig = Figure(figsize=(6.6, 3.0))
+        def _poi_at(year: int) -> Optional[float]:
+            row = s3_df[s3_df["Year_Index"] == int(year)]
+            if row.empty:
+                return None
+            return float(row["POI_Usable_Energy_MWh"].iloc[0])
+
+        g_year = int(guarantee_year)
+        final_year = int(s3_df["Year_Index"].max())
+
+        DC_COLOR = "#1f4e79"
+        POI_COLOR = "#5cc3e4"
+
+        labels = ["DC Nameplate\nBOL (DC side)"]
+        values = [float(bol_mwh)]
+        colors = [DC_COLOR]
+
+        cod = _poi_at(0)
+        if cod is not None:
+            cod_label = "POI Usable\nY0 (COD)"
+            if g_year == 0:
+                cod_label = "POI Usable\nY0 (COD, guarantee)"
+            labels.append(cod_label)
+            values.append(cod)
+            colors.append(POI_COLOR)
+
+        if g_year > 0:
+            yg = _poi_at(g_year)
+            if yg is not None:
+                labels.append(f"POI Usable\nY{g_year} (guarantee)")
+                values.append(yg)
+                colors.append(POI_COLOR)
+
+        if final_year not in (0, g_year):
+            y_end = _poi_at(final_year)
+            if y_end is not None:
+                labels.append(f"POI Usable\nY{final_year} (end of life)")
+                values.append(y_end)
+                colors.append(POI_COLOR)
+
+        fig = Figure(figsize=(7.0, 3.4))
         ax = fig.add_subplot(111)
-        ax.bar(labels, values, color="#5cc3e4")
+        bars = ax.bar(labels, values, color=colors, width=0.6)
+        ax.bar_label(bars, fmt="%.1f", padding=2, fontsize=9)
+
+        legend_handles = [
+            Patch(facecolor=DC_COLOR, label="DC side (installed nameplate)"),
+            Patch(facecolor=POI_COLOR, label="POI side (deliverable energy)"),
+        ]
+        if poi_target is not None and float(poi_target) > 0 and len(values) > 1:
+            ax.hlines(
+                float(poi_target),
+                xmin=0.7,
+                xmax=len(values) - 1 + 0.3,
+                linewidth=2,
+                color="#ff0000",
+            )
+            legend_handles.append(
+                Line2D([0], [0], color="#ff0000", linewidth=2, label="POI guarantee target")
+            )
+
         ax.set_title(title)
-        ax.set_xlabel("Stage")
         ax.set_ylabel("Energy (MWh)")
+        ax.set_ylim(0, max(values) * 1.18)
         ax.grid(True, axis="y", linestyle="--", alpha=0.35)
+        ax.legend(handles=legend_handles, loc="upper right", fontsize=8, framealpha=0.9)
 
         buf = io.BytesIO()
         fig.tight_layout()
@@ -165,6 +230,66 @@ def _plot_dc_capacity_bar_png(
         return buf
     except Exception:
         return None
+
+
+def _add_cover_page_v2(doc: Document, title: str, ctx: ReportContext, tool_version: str) -> None:
+    """Proposal cover: title, project identity block, issuer, confidentiality note."""
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Pt
+
+    for _ in range(4):
+        doc.add_paragraph("")
+
+    heading = doc.add_heading(title, level=1)
+    heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    subtitle = doc.add_paragraph("Battery Energy Storage System — Sizing Proposal")
+    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if subtitle.runs:
+        subtitle.runs[0].font.size = Pt(13)
+
+    doc.add_paragraph("")
+    generated = ctx.report_generated_at or datetime.datetime.now().strftime("%Y-%m-%d")
+    info_lines = [
+        f"Project: {ctx.project_name}",
+        f"Case: {ctx.case_name or '—'}",
+        f"Date: {generated}",
+        f"Tool Version: {tool_version}",
+    ]
+    info = doc.add_paragraph("\n".join(info_lines))
+    info.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    doc.add_paragraph("")
+    issuer = doc.add_paragraph(
+        "Prepared by: CALB Group Co., Ltd.\nUtility-Scale Energy Storage Systems"
+    )
+    issuer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    for _ in range(8):
+        doc.add_paragraph("")
+    notice = doc.add_paragraph(
+        "CONFIDENTIAL — This document contains proprietary information of CALB Group Co., Ltd. "
+        "It is provided for evaluation purposes only and shall not be reproduced or disclosed "
+        "to third parties without prior written consent. Sizing results are preliminary and "
+        "subject to detailed engineering confirmation."
+    )
+    notice.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for run in notice.runs:
+        run.font.size = Pt(8)
+        run.italic = True
+
+    doc.add_page_break()
+
+
+def _normalize_template_label(value) -> str:
+    """Normalize AC block template ids like '4x1250kw' to '4×1250 kW' for display."""
+    if value is None:
+        return "—"
+    text = str(value)
+    match = re.fullmatch(r"\s*(\d+)\s*[xX×]\s*(\d+)\s*[kK][wW]\s*", text)
+    if match:
+        return f"{match.group(1)}×{match.group(2)} kW"
+    return text
 
 
 def _format_or_tbd(value, unit: str) -> str:
@@ -359,12 +484,8 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
         cover_title = "CALB Utility-Scale ESS Sizing Report (V2.1 Beta)"
         tool_version = "V2.1 Beta"
 
-    _add_cover_page(
-        doc,
-        cover_title,
-        ctx.project_name,
-        {"tool_version": tool_version},
-    )
+    _add_page_number_footer(doc)
+    _add_cover_page_v2(doc, cover_title, ctx, tool_version)
 
     # Shared derived values used across multiple sections
     gyr_target = ctx.poi_energy_guarantee_mwh
@@ -401,6 +522,23 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
     # --- Section 1: Executive Summary ---
     # Flows on the same page as Document Provenance (no forced page break).
     doc.add_heading("1.  Executive Summary", level=2)
+    if poi_usable_at_gyr is not None and gyr_target is not None:
+        key_para = doc.add_paragraph()
+        key_run = key_para.add_run(
+            f"The proposed system delivers {format_value(poi_usable_at_gyr, 'MWh')} MWh at the POI "
+            f"in Year {ctx.poi_guarantee_year} against a guarantee target of "
+            f"{format_value(gyr_target, 'MWh')} MWh — guarantee "
+            f"{'met' if meets_guarantee == 'Yes' else 'NOT met'}."
+        )
+        key_run.bold = True
+        config_para = doc.add_paragraph(
+            f"Configuration: {ctx.dc_blocks_total} DC Blocks "
+            f"({format_value(ctx.dc_total_energy_mwh, 'MWh')} MWh nameplate @BOL) · "
+            f"{ctx.ac_blocks_total} AC Blocks ({_normalize_template_label(ctx.ac_block_template_id)}) · "
+            f"{ctx.pcs_modules_total} PCS modules."
+        )
+        _keep_next_para(key_para)
+        _keep_next_para(config_para)
     exec_rows = [
         ("POI Power Requirement (MW)", format_value(ctx.poi_power_requirement_mw, "MW")),
         ("POI Energy Requirement (MWh)", format_value(ctx.poi_energy_requirement_mwh, "MWh")),
@@ -410,20 +548,19 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
         ("Guarantee Compliance", meets_guarantee),
         ("DC Blocks Total", f"{ctx.dc_blocks_total:d}"),
         ("DC Nameplate Energy @BOL (MWh)", format_value(ctx.dc_total_energy_mwh, "MWh")),
-        ("AC Block Template", ctx.ac_block_template_id),
+        ("AC Block Template", _normalize_template_label(ctx.ac_block_template_id)),
         ("AC Blocks Total", f"{ctx.ac_blocks_total:d}"),
         ("Total PCS Modules", f"{ctx.pcs_modules_total:d}"),
         ("Transformer Rating", _format_transformer_rating(ctx.transformer_rating_kva)),
     ]
     _add_table(doc, exec_rows, ["Metric", "Value"])
     if ctx.dc_blocks_allocation:
-        doc.add_paragraph("")
-        _keep_next_para(doc.add_paragraph("DC Blocks per AC Block Allocation:"))
-        alloc_rows = [
-            (entry.get("dc_blocks_per_ac_block"), entry.get("ac_blocks_count"))
+        alloc_parts = [
+            f"{entry.get('dc_blocks_per_ac_block')} DC Blocks per AC Block × "
+            f"{entry.get('ac_blocks_count')} AC Blocks"
             for entry in ctx.dc_blocks_allocation
         ]
-        _add_table(doc, alloc_rows, ["DC Blocks per AC Block", "Number of AC Blocks"])
+        doc.add_paragraph(f"DC-to-AC allocation: {'; '.join(alloc_parts)}.")
 
     # --- Section 2: Project Inputs & Assumptions ---
     # Flows on the same page as Section 1 when space allows (no forced page break).
@@ -458,7 +595,7 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
     doc.add_heading("3.  Stage 1 – DC Energy Sizing", level=2)
     _keep_next_para(doc.add_paragraph(
         "DC Energy Required (MWh) = POI Energy Requirement ÷ "
-        "((1 − S&C loss) × DoD × DC RTEᴰᴵˢᶜʰᵃʳᵏᵉ × One-way Efficiency)"
+        "((1 − S&C loss) × DoD × DC RTE (discharge) × One-way Efficiency)"
     ))
     _keep_next_para(doc.add_paragraph(
         f"One-way Efficiency (DC→POI): {format_percent(ctx.efficiency_chain_oneway_frac, input_is_fraction=True)}  |  "
@@ -491,7 +628,8 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
     _add_table(doc, eff_rows, ["Component", "Efficiency"])
 
     # --- Section 4: Stage 2 - DC Block Configuration ---
-    doc.add_page_break()
+    # Flows after Stage 1 (no forced break): the section is one small table and
+    # previously produced a nearly blank page of its own.
     doc.add_heading("4.  Stage 2 – DC Block Configuration", level=2)
     dc_table = ctx.stage2.get("block_config_table") if isinstance(ctx.stage2, dict) else None
 
@@ -540,8 +678,8 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
         chosen_cycles_per_year = s3_meta.get("chosen_soh_cycles_per_year")
 
         model_rows = [
-            ("POI Power (MW)", f"{_fmt_float(poi_power, 2)} MW"),
-            ("DC-equivalent Power (MW)", f"{_fmt_float(dc_power, 2)} MW"),
+            ("POI Power (MW)", _fmt_float(poi_power, 2)),
+            ("DC-equivalent Power (MW)", _fmt_float(dc_power, 2)),
             ("Effective C-rate (DC side)", f"{_fmt_float(eff_c_rate, 3)} C"),
             ("SOH Modelling C-rate", f"≤ {chosen_soh_c_rate}" if chosen_soh_c_rate else "—"),
             ("SOH Modelling Cycles/Year", f"{chosen_cycles_per_year}" if chosen_cycles_per_year else "—"),
@@ -588,7 +726,34 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
         doc.add_paragraph("")
 
         s3_df = s3_df.copy()
-        s3_df["Meets_Guarantee"] = s3_df["POI_Usable_Energy_MWh"] >= float(gyr_target or 0.0)
+        guarantee_year_int = int(ctx.poi_guarantee_year or 0)
+        # The contractual guarantee is evaluated at the guarantee year only;
+        # showing Yes/No for every year misreads as a 20-year failure list.
+        s3_df["Meets_Guarantee"] = [
+            ("Yes" if float(poi) >= float(gyr_target or 0.0) else "No")
+            if int(year) == guarantee_year_int else "—"
+            for year, poi in zip(s3_df["Year_Index"], s3_df["POI_Usable_Energy_MWh"])
+        ]
+
+        capacity_chart = _plot_dc_capacity_bar_png(
+            bol_mwh=ctx.dc_total_energy_mwh,
+            s3_df=s3_df,
+            guarantee_year=int(ctx.poi_guarantee_year or 0),
+            poi_target=gyr_target,
+            title="Installed DC Energy vs. Deliverable POI Energy at Key Milestones",
+        )
+        if capacity_chart is not None and capacity_chart.getbuffer().nbytes > 0:
+            doc.add_picture(capacity_chart, width=Inches(6.7))
+            _keep_next_para(doc.paragraphs[-1])  # keep picture paragraph with its caption
+            _keep_next_para(doc.add_paragraph(
+                f"Figure 1: Installed DC nameplate energy (dark, DC side) versus deliverable "
+                f"energy at the point of interconnection (light, POI side). The step from BOL "
+                f"to POI reflects the one-way DC→POI efficiency chain, depth of discharge, "
+                f"and S&C/calendar/cycle degradation; later POI bars additionally reflect ageing. "
+                f"Red line = POI energy guarantee target ({format_value(gyr_target, 'MWh')} MWh), "
+                f"applicable to the POI bars only."
+            ))
+            _keep_next_para(doc.add_paragraph(""))
 
         chart = _plot_poi_usable_png(
             s3_df,
@@ -599,7 +764,7 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
             doc.add_picture(chart, width=Inches(6.7))
             _keep_next_para(doc.paragraphs[-1])  # keep picture paragraph with its caption
             _keep_next_para(doc.add_paragraph(
-                f"Figure 1: POI Usable Energy (MWh) by year from COD. "
+                f"Figure 2: POI Usable Energy (MWh) by year from COD. "
                 f"Red line = guarantee target ({format_value(gyr_target, 'MWh')} MWh). "
                 f"Guarantee evaluated at Year {ctx.poi_guarantee_year}."
             ))
@@ -631,7 +796,7 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
             "POI_Usable_Energy_MWh": "POI Usable (MWh)",
             "DC_RTE_Pct": "DC RTE (%)",
             "System_RTE_Pct": "System RTE (%)",
-            "Meets_Guarantee": "Meets Target",
+            "Meets_Guarantee": f"Meets Target (Y{int(ctx.poi_guarantee_year or 0)})",
         }
         s3_formatters = {
             "Year_Index": lambda v: f"{int(v)}",
@@ -641,13 +806,19 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
             "POI_Usable_Energy_MWh": lambda v: format_value(v, "MWh"),
             "DC_RTE_Pct": lambda v: format_percent(v, input_is_fraction=False),
             "System_RTE_Pct": lambda v: format_percent(v, input_is_fraction=False),
-            "Meets_Guarantee": lambda v: "Yes" if v else "No",
+            "Meets_Guarantee": lambda v: "" if v is None else str(v),
         }
         s3_columns = [column for column in s3_columns if column in s3_df.columns]
         _add_dataframe_table(doc, s3_df, s3_columns, s3_headers, s3_formatters, keep_together=False)
+        doc.add_paragraph(
+            f"Note: the POI energy guarantee is contractually evaluated at Year "
+            f"{int(ctx.poi_guarantee_year or 0)} only; later years are shown for reference "
+            f"and carry no pass/fail meaning."
+        )
 
     # --- Section 6: Stage 4 - AC Block Sizing ---
-    doc.add_page_break()
+    # Flows after the Stage 3 lifetime table (no forced break) to avoid an
+    # orphan page when the table ends near a page boundary.
     doc.add_heading("6.  Stage 4 – AC Block Sizing", level=2)
     ac_ratio = ctx.ac_output.get("selected_ratio") if isinstance(ctx.ac_output, dict) else None
     ac_pcs_kw = ctx.ac_output.get("pcs_kw") if isinstance(ctx.ac_output, dict) else None
@@ -656,21 +827,30 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
     pcs_count_by_block = ctx.ac_output.get("pcs_count_by_block") if isinstance(ctx.ac_output, dict) else None
     pcs_by_block_text = ""
     if isinstance(pcs_count_by_block, list) and pcs_count_by_block:
-        pcs_by_block_text = ", ".join(
-            f"B{idx + 1}={int(v)}" for idx, v in enumerate(pcs_count_by_block)
-        )
+        distinct_counts = {int(v) for v in pcs_count_by_block}
+        if len(distinct_counts) == 1:
+            pcs_by_block_text = (
+                f"{distinct_counts.pop()} per block, uniform across all "
+                f"{len(pcs_count_by_block)} AC Blocks"
+            )
+        else:
+            from collections import Counter
+            grouped = Counter(int(v) for v in pcs_count_by_block)
+            pcs_by_block_text = "; ".join(
+                f"{count} PCS × {n_blocks} blocks" for count, n_blocks in sorted(grouped.items(), reverse=True)
+            )
     transformer_mva = None
     if ctx.grid_power_factor and ctx.grid_power_factor > 0 and ctx.ac_block_size_mw:
         transformer_mva = ctx.ac_block_size_mw / ctx.grid_power_factor
     transformer_formula = "n/a"
     if transformer_mva is not None and ctx.ac_block_size_mw and ctx.grid_power_factor:
         transformer_formula = (
-            f"{format_value(ctx.ac_block_size_mw, 'MW')} ÷ {format_value(ctx.grid_power_factor, 'PF')}"
-            f" = {format_value(transformer_mva, 'MVA')}"
+            f"{format_value(ctx.ac_block_size_mw, 'MW')} MW ÷ {format_value(ctx.grid_power_factor, 'PF')} (PF)"
+            f" = {format_value(transformer_mva, 'MVA')} MVA"
         )
     s4_rows = [
         ("AC:DC Ratio", ac_ratio or "—"),
-        ("AC Block Template", ctx.ac_block_template_id),
+        ("AC Block Template", _normalize_template_label(ctx.ac_block_template_id)),
         ("AC Block Size (MW)", format_value(ctx.ac_block_size_mw, "MW")),
         ("PCS per AC Block", f"{ctx.pcs_per_block:d}"),
     ]
@@ -684,7 +864,7 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
         ("Total AC Blocks", f"{ctx.ac_blocks_total:d}"),
         ("Total PCS Modules", f"{ctx.pcs_modules_total:d}"),
         ("Transformer Rating (per block)", _format_transformer_rating(ctx.transformer_rating_kva)),
-        ("Transformer Rating Formula", transformer_formula),
+        ("Transformer Sizing Basis (AC Block MW ÷ PF)", transformer_formula),
     ]
     _add_table(doc, s4_rows, ["Parameter", "Value"])
 
@@ -694,7 +874,7 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
     _keep_next_para(doc.add_paragraph(
         "System electrical configuration: MV bus → RMU → Step-up Transformer → AC Block (DC blocks attached)."
     ))
-    figure_index = 2  # Figure 1 used by Stage 3 POI chart above
+    figure_index = 3  # Figures 1-2 used by Stage 3 milestone + POI charts above
     sld_embedded = False
     if ctx.sld_pro_png_bytes:
         doc.add_picture(io.BytesIO(ctx.sld_pro_png_bytes), width=Inches(6.7))
