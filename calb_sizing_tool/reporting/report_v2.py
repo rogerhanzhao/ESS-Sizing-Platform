@@ -33,6 +33,12 @@ from calb_sizing_tool.reporting.export_docx import (
     _setup_header,
     _setup_margins,
 )
+from calb_sizing_tool.reporting.brand_profiles import (
+    BrandProfile,
+    CALB_BRAND,
+    neutralize_equipment_text,
+    require_brand_assets,
+)
 from calb_sizing_tool.reporting.formatter import format_percent, format_value
 from calb_sizing_tool.reporting.report_context import ReportContext
 
@@ -232,15 +238,18 @@ def _plot_dc_capacity_bar_png(
         return None
 
 
-def _add_cover_page_v2(doc: Document, title: str, ctx: ReportContext, tool_version: str) -> None:
-    """Proposal cover: title, project identity block, issuer, confidentiality note."""
+def _add_cover_page_v2(doc: Document, ctx: ReportContext, brand: BrandProfile) -> None:
+    """Proposal cover: title, project identity block, issuer, confidentiality note.
+
+    All branded copy comes from the BrandProfile — no fallback strings here.
+    """
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Pt
 
     for _ in range(4):
         doc.add_paragraph("")
 
-    heading = doc.add_heading(title, level=1)
+    heading = doc.add_heading(brand.cover_title, level=1)
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     subtitle = doc.add_paragraph("Battery Energy Storage System — Sizing Proposal")
@@ -254,25 +263,18 @@ def _add_cover_page_v2(doc: Document, title: str, ctx: ReportContext, tool_versi
         f"Project: {ctx.project_name}",
         f"Case: {ctx.case_name or '—'}",
         f"Date: {generated}",
-        f"Tool Version: {tool_version}",
+        f"Tool Version: {brand.tool_version_label}",
     ]
     info = doc.add_paragraph("\n".join(info_lines))
     info.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     doc.add_paragraph("")
-    issuer = doc.add_paragraph(
-        "Prepared by: CALB Group Co., Ltd.\nUtility-Scale Energy Storage Systems"
-    )
+    issuer = doc.add_paragraph("\n".join(brand.issuer_lines))
     issuer.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     for _ in range(8):
         doc.add_paragraph("")
-    notice = doc.add_paragraph(
-        "CONFIDENTIAL — This document contains proprietary information of CALB Group Co., Ltd. "
-        "It is provided for evaluation purposes only and shall not be reproduced or disclosed "
-        "to third parties without prior written consent. Sizing results are preliminary and "
-        "subject to detailed engineering confirmation."
-    )
+    notice = doc.add_paragraph(brand.confidentiality_notice)
     notice.alignment = WD_ALIGN_PARAGRAPH.CENTER
     for run in notice.runs:
         run.font.size = Pt(8)
@@ -464,28 +466,23 @@ def _validate_report_consistency(ctx: ReportContext) -> list[str]:
     return warnings
 
 
-def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
+def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) -> bytes:
+    if brand is None:
+        brand = CALB_BRAND
+    require_brand_assets(brand)
+
     doc = Document()
     _setup_margins(doc)
-    if brand:
-        _setup_header(
-            doc,
-            title=brand.get("header_title", "Confidential Sizing Report (V2.1 Beta)"),
-            logo_path=brand.get("logo_path"),
-            header_lines=brand.get("header_lines"),
-            footer_lines=brand.get("footer_lines"),
-        )
-        cover_title = brand.get(
-            "cover_title", "CALB Utility-Scale ESS Sizing Report (V2.1 Beta)"
-        )
-        tool_version = brand.get("tool_version", "V2.1 Beta")
-    else:
-        _setup_header(doc, title="Confidential Sizing Report (V2.1 Beta)")
-        cover_title = "CALB Utility-Scale ESS Sizing Report (V2.1 Beta)"
-        tool_version = "V2.1 Beta"
+    _setup_header(
+        doc,
+        title=brand.header_title,
+        logo_path=brand.logo_path,
+        header_lines=list(brand.header_lines),
+        footer_lines=list(brand.footer_lines) or None,
+    )
 
     _add_page_number_footer(doc)
-    _add_cover_page_v2(doc, cover_title, ctx, tool_version)
+    _add_cover_page_v2(doc, ctx, brand)
 
     # Shared derived values used across multiple sections
     gyr_target = ctx.poi_energy_guarantee_mwh
@@ -647,6 +644,8 @@ def export_report_v2_1(ctx: ReportContext, brand: dict | None = None) -> bytes:
         for col in dc_columns:
             if col in ("Unit Capacity (MWh)", "Subtotal (MWh)", "Total DC Nameplate @BOL (MWh)"):
                 formatters[col] = _format_mwh_3
+            elif col in ("Block Code", "Block Name"):
+                formatters[col] = lambda v: neutralize_equipment_text(v, brand)
             else:
                 formatters[col] = lambda v: "" if v is None else str(v)
         _add_dataframe_table(doc, dc_table, dc_columns, headers_map, formatters)

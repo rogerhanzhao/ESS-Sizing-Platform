@@ -17,7 +17,6 @@
 # -----------------------------------------------------------------------------
 
 import logging
-from pathlib import Path
 from typing import Any
 
 import streamlit as st
@@ -26,6 +25,7 @@ _log = logging.getLogger(__name__)
 from calb_sizing_tool.reporting.export_docx import (
     make_proposal_filename,
 )
+from calb_sizing_tool.reporting.brand_profiles import BRAND_PROFILES, BrandAssetMissingError
 from calb_sizing_tool.reporting.report_context import build_report_context
 from calb_sizing_tool.reporting.report_v2 import export_report_v2_1
 from calb_sizing_tool.runtime_paths import get_outputs_dir
@@ -435,10 +435,11 @@ def show():
 
     st.subheader("Downloads")
 
-    # V2.1 is now the standard report format (with an optional Guoxia branded variant)
+    # V2.1 is now the standard report format (with an optional Guoxia branded variant).
+    # All branded copy lives in reporting/brand_profiles.py — never inline brand text here.
     report_template = st.selectbox(
         "Report Template",
-        ["V2.1 (Beta)", "V2.1 (Guoxia)"],
+        list(BRAND_PROFILES.keys()),
         index=0,
     )
     
@@ -468,47 +469,23 @@ def show():
             project_inputs=project_inputs_for_report,
             scenario_ids=stage13_output.get("selected_scenario", "container_only"),
         )
-        brand = None
-        version = "V2.1"
-        filename_prefix = "CALB"
-        button_label = "Download Combined Report V2.1"
-
-        if report_template == "V2.1 (Guoxia)":
-            guoxia_logo = Path("GUOXIA-LOGO.png")
-            if not guoxia_logo.exists():
-                st.warning("GUOXIA-LOGO.png not found. Falling back to default logo.")
-                guoxia_logo = None
-
-            brand = {
-                "logo_path": guoxia_logo,
-                "header_title": "Confidential Sizing Report (V2.1 Guoxia)",
-                "header_lines": [
-                    "Guoxia Technology Co., Ltd.",
-                    "HKEX: 02655 (GUOXIA TECH)",
-                    "Confidential Sizing Report (V2.1 Guoxia)",
-                ],
-                "footer_lines": [
-                    "(c) 2026 Guoxia Technology Co., Ltd. All rights reserved.",
-                    "HKEX: 02655 (GUOXIA TECH) | Document Classification: Confidential",
-                ],
-                "cover_title": "Guoxia Technology Utility-Scale ESS Sizing Report (V2.1)",
-                "tool_version": "V2.1 Guoxia",
-            }
-            version = "V2.1-GUOXIA"
-            filename_prefix = "GUOXIA"
-            button_label = "Download Combined Report V2.1 (Guoxia)"
-
-        comb_bytes = export_report_v2_1(ctx, brand=brand)
-        proposal_filename = make_proposal_filename(
-            project_name, version=version, prefix=filename_prefix
-        )
-        st.download_button(
-            button_label,
-            comb_bytes,
-            proposal_filename,
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            type="primary",
-        )
+        brand = BRAND_PROFILES[report_template]
+        try:
+            comb_bytes = export_report_v2_1(ctx, brand=brand)
+        except BrandAssetMissingError as exc:
+            # Never fall back to another brand's assets in a white-label report.
+            st.error(str(exc))
+        else:
+            proposal_filename = make_proposal_filename(
+                project_name, version=brand.version_tag, prefix=brand.filename_prefix
+            )
+            st.download_button(
+                f"Download Combined Report {brand.display_name}",
+                comb_bytes,
+                proposal_filename,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                type="primary",
+            )
 
     if not sld_png and not sld_svg:
         st.info("SLD image not found. Generate it in Single Line Diagram.")
