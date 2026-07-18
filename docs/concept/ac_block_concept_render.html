@@ -1,0 +1,747 @@
+<title>AC Block Concept Rendering — 1×PCS&MVT + 2×DC</title>
+<style>
+  :root{
+    --paper:#f7f9fa; --ink:#1c2530; --muted:#5b6774; --line:#d4dbe1;
+    --accent:#1f4e79; --panel:#ffffff; --chip:#e8eef4;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --paper:#14181d; --ink:#e8edf2; --muted:#93a1af; --line:#2c353f;
+           --accent:#6fa8d6; --panel:#1b2129; --chip:#242d37; }
+  }
+  :root[data-theme="dark"]{ --paper:#14181d; --ink:#e8edf2; --muted:#93a1af; --line:#2c353f;
+           --accent:#6fa8d6; --panel:#1b2129; --chip:#242d37; }
+  :root[data-theme="light"]{ --paper:#f7f9fa; --ink:#1c2530; --muted:#5b6774; --line:#d4dbe1;
+           --accent:#1f4e79; --panel:#ffffff; --chip:#e8eef4; }
+  html,body{margin:0;background:var(--paper);color:var(--ink);
+    font:15px/1.55 "Segoe UI",system-ui,-apple-system,sans-serif;}
+  .wrap{max-width:1220px;margin:0 auto;padding:26px 20px 46px;}
+  header{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 18px;margin-bottom:6px;}
+  h1{font-size:21px;margin:0;letter-spacing:.2px;}
+  h2{font-size:14px;margin:26px 0 8px;color:var(--muted);font-weight:600;
+     text-transform:uppercase;letter-spacing:.12em;}
+  .tag{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);
+    border:1px solid var(--accent);border-radius:3px;padding:2px 8px;white-space:nowrap;}
+  .sub{color:var(--muted);font-size:13.5px;margin:2px 0 14px;max-width:72ch;}
+  .toolbar{display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin:0 0 10px;
+    font-size:13px;color:var(--muted);}
+  .toolbar label{display:flex;gap:6px;align-items:center;cursor:pointer;user-select:none;}
+  .scene{background:linear-gradient(#dfe5e8,#cfd6d9);border:1px solid var(--line);
+    border-radius:8px;overflow-x:auto;}
+  .scene svg{display:block;min-width:900px;width:100%;height:auto;}
+  .specs{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;}
+  .spec{background:var(--chip);border-radius:5px;padding:8px 12px;font-size:12.5px;color:var(--muted);}
+  .spec b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums;}
+  footer{margin-top:18px;font-size:11.5px;color:var(--muted);font-style:italic;max-width:80ch;}
+  .notes{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:14px 18px;font-size:13.5px;max-width:88ch;}
+  .notes ol{margin:8px 0 8px 20px;padding:0;display:flex;flex-direction:column;gap:8px;}
+  .notes p{margin:6px 0;color:var(--muted);}
+  .notes li{color:var(--ink);}
+  .notes b{color:var(--ink);}
+</style>
+<div class="wrap">
+  <header>
+    <h1>Typical AC Block — Concept Rendering</h1>
+    <span class="tag">Concept Only · Not for Construction</span>
+  </header>
+  <p class="sub">1 × 5 MW PCS &amp; MV Station（20 ft 一体舱，Sineng EH 系列 / NR PCS-9567MV-5000 级，
+    690 V → 34.5 kV 油浸变 + 组串式 PCS 百叶舱 + RMU/保护屏）+ 2 × 5.015 MWh CALB DC Block
+    （20 ft HC 液冷集装箱，<b>镜像成对</b>：门侧朝外、波纹背板相对 0.30 m）。
+    <b>排布依据国际标准</b>：DC 箱至油浸 MV 站通道 3.0 m（10 ft，NFPA 850）；成对贴邻以 UL 9540A
+    大规模燃烧测试为豁免依据（NFPA 855 默认 3 ft）。箱体外观对齐 CALB 产品实拍——六门维护侧 +
+    右端液冷机组镂空格栅、顶部单排 4 块方形泄爆板（NFPA 68 泄爆）、端部风机格栅与消防面板、UN 3536 标识；
+    场坪为碎石 + 独立混凝土基础 + 电缆沟（电缆按产品规格书从箱底进出）。</p>
+  <div class="toolbar">
+    <label><input type="checkbox" id="dims" checked> 工程标注（尺寸 / 编号）</label>
+    <span>日光自左后上方 · 等距轴测 ISO 30°</span>
+  </div>
+  <div class="scene"><svg id="iso" viewBox="0 0 1240 840" role="img"
+    aria-label="Isometric concept rendering of one AC block: two CALB DC battery containers and a PCS and transformer skid on a concrete pad"></svg></div>
+
+  <h2>鸟瞰视图 · Bird's-eye</h2>
+  <div class="scene"><svg id="aerial" viewBox="0 0 1220 560" role="img"
+    aria-label="Bird's-eye view of the same AC block layout"></svg></div>
+
+  <h2>整场排布示意 · Site Array（International Profile · 4 × AC Block = 20 MW / 40 MWh）</h2>
+  <div class="scene"><svg id="site" viewBox="0 0 1220 700" role="img"
+    aria-label="Site array view: four AC blocks in two rows with fire access road, fence, gate and hydrants per NFPA 855/IFC"></svg></div>
+
+  <div class="specs">
+    <div class="spec">DC Block <b>6.058 × 2.438 × 2.896 m</b>（20 ft HC · 45 t）</div>
+    <div class="spec">DC 对内贴邻 <b>0.30 m</b>（UL 9540A 豁免路径）</div>
+    <div class="spec">DC ↔ MV 站通道 <b>3.0 m / 10 ft</b>（NFPA 850 油浸设备）</div>
+    <div class="spec">PCS &amp; MV Station <b>20 ft 一体舱 · 5 MW · 690 V → 34.5 kV</b>（Sineng / NR 级）</div>
+    <div class="spec">占地总宽 <b>≈15.12 m</b>（国际规范剖面）</div>
+  </div>
+  <h2>同行观察记录 · Competitor Field Notes（LinkedIn，2026-07-18）</h2>
+  <div class="notes">
+    <p><b>信息来源</b>：LinkedIn 公开动态检索（关键词：5MWh BESS container / Sungrow PowerTitan site /
+      CATL TENER project 等），以下为对本渲染与后续整场布置有直接参考价值的观察。</p>
+    <ol>
+      <li><b>MaxSolar × Sungrow（德国巴伐利亚，电网侧储能）现场鸟瞰</b>——单排 3 台 PowerTitan 式集装箱，
+        间距约 1–1.5 m，门侧统一朝检修面；<b>每台坐在独立混凝土条形基础上</b>（高出碎石场坪），
+        MV 变压器撬块置于排端，带盖电缆沟沿排前缘敷设，围栏紧贴设备区。
+        → 已落进图：基础圈梁 + 场坪 + 电缆沟；排端撬块与我们的布置逻辑一致。</li>
+      <li><b>CATL TENER 现场（含 Burgas 602 MWh 项目）</b>——大场采用多排复制的"AC Block"单元；
+        主变 + HV 间隔独立成区并单独围栏；TENER 单元可双层堆叠（我们的 20 ft 液冷箱不堆叠，不采纳）。
+        → 启示：整场版效果图应以本 AC Block 为最小复制单元、排间留消防通道。</li>
+      <li><b>Roche Energy 5MWh（628 Ah 电芯）交付照片</b>——出厂运输时格栅与门面覆保护膜，
+        UN 3536 Class 9 菱形标贴位与我们实拍一致；吊装落位于预制条形基础。
+        → 印证：渲染中的标识体系与基础做法。</li>
+      <li><b>Risen eTron 5MWh（SU5016E2500KC）/ 各家 5MWh 液冷箱</b>——20 ft、BMS+液冷集成、
+        "Plug &amp; Play 预集成、现场工作最小化" 是通行卖点；外观同为白色波纹箱 + 端部格栅。
+        → 我们的箱体外观处于行业主流形态，CALB 特征（侧面镂空液冷段、顶部单排方形泄爆板）已按实拍保留。</li>
+      <li><b>PowerChina I²-ESS（ZXE-H2500T-UD-34.5）</b>——PCS + 升压变做成<b>集装箱化一体机</b>
+        （非开放撬块），带遮阳檐与百叶门。→ 备选形态：Layout 模块将来可支持"撬块式 / 集装箱式" 两种
+        PCS&amp;MVT 表达，按项目选型切换。</li>
+    </ol>
+    <p><b>对渲染的落地改动</b>：本版新增箱体基础圈梁（观察 1）；此前已含碎石场坪、独立混凝土基础面、
+      跨通道电缆沟、排端撬块。<b>待办候选</b>：整场多排版鸟瞰（观察 2）、PCS&amp;MVT 集装箱式变体（观察 5）、
+      围栏与大门表达（观察 1）。</p>
+
+    <h3 style="margin:18px 0 6px;font-size:13px;letter-spacing:.1em;text-transform:uppercase;">
+      5.015 MWh 系列深度学习记录（2026-07-18，规格书 + 官网 + 行业盘点）</h3>
+    <p><b>A. 产品本体</b></p>
+    <ol>
+      <li><b>电气架构</b>：1500 V DC · 314 Ah LFP · 12P416S ≈ 5016 kWh；<b>12 簇 × 4 模组</b>
+        （每模组 104 芯 ≈104.5 kWh）+ 簇控高压盒——与平台产品库 CALB_5MWh_20FT_12R 完全一致；
+        DC 输出至外部 PCS（DC-Block 形态）。PCS± 推荐单极 6×240 mm² 电缆。</li>
+      <li><b>箱体</b>：20 ft ISO 6058×2438×2896 mm，整重约 45 t；CORTEN A 耐候钢（侧板 2 mm / 底 3 mm）+
+        50 mm 岩棉保温；<b>四点底部抽拉式吊点吊装</b>；运输半电量（SOC 30–50%）。CALB 宣称 IP67 与
+        电芯-Pack-箱体<b>三级防爆</b>（顶部单排 4 块方形泄爆板即箱级泄爆）。</li>
+      <li><b>热管理</b>：全液冷，系统温差 ≤2.5–4 ℃，-30～+50 ℃；液冷机组位于长侧右端镂空舱（CALB 特征位）。</li>
+      <li><b>消防</b>：全氟己酮气体自动灭火 + 水消防接口；CO&amp;H₂&amp;VOC 复合 + 烟感 + 温感 + 防爆型探测器；
+        声光报警、紧急启停（端面消防面板对应实拍）。</li>
+      <li><b>竞品同规格横评</b>：CRRC CESS 2.0 / Sungrow PowerTitan 2.0 / CATL EnerD / Hithium ∞Block /
+        Trina Elementa 2 全部为 314 Ah + 20 ft + 液冷 5.0–5.016 MWh——外形语言趋同（白箱 + 端部或侧面散热 +
+        顶部泄爆），CALB 辨识点在侧面镂空液冷舱与单排方形泄爆板。</li>
+    </ol>
+    <p><b>B. 安装排布</b></p>
+    <ol>
+      <li><b>官方排布能力</b>：CALB 官网明示支持<b>背靠背（back-to-back）与肩并肩（side-by-side）</b>；
+        海外版 314 Ah 20 ft ISO 宣称省地 22.5%。</li>
+      <li><b>规范依据</b>：GB/T 51048-2025《电化学储能电站设计标准》——步入式预制舱防火间距
+        <b>长边 ≥3 m、短边 ≥4 m</b>；设<b>防火墙</b>（两端超出舱体 ≥1 m）可豁免间距；2025 版新增
+        <b>贴邻布置与两层布置</b>条款（即背靠背成对的规范依据）。→ 平台 Site Constraint Set 的
+        rule_basis 可直接引用本标准。</li>
+      <li><b>电缆路径</b>：辅电、通信、接地、PCS 直流全部<b>从箱底进出线孔</b>敷设 → 基础须留电缆孔洞，
+        场内以电缆沟连接至 PCS/MVT；接地 ≥2 点、≤1 Ω、禁止串联接地。</li>
+      <li><b>现场惯例</b>（LinkedIn 实拍）：成对镜像门朝外 + 背侧窄缝；对间/排间留防火与检修距；
+        独立混凝土条形基础高出碎石场坪；MV 撬块或一体舱置排端。</li>
+    </ol>
+    <p><b>C. 国际（美标 / 英文来源）排布规范 — IFC §1207 · NFPA 855 · NFPA 850 · UL 9540A</b></p>
+    <ol>
+      <li><b>场址分类</b>：Remote Location（距建筑/红线/公共道路/可燃物 &gt;100 ft / 30.5 m）豁免多数间距要求；
+        否则按 Near Exposures 执行下列间距。</li>
+      <li><b>对外部暴露物间距</b>：BESS 距红线 / 公共道路 / 建筑 / 可燃堆场一律 <b>10 ft（3 m）</b>；
+        可减至 <b>3 ft（0.9 m）</b>的三条豁免路径——①1 小时独立防火墙（高出并外延 BESS 边界 5 ft）；
+        ②相邻建筑外墙 2 小时耐火无开口；③大规模燃烧测试（UL 9540A）或箱体 2 小时耐火（ASTM E119/UL 263）。</li>
+      <li><b>单元间距</b>：默认 <b>3 ft（0.9 m）</b>；utility 级实践由 <b>UL 9540A 测试 + 辐射热通量建模</b>
+        （最不利整排全燃工况）确定——这是 Megapack 等能排内紧贴、排间留大通道的合规原理。</li>
+      <li><b>油浸设备间距（NFPA 850）</b>：&lt;500 gal → 5 ft（<b>对 BESS 为 10 ft / 3 m</b>）；
+        500–5000 gal → 25 ft；&gt;5000 gal → 50 ft；卵石灭火油坑可减至 15 ft。
+        <b>→ 直接影响：美标市场 DC 箱到 PCS&amp;MVT 撬块（油浸变压器）通道应按 ≥3 m 设计，
+        当前平台默认 2.0 m 仅适用于中国市场/干变场景——布置规则须按市场切换。</b></li>
+      <li><b>其他</b>：距建筑疏散通道 ≥10 ft；四周 10 ft 清除可燃植被；消防车道按 IFC（宽 20 ft 级）环通或尽端回车；
+        顶部泄爆板即 NFPA 68 deflagration venting（冰雪地区建议改 NFPA 69 可燃气体机械通风为主，风机需 2 小时后备电源）；
+        场区消火栓 + 消防水源、首响面板（FRP）、HMA 危害减缓分析是 AHJ 审批前置件。</li>
+      <li><b>AC Block 组合基准（2026-07-18 定版）</b>：PCS+MV 按 <b>Sineng EH 系列 / NR PCS-9567MV-5000</b>
+        产品形态取一体舱（非开放撬块）：NR 5 MW 撬块 = 2 × PCS-9567-2500 twin PCS + MVT + RMU，
+        持 VDE-AR-N 4110/4120、EN 50549-2、NC RfG 认证；Sineng EH-3200-HA-MR-US-34.5 =
+        16 × 200 kW 组串式 PCS + LV 柜 + pad-mount 变压器（美标 34.5 kV），EH-12500（40 ft）=
+        32 × 组串 PCS + 13750 kVA 油浸变、690 V→33 kV、强迫风冷 IP54、-40～+60 ℃。
+        渲染采用 20 ft 一体舱：组串 PCS 百叶舱 ×3 + 保护/RMU 门（NR 屏柜）+ 变压器散热格栅舱 +
+        端部 MV 出线箱，DC 箱通道 3.0 m（10 ft）。</li>
+      <li><b>规则引擎启示</b>：排布规范应做成<b>按市场可切换的 rule profile</b>——
+        CN = GB/T 51048-2025（长边 3 m/短边 4 m/防火墙豁免/贴邻）；
+        US = IFC/NFPA 855 + NFPA 850 + UL 9540A（10 ft 基线/3 ft 豁免/油浸设备分级）；
+        EU/AU = 以 AHJ 与保险商（FM Global 等）要求为准。可作为平台 Site Constraint Set
+        rule_basis 的枚举输入。</li>
+    </ol>
+  </div>
+  <footer>CONCEPT RENDERING — 布置与外观为方案示意，泄爆口 / 消防 / 门位等以产品出厂图与详细设计为准。
+    生成自 CALB ESS Sizing Platform 布置参数。</footer>
+</div>
+<script>
+(function(){
+  "use strict";
+  const NS="http://www.w3.org/2000/svg";
+  const svg=document.getElementById("iso");
+  const S=56, OX=285, OY=218;
+  const C=Math.cos(Math.PI/6), H30=0.5;
+  const P=(x,y,z)=>[OX+(x-y)*C*S, OY+(x+y)*H30*S-z*S];
+  const fmt=p=>p.map(q=>q[0].toFixed(1)+","+q[1].toFixed(1)).join(" ");
+  function el(n,a,parent){const e=document.createElementNS(NS,n);
+    for(const k in a)e.setAttribute(k,a[k]);(parent||svg).appendChild(e);return e;}
+  function poly(pts,fill,parent,x){return el("polygon",Object.assign({points:fmt(pts),fill:fill},x||{}),parent);}
+  function ln(a,b,s,w,parent,x){return el("line",Object.assign({x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:s,"stroke-width":w},x||{}),parent);}
+
+  // ---- face-space groups: inside them 1 unit = 1 metre on that face ----
+  // front face (normal +y): origin at (x, y, zTop); local +x → world +x, +y(down) → −z
+  function gFront(x,y,z,parent){const o=P(x,y,z);
+    return el("g",{transform:`matrix(${C*S},${H30*S},0,${S},${o[0]},${o[1]})`},parent);}
+  // right face (normal +x): origin (x, yFar=y1, zTop); local +x → world −y
+  function gRight(x,y1,z,parent){const o=P(x,y1,z);
+    return el("g",{transform:`matrix(${C*S},${-H30*S},0,${S},${o[0]},${o[1]})`},parent);}
+  // top face: origin (x0,y0,h); local +x → world +x, +y → world +y
+  function gTop(x,y,h,parent){const o=P(x,y,h);
+    return el("g",{transform:`matrix(${C*S},${H30*S},${-C*S},${H30*S},${o[0]},${o[1]})`},parent);}
+  const R=(g,x,y,w,h,fill,extra)=>el("rect",Object.assign({x:x,y:y,width:w,height:h,fill:fill},extra||{}),g);
+  const T=(g,x,y,s,fill,txt,extra)=>{const t=el("text",Object.assign({x:x,y:y,fill:fill,
+    "font-size":s,"font-family":"Arial, sans-serif"},extra||{}),g);t.textContent=txt;return t;};
+
+  // ---------- defs ----------
+  const defs=el("defs",{});
+  const blur=el("filter",{id:"soft",x:"-25%",y:"-25%",width:"150%",height:"150%"},defs);
+  el("feGaussianBlur",{stdDeviation:"5"},blur);
+  function grad(id,stops,vert){const g=el("linearGradient",{id:id,x1:"0",y1:"0",
+    x2:vert?"0":"1",y2:vert?"1":"0"},defs);
+    stops.forEach(s=>el("stop",{offset:s[0],"stop-color":s[1]},g));}
+  grad("gSun",[["0","#f7f8f6"],["0.55","#edefed"],["1","#dee1df"]],true);   // sunlit long side
+  grad("gShade",[["0","#d4d9d8"],["0.6","#c8cfce"],["1","#b9c1c0"]],true);  // shaded end
+  grad("gTopF",[["0","#f8faf9"],["0.5","#f2f4f3"],["1","#e7eae9"]],true);
+  grad("gGround",[["0","#c9cdc9"],["1","#b2b7b2"]],true);
+  grad("gPad",[["0","#d8dad6"],["1","#c8cbc7"]],true);
+  grad("gDoor",[["0","#f2f4f3"],["0.6","#eaedec"],["1","#e0e4e3"]],true);   // door leaf
+  grad("gCav",[["0","#26292c"],["1","#151719"]],true);                      // cooling cavity
+  const fg=el("radialGradient",{id:"gFan",cx:"0.4",cy:"0.4",r:"0.75"},defs);
+  el("stop",{offset:"0","stop-color":"#d9dddc"},fg);
+  el("stop",{offset:"0.7","stop-color":"#b3bab9"},fg);
+  el("stop",{offset:"1","stop-color":"#939b9a"},fg);
+  const blur2=el("filter",{id:"soft2",x:"-20%",y:"-20%",width:"140%",height:"140%"},defs);
+  el("feGaussianBlur",{stdDeviation:"2"},blur2);
+  const vg=el("radialGradient",{id:"vig",cx:"0.5",cy:"0.42",r:"0.78"},defs);
+  el("stop",{offset:"0.62","stop-color":"#2a3136","stop-opacity":"0"},vg);
+  el("stop",{offset:"1","stop-color":"#2a3136","stop-opacity":"0.13"},vg);
+
+  const COL={seam:"#9aa3a2",gasket:"#33383b",door:"#eceeed",rod:"#b6bdbc",rodHi:"#f7f9f8",
+    steel:"#6a7176",steelD:"#4d5357",mesh:"#c9cecd",meshL:"#8f9897",vent:"#e4e7e6",
+    yellow:"#f0b400",black:"#22262a",logo:"#3f454c",txt:"#828b91",red:"#c33127",
+    dim:"#1f4e79"};
+
+  // ================= ground =================
+  poly([P(-3,-3,0),P(18,-3,0),P(18,8.6,0),P(-3,8.6,0)],"url(#gGround)");
+  // gravel speckle (deterministic)
+  let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647;};
+  for(let i=0;i<560;i++){const x=-3+21*rnd(),y=-3+11.6*rnd();
+    const p=P(x,y,0);el("circle",{cx:p[0],cy:p[1],r:0.7+rnd()*0.9,
+      fill:rnd()>.5?"#a8ada8":"#c2c6c1",opacity:.5},svg);}
+  // concrete pads (equipment + skid) and aisle slab
+  poly([P(-0.45,-0.45,0.02),P(6.5,-0.45,0.02),P(6.5,5.62,0.02),P(-0.45,5.62,0.02)],"url(#gPad)",null,{stroke:"#b7bab6","stroke-width":1});
+  poly([P(8.7,0.9,0.02),P(15.6,0.9,0.02),P(15.6,4.3,0.02),P(8.7,4.3,0.02)],"url(#gPad)",null,{stroke:"#b7bab6","stroke-width":1});
+  // cable trench with covers across the 3.0 m aisle (all cables enter the
+  // containers through bottom openings per the product spec)
+  for(let i=0;i<5;i++){const y=1.55+i*0.42;
+    poly([P(6.5,y,0.03),P(8.7,y,0.03),P(8.7,y+0.34,0.03),P(6.5,y+0.34,0.03)],"#9fa5a3",null,{stroke:"#868c8a","stroke-width":0.8});}
+
+  // ================= shadows =================
+  function shadow(x0,y0,l,w,h){
+    const ox=0.62*h,oy=0.30*h;
+    poly([P(x0,y0,0),P(x0+l,y0,0),P(x0+l+ox,y0+oy,0),P(x0+l+ox,y0+w+oy,0),
+      P(x0+ox,y0+w+oy,0),P(x0,y0+w,0)],"#1d2226",null,{opacity:.16,filter:"url(#soft)"});
+    // tight contact shadow hugging the base
+    const cx2=0.16*h,cy2=0.08*h;
+    poly([P(x0,y0,0),P(x0+l,y0,0),P(x0+l+cx2,y0+cy2,0),P(x0+l+cx2,y0+w+cy2,0),
+      P(x0+cx2,y0+w+cy2,0),P(x0,y0+w,0)],"#171b1e",null,{opacity:.30,filter:"url(#soft2)"});}
+
+  // ================= DC container =================
+  const L=6.058,W=2.438,HT=2.896;
+  // mir=true: mirrored twin — doors face AWAY from viewer (outward), the visible
+  // long side is the plain corrugated back; roof vents offset to the door edge.
+  function container(x0,y0,idx,mir){
+    const x1=x0+L,y1=y0+W;
+    const g=el("g",{});
+    // ---- top ----
+    poly([P(x0,y0,HT),P(x1,y0,HT),P(x1,y1,HT),P(x0,y1,HT)],"url(#gTopF)",g);
+    const top=gTop(x0,y0,HT,g);
+    // transverse roof corrugation — highlight/shadow pairs for a real rolled profile
+    for(let x=0.14;x<L-0.1;x+=0.28){
+      R(top,x,0.05,0.022,W-0.10,"#cbd1d0");
+      R(top,x+0.022,0.05,0.030,W-0.10,"#f6f8f7",{opacity:.95});
+    }
+    // explosion vent panels — single row of 4 SQUARE panels, offset to the
+    // NO-DOOR (corrugated back) edge per product photos
+    for(let i=0;i<4;i++){
+      const vs=0.88, vx=0.62+i*1.32, vy=mir?W-vs-0.20:0.20;
+      R(top,vx,vy,vs,vs,COL.vent,{stroke:"#b9c0bf","stroke-width":0.018,rx:0.03});
+      R(top,vx+0.07,vy+0.07,vs-0.14,vs-0.14,"#eff1f0",{stroke:"#c6cccb","stroke-width":0.012});
+      for(let b=0;b<4;b++){
+        el("circle",{cx:vx+0.11+b*0.22,cy:vy+0.035,r:0.016,fill:"#9ba3a2"},top);
+        el("circle",{cx:vx+0.11+b*0.22,cy:vy+vs-0.035,r:0.016,fill:"#9ba3a2"},top);
+      }
+    }
+    // painted roof code
+    T(top,L-0.35,W-0.55,0.20,"#8d949a","ZDCU25082"+idx+"  25GG",
+      {"text-anchor":"end","font-weight":"600",transform:"rotate(90 "+(L-0.35)+" "+(W-0.55)+")","letter-spacing":".04em","opacity":".9"});
+    // hazard corner stripes on roof edge
+    [[0,0.72],[L-0.72,0.72]].forEach(cs=>{
+      for(let i=0;i<6;i++)R(top,cs[0]+i*0.12,0,0.12,0.09,i%2?COL.yellow:COL.black);
+      for(let i=0;i<6;i++)R(top,cs[0]+i*0.12,W-0.09,0.12,0.09,i%2?COL.yellow:COL.black);
+    });
+
+    // ---- sunlit long side: six-door maintenance face ----
+    poly([P(x0,y1,0),P(x1,y1,0),P(x1,y1,HT),P(x0,y1,HT)],"url(#gSun)",g);
+    const f=gFront(x0,y1,HT,g);              // local y: 0 at top → HT at bottom
+    // frame rails
+    R(f,0,0,L,0.10,"#dfe3e2");R(f,0,HT-0.14,L,0.14,"#c8cecd");
+    if(mir){
+      // plain corrugated back wall — three-tone trapezoid profile
+      for(let x=0.16;x<L-0.14;x+=0.29){
+        R(f,x,0.10,0.115,HT-0.24,"#f0f2f1");
+        R(f,x+0.115,0.10,0.045,HT-0.24,"#fafbfa");
+        R(f,x+0.16,0.10,0.095,HT-0.24,"#e0e4e3");
+        R(f,x+0.255,0.10,0.035,HT-0.24,"#cdd3d2");
+      }
+      // ambient occlusion under the roof lip
+      R(f,0,0.10,L,0.10,"#3a4145",{opacity:.10});
+      // panel weld seams
+      [L*0.25,L*0.5,L*0.75].forEach(sx=>R(f,sx,0.10,0.012,HT-0.24,"#b9c0bf"));
+      // UN 3536 sticker centred low
+      (function(){const dcx=L*0.5,dcy=2.18,s=0.20;
+        const dg=el("g",{transform:`translate(${dcx},${dcy}) rotate(45)`},f);
+        R(dg,-s/1.414,-s/1.414,2*s/1.414,2*s/1.414,"#ffffff",{stroke:"#1e2225","stroke-width":0.016});
+        const st=el("g",{transform:"rotate(-45)"},dg);
+        T(st,0,0.065,0.085,"#1e2225","3536",{"text-anchor":"middle","font-weight":"700"});
+        T(st,0,0.16,0.07,"#1e2225","9",{"text-anchor":"middle","font-weight":"700"});
+      })();
+    } else {
+    const bay=0.62;                       // right-end liquid-cooling bay — narrower than a door
+    const dw=(L-0.28-bay)/6;
+    // ambient occlusion under the roof lip
+    R(f,0,0.10,L,0.08,"#3a4145",{opacity:.10});
+    for(let d=0;d<6;d++){
+      const dx=0.14+d*dw;
+      // gasket then door leaf (gradient) with inner shadow line
+      R(f,dx,0.13,dw-0.05,HT-0.34,COL.gasket,{rx:0.02});
+      R(f,dx+0.035,0.165,dw-0.12,HT-0.41,"url(#gDoor)",{rx:0.015});
+      R(f,dx+0.035,0.165,dw-0.12,0.05,"#30363a",{opacity:.14,rx:0.015});
+      // hinge knuckles along the leading edge
+      [0.5,1.3,2.1].forEach(hz=>R(f,dx+0.005,hz,0.03,0.11,"#9ba3a2",{rx:0.012}));
+      // vertical lock rods — metallic: dark edge / body / specular line
+      [0.30,0.70].forEach(fr=>{
+        const rx=dx+fr*dw;
+        R(f,rx-0.023,0.18,0.046,HT-0.46,"#7e8686");
+        R(f,rx-0.015,0.18,0.030,HT-0.46,COL.rod);
+        R(f,rx-0.005,0.18,0.010,HT-0.46,"#fbfdfc");
+        [0.30,HT-0.62].forEach(rz=>{
+          R(f,rx-0.05,rz,0.10,0.08,"#9aa2a1",{rx:0.015});
+          R(f,rx-0.05,rz,0.10,0.022,"#c5cbca",{rx:0.01});
+        });
+        R(f,rx-0.01,1.28,0.20,0.05,COL.steelD,{rx:0.02,transform:`rotate(-8 ${rx} 1.3)`});
+        R(f,rx-0.01,1.283,0.20,0.016,"#8f9796",{rx:0.008,transform:`rotate(-8 ${rx} 1.3)`});
+      });
+      // warning triangle
+      const cx=dx+dw*0.5;
+      el("polygon",{points:`${cx},1.20 ${cx+0.115},1.40 ${cx-0.115},1.40`,
+        fill:COL.yellow,stroke:"#1e2225","stroke-width":0.012},f);
+      el("path",{d:`M ${cx} 1.245 l 0.012 0.09 h -0.024 z M ${cx-0.012} 1.355 h 0.024 v 0.022 h -0.024 z`,fill:"#1e2225"},f);
+    }
+    // CALB wordmark — large, upper part of door 1 (per photo)
+    T(f,0.22,0.66,0.30,COL.logo,"CALB",{"font-weight":"800","letter-spacing":".07em"});
+    // certification seal — top of door 2, right of the wordmark (per photo)
+    el("circle",{cx:1.30,cy:0.50,r:0.10,fill:"none",stroke:COL.txt,"stroke-width":0.02},f);
+    el("circle",{cx:1.30,cy:0.50,r:0.062,fill:"none",stroke:COL.txt,"stroke-width":0.012},f);
+    // weight table — bottom-left of door 1, KGS/LBS pairs (per photo)
+    const wt=[["MAX.GROSS","45,000 KGS"],["","99,208 LBS"],
+              ["TARE","10,000 KGS"],["","22,046 LBS"],
+              ["PAYLOAD","35,000 KGS"],["","72,162 LBS"]];
+    wt.forEach((s,i)=>{
+      if(s[0])T(f,0.24,1.90+i*0.092,0.072,"#6e777d",s[0],{"font-family":"Consolas, monospace"});
+      T(f,0.60,1.90+i*0.092,0.072,"#6e777d",s[1],{"font-family":"Consolas, monospace"});
+    });
+    // nameplate — door 2 lower area (per photo)
+    R(f,1.12,1.78,0.42,0.30,"#dfe3e2",{stroke:"#aab1b0","stroke-width":0.014,rx:0.02});
+    for(let i=0;i<5;i++)R(f,1.155,1.83+i*0.05,0.35,0.016,"#9aa2a1");
+    // vertical container code on right corner post of the door side (per photo)
+    T(f,L-0.055,0.34,0.082,"#788086","ZDCU25082"+idx+" ⑦ 25GG",
+      {transform:`rotate(90 ${L-0.055} 0.34)`,"font-weight":"600","letter-spacing":".08em"});
+    // UN 3536 diamond on door 4
+    (function(){const dcx=0.14+3.5*dw, dcy=2.18, s=0.20;
+      const dg=el("g",{transform:`translate(${dcx},${dcy}) rotate(45)`},f);
+      R(dg,-s/1.414,-s/1.414,2*s/1.414,2*s/1.414,"#ffffff",{stroke:"#1e2225","stroke-width":0.016});
+      const cp=el("clipPath",{id:"unclip"+idx},defs);
+      el("rect",{x:-s/1.414,y:-s/1.414,width:2*s/1.414,height:2*s/1.414},cp);
+      const st=el("g",{"clip-path":"url(#unclip"+idx+")",transform:"rotate(-45)"},dg);
+      for(let i=0;i<5;i++)R(st,-s+i*0.082,-s,0.041,s*0.9,"#1e2225");
+      T(st,0,0.065,0.085,"#1e2225","3536",{"text-anchor":"middle","font-weight":"700"});
+      T(st,0,0.16,0.07,"#1e2225","9",{"text-anchor":"middle","font-weight":"700"});
+    })();
+    // ---- right-end liquid-cooling bay: RECESSED open cavity, no door (per photo) ----
+    const bx0=0.14+6*dw, bx1=L-0.14, bw=bx1-bx0;
+    // dark hollow cavity with depth gradient
+    R(f,bx0,0.13,bw,HT-0.34,"url(#gCav)",{rx:0.015});
+    // visible reveal / jamb depth: lit left jamb, shadowed lintel and right jamb
+    R(f,bx0,0.13,0.05,HT-0.34,"#cfd4d3");
+    R(f,bx0,0.13,bw,0.07,"#101314");
+    R(f,bx1-0.035,0.13,0.035,HT-0.34,"#0e1112");
+    // upper + lower mesh screens set INTO the cavity (dark shows through)
+    [[0.26,1.10],[1.56,1.00]].forEach(gp=>{
+      for(let xx=bx0+0.08;xx<=bx1-0.07;xx+=0.058)
+        R(f,xx,gp[0],0.008,gp[1],"#8f9793",{opacity:.75});
+      for(let yy=gp[0];yy<=gp[0]+gp[1];yy+=0.058)
+        R(f,bx0+0.08,yy,bw-0.15,0.008,"#8f9793",{opacity:.75});
+      // faint film sheen
+      R(f,bx0+0.08,gp[0],bw-0.15,gp[1],"#ffffff",{opacity:.05});
+      // inner shadow at screen top
+      R(f,bx0+0.08,gp[0],bw-0.15,0.10,"#0c0f10",{opacity:.5});
+    });
+    // red beacon at top of the bay
+    el("circle",{cx:bx0+bw/2,cy:0.185,r:0.075,fill:COL.red,stroke:"#801d15","stroke-width":0.016},f);
+    el("circle",{cx:bx0+bw/2,cy:0.185,r:0.028,fill:"#eab9b4"},f);
+    // mid band: round gauge + small bolted access plate on the frame between screens
+    R(f,bx0+0.06,1.38,bw-0.12,0.16,"#3a4043",{rx:0.02});
+    el("circle",{cx:bx0+0.20,cy:1.46,r:0.058,fill:"#f2f4f3",stroke:"#8f9897","stroke-width":0.015},f);
+    R(f,bx0+0.33,1.40,0.22,0.12,"#dfe3e2",{stroke:"#9aa19f","stroke-width":0.013,rx:0.02});
+    // height sticker (corner post, right of the bay)
+    R(f,L-0.115,2.28,0.105,0.22,COL.yellow,{rx:0.015,stroke:"#1e2225","stroke-width":0.010});
+    T(f,L-0.062,2.375,0.055,"#1e2225","2.9m",{"text-anchor":"middle","font-weight":"700"});
+    T(f,L-0.062,2.44,0.045,"#1e2225","9'6\"",{"text-anchor":"middle","font-weight":"700"});
+    }
+    // corner hazard stripes
+    for(let i=0;i<5;i++){R(f,0.02+i*0.13,0.02,0.13,0.07,i%2?COL.yellow:COL.black);
+                          R(f,L-0.67+i*0.13,0.02,0.13,0.07,i%2?COL.yellow:COL.black);}
+
+    // ---- shaded end face: cooling fans + fire panel (per photo) ----
+    poly([P(x1,y0,0),P(x1,y1,0),P(x1,y1,HT),P(x1,y0,HT)],"url(#gShade)",g);
+    const e=gRight(x1,y1,HT,g);              // local x: 0 at y1 → W at y0
+    R(e,0,0,W,0.10,"#c6cccb");R(e,0,HT-0.14,W,0.14,"#b3bab9");
+    // door split: fan-grille column + control/fire column (grille toward the
+    // door side, control cabinet toward the back; mirrored for the twin)
+    R(e,0.10,0.14,W-0.20,HT-0.32,"#31373a",{rx:0.02});
+    const px = mir ? 0.13 : W-1.01;       // fire/control column origin
+    R(e,px,0.17,0.88,HT-0.38,"#dde1e0",{rx:0.015});
+    // fire bell + beacon
+    el("circle",{cx:px+0.23,cy:0.44,r:0.10,fill:COL.red,stroke:"#801d15","stroke-width":0.02},e);
+    el("circle",{cx:px+0.23,cy:0.44,r:0.035,fill:"#e8b8b3"},e);
+    R(e,px+0.43,0.34,0.34,0.16,"#f4f6f5",{rx:0.02,stroke:"#b6bdbc","stroke-width":0.012});
+    // AC unit with louvres
+    R(e,px+0.09,0.78,0.56,0.78,"#eff1f0",{rx:0.02,stroke:"#b0b7b6","stroke-width":0.014});
+    for(let i=0;i<8;i++)R(e,px+0.13,0.84+i*0.075,0.48,0.028,"#c3c9c8");
+    // Gas Extinguishing sign
+    R(e,px+0.09,1.72,0.56,0.26,"#f7f8f7",{stroke:"#9aa19f","stroke-width":0.012,rx:0.015});
+    T(e,px+0.37,1.83,0.055,"#5b6367","Gas Extinguishing",{"text-anchor":"middle","font-weight":"700"});
+    T(e,px+0.37,1.90,0.05,COL.red,"DO NOT ENTER",{"text-anchor":"middle","font-weight":"700"});
+    // control window + gauge
+    R(e,px+0.15,2.10,0.44,0.34,"#e6e9e8",{stroke:"#aab1b0","stroke-width":0.014,rx:0.02});
+    el("circle",{cx:px+0.27,cy:2.27,r:0.055,fill:"#f2f4f3",stroke:"#8f9897","stroke-width":0.014},e);
+    // fan grille column — fans sit BEHIND the mesh; radial-shaded discs,
+    // then the wire grid, then a soft film sheen
+    const gx = mir ? 1.08 : 0.14, gw=W-1.22;
+    R(e,gx,0.17,gw,HT-0.38,"#aab1b0",{rx:0.015});
+    [0.62,1.42,2.22].forEach((cy,fi)=>{
+      el("circle",{cx:gx+gw/2,cy:cy,r:0.315,fill:"#565d5c"},e);
+      el("circle",{cx:gx+gw/2,cy:cy,r:0.295,fill:"url(#gFan)",stroke:"#7d8584","stroke-width":0.015},e);
+      for(let b=0;b<5;b++){
+        const ang=b*72+fi*23;
+        el("ellipse",{cx:gx+gw/2+0.155,cy:cy,rx:0.115,ry:0.052,fill:"#87908f",
+          transform:`rotate(${ang} ${gx+gw/2} ${cy})`,opacity:.95},e);
+      }
+      el("circle",{cx:gx+gw/2,cy:cy,r:0.055,fill:"#6a7170"},e);
+      el("circle",{cx:gx+gw/2-0.015,cy:cy-0.015,r:0.02,fill:"#c8cecd"},e);
+    });
+    for(let xx=gx;xx<=gx+gw;xx+=0.062)R(e,xx,0.17,0.010,HT-0.38,"#8f9796",{opacity:.6});
+    for(let yy=0.17;yy<=HT-0.21;yy+=0.062)R(e,gx,yy,gw,0.010,"#8f9796",{opacity:.6});
+    R(e,gx,0.17,gw,0.5,"#ffffff",{opacity:.10});
+    R(e,gx,0.17,gw,HT-0.38,"#ffffff",{opacity:.05});
+    // vertical container code on right edge
+    T(e,W-0.045,0.30,0.085,"#788086","ZDCU25082"+idx+" ⑦ 25GG",
+      {transform:`rotate(90 ${W-0.045} 0.30)`,"font-weight":"600","letter-spacing":".06em"});
+    // UN diamond small
+    el("g",{transform:`translate(0.50,2.62) rotate(45)`},e);
+    // corner castings
+    [[x0,y1],[x1,y1],[x1,y0]].forEach(c=>{
+      const p=P(c[0],c[1],0.01);
+      el("rect",{x:p[0]-4.5,y:p[1]-10,width:9,height:11,fill:"#565c60",rx:1.2},g);
+    });
+    // ground contact AO
+    poly([P(x0,y1,0),P(x1,y1,0),P(x1,y1,0.07),P(x0,y1,0.07)],"#1d2226",g,{opacity:.25});
+    poly([P(x1,y0,0),P(x1,y1,0),P(x1,y1,0.07),P(x1,y0,0.07)],"#1d2226",g,{opacity:.30});
+    return g;
+  }
+
+  // ================= PCS & MVT skid =================
+  function box(x0,y0,l,w,z0,h,cTop,cSun,cShade){
+    const g=el("g",{});
+    poly([P(x0,y0,z0+h),P(x0+l,y0,z0+h),P(x0+l,y0+w,z0+h),P(x0,y0+w,z0+h)],cTop,g);
+    poly([P(x0,y0+w,z0),P(x0+l,y0+w,z0),P(x0+l,y0+w,z0+h),P(x0,y0+w,z0+h)],cSun,g);
+    poly([P(x0+l,y0,z0),P(x0+l,y0+w,z0),P(x0+l,y0+w,z0+h),P(x0+l,y0,z0+h)],cShade,g);
+    return g;
+  }
+  // 5 MW PCS & MV Station — containerized turnkey unit modelled on the
+  // Sineng EH-series / NR PCS-9567MV-5000 class: string-PCS louver bays +
+  // oil-immersed MV transformer bay + RMU, 690 V -> 34.5 kV, in a 20 ft body.
+  const MX0=L+3.0, MY0=(5.176-W)/2;   // 3.0 m (10 ft) aisle per NFPA 850
+  function mvStation(){
+    const x0=MX0,y0=MY0,x1=x0+L,y1=y0+W;
+    shadow(x0,y0,L,W,HT);
+    // shell
+    poly([P(x0,y0,HT),P(x1,y0,HT),P(x1,y1,HT),P(x0,y1,HT)],"url(#gTopF)",null);
+    poly([P(x0,y1,0),P(x1,y1,0),P(x1,y1,HT),P(x0,y1,HT)],"url(#gSun)",null);
+    poly([P(x1,y0,0),P(x1,y1,0),P(x1,y1,HT),P(x1,y0,HT)],"url(#gShade)",null);
+    // roof: two vent hoods + HVAC
+    const mt=gTop(x0,y0,HT,null);
+    [[1.1],[2.9]].forEach(vx=>{
+      R(mt,vx[0],0.55,0.85,0.55,"#e2e5e4",{stroke:"#b3bab9","stroke-width":0.018,rx:0.03});
+      R(mt,vx[0]+0.06,0.61,0.73,0.43,"#d2d6d5",{rx:0.02});
+    });
+    R(mt,4.35,0.5,0.9,1.35,"#e8ebea",{stroke:"#b3bab9","stroke-width":0.018,rx:0.03});
+    for(let i=0;i<6;i++)R(mt,4.42+i*0.13,0.58,0.05,1.2,"#c2c8c7");
+    // front: three louvered PCS double-door bays + relay/RMU door + signage
+    const mf=gFront(x0,y1,HT,null);
+    R(mf,0,0,L,0.10,"#dfe3e2");R(mf,0,HT-0.14,L,0.14,"#c8cecd");
+    for(let b=0;b<3;b++){
+      const dx=0.18+b*1.28;
+      R(mf,dx,0.16,1.16,HT-0.42,COL.gasket,{rx:0.02});
+      [0,0.585].forEach(off=>{
+        R(mf,dx+0.02+off,0.19,0.545,HT-0.48,"#e9edec",{rx:0.015});
+        for(let s=0;s<16;s++)R(mf,dx+0.07+off,0.34+s*0.115,0.45,0.045,"#c3c9c8");
+      });
+      const hy=1.35;
+      R(mf,dx+0.53,hy,0.10,0.03,COL.steelD);
+    }
+    // relay & RMU access door (NR-style protection panel behind)
+    R(mf,4.10,0.16,0.75,HT-0.42,COL.gasket,{rx:0.02});
+    R(mf,4.125,0.19,0.70,HT-0.48,"#e9edec",{rx:0.015});
+    R(mf,4.20,0.55,0.55,0.85,"#d7dbda",{stroke:"#a8afae","stroke-width":0.014,rx:0.02});
+    el("circle",{cx:4.475,cy:1.75,r:0.05,fill:"#f2f4f3",stroke:"#8f9897","stroke-width":0.013},mf);
+    // transformer bay: tall louvre grille (oil radiator behind)
+    R(mf,5.02,0.16,0.88,HT-0.42,COL.gasket,{rx:0.02});
+    R(mf,5.045,0.19,0.83,HT-0.48,COL.mesh,{rx:0.015});
+    for(let s=0;s<18;s++)R(mf,5.09,0.28+s*0.13,0.74,0.05,"#a8b0af");
+    // signage + hazard
+    T(mf,0.22,0.50,0.17,COL.logo,"PCS & MV STATION  5 MW · 34.5 kV",{"font-weight":"700","letter-spacing":".04em"});
+    const tri=5.46;
+    el("polygon",{points:`${tri},0.62 ${tri+0.11},0.82 ${tri-0.11},0.82`,
+      fill:COL.yellow,stroke:"#1e2225","stroke-width":0.012},mf);
+    // right end: MV cable box + radiator grille
+    const me=gRight(x1,y1,HT,null);
+    R(me,0,0,W,0.10,"#c6cccb");R(me,0,HT-0.14,W,0.14,"#b3bab9");
+    R(me,0.25,0.5,0.9,1.5,"#e2e5e4",{stroke:"#aab1b0","stroke-width":0.015,rx:0.02});
+    for(let s=0;s<12;s++)R(me,0.30,0.58+s*0.115,0.80,0.045,"#c3c9c8");
+    R(me,1.35,1.65,0.75,0.85,"#dde1e0",{stroke:"#a8afae","stroke-width":0.015,rx:0.02});
+    T(me,1.42,1.58,0.08,"#828b91","MV 34.5kV",{"font-weight":"600"});
+    // corner castings + AO
+    [[x0,y1],[x1,y1],[x1,y0]].forEach(c=>{
+      const p=P(c[0],c[1],0.01);
+      el("rect",{x:p[0]-4.5,y:p[1]-10,width:9,height:11,fill:"#565c60",rx:1.2},null);
+    });
+    poly([P(x0,y1,0),P(x1,y1,0),P(x1,y1,0.07),P(x0,y1,0.07)],"#1d2226",null,{opacity:.25});
+    plinth(x0,y0);
+  }
+
+  // concrete plinth ring at each container base (per site photos: units sit on
+  // raised footings, not flush on the pad) — drawn after the container so the
+  // band protrudes in front of the box faces
+  function plinth(x0,y0){
+    const x1=x0+L,y1=y0+W,ph=0.13,o=0.07;
+    poly([P(x0-o,y1,ph),P(x1+o,y1,ph),P(x1+o,y1+o,ph),P(x0-o,y1+o,ph)],"#d8dbd7");
+    poly([P(x0-o,y1+o,0),P(x1+o,y1+o,0),P(x1+o,y1+o,ph),P(x0-o,y1+o,ph)],"#c6c9c5");
+    poly([P(x1,y0-o,ph),P(x1+o,y0-o,ph),P(x1+o,y1+o,ph),P(x1,y1+o,ph)],"#d3d6d2");
+    poly([P(x1+o,y0-o,0),P(x1+o,y1+o,0),P(x1+o,y1+o,ph),P(x1+o,y0-o,ph)],"#b2b5b1");
+  }
+  // ================= assemble iso scene =================
+  shadow(0,0,L,W,HT); shadow(0,2.738,L,W,HT);
+  container(0,0,1,true);      // mirrored twin: doors face outward (north), back to the gap
+  plinth(0,0);
+  container(0,2.738,2,false); // doors face outward (south, toward viewer)
+  plinth(0,2.738);
+  mvStation();
+
+  // subtle photographic vignette over the whole scene
+  el("rect",{x:0,y:0,width:1240,height:840,fill:"url(#vig)","pointer-events":"none"},svg);
+
+  // ---- annotations ----
+  const dims=el("g",{id:"dl","font-family":"Consolas, monospace"});
+  function dline(a,b,label,dy){
+    ln(a,b,COL.dim,1.3,dims);
+    [a,b].forEach(p=>ln([p[0],p[1]-4],[p[0],p[1]+4],COL.dim,1.3,dims));
+    const t=el("text",{x:(a[0]+b[0])/2,y:(a[1]+b[1])/2+(dy==null?-8:dy),fill:COL.dim,
+      "font-size":"12","text-anchor":"middle","font-weight":"700"},dims);
+    t.textContent=label;
+    t.setAttribute("stroke","#f4f6f7");t.setAttribute("stroke-width","3");
+    t.setAttribute("paint-order","stroke");
+  }
+  function tagAt(x,y,z,s){const p=P(x,y,z);
+    const t=el("text",{x:p[0],y:p[1],fill:COL.dim,"font-size":"13","font-weight":"800",
+      "text-anchor":"middle","letter-spacing":".08em",stroke:"#f4f6f7","stroke-width":"3.5",
+      "paint-order":"stroke"},dims);t.textContent=s;}
+  dline(P(0,6.35,0),P(L,6.35,0),"6.058 m",16);
+  dline(P(L+0.05,5.5,0),P(L+2.95,5.5,0),"3.0 m (10 ft) aisle — NFPA 850",16);
+  // width / pair-gap dims are annotated in the bird's-eye view where they
+  // don't cross the buildings in projection
+  tagAt(3.0,1.22,HT+0.95,"BESS-01");
+  tagAt(3.0,3.96,HT+0.95,"BESS-02");
+  tagAt(MX0+3.0,MY0+1.2,HT+0.9,"PCS & MV STATION (5 MW)");
+  document.getElementById("dims").addEventListener("change",ev=>{
+    dims.style.display=ev.target.checked?"":"none";
+    adims.style.display=ev.target.checked?"":"none";
+  });
+
+  // ================= bird's-eye view =================
+  const av=document.getElementById("aerial");
+  const AS=64, AX=150, AY=70;                    // px/m, origin
+  const A=(x,y)=>[AX+x*AS, AY+y*AS];
+  function ael(n,a,parent){const e=document.createElementNS(NS,n);
+    for(const k in a)e.setAttribute(k,a[k]);(parent||av).appendChild(e);return e;}
+  const AR=(x,y,w,h,fill,extra,parent)=>ael("rect",Object.assign({x:A(x,y)[0],y:A(x,y)[1],
+    width:w*AS,height:h*AS,fill:fill},extra||{}),parent);
+  // ground + pads
+  AR(-2.3,-1.0,20.5,7.7,"#bfc4bf");
+  let s2=13;const rnd2=()=>{s2=(s2*16807)%2147483647;return s2/2147483647;};
+  for(let i=0;i<800;i++){const x=-2.3+20.5*rnd2(),y=-1.0+7.7*rnd2();
+    ael("circle",{cx:A(x,y)[0],cy:A(x,y)[1],r:0.6+rnd2(),fill:rnd2()>.5?"#aeb3ae":"#cbcfca",opacity:.5});}
+  AR(-0.45,-0.45,6.95,6.07,"#d3d5d1",{stroke:"#b3b6b2","stroke-width":1});
+  AR(8.7,0.9,7.0,3.4,"#d3d5d1",{stroke:"#b3b6b2","stroke-width":1});
+  for(let i=0;i<5;i++)AR(6.5,1.55+i*0.42,2.2,0.34,"#9fa5a3",{stroke:"#868c8a","stroke-width":0.8});
+  // containers (roof view w/ vents) + drop shadows
+  function roof(x0,y0,idx,mir){
+    AR(x0+0.08,y0+0.10,L,W,"#3a3f42",{opacity:.18});
+    AR(x0,y0,L,W,"#eef0ef",{stroke:"#b6bdbc","stroke-width":1,rx:2});
+    for(let x=0.14;x<L-0.1;x+=0.28)AR(x0+x,y0+0.05,0.045,W-0.10,"#d9dedd");
+    for(let i=0;i<4;i++){
+      const vs=0.88, vx=x0+0.62+i*1.32, vy=y0+(mir?W-vs-0.20:0.20);
+      AR(vx,vy,vs,vs,"#e4e7e6",{stroke:"#aeb5b4","stroke-width":1,rx:2});
+      AR(vx+0.07,vy+0.07,vs-0.14,vs-0.14,"#f2f4f3",{stroke:"#c6cccb","stroke-width":0.7});
+    }
+    [[x0,y0],[x0+L-0.72,y0],[x0,y0+W-0.09],[x0+L-0.72,y0+W-0.09]].forEach(cs=>{
+      for(let i=0;i<6;i++)AR(cs[0]+i*0.12,cs[1],0.12,0.09,i%2?"#f0b400":"#22262a");});
+    const tp=A(x0+L-0.28,y0+W-0.5);
+    const t=ael("text",{x:tp[0],y:tp[1],fill:"#8d949a","font-size":"11","font-weight":"600",
+      "font-family":"Arial","letter-spacing":".05em",transform:`rotate(90 ${tp[0]} ${tp[1]})`});
+    t.textContent="ZDCU25082"+idx;
+    // fan end marker (three circles at right end)
+    [0.5,1.22,1.94].forEach(fy=>ael("circle",{cx:A(x0+L-0.35,y0+fy)[0]+10,cy:A(x0+L-0.35,y0+fy)[1],
+      r:0,fill:"none"}));
+  }
+  roof(0,0,1,true); roof(0,2.738,2,false);
+  // PCS & MV station aerial (containerized turnkey, Sineng/NR class)
+  AR(9.058+0.08,1.369+0.10,6.058,2.438,"#3a3f42",{opacity:.18});
+  AR(9.058,1.369,6.058,2.438,"#eef0ef",{stroke:"#aeb5b4","stroke-width":1,rx:2});
+  [[10.15],[11.95]].forEach(vx=>{
+    AR(vx[0],1.92,0.85,0.55,"#e2e5e4",{stroke:"#b3bab9","stroke-width":0.8,rx:2});});
+  AR(13.4,1.85,0.9,1.35,"#e4e7e6",{stroke:"#b3bab9","stroke-width":0.8,rx:2});
+  for(let i=0;i<6;i++)AR(13.47+i*0.13,1.92,0.05,1.2,"#c2c8c7");
+  AR(9.2,3.55,5.7,0.12,"#c8cecd");
+  // aerial labels + dims
+  const adims=ael("g",{"font-family":"Consolas, monospace"});
+  function albl(x,y,s,size){const p=A(x,y);
+    const t=ael("text",{x:p[0],y:p[1],fill:"#1f4e79","font-size":size||13,"font-weight":"800",
+      "text-anchor":"middle","letter-spacing":".08em",stroke:"#eef0ef","stroke-width":3.5,
+      "paint-order":"stroke"},adims);t.textContent=s;}
+  function adim(x1,y1,x2,y2,label){
+    const a=A(x1,y1),b=A(x2,y2);
+    ael("line",{x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:"#1f4e79","stroke-width":1.3},adims);
+    [a,b].forEach(p=>ael("line",{x1:p[0]-4,y1:p[1]-4,x2:p[0]+4,y2:p[1]+4,stroke:"#1f4e79","stroke-width":1.2},adims));
+    const t=ael("text",{x:(a[0]+b[0])/2,y:(a[1]+b[1])/2-7,fill:"#1f4e79","font-size":"12",
+      "font-weight":"700","text-anchor":"middle",stroke:"#eef0ef","stroke-width":3,
+      "paint-order":"stroke"},adims);t.textContent=label;}
+  // bottom cable-entry openings (per product spec: all cables enter through
+  // the container floor) — dashed, feeding the covered trench
+  [[5.0,0.55],[5.0,1.75],[5.0,3.29],[5.0,4.49]].forEach(c=>{
+    ael("rect",{x:A(c[0],c[1])[0],y:A(c[0],c[1])[1],width:0.7*AS,height:0.28*AS,
+      fill:"none",stroke:"#5b6367","stroke-width":1.2,"stroke-dasharray":"5 4"});
+  });
+  ael("rect",{x:A(13.9,2.55)[0],y:A(13.9,2.55)[1],width:0.7*AS,height:0.28*AS,
+    fill:"none",stroke:"#5b6367","stroke-width":1.2,"stroke-dasharray":"5 4"});
+  (function(){const t=ael("text",{x:A(4.2,0.30)[0],y:A(4.2,0.30)[1],fill:"#5b6367",
+    "font-size":"10.5","font-style":"italic"});t.textContent="bottom cable entries";})();
+  albl(3.03,1.35,"BESS-01");
+  albl(3.03,4.07,"BESS-02");
+  albl(12.09,2.65,"PCS & MV STATION",12);
+  adim(0,5.9,6.058,5.9,"6.058 m");
+  adim(6.058,5.35,9.058,5.35,"3.0 m (10 ft)");
+  adim(-1.0,0,-1.0,2.438,"2.438 m");
+  adim(-0.72,2.438,-0.72,2.738,"0.30 m");
+  adim(0,-0.75,15.116,-0.75,"15.12 m overall");
+
+  // ================= site array view (international profile) =================
+  const sv=document.getElementById("site");
+  const SS=19, SX=315, SY=84;                  // px/m
+  const Q=(x,y)=>[SX+x*SS, SY+y*SS];
+  function sel(n,a){const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);sv.appendChild(e);return e;}
+  const SR=(x,y,w,h,fill,extra)=>sel("rect",Object.assign({x:Q(x,y)[0],y:Q(x,y)[1],
+    width:w*SS,height:h*SS,fill:fill},extra||{}));
+  function stext(x,y,s,size,extra){const p=Q(x,y);
+    const t=sel("text",Object.assign({x:p[0],y:p[1],fill:"#1f4e79","font-size":size||12,
+      "font-weight":"700","text-anchor":"middle","font-family":"Consolas, monospace",
+      stroke:"#e8ebe9","stroke-width":3,"paint-order":"stroke"},extra||{}));
+    t.textContent=s;return t;}
+
+  // geometry: unit 15.116 x 5.176; rows at y=0 and mirrored below a 6.0 m road
+  const UW=15.116,UD=5.176,GAP=0.9,ROAD=6.0,AISLE=3.0;
+  const rowAy=0, roadY=UD+AISLE, rowBy=roadY+ROAD+AISLE- Math.max(0,0);
+  // layout bands: north aisle (-3..0), row A (0..5.18), aisle (3.0), road (6.0),
+  // aisle (3.0), row B, south aisle (3.0)
+  const yRowB=UD+AISLE+ROAD+AISLE;
+  const siteW=2*UW+GAP, siteS=yRowB+UD+AISLE;
+  // gravel yard + fence
+  SR(-3.4,-3.4,siteW+6.8,siteS+3.6+3.4,"#c6cac5");
+  let s3=41;const rnd3=()=>{s3=(s3*16807)%2147483647;return s3/2147483647;};
+  for(let i=0;i<900;i++){const x=-3.4+(siteW+6.8)*rnd3(),y=-3.4+(siteS+7.0)*rnd3();
+    sel("circle",{cx:Q(x,y)[0],cy:Q(x,y)[1],r:0.5+rnd3()*0.8,
+      fill:rnd3()>.5?"#b4b9b3":"#d2d5d0",opacity:.5});}
+  // fire access road (20 ft) across the middle + east stub to gate
+  SR(-3.4,UD+AISLE,siteW+6.8,ROAD,"#b7bab6");
+  SR(siteW+0.5,UD+AISLE,2.9,ROAD,"#b7bab6");
+  for(let x=-3.0;x<siteW+3.2;x+=2.2)
+    SR(x,UD+AISLE+ROAD/2-0.06,1.1,0.12,"#e4e6e2");
+  // one AC block unit (top-down)
+  function acBlock(x0,y0,tag){
+    SR(x0-0.45,y0-0.45,UW+0.9,UD+0.9,"#d3d5d1",{stroke:"#b3b6b2","stroke-width":1,rx:2});
+    [[0,"#eef0ef"],[2.738,"#eef0ef"]].forEach(r=>{
+      SR(x0+0.06,y0+r[0]+0.06,L,W,"#3a3f42",{opacity:.15,rx:2});
+      SR(x0,y0+r[0],L,W,r[1],{stroke:"#aeb5b4","stroke-width":1,rx:2});
+      for(let i=0;i<4;i++){const vs=0.88;
+        SR(x0+0.62+i*1.32,y0+r[0]+(r[0]?0.20:W-vs-0.20),vs,vs,"#e2e5e4",
+          {stroke:"#b9c0bf","stroke-width":0.7,rx:1.5});}
+    });
+    SR(x0+9.058+0.06,y0+1.369+0.06,L,W,"#3a3f42",{opacity:.15,rx:2});
+    SR(x0+9.058,y0+1.369,L,W,"#f0f2f1",{stroke:"#aeb5b4","stroke-width":1,rx:2});
+    for(let i=0;i<5;i++)SR(x0+9.058+5.15,y0+1.55+i*0.42,0.75,0.2,"#c2c8c7");
+    for(let i=0;i<4;i++)SR(x0+6.35,y0+1.55+i*0.55,2.45,0.3,"#9fa5a3",
+      {stroke:"#868c8a","stroke-width":0.6});
+    stext(x0+UW/2,y0+UD/2+0.18,tag,13);
+  }
+  acBlock(0,0,"AC BLOCK 01");
+  acBlock(UW+GAP,0,"AC BLOCK 02");
+  acBlock(0,yRowB,"AC BLOCK 03");
+  acBlock(UW+GAP,yRowB,"AC BLOCK 04");
+  // perimeter fence with posts + gate on east road stub
+  const f0=Q(-3.4,-3.4), f1=Q(siteW+3.4,siteS+0.2? siteS+0.2: siteS);
+  sel("rect",{x:f0[0],y:f0[1],width:(siteW+6.8)*SS,height:(siteS+3.6)*SS,
+    fill:"none",stroke:"#4a5055","stroke-width":2});
+  for(let x=-3.4;x<=siteW+3.4;x+=2.0){
+    sel("circle",{cx:Q(x,-3.4)[0],cy:Q(x,-3.4)[1],r:1.6,fill:"#4a5055"});
+    sel("circle",{cx:Q(x,siteS+0.2)[0],cy:Q(x,siteS+0.2)[1],r:1.6,fill:"#4a5055"});}
+  for(let y=-3.4;y<=siteS+0.2;y+=2.0){
+    sel("circle",{cx:Q(-3.4,y)[0],cy:Q(-3.4,y)[1],r:1.6,fill:"#4a5055"});
+    sel("circle",{cx:Q(siteW+3.4,y)[0],cy:Q(siteW+3.4,y)[1],r:1.6,fill:"#4a5055"});}
+  // gate: break in east fence at the road
+  sel("rect",{x:Q(siteW+3.25,UD+AISLE+0.3)[0],y:Q(siteW+3.25,UD+AISLE+0.3)[1],
+    width:0.3*SS,height:(ROAD-0.6)*SS,fill:"#c6cac5"});
+  sel("line",{x1:Q(siteW+3.4,UD+AISLE+0.3)[0],y1:Q(siteW+3.4,UD+AISLE+0.3)[1],
+    x2:Q(siteW+4.9,UD+AISLE+1.6)[0],y2:Q(siteW+4.9,UD+AISLE+1.6)[1],
+    stroke:"#4a5055","stroke-width":2});
+  stext(siteW+2.2,UD+AISLE-0.5,"GATE",10.5,{"text-anchor":"end"});
+  // hydrants at both road ends
+  [[-2.5,UD+AISLE+ROAD+1.0],[siteW+2.6,UD+AISLE+ROAD+1.0]].forEach(h=>{
+    sel("circle",{cx:Q(h[0],h[1])[0],cy:Q(h[0],h[1])[1],r:4.4,fill:"#c33127",
+      stroke:"#801d15","stroke-width":1.4});});
+  stext(-2.5,UD+AISLE+ROAD+2.0,"HYDRANT",9.5);
+  stext(siteW+2.6,UD+AISLE+ROAD+2.0,"HYDRANT",9.5);
+  // dims + code notes
+  function sdim(x1,y1,x2,y2,label,dy){
+    const a=Q(x1,y1),b=Q(x2,y2);
+    sel("line",{x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:"#1f4e79","stroke-width":1.2});
+    [a,b].forEach(p=>sel("line",{x1:p[0]-3.5,y1:p[1]-3.5,x2:p[0]+3.5,y2:p[1]+3.5,
+      stroke:"#1f4e79","stroke-width":1.1}));
+    stext((x1+x2)/2,(y1+y2)/2+(dy==null?-0.35:dy),label,11);
+  }
+  sdim(UW,-1.5,UW+GAP,-1.5,"0.9 m (3 ft, UL 9540A)",0.85);
+  sdim(0,-2.55,UW,-2.55,"AC Block 15.12 m",-0.4);
+  sdim(-1.6,0,-1.6,UD,"5.18 m",0);
+  sdim(-1.6,UD,-1.6,UD+AISLE,"3.0 m",0);
+  stext(siteW/2,UD+AISLE+ROAD-1.1,"6.0 m (20 ft) FIRE ACCESS ROAD",11.5);
+  stext(siteW/2,siteS+2.5,"Remote-location siting per IFC/NFPA 855 · door sides face maintenance aisles · MV collection via trench to road-side",10.5);
+})();
+</script>

@@ -66,6 +66,17 @@ Root-cause analysis and binding rules for all future diagram work (including
 P2 Master Layout): `DIAGRAM_QUALITY_GOVERNANCE_2026-07-15.md`. Regression
 baseline case01 regenerated.
 
+## 2.2 AC Block product & arrangement knowledge base (2026-07-18)
+
+`AC_BLOCK_PRODUCT_KNOWLEDGE_2026-07-18.md` records the 5.015 MWh product
+construction, owner-confirmed appearance rules (mirrored pairing, roof vents on
+the no-door edge, cooling-bay and end-face composition, livery positions), the
+international arrangement code basis (IFC/NFPA 855/NFPA 850/UL 9540A — owner
+decision: no GB), the Sineng/NR-based PCS & MV Station composition of the AC
+Block, and site-array logic. The parametric concept renderer lives at
+`docs/concept/ac_block_concept_render.html`. Feed both into P2 Master Layout
+and any future 3D rendering work.
+
 ## 3. Next boundary
 
 The package deliberately stops before a Concept Master Layout. Unlocking it
