@@ -75,7 +75,9 @@ international arrangement code basis (IFC/NFPA 855/NFPA 850/UL 9540A — owner
 decision: no GB), the Sineng/NR-based PCS & MV Station composition of the AC
 Block, and site-array logic. The parametric concept renderer lives at
 `docs/concept/ac_block_concept_render.html`. Feed both into P2 Master Layout
-and any future 3D rendering work.
+and any future 3D rendering work. The staged implementation plan (L1 unit
+arrangement engine → L2 site-array concept → L3 Master Layout, plus report
+integration as §8 upgrade / new §9) is `LAYOUT_ROADMAP_V1_2026-07-18.md`.
 
 ## 3. Next boundary
 

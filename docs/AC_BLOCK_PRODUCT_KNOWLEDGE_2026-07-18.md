@@ -157,7 +157,7 @@ AC Block (5 MW / 10.03 MWh, 34.5 kV)
   等距矢量无法表达真实反射/粗糙度/全局光照与透视；照片级需 three.js/Blender
   3D 管线（独立课题）。本知识库即为该课题的完整输入。
 
-## 8. 平台落地待办（源自本轮研究）
+## 8. 平台落地待办（源自本轮研究；实施路线见 `LAYOUT_ROADMAP_V1_2026-07-18.md`）
 1. 排布间距做成**按市场切换的 rule profile**（US=NFPA/UL；CN=GB/T 51048-2025 备查；
    EU/AU=AHJ+保险商），作为 Site Constraint Set `rule_basis` 枚举输入。
 2. Typical AC Block Arrangement 页与报告第 8 章：通道 2.0 m → 按 rule profile
