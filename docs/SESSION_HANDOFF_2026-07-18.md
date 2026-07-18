@@ -33,11 +33,10 @@
 
 ## 3. 进行中 / 立即待办
 
-1. **服务器部署 `cfd309b`**：VPN 恢复后执行
-   `ssh calb-server "cd /opt/calb-sizingtool/app && sudo bash deploy/docker/calb-serverctl.sh update"`
-   然后 `curl -fsSI http://127.0.0.1:18511/` 应 200，`git rev-parse --short HEAD` 应 = cfd309b。
-   完成后在 `INTERNAL_GIT_RELAY_RUNBOOK.md` 部署表补记录（GitHub 直连已恢复，
-   relay 仅为断网备用）。
+1. ~~服务器部署~~ **已完成（2026-07-18）**：服务器运行 `4d23c6b`，HTTP 200。
+   注意：服务器→GitHub 443 出口再次回退（TLS reset/timeout），`calb-serverctl.sh update`
+   的 pull 会失败——**当前发布用 relay 流程**（见 runbook，已补部署记录）。
+   每次发布前可先试直连，失败即走 relay，勿在直连上反复重试浪费时间。
 2. **L2（下一开发项）**：`services/site_array_concept_service.py` + 报告新增 §9，
    规格见 Roadmap §2-L2；参考几何在 docs/concept 渲染器第三视图。
 3. L1 尾项（可选）：UI "Typical AC Block Arrangement" 页接入 V2 引擎替换旧画法；
