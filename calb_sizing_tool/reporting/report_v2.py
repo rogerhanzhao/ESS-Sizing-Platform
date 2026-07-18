@@ -33,6 +33,10 @@ from calb_sizing_tool.reporting.export_docx import (
     _setup_header,
     _setup_margins,
 )
+from calb_diagrams.ac_block_arrangement_v2 import (
+    US_NFPA_OIL as ARRANGEMENT_PROFILE,
+    render_plan_svg as render_ac_block_plan_svg,
+)
 from calb_sizing_tool.reporting.brand_profiles import (
     BrandProfile,
     CALB_BRAND,
@@ -902,8 +906,39 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         doc.add_picture(io.BytesIO(layout_png_bytes), width=Inches(6.7))
         _keep_next_para(doc.paragraphs[-1])
         doc.add_paragraph(f"Figure {figure_index}: Typical AC Block Arrangement — Concept Only")
+        figure_index += 1
     else:
         doc.add_paragraph("Typical AC Block Arrangement not generated. Generate it from the corresponding concept page.")
+
+    # Rule-based arrangement (Layout Roadmap L1): drawing and spacing basis
+    # derived from the ArrangementRuleProfile — never hardcoded aisles.
+    if ctx.ac_blocks_total > 0 and ctx.dc_blocks_total > 0:
+        dc_per_ac = max(1, int(round(ctx.dc_blocks_total / ctx.ac_blocks_total)))
+        try:
+            plan_svg, plan_layout = render_ac_block_plan_svg(
+                dc_per_ac, ARRANGEMENT_PROFILE
+            )
+            plan_png = _svg_bytes_to_png(plan_svg.encode("utf-8"))
+        except Exception:
+            plan_png, plan_layout = None, None
+        if plan_png and plan_layout is not None:
+            _keep_next_para(doc.add_paragraph(""))
+            _keep_next_para(doc.add_paragraph(
+                f"Rule-based typical arrangement ({dc_per_ac} × DC per block, "
+                f"mirrored back-to-back pairs, doors facing outward aisles):"
+            ))
+            doc.add_picture(io.BytesIO(plan_png), width=Inches(6.7))
+            _keep_next_para(doc.paragraphs[-1])
+            _keep_next_para(doc.add_paragraph(
+                f"Figure {figure_index}: Typical AC Block Arrangement (rule-based) — "
+                f"envelope ≈ {plan_layout.envelope_w_m:.2f} × "
+                f"{plan_layout.envelope_d_m:.2f} m. Concept only."
+            ))
+            basis_rows = [(item, f"{value} — {basis}")
+                          for item, value, basis in ARRANGEMENT_PROFILE.basis]
+            basis_rows.append((
+                "Arrangement rule profile", ARRANGEMENT_PROFILE.market_label))
+            _add_table(doc, basis_rows, ["Spacing parameter", "Value & code basis"])
 
     return _doc_to_bytes(doc)
 
