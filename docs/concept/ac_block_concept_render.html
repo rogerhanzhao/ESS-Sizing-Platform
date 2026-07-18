@@ -62,7 +62,7 @@
   <div class="scene"><svg id="aerial" viewBox="0 0 1220 560" role="img"
     aria-label="Bird's-eye view of the same AC block layout"></svg></div>
 
-  <h2>整场排布示意 · Site Array（International Profile · 4 × AC Block = 20 MW / 40 MWh）</h2>
+  <h2>整场排布示意 · Site Array（MV 居中镜像布置 · 2×DC 与 4×DC 双规格 · 20 MW / 60 MWh）</h2>
   <div class="scene"><svg id="site" viewBox="0 0 1220 700" role="img"
     aria-label="Site array view: four AC blocks in two rows with fire access road, fence, gate and hydrants per NFPA 855/IFC"></svg></div>
 
@@ -656,7 +656,7 @@
 
   // ================= site array view (international profile) =================
   const sv=document.getElementById("site");
-  const SS=19, SX=315, SY=84;                  // px/m
+  const SS=19, SX=171, SY=88;                  // px/m
   const Q=(x,y)=>[SX+x*SS, SY+y*SS];
   function sel(n,a){const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);sv.appendChild(e);return e;}
   const SR=(x,y,w,h,fill,extra)=>sel("rect",Object.assign({x:Q(x,y)[0],y:Q(x,y)[1],
@@ -667,13 +667,18 @@
       stroke:"#e8ebe9","stroke-width":3,"paint-order":"stroke"},extra||{}));
     t.textContent=s;return t;}
 
-  // geometry: unit 15.116 x 5.176; rows at y=0 and mirrored below a 6.0 m road
-  const UW=15.116,UD=5.176,GAP=0.9,ROAD=6.0,AISLE=3.0;
-  const rowAy=0, roadY=UD+AISLE, rowBy=roadY+ROAD+AISLE- Math.max(0,0);
-  // layout bands: north aisle (-3..0), row A (0..5.18), aisle (3.0), road (6.0),
-  // aisle (3.0), row B, south aisle (3.0)
-  const yRowB=UD+AISLE+ROAD+AISLE;
-  const siteW=2*UW+GAP, siteS=yRowB+UD+AISLE;
+  // geometry — owner rule: within a row the two AC Blocks are MIRRORED so both
+  // MV stations sit toward the site centre; their MV feeders collect in a
+  // shared 2.0 m corridor and route in ONE direction to the road/substation.
+  // Two block variants shown: 2xDC (row 1) and 4xDC (row 2).
+  const UD=5.176,GAP=0.9,ROAD=6.0,AISLE=3.0,CORR=2.0;
+  const U2=15.116;                 // 2xDC: DC pair 6.058 + 3.0 + MV 6.058
+  const U4=22.074;                 // 4xDC: pair+0.9+pair (13.016) + 3.0 + MV
+  const R1=2*U2+CORR, R2=2*U4+CORR;
+  const siteW=R2, row1x=(R2-R1)/2; // rows share the same centreline
+  const yRow2=UD+AISLE+ROAD+AISLE;
+  const siteS=yRow2+UD+AISLE;
+  const CX=siteW/2;                // corridor centre
   // gravel yard + fence
   SR(-3.4,-3.4,siteW+6.8,siteS+3.6+3.4,"#c6cac5");
   let s3=41;const rnd3=()=>{s3=(s3*16807)%2147483647;return s3/2147483647;};
@@ -685,27 +690,58 @@
   SR(siteW+0.5,UD+AISLE,2.9,ROAD,"#b7bab6");
   for(let x=-3.0;x<siteW+3.2;x+=2.2)
     SR(x,UD+AISLE+ROAD/2-0.06,1.1,0.12,"#e4e6e2");
-  // one AC block unit (top-down)
-  function acBlock(x0,y0,tag){
-    SR(x0-0.45,y0-0.45,UW+0.9,UD+0.9,"#d3d5d1",{stroke:"#b3b6b2","stroke-width":1,rx:2});
-    [[0,"#eef0ef"],[2.738,"#eef0ef"]].forEach(r=>{
+  // building blocks (top-down)
+  function dcPairTD(x0,y0){
+    [[0],[2.738]].forEach(r=>{
       SR(x0+0.06,y0+r[0]+0.06,L,W,"#3a3f42",{opacity:.15,rx:2});
-      SR(x0,y0+r[0],L,W,r[1],{stroke:"#aeb5b4","stroke-width":1,rx:2});
+      SR(x0,y0+r[0],L,W,"#eef0ef",{stroke:"#aeb5b4","stroke-width":1,rx:2});
       for(let i=0;i<4;i++){const vs=0.88;
         SR(x0+0.62+i*1.32,y0+r[0]+(r[0]?0.20:W-vs-0.20),vs,vs,"#e2e5e4",
           {stroke:"#b9c0bf","stroke-width":0.7,rx:1.5});}
     });
-    SR(x0+9.058+0.06,y0+1.369+0.06,L,W,"#3a3f42",{opacity:.15,rx:2});
-    SR(x0+9.058,y0+1.369,L,W,"#f0f2f1",{stroke:"#aeb5b4","stroke-width":1,rx:2});
-    for(let i=0;i<5;i++)SR(x0+9.058+5.15,y0+1.55+i*0.42,0.75,0.2,"#c2c8c7");
-    for(let i=0;i<4;i++)SR(x0+6.35,y0+1.55+i*0.55,2.45,0.3,"#9fa5a3",
-      {stroke:"#868c8a","stroke-width":0.6});
-    stext(x0+UW/2,y0+UD/2+0.18,tag,13);
   }
-  acBlock(0,0,"AC BLOCK 01");
-  acBlock(UW+GAP,0,"AC BLOCK 02");
-  acBlock(0,yRowB,"AC BLOCK 03");
-  acBlock(UW+GAP,yRowB,"AC BLOCK 04");
+  function mvStTD(x0,y0,mvLeft){
+    SR(x0+0.06,y0+0.06,L,W,"#3a3f42",{opacity:.15,rx:2});
+    SR(x0,y0,L,W,"#f0f2f1",{stroke:"#aeb5b4","stroke-width":1,rx:2});
+    // radiator louver strip on the corridor-facing end (where MV exits)
+    const lx = mvLeft ? x0+0.35 : x0+L-1.1;
+    for(let i=0;i<5;i++)SR(lx+i*0.15,y0+0.55,0.06,1.35,"#c2c8c7");
+    SR(x0+(mvLeft?3.0:1.6),y0+0.5,0.85,0.55,"#e2e5e4",{stroke:"#b3bab9","stroke-width":0.7,rx:2});
+  }
+  function trenchTD(x0,y0){
+    for(let i=0;i<4;i++)SR(x0,y0+1.55+i*0.55,2.45,0.3,"#9fa5a3",
+      {stroke:"#868c8a","stroke-width":0.6});
+  }
+  // AC block: ndc containers, MV station toward the site centre (mvLeft flips)
+  function acb(x0,y0,ndc,mvLeft,tag){
+    const uw = ndc===2 ? U2 : U4;
+    SR(x0-0.45,y0-0.45,uw+0.9,UD+0.9,"#d3d5d1",{stroke:"#b3b6b2","stroke-width":1,rx:2});
+    const dcw = ndc===2 ? 6.058 : 13.016;
+    const dcx = mvLeft ? x0+uw-dcw : x0;
+    const mvx = mvLeft ? x0 : x0+uw-6.058;
+    dcPairTD(dcx,y0);
+    if(ndc===4)dcPairTD(dcx+6.958,y0);
+    mvStTD(mvx,y0+1.369,mvLeft);
+    trenchTD(mvLeft ? mvx+6.33 : mvx-2.72, y0);
+    stext(x0+uw/2,y0-0.95,tag,12.5);
+  }
+  acb(row1x,0,2,false,"AC BLOCK 01 (2×DC)");
+  acb(row1x+U2+CORR,0,2,true,"AC BLOCK 02 (2×DC)");
+  acb(0,yRow2,4,false,"AC BLOCK 03 (4×DC)");
+  acb(U4+CORR,yRow2,4,true,"AC BLOCK 04 (4×DC)");
+  // central MV corridor: feeders from all four stations collect here and run
+  // in ONE direction along the road to the substation
+  const duct={stroke:"#454d52","stroke-width":3,"stroke-dasharray":"9 6",fill:"none",opacity:.85};
+  sel("path",Object.assign({d:`M ${Q(CX,2.6)[0]} ${Q(CX,2.6)[1]} L ${Q(CX,UD+AISLE+ROAD/2)[0]} ${Q(CX,UD+AISLE+ROAD/2)[1]}`},duct));
+  sel("path",Object.assign({d:`M ${Q(CX,yRow2+2.6)[0]} ${Q(CX,yRow2+2.6)[1]} L ${Q(CX,UD+AISLE+ROAD/2)[0]} ${Q(CX,UD+AISLE+ROAD/2)[1]}`},duct));
+  sel("path",Object.assign({d:`M ${Q(CX,UD+AISLE+ROAD/2)[0]} ${Q(CX,UD+AISLE+ROAD/2)[1]} L ${Q(siteW+3.2,UD+AISLE+ROAD/2)[0]} ${Q(siteW+3.2,UD+AISLE+ROAD/2)[1]}`},duct));
+  [[CX,2.6],[CX,yRow2+2.6],[CX,UD+AISLE+ROAD/2]].forEach(p=>{
+    sel("rect",{x:Q(p[0],p[1])[0]-4,y:Q(p[0],p[1])[1]-4,width:8,height:8,
+      fill:"#5b6367",stroke:"#3d4448","stroke-width":1});});
+  sel("polygon",{points:`${Q(siteW+3.2,UD+AISLE+ROAD/2)[0]},${Q(siteW+3.2,UD+AISLE+ROAD/2)[1]-6} ${Q(siteW+3.2,UD+AISLE+ROAD/2)[0]+10},${Q(siteW+3.2,UD+AISLE+ROAD/2)[1]} ${Q(siteW+3.2,UD+AISLE+ROAD/2)[0]},${Q(siteW+3.2,UD+AISLE+ROAD/2)[1]+6}`,
+    fill:"#454d52"});
+  stext(CX,UD+AISLE-0.6,"MV CORRIDOR",10);
+  stext(siteW-1.2,UD+AISLE+ROAD/2-0.55,"MV FEEDERS → SUBSTATION",10,{"text-anchor":"end"});
   // perimeter fence with posts + gate on east road stub
   const f0=Q(-3.4,-3.4), f1=Q(siteW+3.4,siteS+0.2? siteS+0.2: siteS);
   sel("rect",{x:f0[0],y:f0[1],width:(siteW+6.8)*SS,height:(siteS+3.6)*SS,
@@ -737,11 +773,12 @@
       stroke:"#1f4e79","stroke-width":1.1}));
     stext((x1+x2)/2,(y1+y2)/2+(dy==null?-0.35:dy),label,11);
   }
-  sdim(UW,-1.5,UW+GAP,-1.5,"0.9 m (3 ft, UL 9540A)",0.85);
-  sdim(0,-2.55,UW,-2.55,"AC Block 15.12 m",-0.4);
-  sdim(-1.6,0,-1.6,UD,"5.18 m",0);
-  sdim(-1.6,UD,-1.6,UD+AISLE,"3.0 m",0);
-  stext(siteW/2,UD+AISLE+ROAD-1.1,"6.0 m (20 ft) FIRE ACCESS ROAD",11.5);
-  stext(siteW/2,siteS+2.5,"Remote-location siting per IFC/NFPA 855 · door sides face maintenance aisles · MV collection via trench to road-side",10.5);
+  sdim(row1x,-2.45,row1x+U2,-2.45,"AC Block (2×DC) 15.12 m",-0.4);
+  sdim(row1x+U2,-1.35,row1x+U2+CORR,-1.35,"2.0 m MV corridor",0.85);
+  sdim(-1.6,yRow2,-1.6,yRow2+UD,"5.18 m",0);
+  sdim(0,siteS+1.3,U4,siteS+1.3,"AC Block (4×DC) 22.07 m",0.9);
+  sdim(6.058,siteS+0.45,6.958,siteS+0.45,"0.9 m",-0.35);
+  stext(CX-9.5,UD+AISLE+ROAD-1.1,"6.0 m (20 ft) FIRE ACCESS ROAD",11.5);
+  stext(siteW/2,siteS+2.9,"Remote-location siting per IFC/NFPA 855 · mirrored blocks put both MV stations on the shared corridor · one-direction MV routing",10.5);
 })();
 </script>
