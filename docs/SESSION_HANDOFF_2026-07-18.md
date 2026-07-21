@@ -33,6 +33,10 @@
 
 ## 3. 进行中 / 立即待办
 
+0. **【暂停点 2026-07-18，owner 指示暂停】待部署：`2cb294c`**（报告 §8 改为
+   规则版主图，旧图仅兜底；已推 GitHub，311 测试通过）。恢复时：VPN 连通后
+   relay 推送 → 服务器 `ff-only` → `calb-serverctl.sh restart` → HTTP 200 →
+   runbook 补记录。服务器当前仍在 `4d23c6b`（功能完整，仅 §8 有新旧双图）。
 1. ~~服务器部署~~ **已完成（2026-07-18）**：服务器运行 `4d23c6b`，HTTP 200。
    注意：服务器→GitHub 443 出口再次回退（TLS reset/timeout），`calb-serverctl.sh update`
    的 pull 会失败——**当前发布用 relay 流程**（见 runbook，已补部署记录）。
