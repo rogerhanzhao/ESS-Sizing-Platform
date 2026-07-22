@@ -40,10 +40,12 @@
    注意：服务器→GitHub 443 出口再次回退（TLS reset/timeout），`calb-serverctl.sh update`
    的 pull 会失败——**当前发布用 relay 流程**（见 runbook，已补部署记录）。
    每次发布前可先试直连，失败即走 relay，勿在直连上反复重试浪费时间。
-2. **L2（下一开发项）**：`services/site_array_concept_service.py` + 报告新增 §9，
-   规格见 Roadmap §2-L2；参考几何在 docs/concept 渲染器第三视图。
-3. L1 尾项（可选）：UI "Typical AC Block Arrangement" 页接入 V2 引擎替换旧画法；
-   轴测示意图（Python 版）待做。
+2. ~~L2~~ **已完成并部署（2026-07-22，`8aaa663`）**：`calb_diagrams/site_array_concept.py`
+   引擎 + 报告 §9 Concept Site Arrangement + exec-summary 场地包络行；10 个几何测试；
+   全量 321 passed。**下一开发项 = L3 / P2 Master Layout**（需先注册完整 Site
+   Constraint Set，见 CURRENT_STATUS §3，本路线图不提前解锁）。
+3. L1/L2 尾项（可选，非阻塞）：UI "Typical AC Block Arrangement" 页接入 L1/L2 引擎替换
+   旧画法；单元轴测示意图（Python 版）；SiteRuleProfile 增加 EU/CN market 变体。
 
 ## 4. 环境与流程速查
 
