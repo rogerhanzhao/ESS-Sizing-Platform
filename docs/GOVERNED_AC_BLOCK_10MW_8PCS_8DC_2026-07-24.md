@@ -134,6 +134,29 @@ The strict AC->SLD contract fails loudly when a required provisional value
 6. Confirm transformer nameplate, vector group, Uk%, LV voltage, cooling, and
    DC Block protected-output capability separately.
 
+## 7a. Report-layer consistency fixes (Phase A finishing)
+
+Three AC-sizing -> technical-report contradictions were found and fixed, all in
+the reporting layer (no frozen sizing change):
+
+1. **Silent transformer nameplate.** `report_context.py` used to derive
+   `transformer_rating_kva = block_size_mw × 1000 / power_factor` when no MVA was
+   present — i.e. it turned 10 MW / 0.9 into 11.11 MVA, which the strict SLD
+   contract explicitly refuses. The fallback is now skipped for governed
+   configurations (`governed_configuration = True`): an unconfirmed transformer
+   MVA stays unresolved and the report shows TBD, matching the SLD.
+2. **Arrangement figure (report §8).** It rendered the linear L1 engine from
+   `round(dc_blocks_total / ac_blocks_total)`. For a governed unit it now routes
+   by `layout_variant` to the bilateral 4+4 engine, so the figure matches the
+   SLD topology and the confirmed physical layout, and prints the provisional
+   spacing notes.
+3. **Site figure (report §9).** The linear L2 site-array engine would draw
+   single-row DC fields that contradict a governed bilateral unit and its SLD.
+   It is now suppressed for the bilateral variant (whole-site composition of
+   bilateral units is Master Layout / L3 scope). Ungoverned runs are unchanged.
+
+Locked by `tests/unit/test_report_governed_consistency.py`.
+
 ## 8. Tests
 
 - `tests/unit/test_governed_ac_block_config.py` — identity, Phase A gate,
@@ -146,3 +169,6 @@ The strict AC->SLD contract fails loudly when a required provisional value
   rendered-SVG collision validators.
 - `tests/unit/test_dangling_pcs_regression.py` — the `[1,1,0,0]` defect and its
   contract-layer repair.
+- `tests/unit/test_report_governed_consistency.py` — the three report-layer
+  consistency fixes (§7a): no fabricated MVA, bilateral §8 routing, suppressed
+  linear §9.

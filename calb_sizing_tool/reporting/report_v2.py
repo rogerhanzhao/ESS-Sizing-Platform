@@ -37,6 +37,11 @@ from calb_diagrams.ac_block_arrangement_v2 import (
     US_NFPA_OIL as ARRANGEMENT_PROFILE,
     render_plan_svg as render_ac_block_plan_svg,
 )
+from calb_diagrams.ac_block_bilateral_layout import (
+    LAYOUT_VARIANT as BILATERAL_LAYOUT_VARIANT,
+    compute_bilateral_layout,
+    render_bilateral_plan_svg,
+)
 from calb_diagrams.site_array_concept import (
     US_NFPA_SITE as SITE_PROFILE,
     compute_site_array,
@@ -295,6 +300,12 @@ def _add_cover_page_v2(doc: Document, ctx: ReportContext, brand: BrandProfile) -
 def _compute_site_layout(ctx: ReportContext):
     """Concept site-array layout from the sizing result (None if not sizeable)."""
     if ctx.ac_blocks_total <= 0 or ctx.dc_blocks_total <= 0:
+        return None
+    # The linear L2 site-array engine would draw single-row DC fields, which
+    # contradicts a governed bilateral 4+4 unit and its SLD. Whole-site
+    # composition of bilateral units is Master Layout (L3) scope, so suppress
+    # the linear site figure here rather than render inconsistent geometry.
+    if ctx.layout_variant == BILATERAL_LAYOUT_VARIANT:
         return None
     dc_per_ac = max(1, int(round(ctx.dc_blocks_total / ctx.ac_blocks_total)))
     try:
@@ -928,7 +939,19 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     doc.add_page_break()
     doc.add_heading("8.  Typical AC Block Arrangement (Concept Only)", level=2)
     plan_png, plan_layout, dc_per_ac = None, None, 0
-    if ctx.ac_blocks_total > 0 and ctx.dc_blocks_total > 0:
+    is_bilateral = ctx.layout_variant == BILATERAL_LAYOUT_VARIANT
+    if is_bilateral:
+        # Governed configuration: route by layout_variant to the confirmed
+        # bilateral 4+4 engine so the drawing matches the SLD topology and the
+        # confirmed physical layout — never rebuilt from an average DC-per-AC.
+        try:
+            bilateral = compute_bilateral_layout(ctx.dc_blocks_total // max(1, ctx.ac_blocks_total))
+            plan_svg = render_bilateral_plan_svg(bilateral, block_label=str(ctx.configuration_code or ""))
+            plan_png = _svg_bytes_to_png(plan_svg.encode("utf-8"))
+            plan_layout = bilateral
+        except Exception:
+            plan_png, plan_layout = None, None
+    elif ctx.ac_blocks_total > 0 and ctx.dc_blocks_total > 0:
         dc_per_ac = max(1, int(round(ctx.dc_blocks_total / ctx.ac_blocks_total)))
         try:
             plan_svg, plan_layout = render_ac_block_plan_svg(
@@ -938,7 +961,24 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         except Exception:
             plan_png, plan_layout = None, None
 
-    if plan_png and plan_layout is not None:
+    if plan_png and plan_layout is not None and is_bilateral:
+        _keep_next_para(doc.add_paragraph(
+            f"Governed configuration {ctx.configuration_code}: central vertical "
+            f"40 ft AC Block with west 4-DC and east 4-DC mirrored fields "
+            f"(bilateral 4+4, DC-1..8 → PCS-1..8):"
+        ))
+        doc.add_picture(io.BytesIO(plan_png), width=Inches(6.7))
+        _keep_next_para(doc.paragraphs[-1])
+        _keep_next_para(doc.add_paragraph(
+            f"Figure {figure_index}: Typical AC Block Arrangement "
+            f"({ctx.layout_variant}) — equipment envelope ≈ "
+            f"{plan_layout.envelope_w_m:.2f} × {plan_layout.envelope_d_m:.2f} m. "
+            f"Concept only; spacing and 40 ft dimensions provisional."
+        ))
+        figure_index += 1
+        for note in getattr(plan_layout, "provisional_notes", ()):
+            doc.add_paragraph(f"Provisional: {note}.")
+    elif plan_png and plan_layout is not None:
         _keep_next_para(doc.add_paragraph(
             f"Rule-based typical arrangement ({dc_per_ac} × DC per block, "
             f"mirrored back-to-back pairs, doors facing outward aisles):"

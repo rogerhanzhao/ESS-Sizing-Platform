@@ -267,7 +267,14 @@ def build_report_context(
                 transformer_rating_kva = float(transformer_mva) * 1000.0
         except Exception:
             transformer_rating_kva = None
-    if transformer_rating_kva is None:
+    # Legacy convenience fallback: derive a nameplate from AC power / power
+    # factor. A governed configuration must NOT get this silent estimate — its
+    # transformer MVA is an owner-confirmed value or it stays unresolved (TBD),
+    # exactly as the strict SLD contract requires (never promote 10 MW / 0.9 to
+    # an approved 11.11 MVA nameplate). See
+    # docs/GOVERNED_AC_BLOCK_10MW_8PCS_8DC_2026-07-24.md §5.
+    is_governed = bool(ac_output.get("governed_configuration")) if isinstance(ac_output, dict) else False
+    if transformer_rating_kva is None and not is_governed:
         try:
             block_size_mw = float(ac_output.get("block_size_mw") or 0.0)
         except Exception:

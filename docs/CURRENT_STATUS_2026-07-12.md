@@ -116,6 +116,11 @@ The bilateral 4+4 1:8 configuration handed off in §2.3 is now implemented as a
   actual 40 ft dims, aisle/pair-to-pair gaps) stay gated as `None` and are never
   inferred. Frozen sizing is unchanged (`git diff` over frozen modules empty).
 - L2 Site Array / report integration from `252bc75` preserved unchanged.
+- Report-layer consistency (Phase A finishing): the report no longer fabricates
+  a transformer nameplate for governed configs (no silent 10 MW / 0.9 = 11.11
+  MVA), report §8 routes to the bilateral engine by `layout_variant`, and the
+  linear §9 site figure is suppressed for the bilateral variant. Ungoverned
+  runs unchanged; locked by `tests/unit/test_report_governed_consistency.py`.
 
 ## 3. Next boundary
 
