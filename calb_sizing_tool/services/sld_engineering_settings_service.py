@@ -34,7 +34,7 @@ def build_persisted_sld_project_settings(
         rmu_payload["rated_kv"] = float(contract.rmu_rated_voltage_kv)
         equipment_payload["rmu"] = rmu_payload
 
-    return {
+    project_settings: dict[str, Any] = {
         "transformer": {
             "vector_group": str(override.transformer_vector_group).strip(),
             "uk_percent": float(override.transformer_uk_percent),
@@ -43,6 +43,13 @@ def build_persisted_sld_project_settings(
         "labels": override.labels.model_dump(mode="python"),
         "equipment_ratings": equipment_payload,
     }
+    # Owner-confirmed transformer nameplate. Persisted only when explicitly set,
+    # so a governed configuration's transformer MVA comes from Engineering
+    # Settings and is never inferred (10 MW / 0.9 is not auto-promoted). The SLD
+    # builder reads project_settings["transformer_rating_mva"].
+    if override.transformer_rating_mva is not None and float(override.transformer_rating_mva) > 0:
+        project_settings["transformer_rating_mva"] = float(override.transformer_rating_mva)
+    return project_settings
 
 
 def load_case_sld_project_settings(sizing_case_id: str | None, *, db_url: str | None = None) -> dict[str, Any]:

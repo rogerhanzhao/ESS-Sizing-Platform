@@ -60,6 +60,18 @@ def _make_override() -> SldInputOverride:
     )
 
 
+def test_transformer_rating_mva_persisted_only_when_set():
+    # Unset MVA must not appear (never inferred).
+    payload_unset = build_persisted_sld_project_settings(_make_override(), mv_nominal_voltage_kv=33.0)
+    assert "transformer_rating_mva" not in payload_unset
+
+    # Owner-confirmed MVA round-trips at the top level, where the SLD builder reads it.
+    override = _make_override()
+    override.transformer_rating_mva = 11.5
+    payload_set = build_persisted_sld_project_settings(override, mv_nominal_voltage_kv=33.0)
+    assert payload_set["transformer_rating_mva"] == 11.5
+
+
 def test_case_project_settings_roundtrip_and_mv_rmu_sync(tmp_path):
     db_url = f"sqlite:///{(tmp_path / 'sld_engineering_settings.sqlite').as_posix()}"
     with session_scope(db_url) as session:

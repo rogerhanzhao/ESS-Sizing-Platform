@@ -189,13 +189,25 @@ def render_electrical_inputs(
         value=equipment_defaults.get("transformer_cooling") or "ONAN",
         key=_key("tr_cooling"),
     )
-    d1 = st.columns(1)[0]
+    d1, d2 = st.columns(2)
     dc_block_voltage_v = d1.number_input(
         "DC block voltage (V)",
         min_value=0.0,
         value=_safe_float(defaults.get("dc_block_voltage_v"), 1500.0),
         key=_key("dc_block_voltage_v"),
         step=10.0,
+    )
+    tr_rating_mva = d2.number_input(
+        "Transformer rating (MVA, owner-confirmed)",
+        min_value=0.0,
+        value=_safe_float(defaults.get("transformer_rating_mva"), 0.0),
+        key=_key("tr_rating_mva"),
+        step=0.1,
+        help=(
+            "Owner-confirmed transformer nameplate. Leave 0 to keep it unset — "
+            "it is never inferred from AC power / power factor, so a governed "
+            "configuration stays unresolved (TBD) until you enter it here."
+        ),
     )
 
     st.markdown("**LV Busbar**")
@@ -264,6 +276,7 @@ def render_electrical_inputs(
     return SldInputOverride(
         transformer_vector_group=tr_vector_group,
         transformer_uk_percent=tr_uk_percent,
+        transformer_rating_mva=(float(tr_rating_mva) if float(tr_rating_mva) > 0 else None),
         lv_winding_count=int(lv_winding_count),
         dc_block_voltage_v=dc_block_voltage_v,
         labels=SldLabels(

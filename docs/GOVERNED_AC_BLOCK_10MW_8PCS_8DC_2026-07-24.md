@@ -157,6 +157,26 @@ the reporting layer (no frozen sizing change):
 
 Locked by `tests/unit/test_report_governed_consistency.py`.
 
+## 7b. Engineering Settings integration (provisional values)
+
+The one provisional value the settings form was missing — the transformer
+nameplate MVA — is now an owner-confirmed field:
+
+- `ui/sld_inputs.py`: added an optional "Transformer rating (MVA, owner-confirmed)"
+  input (0 = unset). It is threaded into `SldInputOverride.transformer_rating_mva`.
+- `services/sld_engineering_settings_service.py`: persists
+  `transformer_rating_mva` at the top of `project_settings` **only when set**, so
+  it is never inferred; the SLD builder already reads it from there.
+- `services/governed_ac_block_service.py` (new): maps persisted engineering
+  settings (`transformer_rating_mva`, vector group, Uk%, cooling) into the
+  governed configuration's `engineering_overrides` and emits the authoritative
+  AC->SLD output, reporting which provisional fields are still unresolved.
+  Vector group / Uk% / cooling were already in the settings form; layout-only
+  dims (40 ft size, aisle) remain unresolved until supplied.
+
+Phase B (mixed 8/4/2/1 tails) remains deferred — design in
+`docs/PHASE_B_MIXED_TAIL_DESIGN_2026-07-24.md`.
+
 ## 8. Tests
 
 - `tests/unit/test_governed_ac_block_config.py` — identity, Phase A gate,
