@@ -986,10 +986,15 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             _keep_next_para(doc.add_paragraph(
                 f"{site_layout.n_blocks} × AC Block "
                 f"({site_layout.dc_per_block} × DC each) arranged in "
-                f"{site_layout.rows} row(s). Within each row the two AC blocks are "
-                f"mirrored so both PCS & MV stations face a shared central MV "
-                f"corridor; feeders collect there and route one direction along the "
-                f"fire access road to the substation."
+                f"{site_layout.rows} row(s), grouped into {site_layout.groups} "
+                f"project group(s) of up to {site_layout.blocks_per_group} blocks. "
+                f"Fire apparatus access roads run between groups and along the "
+                f"perimeter — not between every row — so each block stays within "
+                f"{SITE_PROFILE.fire_access_limit_m:.0f} m of a road "
+                f"(worst case {site_layout.fire_access_reach_m:.1f} m). Within each "
+                f"row the two AC blocks are mirrored so both PCS & MV stations face a "
+                f"shared central MV corridor; feeders collect there and route one "
+                f"direction along the access road to the substation."
             ))
             # Tall (portrait) sites would overflow a page at fixed width, so
             # cap by height when the envelope is deeper than it is wide.
@@ -1010,8 +1015,11 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             site_rows = [
                 ("AC Blocks", f"{site_layout.n_blocks:d} × "
                               f"{site_layout.dc_per_block} DC/block"),
-                ("Row allocation", " + ".join(str(n) for n in site_layout.blocks_per_row)
-                 + " blocks per row"),
+                ("Grouping", f"{site_layout.groups} group(s) × ≤ "
+                             f"{site_layout.blocks_per_group} blocks · "
+                             f"{site_layout.fire_roads} internal fire road(s)"),
+                ("Fire access reach", f"≤ {site_layout.fire_access_reach_m:.1f} m "
+                                      f"(limit {SITE_PROFILE.fire_access_limit_m:.0f} m)"),
                 ("Site envelope (concept)",
                  f"≈ {site_layout.envelope_w_m:.1f} × {site_layout.envelope_d_m:.1f} m"),
                 ("Rated power / energy",

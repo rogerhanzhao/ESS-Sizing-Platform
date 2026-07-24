@@ -50,10 +50,12 @@ class SiteRuleProfile:
 
     key: str
     label: str
-    mv_corridor_m: float        # shared central corridor between mirrored blocks
-    maintenance_aisle_m: float  # door-side clearance to the fire road
-    fire_road_m: float          # fire apparatus access road
-    perimeter_clear_m: float    # equipment to fence/lot line
+    mv_corridor_m: float          # shared central corridor between mirrored blocks
+    maintenance_aisle_m: float    # row-to-row maintenance aisle inside a group
+    fire_road_m: float            # fire apparatus access road (between groups)
+    perimeter_clear_m: float      # equipment to fence/lot line (non-road sides)
+    default_blocks_per_group: int # blocks per project group (roads only between groups)
+    fire_access_limit_m: float    # max distance from any block to a fire road
     basis: Tuple[Tuple[str, str, str], ...]
 
 
@@ -64,12 +66,17 @@ US_NFPA_SITE = SiteRuleProfile(
     maintenance_aisle_m=3.0,
     fire_road_m=6.0,
     perimeter_clear_m=3.0,
+    default_blocks_per_group=8,
+    fire_access_limit_m=45.7,   # 150 ft — IFC §503.1.1 apparatus access reach
     basis=(
         ("Central MV corridor", "2.0 m",
          "Owner rule — mirrored blocks share one MV collection corridor"),
-        ("Maintenance aisle", "3.0 m", "Door-side access to fire road"),
-        ("Fire apparatus access road", "6.0 m (20 ft)",
-         "IFC §503 / NFPA 855 fire department access"),
+        ("Row-to-row aisle (within group)", "3.0 m",
+         "Maintenance access; no fire road needed inside a group"),
+        ("Fire apparatus access road (between groups)", "6.0 m (20 ft)",
+         "IFC §503 / NFPA 855 — one road per group boundary, not per row"),
+        ("Fire access reach", "≤ 45.7 m (150 ft)",
+         "IFC §503.1.1 — every block within reach of a fire road"),
         ("Perimeter clearance", "3.0 m (10 ft)",
          "IFC §1207.8.3 / NFPA 855 clearance to lot line"),
     ),
@@ -82,8 +89,14 @@ SITE_RULE_PROFILES = {profile.key: profile for profile in (US_NFPA_SITE,)}
 class SiteArrayLayout:
     n_blocks: int
     dc_per_block: int
-    rows: int
-    blocks_per_row: Tuple[int, ...]     # blocks placed in each row (<= 2)
+    rows: int                            # total rows across all groups
+    blocks_per_row: Tuple[int, ...]      # blocks placed in each row (<= 2)
+    groups: int                          # project groups (fire road only between groups)
+    blocks_per_group: int
+    rows_per_group: Tuple[int, ...]      # row count in each group
+    fire_roads: int                      # internal fire roads = groups - 1
+    fire_access_reach_m: float           # worst-case block distance to a fire road
+    fire_access_ok: bool
     block_w_m: float
     block_d_m: float
     envelope_w_m: float
@@ -104,37 +117,72 @@ def compute_site_array(
     dc_per_block: int,
     profile: ArrangementRuleProfile = US_NFPA_OIL,
     site_profile: SiteRuleProfile = US_NFPA_SITE,
+    blocks_per_group: Optional[int] = None,
 ) -> SiteArrayLayout:
-    """Two blocks per row (mirrored about a central MV corridor); rows stacked."""
+    """Blocks grouped by project; fire roads only between groups, not per row.
+
+    Within a group, mirrored 2-block rows share a central MV corridor and are
+    separated only by a maintenance aisle. Fire apparatus access roads run
+    between groups and along the top/bottom perimeter, so a block is never
+    more than fire_access_limit_m from a road.
+    """
     if n_blocks < 1:
         raise ValueError(f"n_blocks must be >= 1, got {n_blocks}")
+    bpg = blocks_per_group or site_profile.default_blocks_per_group
+    if bpg < 2:
+        raise ValueError(f"blocks_per_group must be >= 2, got {bpg}")
+
     block = compute_layout(dc_per_block, profile)
     block_w, block_d = block.envelope_w_m, block.envelope_d_m
 
-    rows = (n_blocks + 1) // 2
+    # rows across the whole site (2 blocks per row)
     per_row: List[int] = []
     remaining = n_blocks
-    for _ in range(rows):
+    while remaining > 0:
         take = min(2, remaining)
         per_row.append(take)
         remaining -= take
+    rows = len(per_row)
 
-    # widest row: 2 blocks + central corridor; a lone block has no corridor
+    # partition rows into groups (rows_per_group = ceil(bpg/2))
+    rows_pg = max(1, (bpg + 1) // 2)
+    rows_per_group: List[int] = []
+    r_left = rows
+    while r_left > 0:
+        take = min(rows_pg, r_left)
+        rows_per_group.append(take)
+        r_left -= take
+    groups = len(rows_per_group)
+
     max_in_row = max(per_row)
     row_w = (2 * block_w + site_profile.mv_corridor_m) if max_in_row == 2 else block_w
 
-    between_rows = (site_profile.maintenance_aisle_m + site_profile.fire_road_m
-                    + site_profile.maintenance_aisle_m)
-    stacked_d = rows * block_d + (rows - 1) * between_rows
+    aisle = site_profile.maintenance_aisle_m
+    road = site_profile.fire_road_m
+    # depth: each group is rows*block_d + (rows-1)*aisle; groups joined by a road;
+    # a perimeter fire road runs along the top and bottom of the site.
+    groups_depth = sum(gr * block_d + (gr - 1) * aisle for gr in rows_per_group)
+    stacked_d = groups_depth + (groups - 1) * road + 2 * road
 
     env_w = row_w + 2 * site_profile.perimeter_clear_m
-    env_d = stacked_d + 2 * site_profile.perimeter_clear_m
+    env_d = stacked_d
+
+    # worst-case fire-access reach: deepest block within a group is bounded by
+    # roads at both group edges; reach = half the tallest group's depth.
+    tallest_group_d = max(gr * block_d + (gr - 1) * aisle for gr in rows_per_group)
+    reach = round(tallest_group_d / 2.0, 2)
 
     return SiteArrayLayout(
         n_blocks=n_blocks,
         dc_per_block=dc_per_block,
         rows=rows,
         blocks_per_row=tuple(per_row),
+        groups=groups,
+        blocks_per_group=bpg,
+        rows_per_group=tuple(rows_per_group),
+        fire_roads=groups - 1,
+        fire_access_reach_m=reach,
+        fire_access_ok=reach <= site_profile.fire_access_limit_m,
         block_w_m=round(block_w, 3),
         block_d_m=round(block_d, 3),
         envelope_w_m=round(env_w, 2),
@@ -213,13 +261,14 @@ def _block_glyph(parts, s, x0, y0, layout: SiteArrayLayout, mv_left: bool):
 
 def render_site_svg(layout: SiteArrayLayout,
                     site_profile: SiteRuleProfile = US_NFPA_SITE) -> str:
-    """Whole-site concept arrangement (top-down)."""
+    """Whole-site concept arrangement (top-down), grouped with fire roads only
+    between groups and along the top/bottom perimeter."""
     s = 8.0  # px per metre (site scale)
-    margin_l, margin_r, margin_t, margin_b = 60.0, 60.0, 70.0, 96.0
+    margin_l, margin_r, margin_t, margin_b = 60.0, 100.0, 70.0, 96.0
     per = site_profile.perimeter_clear_m
     corridor = site_profile.mv_corridor_m
-    between = (site_profile.maintenance_aisle_m + site_profile.fire_road_m
-               + site_profile.maintenance_aisle_m)
+    aisle = site_profile.maintenance_aisle_m
+    road = site_profile.fire_road_m
     bw, bd = layout.block_w_m, layout.block_d_m
 
     width = margin_l + layout.envelope_w_m * s + margin_r
@@ -230,60 +279,82 @@ def render_site_svg(layout: SiteArrayLayout,
                  f'{height:.0f}" font-family="Consolas, monospace">')
     _r(parts, 0, 0, width, height, _GROUND, rx=0)
 
-    ox = margin_l
-    oy = margin_t
+    ox, oy = margin_l, margin_t
+    env_w_px = layout.envelope_w_m * s
     # perimeter fence
-    _r(parts, ox, oy, layout.envelope_w_m * s, layout.envelope_d_m * s,
-       "none", _FENCE, 2.0, rx=0)
+    _r(parts, ox, oy, env_w_px, layout.envelope_d_m * s, "none", _FENCE, 2.0, rx=0)
 
     row_w = (2 * bw + corridor) if max(layout.blocks_per_row) == 2 else bw
     row_x0 = ox + (layout.envelope_w_m - row_w) / 2 * s
     cx = row_x0 + (bw + corridor / 2) * s  # corridor centre (2-block rows)
 
-    for ri, n_in_row in enumerate(layout.blocks_per_row):
-        ry = oy + per * s + ri * (bd + between) * s
-        # fire road below each row except the last
-        if ri < layout.rows - 1:
-            road_y = ry + bd * s + site_profile.maintenance_aisle_m * s
-            _r(parts, ox + 2, road_y, layout.envelope_w_m * s - 4,
-               site_profile.fire_road_m * s, _ROAD, rx=0)
-            for dash_x in range(int(ox), int(ox + layout.envelope_w_m * s), 44):
-                _r(parts, dash_x + 8, road_y + site_profile.fire_road_m * s / 2 - 1,
-                   22, 2, "#e4e6e2", rx=0)
-        # left block: MV on right (toward corridor); right block mirrored
-        _block_glyph(parts, s, row_x0, ry, layout, mv_left=False)
-        _t(parts, row_x0 + bw * s / 2, ry - 6, f"AC BLOCK {ri*2+1}", size=10)
-        if n_in_row == 2:
-            rx0 = row_x0 + (bw + corridor) * s
-            _block_glyph(parts, s, rx0, ry, layout, mv_left=True)
-            _t(parts, rx0 + bw * s / 2, ry - 6, f"AC BLOCK {ri*2+2}", size=10)
-            # MV corridor + collection duct
-            _r(parts, row_x0 + bw * s, ry, corridor * s, bd * s, "#dfe1dd", rx=0)
-            parts.append(f'<line x1="{cx:.1f}" y1="{ry + bd*s/2:.1f}" '
-                         f'x2="{cx:.1f}" y2="{oy + per*s + (layout.rows*bd + (layout.rows-1)*between)*s - bd*s/2 if layout.rows>1 else ry+bd*s/2:.1f}" '
-                         f'stroke="{_DUCT}" stroke-width="2.5" stroke-dasharray="8 5" opacity="0.85"/>')
+    def fire_road(y_top_m: float, label: bool = False) -> None:
+        ry = oy + y_top_m * s
+        _r(parts, ox + 2, ry, env_w_px - 4, road * s, _ROAD, rx=0)
+        for dash_x in range(int(ox), int(ox + env_w_px), 44):
+            _r(parts, dash_x + 8, ry + road * s / 2 - 1, 22, 2, "#e4e6e2", rx=0)
 
-    # hydrants at the perimeter corners near the road
-    for hx in (ox + 6, ox + layout.envelope_w_m * s - 6):
-        hy = oy + per * s + bd * s + between * s / 2
-        parts.append(f'<circle cx="{hx:.1f}" cy="{hy:.1f}" r="4.2" fill="{_HYDRANT}" '
-                     f'stroke="#801d15" stroke-width="1.3"/>')
+    # walk groups top→bottom: [road] group [road] group ... [road]
+    y = 0.0
+    fire_road(y)                       # top perimeter road
+    y += road
+    row_idx = 0
+    corridor_top = None
+    corridor_bot = None
+    for gi, gr in enumerate(layout.rows_per_group):
+        group_top = y
+        for r in range(gr):
+            ry_m = y
+            ry = oy + ry_m * s
+            n_in_row = layout.blocks_per_row[row_idx]
+            _block_glyph(parts, s, row_x0, ry, layout, mv_left=False)
+            _t(parts, row_x0 + bw * s / 2, ry - 5, f"AC BLOCK {row_idx*2+1}", size=9.5)
+            if n_in_row == 2:
+                rx0 = row_x0 + (bw + corridor) * s
+                _block_glyph(parts, s, rx0, ry, layout, mv_left=True)
+                _t(parts, rx0 + bw * s / 2, ry - 5, f"AC BLOCK {row_idx*2+2}", size=9.5)
+                _r(parts, row_x0 + bw * s, ry, corridor * s, bd * s, "#dfe1dd", rx=0)
+            row_idx += 1
+            y += bd
+            if r < gr - 1:
+                y += aisle          # maintenance aisle between rows in a group
+        # MV corridor duct spanning this group
+        if corridor_top is None:
+            corridor_top = oy + (group_top + bd / 2) * s
+        corridor_bot = oy + (y - bd / 2) * s
+        parts.append(f'<line x1="{cx:.1f}" y1="{oy + (group_top+bd/2)*s:.1f}" '
+                     f'x2="{cx:.1f}" y2="{oy + (y-bd/2)*s:.1f}" stroke="{_DUCT}" '
+                     f'stroke-width="2.5" stroke-dasharray="8 5" opacity="0.85"/>')
+        # fire road after each group (between groups + bottom perimeter)
+        fire_road(y)
+        y += road
 
-    # feeder exit arrow to substation (east)
-    fy = oy + per * s + bd * s + between * s / 2
-    parts.append(f'<line x1="{cx:.1f}" y1="{fy:.1f}" x2="{ox + layout.envelope_w_m*s - 8:.1f}" '
+    # feeder collection down the corridor + east to substation, on the top road
+    fy = oy + (road / 2) * s
+    if corridor_top is not None:
+        parts.append(f'<line x1="{cx:.1f}" y1="{fy:.1f}" x2="{cx:.1f}" '
+                     f'y2="{corridor_top:.1f}" stroke="{_DUCT}" stroke-width="2" '
+                     f'stroke-dasharray="6 4" opacity="0.7"/>')
+    parts.append(f'<line x1="{cx:.1f}" y1="{fy:.1f}" x2="{ox + env_w_px - 8:.1f}" '
                  f'y2="{fy:.1f}" stroke="{_DUCT}" stroke-width="2.5" '
                  f'stroke-dasharray="8 5" opacity="0.85"/>')
-    _t(parts, ox + layout.envelope_w_m * s - 10, fy - 6,
-       "MV FEEDERS -> SUBSTATION", size=9.5, anchor="end")
+    _t(parts, ox + env_w_px - 10, fy - 6, "MV FEEDERS -> SUBSTATION",
+       size=9.5, anchor="end")
+    # hydrants on the top perimeter road
+    for hx in (ox + 8, ox + env_w_px - 8):
+        parts.append(f'<circle cx="{hx:.1f}" cy="{fy:.1f}" r="4.2" fill="{_HYDRANT}" '
+                     f'stroke="#801d15" stroke-width="1.3"/>')
 
     # title + dims + concept note
+    grp_txt = (f"{layout.groups} group(s) of ≤ {layout.blocks_per_group} blocks · "
+               f"{layout.fire_roads} internal fire road(s)")
     _t(parts, margin_l, 30,
        f"CONCEPT SITE ARRANGEMENT · {layout.n_blocks} × AC BLOCK "
        f"({layout.dc_per_block}×DC) · {layout.total_power_mw:.0f} MW / "
        f"{layout.total_energy_mwh:.1f} MWh", size=11.5, anchor="start")
+    _t(parts, margin_l, 46, grp_txt, size=10, anchor="start", weight=600, fill="#5b6367")
     _dim(parts, ox, oy + layout.envelope_d_m * s + 22,
-         ox + layout.envelope_w_m * s, oy + layout.envelope_d_m * s + 22,
+         ox + env_w_px, oy + layout.envelope_d_m * s + 22,
          f"{layout.envelope_w_m:.1f} m site envelope", above=False)
     _dim(parts, ox - 22, oy, ox - 22, oy + layout.envelope_d_m * s,
          f"{layout.envelope_d_m:.1f} m", above=True)

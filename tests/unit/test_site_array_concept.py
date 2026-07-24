@@ -60,15 +60,48 @@ def test_single_block_no_corridor_in_width():
     # lone block: width = block_w + 2*perimeter (no corridor added)
     # block 2xDC = 15.116; + 2*3.0 = 21.116
     assert layout.envelope_w_m == pytest.approx(21.116, abs=0.01)
-    assert layout.envelope_d_m == pytest.approx(11.176, abs=0.01)
+    # One project group still has apparatus-access roads at its top and
+    # bottom: 5.176 m block depth + 2 * 6.0 m perimeter fire roads.
+    assert layout.envelope_d_m == pytest.approx(17.176, abs=0.01)
 
 
 def test_envelope_4x2dc():
     layout = compute_site_array(4, 2)
     # width = 2*15.116 + 2.0 corridor + 2*3.0 = 38.232
     assert layout.envelope_w_m == pytest.approx(38.23, abs=0.01)
-    # depth = 2*5.176 + (3.0+6.0+3.0) + 2*3.0 = 28.352
-    assert layout.envelope_d_m == pytest.approx(28.35, abs=0.01)
+    # 4 blocks = 1 group (2 rows), no internal fire road:
+    # depth = 2*5.176 + 1*3.0 aisle + 2*6.0 perimeter roads = 25.352
+    assert layout.envelope_d_m == pytest.approx(25.35, abs=0.01)
+    assert layout.groups == 1
+    assert layout.fire_roads == 0
+
+
+def test_grouping_removes_per_row_fire_roads():
+    """8 blocks default to one group: 0 internal fire roads (was 3 per-row)."""
+    layout = compute_site_array(8, 2)
+    assert layout.groups == 1
+    assert layout.rows == 4
+    assert layout.fire_roads == 0
+    assert layout.fire_access_ok is True
+
+
+def test_explicit_small_group_adds_roads():
+    layout = compute_site_array(8, 2, blocks_per_group=4)
+    assert layout.groups == 2
+    assert layout.rows_per_group == (2, 2)
+    assert layout.fire_roads == 1
+
+
+def test_fire_access_reach_within_limit():
+    layout = compute_site_array(8, 2)
+    # tallest group 4 rows: (4*5.176 + 3*3.0)/2 = 14.85 m <= 45.7
+    assert layout.fire_access_reach_m == pytest.approx(14.85, abs=0.02)
+    assert layout.fire_access_ok is True
+
+
+def test_blocks_per_group_too_small_rejected():
+    with pytest.raises(ValueError):
+        compute_site_array(4, 2, blocks_per_group=1)
 
 
 def test_envelope_4x4dc_wider_than_2dc():
@@ -77,6 +110,12 @@ def test_envelope_4x4dc_wider_than_2dc():
     # 4xDC block is wider (22.074 vs 15.116) so the site is wider, same depth
     assert four.envelope_w_m > two.envelope_w_m
     assert four.envelope_d_m == pytest.approx(two.envelope_d_m, abs=0.01)
+
+
+def test_single_block_still_no_internal_road():
+    layout = compute_site_array(1, 2)
+    assert layout.groups == 1
+    assert layout.fire_roads == 0
 
 
 def test_energy_scales_with_dc_count():

@@ -79,6 +79,21 @@ and any future 3D rendering work. The staged implementation plan (L1 unit
 arrangement engine → L2 site-array concept → L3 Master Layout, plus report
 integration as §8 upgrade / new §9) is `LAYOUT_ROADMAP_V1_2026-07-18.md`.
 
+## 2.3 Active Claude handoff: 10 MW / 8 PCS / 8 DC (2026-07-24)
+
+Before changing code, read
+`CLAUDE_HANDOFF_10MW_8PCS_8DC_2026-07-24.md` in full. It records the
+owner-confirmed bilateral 4+4 `田`-shaped DC arrangement around one central,
+vertically placed 40 ft AC Block, the recommended governed-configuration
+upgrade, open engineering decisions, and the recovery boundary that was used
+for the mixed worktree.
+
+Recovery completed on 2026-07-24: the invalid linear 1:8 draft was surgically
+removed while the previously verified L2 Site Array and report integration
+were preserved. `compileall`, the 23-test L2 target set, and the full suite
+(`326 passed`) are clean. The governed bilateral 4+4 1:8 configuration remains
+an implementation task; it is not present in this recovered baseline.
+
 ## 3. Next boundary
 
 The package deliberately stops before a Concept Master Layout. Unlocking it
