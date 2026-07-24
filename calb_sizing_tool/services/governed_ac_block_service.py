@@ -33,12 +33,14 @@ transformer MVA is taken only from ``project_settings["transformer_rating_mva"]`
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Optional
 
 from calb_sizing_tool.infra.db.models import ProductACBlock
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.schemas.governed_ac_block_config import (
     GovernedACBlockConfiguration,
+    decompose_governed_site,
     get_governed_configuration,
 )
 
@@ -316,6 +318,61 @@ def build_governed_ac_output_from_product(
     return output
 
 
+@dataclass(frozen=True)
+class GovernedSiteGroup:
+    """One homogeneous group of identical governed AC Blocks in a mixed site."""
+
+    configuration_code: str
+    layout_variant: str
+    ac_block_count: int
+    dc_blocks_per_ac_block: int
+    dc_blocks_total: int
+    pcs_per_ac_block: int
+    ac_power_mw_total: float
+
+
+@dataclass(frozen=True)
+class GovernedSitePlan:
+    """Phase B site plan: a mix of homogeneous governed AC Block groups.
+
+    Each group is internally uniform (one governed configuration), so it remains
+    individually SLD-renderable under the SLD V1 uniform-block contract; the
+    heterogeneity lives in the list of groups, not inside any single group.
+    """
+
+    dc_blocks_total: int
+    ac_blocks_total: int
+    ac_power_mw_total: float
+    groups: tuple[GovernedSiteGroup, ...]
+
+
+def build_governed_site_plan(dc_blocks_total: int) -> GovernedSitePlan:
+    """Decompose a DC total into governed AC Block groups (Phase B).
+
+    Any positive total is exactly composable (greedy 8/4/2/1); a multiple of 8
+    yields a single bilateral group (equivalent to Phase A).
+    """
+    groups: list[GovernedSiteGroup] = []
+    for config, count in decompose_governed_site(dc_blocks_total):
+        groups.append(
+            GovernedSiteGroup(
+                configuration_code=config.configuration_code,
+                layout_variant=config.layout_variant,
+                ac_block_count=int(count),
+                dc_blocks_per_ac_block=config.dc_block_count,
+                dc_blocks_total=int(count) * config.dc_block_count,
+                pcs_per_ac_block=config.pcs_count,
+                ac_power_mw_total=round(int(count) * config.block_size_mw, 3),
+            )
+        )
+    return GovernedSitePlan(
+        dc_blocks_total=int(dc_blocks_total),
+        ac_blocks_total=sum(g.ac_block_count for g in groups),
+        ac_power_mw_total=round(sum(g.ac_power_mw_total for g in groups), 3),
+        groups=tuple(groups),
+    )
+
+
 def unresolved_provisional_fields(
     configuration_code: str,
     project_settings: dict[str, Any] | None,
@@ -330,9 +387,12 @@ def unresolved_provisional_fields(
 
 
 __all__ = [
+    "GovernedSiteGroup",
+    "GovernedSitePlan",
     "build_governed_ac_output_from_product",
     "build_governed_ac_output_from_settings",
     "build_governed_site_ac_output",
+    "build_governed_site_plan",
     "eligible_products_for",
     "map_engineering_settings_to_overrides",
     "product_overrides",

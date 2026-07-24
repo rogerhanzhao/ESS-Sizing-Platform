@@ -279,9 +279,82 @@ ACBLK_10MW_8PCS_8DC_40FT_BILATERAL = GovernedACBlockConfiguration(
 )
 
 
+# ---------------------------------------------------------------------------
+# Phase B — governed tail configurations (mixed 8/4/2/1 DC decomposition)
+# ---------------------------------------------------------------------------
+# Tails reuse the same 1250 kW PCS unit and the dedicated DC-to-PCS policy, so a
+# site total that is not a multiple of 8 is placed into a whole number of
+# smaller governed AC Blocks (never a generic ceil/average split). Each tail is
+# a two-winding (single LV busbar) linear unit; only the 8-DC unit is the
+# bilateral three-winding product.
+
+_TAIL_PROVISIONAL_FIELDS = frozenset(
+    {
+        "transformer_mva",
+        "transformer_vector_group",
+        "lv_voltage_v",
+        "transformer_cooling",
+        "dc_field_to_station_aisle_m",
+        "ac_station_length_m",
+        "ac_station_width_m",
+    }
+)
+
+
+def _make_linear_tail(
+    *, configuration_code: str, dc_count: int, ac_container_type: str
+) -> GovernedACBlockConfiguration:
+    """Build a governed linear tail configuration of ``dc_count`` DC Blocks."""
+    return GovernedACBlockConfiguration(
+        configuration_code=configuration_code,
+        ac_power_mw=round(dc_count * 1250 / 1000.0, 3),
+        pcs_count=dc_count,
+        pcs_rating_kw=1250,
+        dc_block_count=dc_count,
+        dc_block_model="CALB_5MWh_20FT_12R",
+        ac_container_type=ac_container_type,
+        layout_variant="linear_end_station",
+        dc_field_split=(dc_count,),
+        dc_connection_policy="dedicated_dc_to_pcs",
+        dc_block_output_circuits=DC_BLOCK_PRODUCT_OUTPUT_CIRCUITS,
+        status="concept_confirmed_partial",
+        transformer_topology="two_winding",
+        lv_winding_count=1,
+        pcs_per_lv_winding=(dc_count,),
+        provisional_fields=_TAIL_PROVISIONAL_FIELDS,
+    )
+
+
+ACBLK_5MW_4PCS_4DC_40FT_LINEAR = _make_linear_tail(
+    configuration_code="ACBLK-5MW-4PCS-4DC-40FT-LINEAR", dc_count=4, ac_container_type="40ft"
+)
+ACBLK_2P5MW_2PCS_2DC_20FT_LINEAR = _make_linear_tail(
+    configuration_code="ACBLK-2P5MW-2PCS-2DC-20FT-LINEAR", dc_count=2, ac_container_type="20ft"
+)
+ACBLK_1P25MW_1PCS_1DC_20FT_LINEAR = _make_linear_tail(
+    configuration_code="ACBLK-1P25MW-1PCS-1DC-20FT-LINEAR", dc_count=1, ac_container_type="20ft"
+)
+
+
 GOVERNED_AC_BLOCK_CONFIGURATIONS = {
-    ACBLK_10MW_8PCS_8DC_40FT_BILATERAL.configuration_code: ACBLK_10MW_8PCS_8DC_40FT_BILATERAL,
+    cfg.configuration_code: cfg
+    for cfg in (
+        ACBLK_10MW_8PCS_8DC_40FT_BILATERAL,
+        ACBLK_5MW_4PCS_4DC_40FT_LINEAR,
+        ACBLK_2P5MW_2PCS_2DC_20FT_LINEAR,
+        ACBLK_1P25MW_1PCS_1DC_20FT_LINEAR,
+    )
 }
+
+# Governed configurations usable by the Phase B decomposition, largest DC count
+# first (greedy 8 -> 4 -> 2 -> 1). Since a 1-DC unit exists, ANY positive DC
+# total is exactly composable.
+GOVERNED_DECOMPOSITION_CONFIGS: tuple[GovernedACBlockConfiguration, ...] = (
+    ACBLK_10MW_8PCS_8DC_40FT_BILATERAL,
+    ACBLK_5MW_4PCS_4DC_40FT_LINEAR,
+    ACBLK_2P5MW_2PCS_2DC_20FT_LINEAR,
+    ACBLK_1P25MW_1PCS_1DC_20FT_LINEAR,
+)
 
 
 def get_governed_configuration(configuration_code: str) -> GovernedACBlockConfiguration:
@@ -292,11 +365,48 @@ def get_governed_configuration(configuration_code: str) -> GovernedACBlockConfig
         raise KeyError(f"unknown governed configuration_code: {configuration_code!r}") from exc
 
 
+def governed_configuration_for_dc_count(dc_count: int) -> GovernedACBlockConfiguration:
+    """Return the governed configuration whose AC Block holds exactly ``dc_count`` DC Blocks."""
+    for cfg in GOVERNED_DECOMPOSITION_CONFIGS:
+        if cfg.dc_block_count == int(dc_count):
+            return cfg
+    raise KeyError(f"no governed configuration with dc_block_count={dc_count}")
+
+
+def decompose_governed_site(dc_blocks_total: int) -> list[tuple[GovernedACBlockConfiguration, int]]:
+    """Decompose a DC total into governed AC Block groups (greedy 8/4/2/1).
+
+    Returns an ordered list of ``(configuration, ac_block_count)`` covering the
+    total exactly, largest unit first. Every governed AC Block is internally
+    uniform, so each group remains individually SLD-renderable under the SLD V1
+    uniform-block contract; the mix across groups is the heterogeneity.
+    """
+    total = int(dc_blocks_total or 0)
+    if total <= 0:
+        raise ValueError(f"dc_blocks_total must be > 0, got {dc_blocks_total}")
+    groups: list[tuple[GovernedACBlockConfiguration, int]] = []
+    remaining = total
+    for cfg in GOVERNED_DECOMPOSITION_CONFIGS:
+        count = remaining // cfg.dc_block_count
+        if count > 0:
+            groups.append((cfg, count))
+            remaining -= count * cfg.dc_block_count
+    if remaining != 0:  # pragma: no cover - impossible while a 1-DC unit exists
+        raise ValueError(f"could not fully decompose {total} DC Blocks; remainder {remaining}")
+    return groups
+
+
 __all__ = [
     "ACBLK_10MW_8PCS_8DC_40FT_BILATERAL",
+    "ACBLK_5MW_4PCS_4DC_40FT_LINEAR",
+    "ACBLK_2P5MW_2PCS_2DC_20FT_LINEAR",
+    "ACBLK_1P25MW_1PCS_1DC_20FT_LINEAR",
     "DC_BLOCK_PRODUCT_OUTPUT_CIRCUITS",
     "DEDICATED_LINK_OUTPUT_CIRCUITS",
     "GOVERNED_AC_BLOCK_CONFIGURATIONS",
+    "GOVERNED_DECOMPOSITION_CONFIGS",
     "GovernedACBlockConfiguration",
+    "decompose_governed_site",
     "get_governed_configuration",
+    "governed_configuration_for_dc_count",
 ]

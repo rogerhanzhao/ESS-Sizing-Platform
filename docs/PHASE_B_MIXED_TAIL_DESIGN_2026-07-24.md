@@ -1,9 +1,34 @@
-# Phase B — Mixed-Tail Governed Configurations (Design, deferred)
+# Phase B — Mixed-Tail Governed Configurations
 
 Date: 2026-07-24
-Status: **design only — not implemented**. Requires explicit owner approval
-before any code lands (per the handoff and SIZING_LOGIC_CANON_V1 governance).
+Status: **Phase B v1 implemented** (owner-approved). The DC-block-level
+decomposition and the governed tail catalogue are live; the single-drawing
+heterogeneous SLD (one drawing covering unlike blocks) remains future work —
+each governed group is rendered on its own, which the SLD V1 contract already
+supports.
 Baseline: `ops/ubuntu-docker-coexist-20260311`.
+
+## Implemented (v1)
+
+- Governed tail catalogue (`schemas/governed_ac_block_config.py`), all reusing
+  the 1250 kW PCS unit and the dedicated DC-to-PCS policy:
+  - `ACBLK-10MW-8PCS-8DC-40FT-BILATERAL` (three-winding, 2 LV, bilateral)
+  - `ACBLK-5MW-4PCS-4DC-40FT-LINEAR` (two-winding, 1 LV)
+  - `ACBLK-2P5MW-2PCS-2DC-20FT-LINEAR` (two-winding, 1 LV)
+  - `ACBLK-1P25MW-1PCS-1DC-20FT-LINEAR` (two-winding, 1 LV)
+- `decompose_governed_site(dc_blocks_total)` — greedy 8/4/2/1, exact (a 1-DC unit
+  exists so any positive total is composable), never a ceil/average split.
+- `services.governed_ac_block_service.build_governed_site_plan()` — returns the
+  heterogeneous site as a list of homogeneous `GovernedSiteGroup`s. Each group's
+  AC output is a valid, uniform `SldAuthoritativeAcOutput`, so it is individually
+  SLD-renderable without changing the SLD V1 uniform-block contract.
+- Tests: `tests/unit/test_governed_phase_b_decomposition.py`.
+
+Example: `188 -> 23 x ACBLK-10MW (bilateral) + 1 x ACBLK-5MW (linear tail)`.
+
+The remainder of this document is the original design rationale.
+
+---
 
 ## 1. Problem
 
