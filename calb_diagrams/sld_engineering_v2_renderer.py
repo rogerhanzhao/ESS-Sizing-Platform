@@ -852,9 +852,14 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
         _, left_x1, left_x2 = winding_bus_extents[0]
         _, right_x1, right_x2 = winding_bus_extents[1]
         if left_x2 < right_x1:
-            # Place the tie note BELOW the busbar break so it never collides with
-            # the two secondaries' bus / section labels sharing the label row.
-            _text(dwg, "NO LV BUS TIE", (left_x2 + right_x1) / 2.0, mv.lv_bus_y + 18.0, "tag", anchor="middle")
+            # The horizontal gap between the two busbars is too narrow for a
+            # horizontal note without hitting the LV-B / DS-F05 labels, so draw
+            # the tie note VERTICALLY in the empty inter-winding column (between
+            # the last LV-A feeder and the first LV-B feeder).
+            tie_x = (left_x2 + right_x1) / 2.0
+            tie_y = mv.lv_bus_y + 60.0
+            _text(dwg, "NO LV BUS TIE", tie_x, tie_y, "tag", anchor="middle",
+                  transform=f"rotate(-90 {tie_x:.1f} {tie_y:.1f})")
 
     # Battery bank heading — centred in the clear gap between fuse bottom and BESS box top
     _text(dwg, "BATTERY STORAGE BANK",
