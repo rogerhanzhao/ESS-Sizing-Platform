@@ -260,11 +260,15 @@ ACBLK_10MW_8PCS_8DC_40FT_BILATERAL = GovernedACBlockConfiguration(
     dc_field_to_station_aisle_m=None,
     ac_station_length_m=None,
     ac_station_width_m=None,
+    # NOTE: transformer_uk_percent is deliberately NOT a provisional blocker.
+    # Impedance is not a sizing input and is a grid-interconnection filing value
+    # the owner usually lacks at concept stage; the SLD supplies a standard
+    # typical by voltage class (see sld.standard_transformer_impedance), so it
+    # never gates sizing or SLD generation.
     provisional_fields=frozenset(
         {
             "transformer_mva",
             "transformer_vector_group",
-            "transformer_uk_percent",
             "lv_voltage_v",
             "transformer_cooling",
             "dc_field_to_station_aisle_m",

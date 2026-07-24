@@ -126,7 +126,9 @@ def test_builder_strict_mode_rejects_missing_critical_fields(sample_excel_path):
 
     message = str(exc_info.value)
     assert "transformer_vector_group" in message
-    assert "transformer_uk_percent" in message
+    # transformer_uk_percent is intentionally NOT required: it falls back to a
+    # standard typical by voltage class, so it must not appear as a hard error.
+    assert "transformer_uk_percent" not in message
     assert "dc_block_voltage_v" in message
     assert "equipment_ratings" in message
 

@@ -60,9 +60,10 @@ def test_build_from_product_removes_mva_tbd_and_validates(seeded_db):
     )
     assert out["transformer_mva"] == 10.0
     assert out["num_blocks"] == 1
-    # Uk% still unresolved (no datasheet publishes it); MVA no longer unresolved.
+    # MVA resolved from the product; Uk% is not a provisional blocker at all
+    # (SLD uses a standard typical), so it never appears as unresolved.
     assert "transformer_mva" not in out["provisional_unresolved"]
-    assert "transformer_uk_percent" in out["provisional_unresolved"]
+    assert "transformer_uk_percent" not in out["provisional_unresolved"]
     norm = normalize_ac_output_for_sld(out)
     assert norm.transformer_mva == 10.0
     assert norm.lv_winding_count == 2

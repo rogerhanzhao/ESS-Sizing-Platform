@@ -21,8 +21,9 @@ def build_persisted_sld_project_settings(
         raise ValueError("equipment_ratings are required before saving formal SLD engineering settings.")
     if not str(override.transformer_vector_group or "").strip():
         raise ValueError("transformer_vector_group is required before saving formal SLD engineering settings.")
-    if override.transformer_uk_percent is None or float(override.transformer_uk_percent) <= 0:
-        raise ValueError("transformer_uk_percent must be > 0 before saving formal SLD engineering settings.")
+    # Uk% is optional: impedance is not a sizing input and is a grid-filing value
+    # the owner often lacks. When absent the SLD falls back to a standard typical
+    # by voltage class, so saving must not require it.
     if override.dc_block_voltage_v is None or float(override.dc_block_voltage_v) <= 0:
         raise ValueError("dc_block_voltage_v must be > 0 before saving formal SLD engineering settings.")
 
@@ -34,11 +35,13 @@ def build_persisted_sld_project_settings(
         rmu_payload["rated_kv"] = float(contract.rmu_rated_voltage_kv)
         equipment_payload["rmu"] = rmu_payload
 
+    transformer_settings: dict[str, Any] = {
+        "vector_group": str(override.transformer_vector_group).strip(),
+    }
+    if override.transformer_uk_percent is not None and float(override.transformer_uk_percent) > 0:
+        transformer_settings["uk_percent"] = float(override.transformer_uk_percent)
     project_settings: dict[str, Any] = {
-        "transformer": {
-            "vector_group": str(override.transformer_vector_group).strip(),
-            "uk_percent": float(override.transformer_uk_percent),
-        },
+        "transformer": transformer_settings,
         "dc_block_voltage_v": float(override.dc_block_voltage_v),
         "labels": override.labels.model_dump(mode="python"),
         "equipment_ratings": equipment_payload,

@@ -207,6 +207,26 @@ precedence. Uk% is not published on any datasheet and stays an owner item. The A
 Sizing governed panel exposes this as an optional "Bind to catalogue product"
 selector.
 
+## 7e. Transformer impedance (Uk%) — non-blocking, standard typical
+
+Decision: transformer impedance (Uk%) is **not** a sizing parameter (the
+sizing chain never uses it) and is usually a grid-interconnection filing value
+the owner does not have at concept stage. It therefore no longer blocks sizing
+or SLD generation:
+
+- `sld/standard_transformer_impedance.py` (new) provides a standard typical Uk%
+  by HV class (IEEE C57.12.00/C57.12.10 basis): 5.75 % ≤25 kV, 6.0 % at
+  34.5 kV, 6.5 % at 46 kV, 7.0 % at 69 kV.
+- `services/sld_input_builder.py`: when no project-declared / override Uk%
+  exists, the SLD uses the standard typical by MV voltage and records a draft
+  warning that the value is typical, not project-declared. Strict mode no longer
+  errors on a missing Uk%.
+- `schemas/governed_ac_block_config.py`: `transformer_uk_percent` is removed from
+  the provisional blocker set, so it never appears in `provisional_unresolved`.
+- `services/sld_engineering_settings_service.py`: saving no longer requires Uk%;
+  an owner-declared value is still honoured when provided (and overrides the
+  typical).
+
 ## 8. Tests
 
 - `tests/unit/test_governed_ac_block_config.py` — identity, Phase A gate,

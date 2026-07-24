@@ -41,8 +41,9 @@ def test_maps_confirmed_settings_to_overrides():
     overrides = map_engineering_settings_to_overrides(settings, CFG)
     assert overrides["transformer_mva"] == 11.5
     assert overrides["transformer_vector_group"] == "Dyn11"
-    assert overrides["transformer_uk_percent"] == 8.0
     assert overrides["transformer_cooling"] == "ONAN"
+    # Uk% is not a provisional field anymore, so it is not mapped as an override.
+    assert "transformer_uk_percent" not in overrides
 
 
 def test_unset_mva_stays_unresolved_and_is_not_inferred():

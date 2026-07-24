@@ -90,6 +90,8 @@ def test_provisional_values_default_to_none_and_are_listed():
     assert "transformer_mva" in CFG.provisional_fields
     assert "transformer_vector_group" in CFG.provisional_fields
     assert "lv_voltage_v" in CFG.provisional_fields
+    # Uk% is deliberately NOT a provisional blocker (standard typical fallback).
+    assert "transformer_uk_percent" not in CFG.provisional_fields
 
 
 def test_ac_output_omits_transformer_mva_until_supplied():

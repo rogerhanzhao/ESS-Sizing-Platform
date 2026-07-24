@@ -15,6 +15,10 @@ from calb_sizing_tool.schemas.sld_render_input import (
     SldLabels,
     legacy_sld_override_preset,
 )
+from calb_sizing_tool.sld.standard_transformer_impedance import (
+    STANDARD_IMPEDANCE_BASIS,
+    standard_impedance_percent,
+)
 from calb_sizing_tool.sld.voltage_contract import resolve_mv_rmu_voltage_contract
 
 
@@ -186,19 +190,22 @@ class SldInputBuilder:
             legacy_sld_override_preset().get("transformer_vector_group"),
         )
 
+        # Transformer impedance (Uk%) is NOT a sizing parameter and is usually a
+        # project grid-interconnection filing value the owner does not have at
+        # concept stage. It must never block the SLD: use a project-declared or
+        # override value when present, otherwise a STANDARD TYPICAL by HV class
+        # (IEEE C57.12.00/C57.12.10 basis), clearly flagged as typical.
         transformer_uk_percent = self._optional_float(
             [_deep_get(project_settings, "transformer", "uk_percent")]
         )
-        transformer_uk_percent = self._fill_float_from_override_or_draft(
-            "transformer_uk_percent",
-            transformer_uk_percent,
-            override_mode,
-            override.transformer_uk_percent if override else None,
-            validation_mode,
-            draft_warnings,
-            errors,
-            legacy_sld_override_preset().get("transformer_uk_percent"),
-        )
+        if transformer_uk_percent is None and override_mode and override and override.transformer_uk_percent:
+            transformer_uk_percent = float(override.transformer_uk_percent)
+        if transformer_uk_percent is None or transformer_uk_percent <= 0:
+            transformer_uk_percent = standard_impedance_percent(mv_voltage_kv)
+            draft_warnings.append(
+                f"transformer Uk% not project-declared; using standard typical "
+                f"{transformer_uk_percent:g}% ({STANDARD_IMPEDANCE_BASIS})."
+            )
 
         pcs_count = self._resolve_group_value(
             "pcs_count",

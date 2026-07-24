@@ -81,7 +81,9 @@ def test_sld_authoritative_builder_rejects_missing_project_engineering_inputs(sa
 
     message = str(exc_info.value)
     assert "transformer_vector_group" in message
-    assert "transformer_uk_percent" in message
+    # transformer_uk_percent is intentionally NOT required: the SLD falls back to
+    # a standard typical impedance by voltage class, so it must not be an error.
+    assert "transformer_uk_percent" not in message
     assert "dc_block_voltage_v" in message
     assert "equipment_ratings" in message
 
