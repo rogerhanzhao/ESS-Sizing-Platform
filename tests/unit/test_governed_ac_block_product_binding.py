@@ -15,6 +15,7 @@ from calb_sizing_tool.infra.db.session import create_engine_for_url
 from calb_sizing_tool.services.ac_block_product_seed_service import seed_ac_block_products
 from calb_sizing_tool.services.governed_ac_block_service import (
     build_governed_ac_output_from_product,
+    build_governed_site_plan,
     eligible_products_for,
     product_overrides,
 )
@@ -105,3 +106,29 @@ def test_multi_unit_from_product(seeded_db):
 def test_unknown_product_rejected(seeded_db):
     with pytest.raises(ValueError):
         product_overrides("DOES-NOT-EXIST", CFG, db_url=seeded_db)
+
+
+def test_tail_configs_bind_to_real_products(seeded_db):
+    # 5 MW / 4-DC tail -> NR-5000 + Kehua BCS5000K (topology unknown, not excluded)
+    five = {p["block_code"] for p in eligible_products_for("ACBLK-5MW-4PCS-4DC-40FT-LINEAR", db_url=seeded_db)}
+    assert "NR-PCS9567MV-5000-V2.2" in five
+    assert "KEHUA-BCS5000K-C-HUD-T4" in five
+    # 2.5 MW / 2-DC tail -> Kehua BCS2500K variants
+    two_five = {p["block_code"] for p in eligible_products_for("ACBLK-2P5MW-2PCS-2DC-20FT-LINEAR", db_url=seeded_db)}
+    assert "KEHUA-BCS2500K-C-HUD-T2" in two_five
+    assert all("2500K" in code for code in two_five)
+    # 1.25 MW / 1-DC tail -> no catalogue product at that size
+    assert eligible_products_for("ACBLK-1P25MW-1PCS-1DC-20FT-LINEAR", db_url=seeded_db) == []
+
+
+def test_site_plan_with_products_annotates_each_group(seeded_db):
+    plan = build_governed_site_plan(14, db_url=seeded_db, with_products=True)  # 8 + 4 + 2
+    by_code = {g.configuration_code: g for g in plan.groups}
+    assert "SINENG-EH-10000-HB-UD-10-33" in by_code["ACBLK-10MW-8PCS-8DC-40FT-BILATERAL"].eligible_product_codes
+    assert "NR-PCS9567MV-5000-V2.2" in by_code["ACBLK-5MW-4PCS-4DC-40FT-LINEAR"].eligible_product_codes
+    assert by_code["ACBLK-2P5MW-2PCS-2DC-20FT-LINEAR"].eligible_product_codes  # non-empty
+
+
+def test_site_plan_without_products_is_structural_only():
+    plan = build_governed_site_plan(14)  # no db -> no product annotation
+    assert all(g.eligible_product_codes == () for g in plan.groups)

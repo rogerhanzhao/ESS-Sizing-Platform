@@ -264,7 +264,12 @@ def eligible_products_for(
             dc_inputs = metadata.get("dc_inputs")
             inverter_blocks = metadata.get("pcs_inverter_blocks")
             count_ok = (dc_inputs == config.dc_block_count) or (inverter_blocks == config.pcs_count)
-            topology_ok = metadata.get("transformer_topology") == config.transformer_topology
+            # A product qualifies unless it declares a CONTRADICTING topology.
+            # Most tail-size datasheets do not publish the vector group, so an
+            # unknown (None) topology must not exclude an otherwise-matching
+            # product; a declared value must still match.
+            product_topology = metadata.get("transformer_topology")
+            topology_ok = product_topology is None or product_topology == config.transformer_topology
             if power_ok and count_ok and topology_ok:
                 results.append(
                     {
@@ -329,6 +334,7 @@ class GovernedSiteGroup:
     dc_blocks_total: int
     pcs_per_ac_block: int
     ac_power_mw_total: float
+    eligible_product_codes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -346,12 +352,30 @@ class GovernedSitePlan:
     groups: tuple[GovernedSiteGroup, ...]
 
 
-def build_governed_site_plan(dc_blocks_total: int) -> GovernedSitePlan:
+def build_governed_site_plan(
+    dc_blocks_total: int, *, db_url: str | None = None, with_products: bool = False
+) -> GovernedSitePlan:
     """Decompose a DC total into governed AC Block groups (Phase B).
 
     Any positive total is exactly composable (greedy 8/4/2/1); a multiple of 8
-    yields a single bilateral group (equivalent to Phase A).
+    yields a single bilateral group (equivalent to Phase A). When ``with_products``
+    is set, each group is annotated with the catalogue products eligible to
+    supply it (matched by power / DC-input count / non-contradicting topology).
     """
+    eligible_cache: dict[str, tuple[str, ...]] = {}
+
+    def _eligible(code: str) -> tuple[str, ...]:
+        if not with_products:
+            return ()
+        if code not in eligible_cache:
+            try:
+                eligible_cache[code] = tuple(
+                    p["block_code"] for p in eligible_products_for(code, db_url=db_url)
+                )
+            except Exception:  # pragma: no cover - defensive (no DB / empty table)
+                eligible_cache[code] = ()
+        return eligible_cache[code]
+
     groups: list[GovernedSiteGroup] = []
     for config, count in decompose_governed_site(dc_blocks_total):
         groups.append(
@@ -363,6 +387,7 @@ def build_governed_site_plan(dc_blocks_total: int) -> GovernedSitePlan:
                 dc_blocks_total=int(count) * config.dc_block_count,
                 pcs_per_ac_block=config.pcs_count,
                 ac_power_mw_total=round(int(count) * config.block_size_mw, 3),
+                eligible_product_codes=_eligible(config.configuration_code),
             )
         )
     return GovernedSitePlan(
