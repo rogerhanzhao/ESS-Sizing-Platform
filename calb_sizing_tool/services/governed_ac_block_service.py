@@ -35,10 +35,19 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from calb_sizing_tool.infra.db.models import ProductACBlock
+from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.schemas.governed_ac_block_config import (
     GovernedACBlockConfiguration,
     get_governed_configuration,
 )
+
+# Nominal ISO 40 ft footprint (length x width) used when a product record only
+# names the container class. Length = container W, width = container D.
+_CONTAINER_FOOTPRINT_M = {
+    "40ft": (12.192, 2.438),
+    "20ft": (6.058, 2.438),
+}
 
 
 def map_engineering_settings_to_overrides(
@@ -183,6 +192,120 @@ def build_governed_site_ac_output(
     return site
 
 
+def _product_row_to_overrides(
+    row: ProductACBlock, config: GovernedACBlockConfiguration
+) -> dict[str, Any]:
+    """Extract governed provisional overrides from a product catalogue record.
+
+    Transformer nameplate MVA and LV voltage come from the datasheet-derived
+    product record; vector group / cooling / container footprint are recorded so
+    the unresolved list shrinks. Uk% is never published on these datasheets, so
+    it is not sourced here and stays an owner-confirmation item.
+    """
+    metadata = row.metadata_json if isinstance(row.metadata_json, dict) else {}
+    overrides: dict[str, Any] = {}
+    if row.transformer_kva and float(row.transformer_kva) > 0:
+        overrides["transformer_mva"] = round(float(row.transformer_kva) / 1000.0, 6)
+    if row.lv_voltage_v and float(row.lv_voltage_v) > 0:
+        overrides["lv_voltage_v"] = float(row.lv_voltage_v)
+    vector_group = str(metadata.get("transformer_vector_group") or "").strip()
+    if vector_group:
+        overrides["transformer_vector_group"] = vector_group
+    cooling = str(metadata.get("transformer_cooling") or "").strip()
+    if cooling:
+        overrides["transformer_cooling"] = cooling
+    footprint = _CONTAINER_FOOTPRINT_M.get(str(metadata.get("container_type") or "").strip())
+    if footprint:
+        overrides["ac_station_length_m"] = footprint[0]
+        overrides["ac_station_width_m"] = footprint[1]
+    return {key: value for key, value in overrides.items() if key in config.provisional_fields}
+
+
+def product_overrides(
+    product_block_code: str,
+    config: GovernedACBlockConfiguration,
+    *,
+    db_url: str | None = None,
+) -> dict[str, Any]:
+    """Provisional overrides sourced from a catalogue product, by block_code."""
+    code = str(product_block_code or "").strip()
+    if not code:
+        return {}
+    with session_scope(db_url) as session:
+        row = session.query(ProductACBlock).filter(ProductACBlock.block_code == code).one_or_none()
+        if row is None:
+            raise ValueError(f"unknown AC Block product: {product_block_code!r}")
+        return _product_row_to_overrides(row, config)
+
+
+def eligible_products_for(
+    configuration_code: str,
+    *,
+    db_url: str | None = None,
+) -> list[dict[str, Any]]:
+    """Catalogue products whose datasheet matches this governed configuration.
+
+    A product qualifies when its AC power, DC-input count (or PCS inverter block
+    count) and transformer topology match the governed identity — e.g. the 10 MW
+    / 8-DC / three-winding skids (Sineng EH-10000, NR PCS-9567MV-10000, Kehua
+    BCS10000K-C-HUD/T8).
+    """
+    config = get_governed_configuration(configuration_code)
+    results: list[dict[str, Any]] = []
+    with session_scope(db_url) as session:
+        for row in session.query(ProductACBlock).order_by(ProductACBlock.block_code.asc()).all():
+            metadata = row.metadata_json if isinstance(row.metadata_json, dict) else {}
+            try:
+                power_ok = abs(float(metadata.get("ac_power_mw") or 0.0) - config.ac_power_mw) < 1e-6
+            except (TypeError, ValueError):
+                power_ok = False
+            dc_inputs = metadata.get("dc_inputs")
+            inverter_blocks = metadata.get("pcs_inverter_blocks")
+            count_ok = (dc_inputs == config.dc_block_count) or (inverter_blocks == config.pcs_count)
+            topology_ok = metadata.get("transformer_topology") == config.transformer_topology
+            if power_ok and count_ok and topology_ok:
+                results.append(
+                    {
+                        "block_code": row.block_code,
+                        "block_name": row.block_name,
+                        "vendor": metadata.get("vendor"),
+                        "transformer_kva": row.transformer_kva,
+                        "transformer_vector_group": metadata.get("transformer_vector_group"),
+                        "transformer_cooling": metadata.get("transformer_cooling"),
+                        "lv_voltage_v": row.lv_voltage_v,
+                    }
+                )
+    return results
+
+
+def build_governed_ac_output_from_product(
+    configuration_code: str,
+    product_block_code: str,
+    *,
+    project_settings: dict[str, Any] | None = None,
+    dc_blocks_total: int,
+    source_fields: Optional[dict[str, Any]] = None,
+    db_url: str | None = None,
+) -> dict[str, Any]:
+    """Site-level governed AC output using a real product for provisional values.
+
+    Precedence: product datasheet values form the base; explicit Engineering
+    Settings override them (so an owner-entered Uk%/MVA always wins). The result
+    still reports any remaining unresolved provisional fields (e.g. Uk%, which no
+    datasheet publishes).
+    """
+    config = get_governed_configuration(configuration_code)
+    merged = product_overrides(product_block_code, config, db_url=db_url)
+    merged.update(map_engineering_settings_to_overrides(project_settings, config))
+    return build_governed_site_ac_output(
+        configuration_code,
+        None,
+        dc_blocks_total=dc_blocks_total,
+        source_fields=source_fields,
+        extra_overrides=merged,
+    )
+
+
 def unresolved_provisional_fields(
     configuration_code: str,
     project_settings: dict[str, Any] | None,
@@ -197,8 +320,11 @@ def unresolved_provisional_fields(
 
 
 __all__ = [
+    "build_governed_ac_output_from_product",
     "build_governed_ac_output_from_settings",
     "build_governed_site_ac_output",
+    "eligible_products_for",
     "map_engineering_settings_to_overrides",
+    "product_overrides",
     "unresolved_provisional_fields",
 ]

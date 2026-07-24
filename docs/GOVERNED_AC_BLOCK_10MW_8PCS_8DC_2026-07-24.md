@@ -188,6 +188,25 @@ selected it overrides the generic ratio/model steps and, on "Run AC Sizing
 the still-unresolved provisional values (from Engineering Settings) as a warning.
 The generic 1:1/1:2/1:4 flow is unchanged when the product is not selected.
 
+## 7d. Product catalogue binding
+
+Preset AC Block products were seeded from vendor datasheets (numbers only; no
+PDFs in the repo) via `data/ac_block_products_seed.json` +
+`services/ac_block_product_seed_service.py`. Three independent 10 MW products —
+**Sineng EH-10000**, **NR PCS-9567MV-10000**, **Kehua BCS10000K-C-HUD/T8** — are
+8-DC-input / three-winding (Dy11-y11) / ONAN / 690 V / 40 ft, confirming the
+governed identity and that the transformer nameplate is **10 MVA** (Sineng
+derates to 11 MVA @30 °C), never 11.11 MVA.
+
+`services/governed_ac_block_service.py` binds the governed configuration to a
+selected catalogue product: `eligible_products_for` lists matching products,
+`product_overrides` pulls the datasheet transformer MVA / LV / vector / cooling /
+container footprint, and `build_governed_ac_output_from_product` emits the AC
+output using the product as the provisional base with Engineering Settings taking
+precedence. Uk% is not published on any datasheet and stays an owner item. The AC
+Sizing governed panel exposes this as an optional "Bind to catalogue product"
+selector.
+
 ## 8. Tests
 
 - `tests/unit/test_governed_ac_block_config.py` — identity, Phase A gate,

@@ -124,8 +124,8 @@
       }
     },
     {
-      "block_code": "CALB-EH-6400-HA-MR-US-34.5",
-      "block_name": "CALB EH-6400-HA-MR-US Turnkey Station (String PCS 1500V, 20ft)",
+      "block_code": "SINENG-EH-6400-HA-MR-US-34.5",
+      "block_name": "Sineng EH-6400-HA-MR-US Turnkey Station (String PCS 1500V, 20ft)",
       "pcs_model": "String PCS 1500V (16 units)",
       "pcs_power_kw": 400.0,
       "pcs_count": 16,
@@ -136,7 +136,7 @@
       "aux_load_kw": null,
       "notes": "US 34.5kV turnkey station with integrated oil-immersed transformer, string PCS. Model nameplate 6.4 MW.",
       "metadata_json": {
-        "vendor": "CALB",
+        "vendor": "Sineng",
         "product_line": "EH Series",
         "model": "EH-6400-HA-MR-US-34.5",
         "region": "US",
@@ -165,8 +165,8 @@
       }
     },
     {
-      "block_code": "CALB-EH-4800-HA-MR-US-34.5",
-      "block_name": "CALB EH-4800-HA-MR-US Turnkey Station (String PCS 1500V, 20ft)",
+      "block_code": "SINENG-EH-4800-HA-MR-US-34.5",
+      "block_name": "Sineng EH-4800-HA-MR-US Turnkey Station (String PCS 1500V, 20ft)",
       "pcs_model": "String PCS 1500V (24 units)",
       "pcs_power_kw": 200.0,
       "pcs_count": 24,
@@ -177,7 +177,7 @@
       "aux_load_kw": null,
       "notes": "US 34.5kV turnkey station with integrated oil-immersed transformer, string PCS. Model nameplate 4.8 MW.",
       "metadata_json": {
-        "vendor": "CALB",
+        "vendor": "Sineng",
         "product_line": "EH Series",
         "model": "EH-4800-HA-MR-US-34.5",
         "region": "US",
@@ -208,8 +208,8 @@
       }
     },
     {
-      "block_code": "CALB-EH-5160-HA-MR-US-34.5",
-      "block_name": "CALB EH-5160-HA-MR-US Turnkey Station (String PCS 1500V, 20ft)",
+      "block_code": "SINENG-EH-5160-HA-MR-US-34.5",
+      "block_name": "Sineng EH-5160-HA-MR-US Turnkey Station (String PCS 1500V, 20ft)",
       "pcs_model": "String PCS 1500V (24 units)",
       "pcs_power_kw": 215.0,
       "pcs_count": 24,
@@ -220,7 +220,7 @@
       "aux_load_kw": null,
       "notes": "US 34.5kV turnkey station with integrated oil-immersed transformer, string PCS. Model nameplate 5.16 MW.",
       "metadata_json": {
-        "vendor": "CALB",
+        "vendor": "Sineng",
         "product_line": "EH Series",
         "model": "EH-5160-HA-MR-US-34.5",
         "region": "US",

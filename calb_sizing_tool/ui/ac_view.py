@@ -330,7 +330,9 @@ def show():
         ACBLK_10MW_8PCS_8DC_40FT_BILATERAL as _GOVERNED,
     )
     from calb_sizing_tool.services.governed_ac_block_service import (
+        build_governed_ac_output_from_product,
         build_governed_site_ac_output,
+        eligible_products_for,
         unresolved_provisional_fields,
     )
     from calb_sizing_tool.services.sld_engineering_settings_service import (
@@ -363,9 +365,45 @@ def show():
             if use_governed:
                 num_units = _GOVERNED.ac_block_count_for(dc_blocks_total)
                 project_settings = load_case_sld_project_settings(workspace.get("case_id"))
-                unresolved = unresolved_provisional_fields(
-                    _GOVERNED.configuration_code, project_settings
+
+                # Bind to a real catalogue product so the transformer nameplate /
+                # LV / vector / cooling come from the datasheet instead of TBD.
+                try:
+                    catalogue = eligible_products_for(_GOVERNED.configuration_code)
+                except Exception:
+                    catalogue = []
+                product_labels = ["(none — Engineering Settings only)"] + [
+                    f"{p.get('vendor') or ''} · {p['block_code']} · "
+                    f"{(p.get('transformer_kva') or 0) / 1000:.1f} MVA"
+                    for p in catalogue
+                ]
+                product_choice = st.selectbox(
+                    "Bind to catalogue product (fills confirmed transformer/LV values)",
+                    range(len(product_labels)),
+                    index=0,
+                    format_func=lambda i: product_labels[i],
+                    key="governed_product_choice",
+                    help="Datasheet-derived product record. Uk% is never published on "
+                    "these datasheets and still comes from Engineering Settings.",
                 )
+                selected_product_code = (
+                    catalogue[product_choice - 1]["block_code"] if product_choice > 0 else None
+                )
+
+                if selected_product_code:
+                    unresolved = list(
+                        build_governed_ac_output_from_product(
+                            _GOVERNED.configuration_code,
+                            selected_product_code,
+                            project_settings=project_settings,
+                            dc_blocks_total=dc_blocks_total,
+                        ).get("provisional_unresolved", [])
+                    )
+                else:
+                    unresolved = unresolved_provisional_fields(
+                        _GOVERNED.configuration_code, project_settings
+                    )
+
                 gc1, gc2, gc3, gc4 = st.columns(4)
                 gc1.metric("Governed AC Blocks", num_units)
                 gc2.metric("PCS per Block", _GOVERNED.pcs_count)
@@ -423,13 +461,24 @@ def show():
                         "source_poi_nominal_voltage_kv": mv_kv,
                         "source_poi_frequency_hz": stage13_output.get("poi_frequency_hz"),
                     }
+                    if selected_product_code:
+                        source_fields["governed_product_block_code"] = selected_product_code
                     try:
-                        gov_output = build_governed_site_ac_output(
-                            _GOVERNED.configuration_code,
-                            project_settings,
-                            dc_blocks_total=dc_blocks_total,
-                            source_fields=source_fields,
-                        )
+                        if selected_product_code:
+                            gov_output = build_governed_ac_output_from_product(
+                                _GOVERNED.configuration_code,
+                                selected_product_code,
+                                project_settings=project_settings,
+                                dc_blocks_total=dc_blocks_total,
+                                source_fields=source_fields,
+                            )
+                        else:
+                            gov_output = build_governed_site_ac_output(
+                                _GOVERNED.configuration_code,
+                                project_settings,
+                                dc_blocks_total=dc_blocks_total,
+                                source_fields=source_fields,
+                            )
                     except ValueError as exc:
                         st.error(f"Governed AC sizing failed: {exc}")
                         st.stop()
