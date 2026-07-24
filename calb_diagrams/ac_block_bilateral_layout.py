@@ -369,7 +369,22 @@ def render_bilateral_plan_svg(
     """Top-down concept drawing of the bilateral 4+4 AC Block."""
     s = 26.0  # px per metre
     margin_l, margin_r, margin_t, margin_b = 60.0, 60.0, 64.0, 96.0
-    width = margin_l + layout.envelope_w_m * s + margin_r
+
+    # Header / footer strings, sized so the SVG is wide enough for the longest
+    # line of text as well as the equipment envelope (the title never clips).
+    title = str(block_label)
+    subtitle = (
+        f"{layout.envelope_w_m:.2f} m x {layout.envelope_d_m:.2f} m equipment envelope"
+        "  ·  west 4-DC | center 40 ft | east 4-DC"
+    )
+    footer = "CONCEPT ONLY — NOT FOR CONSTRUCTION · provisional spacing, not a site layout"
+
+    def _mono_w(text: str, font_px: float) -> float:
+        return len(text) * font_px * 0.62  # Consolas advance width estimate
+
+    content_w = layout.envelope_w_m * s
+    text_w = max(_mono_w(title, 13.0), _mono_w(subtitle, 10.5), _mono_w(footer, 10.5))
+    width = margin_l + max(content_w, text_w) + margin_r
     height = margin_t + layout.envelope_d_m * s + margin_b
 
     parts: List[str] = []
@@ -418,15 +433,11 @@ def render_bilateral_plan_svg(
                 _rect(parts, px + pw - 2.5, py + ph * 0.3, 2.5, ph * 0.4, _DOOR, rx=0)
 
     # labels
-    _text(parts, margin_l + 4, 30,
-          f"{block_label}  ·  west 4-DC | center 40ft | east 4-DC", size=12,
-          anchor="start")
-    _text(parts, margin_l + 4, 47,
-          f"{layout.envelope_w_m:.2f} m × {layout.envelope_d_m:.2f} m equipment envelope",
-          size=10.5, anchor="start", weight=600, fill="#5b6367")
-    _text(parts, margin_l + 4, height - 16,
-          "CONCEPT ONLY — NOT FOR CONSTRUCTION · provisional spacing, not a site layout",
-          size=10.5, anchor="start", weight=600, fill="#5b6367")
+    _text(parts, margin_l + 4, 30, title, size=13, anchor="start")
+    _text(parts, margin_l + 4, 48, subtitle, size=10.5, anchor="start",
+          weight=600, fill="#5b6367")
+    _text(parts, margin_l + 4, height - 16, footer, size=10.5, anchor="start",
+          weight=600, fill="#5b6367")
 
     parts.append("</svg>")
     return "".join(parts)

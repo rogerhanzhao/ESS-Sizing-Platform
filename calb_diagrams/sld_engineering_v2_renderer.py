@@ -852,7 +852,9 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
         _, left_x1, left_x2 = winding_bus_extents[0]
         _, right_x1, right_x2 = winding_bus_extents[1]
         if left_x2 < right_x1:
-            _text(dwg, "NO LV BUS TIE", (left_x2 + right_x1) / 2.0, mv.lv_bus_y - 6.0, "tag", anchor="middle")
+            # Place the tie note BELOW the busbar break so it never collides with
+            # the two secondaries' bus / section labels sharing the label row.
+            _text(dwg, "NO LV BUS TIE", (left_x2 + right_x1) / 2.0, mv.lv_bus_y + 18.0, "tag", anchor="middle")
 
     # Battery bank heading — centred in the clear gap between fuse bottom and BESS box top
     _text(dwg, "BATTERY STORAGE BANK",

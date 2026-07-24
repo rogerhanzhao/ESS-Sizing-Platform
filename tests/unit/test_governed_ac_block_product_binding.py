@@ -81,6 +81,18 @@ def test_engineering_settings_override_product_values(seeded_db):
     assert out["transformer_mva"] == 11.0
 
 
+def test_product_vector_group_and_cooling_thread_to_output(seeded_db):
+    """The product's confirmed vector group must reach the AC output so the SLD
+    draws the correct winding symbol (Dy11y11 -> isolated LV neutral, no earth)
+    instead of a generic grounded-wye preset."""
+    out = build_governed_ac_output_from_product(
+        CODE, "SINENG-EH-10000-HB-UD-10-33", dc_blocks_total=8, db_url=seeded_db
+    )
+    assert out["transformer_vector_group"] == "Dy11y11"
+    assert out["transformer_cooling"] == "ONAN"
+    assert out["governed_product_block_code"] == "SINENG-EH-10000-HB-UD-10-33"
+
+
 def test_multi_unit_from_product(seeded_db):
     out = build_governed_ac_output_from_product(
         CODE, "NR-PCS9567MV-10000-V2.3", dc_blocks_total=16, db_url=seeded_db

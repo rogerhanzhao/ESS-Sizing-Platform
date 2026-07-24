@@ -176,8 +176,17 @@ class SldInputBuilder:
             errors,
         )
 
+        # Vector group precedence: project settings (owner) first, then the
+        # governed product's confirmed value carried on the AC output, then any
+        # explicit override / draft preset. The vector group drives the LV
+        # winding-connection symbol (yn -> grounded wye with earth; y -> isolated
+        # neutral, no earth), so a real product's Dy11y11 must win over the
+        # generic grounded-wye preset.
         transformer_vector_group = self._optional_text(
-            [_deep_get(project_settings, "transformer", "vector_group")]
+            [
+                _deep_get(project_settings, "transformer", "vector_group"),
+                ac_output.get("transformer_vector_group"),
+            ]
         )
         transformer_vector_group = self._fill_text_from_override_or_draft(
             "transformer_vector_group",

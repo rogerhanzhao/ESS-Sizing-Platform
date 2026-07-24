@@ -297,13 +297,23 @@ def build_governed_ac_output_from_product(
     config = get_governed_configuration(configuration_code)
     merged = product_overrides(product_block_code, config, db_url=db_url)
     merged.update(map_engineering_settings_to_overrides(project_settings, config))
-    return build_governed_site_ac_output(
+    output = build_governed_site_ac_output(
         configuration_code,
         None,
         dc_blocks_total=dc_blocks_total,
         source_fields=source_fields,
         extra_overrides=merged,
     )
+    # Carry the confirmed transformer vector group / cooling through to the SLD.
+    # The vector group in particular drives the winding-connection symbols
+    # (e.g. Dy11y11 has an isolated LV neutral -> ungrounded-wye mark, no earth),
+    # so a real product must not fall back to a generic grounded-wye preset.
+    if merged.get("transformer_vector_group"):
+        output["transformer_vector_group"] = merged["transformer_vector_group"]
+    if merged.get("transformer_cooling"):
+        output["transformer_cooling"] = merged["transformer_cooling"]
+    output["governed_product_block_code"] = str(product_block_code)
+    return output
 
 
 def unresolved_provisional_fields(
