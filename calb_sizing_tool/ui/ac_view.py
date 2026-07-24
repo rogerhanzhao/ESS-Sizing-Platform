@@ -322,6 +322,144 @@ def show():
         _render_saved_ac_snapshot(saved_ac_output, section_header=section_header)
         st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
 
+    # ========== Governed Product (Phase A, optional) ==========
+    # A fixed, owner-confirmed product identity. When selected it overrides the
+    # generic grouping/model flow below and drives AC->SLD->Layout->Report by
+    # configuration_code / layout_variant instead of an average DC-per-AC ratio.
+    from calb_sizing_tool.schemas.governed_ac_block_config import (
+        ACBLK_10MW_8PCS_8DC_40FT_BILATERAL as _GOVERNED,
+    )
+    from calb_sizing_tool.services.governed_ac_block_service import (
+        build_governed_site_ac_output,
+        unresolved_provisional_fields,
+    )
+    from calb_sizing_tool.services.sld_engineering_settings_service import (
+        load_case_sld_project_settings,
+    )
+
+    use_governed = False
+    with st.container(border=True):
+        section_header(
+            "Governed Product (Phase A)",
+            "Fixed, owner-confirmed AC Block product. Overrides the generic grouping below.",
+            eyebrow="Optional",
+        )
+        if not _GOVERNED.phase_a_eligible(dc_blocks_total):
+            compact_note(
+                f"{dc_blocks_total} DC Blocks is not eligible for "
+                f"{_GOVERNED.configuration_code} (needs a multiple of {_GOVERNED.dc_block_count})."
+            )
+        else:
+            use_governed = bool(
+                st.checkbox(
+                    f"Use governed product {_GOVERNED.configuration_code}",
+                    key="use_governed_ac_block",
+                    help=(
+                        "10 MW / 8 x 1250 kW PCS / 8 DC / 40 ft central bilateral 4+4. "
+                        "PCS count, rating, LV topology and layout are fixed by the product."
+                    ),
+                )
+            )
+            if use_governed:
+                num_units = _GOVERNED.ac_block_count_for(dc_blocks_total)
+                project_settings = load_case_sld_project_settings(workspace.get("case_id"))
+                unresolved = unresolved_provisional_fields(
+                    _GOVERNED.configuration_code, project_settings
+                )
+                gc1, gc2, gc3, gc4 = st.columns(4)
+                gc1.metric("Governed AC Blocks", num_units)
+                gc2.metric("PCS per Block", _GOVERNED.pcs_count)
+                gc3.metric("PCS Rating", f"{_GOVERNED.pcs_rating_kw} kW")
+                gc4.metric("AC Power per Block", f"{_GOVERNED.block_size_mw:.1f} MW")
+                compact_note(
+                    "Central vertical 40 ft AC Block; west 4-DC + east 4-DC mirrored 田 fields; "
+                    "DC-1..8 -> PCS-1..8; two independent LV secondaries (4+4)."
+                )
+                if unresolved:
+                    st.warning(
+                        "Provisional engineering values still unresolved (never inferred): "
+                        + ", ".join(unresolved)
+                        + ". Enter them in Engineering Settings — the SLD stays gated until the "
+                        "transformer MVA is confirmed."
+                    )
+                if st.button(
+                    "Run AC Sizing (Governed)",
+                    type="primary",
+                    use_container_width=True,
+                    key="run_governed_ac",
+                ):
+                    bump_run_id_ac()
+                    ac_run_id = project_state.get("ac", {}).get("run_id")
+                    mv_kv = float(mv_kv_value or 33.0)
+                    lv_v = float(st.session_state.get("pcs_lv_v", 690.0))
+                    source_run_id = (
+                        workspace.get("run_id")
+                        or dc_results.get("last_run_id")
+                        or project_state.get("dc", {}).get("run_id")
+                    )
+                    source_fields = {
+                        "project_name": project_name,
+                        "grid_kv": mv_kv,
+                        "mv_kv": mv_kv,
+                        "mv_voltage_kv": mv_kv,
+                        "lv_v": lv_v,
+                        "lv_voltage_v": lv_v,
+                        "inverter_lv_v": lv_v,
+                        "dc_total_mwh": total_energy_mwh,
+                        "poi_power_mw": target_mw,
+                        "poi_energy_mwh": target_mwh,
+                        "ac_block_container_type": _GOVERNED.ac_container_type,
+                        "ac_block_template_id": f"{_GOVERNED.pcs_count}x{_GOVERNED.pcs_rating_kw}kw",
+                        "ac_block_model_name": _GOVERNED.configuration_code,
+                        "ac_block_model_source": "governed_product",
+                        "source_project_id": workspace.get("project_id"),
+                        "source_project_code": workspace.get("project_code"),
+                        "source_project_name": workspace.get("project_name") or project_name,
+                        "source_case_id": workspace.get("case_id"),
+                        "source_case_code": workspace.get("case_code"),
+                        "source_case_name": workspace.get("case_name"),
+                        "source_run_id": source_run_id,
+                        "source_ac_run_id": ac_run_id,
+                        "source_poi_nominal_voltage_kv": mv_kv,
+                        "source_poi_frequency_hz": stage13_output.get("poi_frequency_hz"),
+                    }
+                    try:
+                        gov_output = build_governed_site_ac_output(
+                            _GOVERNED.configuration_code,
+                            project_settings,
+                            dc_blocks_total=dc_blocks_total,
+                            source_fields=source_fields,
+                        )
+                    except ValueError as exc:
+                        st.error(f"Governed AC sizing failed: {exc}")
+                        st.stop()
+                    st.session_state["ac_output"] = gov_output
+                    ac_results.update(gov_output)
+                    set_run_time("ac_results")
+                    st.success(
+                        f"Governed AC sizing complete — {num_units} × "
+                        f"{_GOVERNED.configuration_code} ({gov_output['total_ac_mw']:.0f} MW)."
+                    )
+                    _auth_ctx = get_auth_context()
+                    if _auth_ctx and not _auth_ctx.is_guest:
+                        persist_ac_runtime_snapshot(
+                            run_id=source_run_id,
+                            ac_inputs=ac_inputs,
+                            ac_output=gov_output,
+                            results={},
+                            source_ref="ac_view_governed",
+                            actor=_auth_ctx.username,
+                        )
+                        st.info("Configuration saved.")
+
+    if use_governed:
+        st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
+        _latest = st.session_state.get("ac_output") if isinstance(st.session_state.get("ac_output"), dict) else ac_results
+        if _snapshot_output_matches_run(_latest, active_run_id):
+            _auth_ctx = get_auth_context()
+            render_pipeline_next_steps("AC Sizing", is_guest=bool(_auth_ctx and _auth_ctx.is_guest))
+        return
+
     # ========== STEP 2: Generate Options & Auto-select Best ==========
     with st.container(border=True):
         section_header(

@@ -177,6 +177,17 @@ nameplate MVA — is now an owner-confirmed field:
 Phase B (mixed 8/4/2/1 tails) remains deferred — design in
 `docs/PHASE_B_MIXED_TAIL_DESIGN_2026-07-24.md`.
 
+## 7c. AC Sizing page integration
+
+`ui/ac_view.py` gained an optional **Governed Product (Phase A)** panel above the
+generic grouping flow. It is offered only when `dc_blocks_total % 8 == 0`. When
+selected it overrides the generic ratio/model steps and, on "Run AC Sizing
+(Governed)", builds the site-level authoritative AC output via
+`services.governed_ac_block_service.build_governed_site_ac_output`
+(`num_blocks = dc_blocks_total / 8`, uniform blocks), persists it, and surfaces
+the still-unresolved provisional values (from Engineering Settings) as a warning.
+The generic 1:1/1:2/1:4 flow is unchanged when the product is not selected.
+
 ## 8. Tests
 
 - `tests/unit/test_governed_ac_block_config.py` — identity, Phase A gate,

@@ -15,6 +15,7 @@ from calb_sizing_tool.adapters.ac_to_sld_adapter import (
 )
 from calb_sizing_tool.services.governed_ac_block_service import (
     build_governed_ac_output_from_settings,
+    build_governed_site_ac_output,
     map_engineering_settings_to_overrides,
     unresolved_provisional_fields,
 )
@@ -89,6 +90,62 @@ def test_phase_a_gate_enforced_when_dc_total_supplied():
         CODE, _settings(transformer_rating_mva=11.5), dc_blocks_total=16
     )
     assert payload["configuration_code"] == CODE
+
+
+def test_site_output_single_unit():
+    site = build_governed_site_ac_output(
+        CODE, _settings(transformer_rating_mva=11.5), dc_blocks_total=8
+    )
+    assert site["num_blocks"] == 1
+    assert site["dc_blocks_total"] == 8
+    assert site["total_ac_mw"] == 10.0
+    norm = normalize_ac_output_for_sld(site)
+    assert norm.num_blocks == 1
+    assert norm.pcs_count_total == 8
+
+
+def test_site_output_multi_unit_is_uniform_and_valid():
+    site = build_governed_site_ac_output(
+        CODE, _settings(transformer_rating_mva=11.5), dc_blocks_total=16
+    )
+    assert site["num_blocks"] == 2
+    assert site["dc_blocks_total"] == 16
+    assert site["total_ac_mw"] == 20.0
+    assert site["pcs_count_total"] == 16
+    assert site["transformer_count"] == 2
+    assert len(site["dc_allocation_plan"]) == 2
+    assert [p["ac_block_index"] for p in site["dc_allocation_plan"]] == [1, 2]
+    # Each block keeps its own contiguous DC-1..8 -> PCS-1..8 mapping.
+    for plan in site["dc_allocation_plan"]:
+        assert plan["dc_blocks_total"] == 8
+        assert plan["feeder_allocations"] == [1] * 8
+
+    norm = normalize_ac_output_for_sld(site)
+    assert norm.num_blocks == 2
+    assert norm.dc_blocks_total == 16
+    assert norm.lv_winding_count == 2
+    assert norm.transformer_topology == "three_winding"
+
+
+def test_site_output_rejects_non_phase_a_total():
+    with pytest.raises(ValueError):
+        build_governed_site_ac_output(
+            CODE, _settings(transformer_rating_mva=11.5), dc_blocks_total=20
+        )
+
+
+def test_site_output_carries_source_fields_and_stays_gated_without_mva():
+    site = build_governed_site_ac_output(
+        CODE,
+        _settings(),  # no MVA
+        dc_blocks_total=8,
+        source_fields={"mv_voltage_kv": 33.0, "source_case_code": "case-1"},
+    )
+    assert site["mv_voltage_kv"] == 33.0
+    assert site["source_case_code"] == "case-1"
+    assert "transformer_mva" in site["provisional_unresolved"]
+    with pytest.raises(AcToSldAdapterError):
+        normalize_ac_output_for_sld(site)
 
 
 def test_extra_overrides_filtered_to_provisional_fields():

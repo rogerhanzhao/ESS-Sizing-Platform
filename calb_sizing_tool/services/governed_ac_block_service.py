@@ -125,6 +125,64 @@ def build_governed_ac_output_from_settings(
     return config.to_ac_sld_output(engineering_overrides=overrides)
 
 
+def build_governed_site_ac_output(
+    configuration_code: str,
+    project_settings: dict[str, Any] | None,
+    *,
+    dc_blocks_total: int,
+    source_fields: Optional[dict[str, Any]] = None,
+    extra_overrides: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Site-level authoritative AC output for a governed configuration.
+
+    A Phase-A site is a whole number of identical governed AC Blocks
+    (``num_blocks = dc_blocks_total / dc_block_count``). This expands the
+    single-unit governed payload to ``num_blocks`` uniform blocks so the AC->SLD
+    contract, report and site-array all consume the governed identity directly.
+
+    ``source_fields`` (project/case/run provenance, MV/LV voltages) is merged in
+    last. As with the single-unit builder, an unresolved transformer MVA is
+    simply omitted — never fabricated — so downstream SLD stays gated until the
+    owner confirms it in Engineering Settings.
+    """
+    config = get_governed_configuration(configuration_code)
+    num_blocks = config.ac_block_count_for(dc_blocks_total)
+
+    unit = build_governed_ac_output_from_settings(
+        configuration_code, project_settings, extra_overrides=extra_overrides
+    )
+    unit_plan = unit["dc_allocation_plan"][0]
+    feeder_allocations = list(unit_plan["feeder_allocations"])
+    connections = list(unit_plan["dc_block_connections"])
+
+    site = dict(unit)
+    site.update(
+        {
+            "num_blocks": num_blocks,
+            "pcs_count_by_block": [config.pcs_count for _ in range(num_blocks)],
+            "dc_allocation_plan": [
+                {
+                    "ac_block_index": index + 1,
+                    "dc_blocks_total": config.dc_block_count,
+                    "feeder_allocations": list(feeder_allocations),
+                    "dc_block_connections": [dict(c) for c in connections],
+                }
+                for index in range(num_blocks)
+            ],
+            "dc_blocks_total_by_block": [config.dc_block_count for _ in range(num_blocks)],
+            "dc_blocks_per_feeder_by_block": [list(feeder_allocations) for _ in range(num_blocks)],
+            "dc_block_connections_by_block": [[dict(c) for c in connections] for _ in range(num_blocks)],
+            "transformer_count": num_blocks,
+            "pcs_count_total": num_blocks * config.pcs_count,
+            "dc_blocks_total": int(dc_blocks_total),
+            "total_ac_mw": round(num_blocks * config.block_size_mw, 6),
+        }
+    )
+    if source_fields:
+        site.update(source_fields)
+    return site
+
+
 def unresolved_provisional_fields(
     configuration_code: str,
     project_settings: dict[str, Any] | None,
@@ -140,6 +198,7 @@ def unresolved_provisional_fields(
 
 __all__ = [
     "build_governed_ac_output_from_settings",
+    "build_governed_site_ac_output",
     "map_engineering_settings_to_overrides",
     "unresolved_provisional_fields",
 ]
