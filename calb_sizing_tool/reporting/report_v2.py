@@ -42,6 +42,7 @@ from calb_diagrams.ac_block_bilateral_layout import (
     compute_bilateral_layout,
     render_bilateral_plan_svg,
 )
+from calb_diagrams.governed_site_composition import render_governed_site_composition_svg
 from calb_diagrams.site_array_concept import (
     US_NFPA_SITE as SITE_PROFILE,
     compute_site_array,
@@ -1010,10 +1011,52 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 "Typical AC Block Arrangement not generated. "
                 "Generate it from the corresponding concept page.")
 
-    # --- Section 9: Concept Site Arrangement (Layout Roadmap L2) ---
-    # Whole-site concept: mirrored AC blocks share a central MV corridor;
-    # envelope estimate only, not a Master Layout (site boundary is out of scope).
-    site_layout = _compute_site_layout(ctx)
+    # --- Section 9: Concept Site Arrangement ---
+    # For a governed run, show the Phase B site composition (how many governed
+    # units of each type make up the site). Otherwise the L2 linear site array.
+    if ctx.configuration_code:
+        comp_png = None
+        plan = None
+        try:
+            from calb_sizing_tool.services.governed_ac_block_service import build_governed_site_plan
+            plan = build_governed_site_plan(int(ctx.dc_blocks_total or 0))
+            comp_svg = render_governed_site_composition_svg(
+                plan, title=f"GOVERNED SITE COMPOSITION · {ctx.configuration_code}"
+            )
+            comp_png = _svg_bytes_to_png(comp_svg.encode("utf-8"))
+        except Exception:
+            comp_png, plan = None, None
+        if comp_png and plan is not None:
+            doc.add_page_break()
+            doc.add_heading("9.  Governed Site Composition (Concept Only)", level=2)
+            _keep_next_para(doc.add_paragraph(
+                f"Governed configuration {ctx.configuration_code}: {ctx.dc_blocks_total} DC Blocks "
+                f"compose {plan.ac_blocks_total} AC Block(s) across {len(plan.groups)} governed "
+                f"group(s), {plan.ac_power_mw_total:.2f} MW total. This is a composition overview "
+                f"(governed unit counts), not a geometric Master Layout."
+            ))
+            doc.add_picture(io.BytesIO(comp_png), width=Inches(6.7))
+            _keep_next_para(doc.paragraphs[-1])
+            _keep_next_para(doc.add_paragraph(
+                f"Figure {figure_index}: Governed Site Composition — Concept Only"
+            ))
+            figure_index += 1
+            _add_table(
+                doc,
+                [
+                    (
+                        g.configuration_code,
+                        f"x{g.ac_block_count} · {g.dc_blocks_per_ac_block} DC / "
+                        f"{g.pcs_per_ac_block} PCS · {g.ac_power_mw_total:.2f} MW",
+                    )
+                    for g in plan.groups
+                ],
+                ["Governed group", "Composition"],
+            )
+        # A governed run does not also draw the linear L2 site array.
+        site_layout = None
+    else:
+        site_layout = _compute_site_layout(ctx)
     if site_layout is not None:
         try:
             site_svg = render_site_svg(site_layout, SITE_PROFILE)

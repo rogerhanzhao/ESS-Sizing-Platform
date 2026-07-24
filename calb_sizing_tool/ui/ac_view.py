@@ -235,6 +235,7 @@ def show():
         compact_note,
         page_header,
         render_pipeline_next_steps,
+        render_static_table,
         section_header,
         workspace_status_bar,
     )
@@ -413,6 +414,36 @@ def show():
                     "Central vertical 40 ft AC Block; west 4-DC + east 4-DC mirrored 田 fields; "
                     "DC-1..8 -> PCS-1..8; two independent LV secondaries (4+4)."
                 )
+
+                with st.expander("Site composition (Phase B decomposition)", expanded=False):
+                    try:
+                        from calb_sizing_tool.services.governed_ac_block_service import (
+                            build_governed_site_plan,
+                        )
+
+                        _plan = build_governed_site_plan(dc_blocks_total, with_products=True)
+                        st.caption(
+                            f"{_plan.dc_blocks_total} DC Blocks → {_plan.ac_blocks_total} AC Block(s) "
+                            f"in {len(_plan.groups)} governed group(s) · "
+                            f"{_plan.ac_power_mw_total:.2f} MW total. A total that is not a multiple "
+                            "of 8 is placed into smaller governed AC Blocks (8/4/2/1), never an "
+                            "average split."
+                        )
+                        render_static_table(
+                            [
+                                {
+                                    "Governed group": _g.configuration_code,
+                                    "Count": _g.ac_block_count,
+                                    "DC/PCS": f"{_g.dc_blocks_per_ac_block}/{_g.pcs_per_ac_block}",
+                                    "MW": _g.ac_power_mw_total,
+                                    "Eligible products": ", ".join(_g.eligible_product_codes) or "—",
+                                }
+                                for _g in _plan.groups
+                            ]
+                        )
+                    except Exception as _exc:  # pragma: no cover - defensive UI guard
+                        st.caption(f"Site composition unavailable: {_exc}")
+
                 if unresolved:
                     st.warning(
                         "Provisional engineering values still unresolved (never inferred): "

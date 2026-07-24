@@ -22,7 +22,18 @@ Baseline: `ops/ubuntu-docker-coexist-20260311`.
   heterogeneous site as a list of homogeneous `GovernedSiteGroup`s. Each group's
   AC output is a valid, uniform `SldAuthoritativeAcOutput`, so it is individually
   SLD-renderable without changing the SLD V1 uniform-block contract.
-- Tests: `tests/unit/test_governed_phase_b_decomposition.py`.
+- Tail groups bind to real catalogue products (`eligible_products_for` no longer
+  excludes a product that does not declare its topology): the 5 MW group ->
+  NR PCS-9567MV-5000 + Kehua BCS5000K; the 2.5 MW group -> Kehua BCS2500K; the
+  1.25 MW group has no catalogue product. `build_governed_site_plan(with_products)`
+  annotates each group with its eligible products.
+- `calb_diagrams/governed_site_composition.py` renders a concept composition
+  diagram (one band per governed group, counts, metrics, eligible products).
+- Wired into the app: the AC Sizing governed panel shows a "Site composition
+  (Phase B decomposition)" table, and report §9 renders the governed composition
+  figure + group table for a governed run (replacing the linear L2 site array).
+- Tests: `tests/unit/test_governed_phase_b_decomposition.py`,
+  `test_governed_ac_block_product_binding.py`, `test_governed_site_composition.py`.
 
 Example: `188 -> 23 x ACBLK-10MW (bilateral) + 1 x ACBLK-5MW (linear tail)`.
 
