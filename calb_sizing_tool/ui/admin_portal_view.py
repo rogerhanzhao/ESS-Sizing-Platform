@@ -927,6 +927,39 @@ def _section_ac_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
     st.subheader("AC Block Templates")
     st.caption("PCS, transformer and AC-side efficiency template records.")
 
+    with st.expander("Import preset vendor catalogue", expanded=False):
+        from calb_sizing_tool.services.ac_block_product_seed_service import (
+            load_seed_document,
+            seed_ac_block_products,
+        )
+
+        try:
+            _seed_doc = load_seed_document()
+            _seed_count = len(_seed_doc.get("products", []))
+            st.caption(
+                f"Preset catalogue: {_seed_count} products · version "
+                f"{_seed_doc.get('version_tag')}. Idempotent upsert by block_code "
+                "(existing rows are updated in place; nothing is duplicated). "
+                "Values are datasheet-derived; transformer Uk% is left unset by design."
+            )
+        except Exception as exc:  # pragma: no cover - defensive UI guard
+            st.error(f"Preset catalogue unavailable: {exc}")
+            _seed_doc = None
+
+        if _seed_doc is not None and st.button(
+            "Import / refresh preset products", key="import_ac_block_seed", use_container_width=True
+        ):
+            try:
+                result = seed_ac_block_products()
+            except Exception as exc:
+                st.error(f"Import failed: {exc}")
+            else:
+                st.success(
+                    f"Imported {result['total']} products "
+                    f"(created {len(result['created'])}, updated {len(result['updated'])})."
+                )
+                st.rerun()
+
     render_static_table(
         _rows(
             snapshot["ac_blocks"],
