@@ -360,16 +360,35 @@ def build_sld_engineering_v2_layout_plan(
         ),
     ]
 
+    # Ordered winding spans (sorted by first feeder) so an independent LV
+    # secondary busbar never overhangs into its neighbour's span. With a wide
+    # feeder count (e.g. 8 PCS split 4+4) the fixed ±100 pad exceeds the
+    # inter-feeder gap, so inner edges are clamped to the boundary midpoint.
+    lv_busbar_pad = 100.0
+    lv_busbar_gap_margin = 8.0
+    lv_busbar_spans: list[tuple[SldV2Node, list[int]]] = []
     for lv_busbar in lv_busbars:
-        feeder_span = [
+        feeder_span = sorted(
             int(feeder_index)
             for feeder_index in (lv_busbar.attributes.get("feeder_span") or [])
             if int(feeder_index) in feeder_center_by_index
-        ]
+        )
         if not feeder_span:
             raise ValueError(f"LV busbar has no assigned PCS feeder span: {lv_busbar.node_id}")
-        x1 = min(feeder_center_by_index[feeder_index] for feeder_index in feeder_span) - 100.0
-        x2 = max(feeder_center_by_index[feeder_index] for feeder_index in feeder_span) + 100.0
+        lv_busbar_spans.append((lv_busbar, feeder_span))
+    lv_busbar_spans.sort(key=lambda entry: entry[1][0])
+
+    for span_index, (lv_busbar, feeder_span) in enumerate(lv_busbar_spans):
+        left_center = feeder_center_by_index[feeder_span[0]]
+        right_center = feeder_center_by_index[feeder_span[-1]]
+        x1 = left_center - lv_busbar_pad
+        x2 = right_center + lv_busbar_pad
+        if span_index > 0:
+            prev_right_center = feeder_center_by_index[lv_busbar_spans[span_index - 1][1][-1]]
+            x1 = max(x1, (prev_right_center + left_center) / 2.0 + lv_busbar_gap_margin)
+        if span_index < len(lv_busbar_spans) - 1:
+            next_left_center = feeder_center_by_index[lv_busbar_spans[span_index + 1][1][0]]
+            x2 = min(x2, (right_center + next_left_center) / 2.0 - lv_busbar_gap_margin)
         winding_index = int(lv_busbar.attributes.get("winding_index") or 1)
         boxes.append(
             SldV2LayoutBox(

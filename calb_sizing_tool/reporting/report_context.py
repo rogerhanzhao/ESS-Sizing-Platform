@@ -63,6 +63,11 @@ class ReportContext:
     qc_checks: List[str]
     dictionary_version_dc: str
     dictionary_version_ac: str
+    # --- governed configuration identity (carried directly from ac_output) ---
+    # When present, Report / Site Array must route by these fields rather than
+    # rebuilding the unit from the average DC-per-AC ratio.
+    configuration_code: Optional[str] = None
+    layout_variant: Optional[str] = None
     # --- DB provenance (populated from workspace session state) ---
     run_id: Optional[str] = None
     ac_run_id: Optional[str] = None
@@ -559,6 +564,8 @@ def build_report_context(
         qc_checks=qc_checks,
         dictionary_version_dc=Path(DC_DATA_PATH).name,
         dictionary_version_ac=Path(AC_DATA_PATH).name,
+        configuration_code=(ac_output.get("configuration_code") if isinstance(ac_output, dict) else None),
+        layout_variant=(ac_output.get("layout_variant") if isinstance(ac_output, dict) else None),
         run_id=run_id,
         ac_run_id=ac_run_id,
         project_code=project_code,

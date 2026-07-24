@@ -783,10 +783,37 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
     bus_y_by_winding: dict[int, float] = {}
     winding_bus_extents: list[tuple[int, float, float]] = []
     split_secondary = len(pcs_by_winding) > 1
+
+    # Independent LV secondary busbars must never overhang into each other. With
+    # a wide feeder count (e.g. 8 PCS split 4+4) the fixed ±90 pad exceeds the
+    # inter-winding gap, so each secondary's inner edge is clamped to the
+    # boundary midpoint — keeping the two secondaries visibly separate (and the
+    # "NO LV BUS TIE" tag correct) without changing the common-bus case.
+    _bus_pad = 90.0
+    _bus_gap_margin = 8.0
+    _winding_center_span = {
+        winding_index: (
+            min(pcs.x + pcs.width / 2.0 for pcs in winding_pcs),
+            max(pcs.x + pcs.width / 2.0 for pcs in winding_pcs),
+        )
+        for winding_index, winding_pcs in pcs_by_winding.items()
+    }
+    _ordered_windings = sorted(_winding_center_span, key=lambda idx: _winding_center_span[idx][0])
+    _clamped_bus_extents: dict[int, tuple[float, float]] = {}
+    for _pos, _wi in enumerate(_ordered_windings):
+        _left_center, _right_center = _winding_center_span[_wi]
+        _bx1 = _left_center - _bus_pad
+        _bx2 = _right_center + _bus_pad
+        if _pos > 0:
+            _prev_right = _winding_center_span[_ordered_windings[_pos - 1]][1]
+            _bx1 = max(_bx1, (_prev_right + _left_center) / 2.0 + _bus_gap_margin)
+        if _pos < len(_ordered_windings) - 1:
+            _next_left = _winding_center_span[_ordered_windings[_pos + 1]][0]
+            _bx2 = min(_bx2, (_right_center + _next_left) / 2.0 - _bus_gap_margin)
+        _clamped_bus_extents[_wi] = (_bx1, _bx2)
+
     for winding_index, winding_pcs in pcs_by_winding.items():
-        centers = [pcs.x + pcs.width / 2.0 for pcs in winding_pcs]
-        bus_x1 = min(centers) - 90.0
-        bus_x2 = max(centers) + 90.0
+        bus_x1, bus_x2 = _clamped_bus_extents[winding_index]
         bus_y = mv.lv_bus_y
         bus_y_by_winding[winding_index] = bus_y
         winding_bus_extents.append((winding_index, bus_x1, bus_x2))

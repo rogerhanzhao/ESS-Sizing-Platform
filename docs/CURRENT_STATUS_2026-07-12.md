@@ -94,6 +94,29 @@ were preserved. `compileall`, the 23-test L2 target set, and the full suite
 (`326 passed`) are clean. The governed bilateral 4+4 1:8 configuration remains
 an implementation task; it is not present in this recovered baseline.
 
+## 2.4 Governed AC Block 10 MW / 8 PCS / 8 DC — Phase A (2026-07-24)
+
+The bilateral 4+4 1:8 configuration handed off in §2.3 is now implemented as a
+**governed configuration** (Phase A). See
+`GOVERNED_AC_BLOCK_10MW_8PCS_8DC_2026-07-24.md`.
+
+- `schemas/governed_ac_block_config.py` (new) is the single contract
+  (`ACBLK-10MW-8PCS-8DC-40FT-BILATERAL`) that threads
+  `configuration_code` / `layout_variant` through AC Sizing -> SLD -> Layout ->
+  Site Array -> Report. Phase A gate: `dc_blocks_total % 8 == 0`; mixed tails
+  stay deferred.
+- `calb_diagrams/ac_block_bilateral_layout.py` (new) is the
+  `central_40ft_bilateral_4plus4` engine emitting per-equipment placements
+  (~18.79 × 13.02 m envelope), not just one envelope.
+- SLD render layer gained a LV-secondary busbar collision fix for wide feeder
+  counts (8 PCS split 4+4); no topology/sizing change. The
+  `[1,1,0,0]` dangling-PCS defect was re-verified and remains repaired at the
+  physical-connection layer.
+- Provisional engineering values (transformer MVA/vector group/Uk%/LV V/cooling,
+  actual 40 ft dims, aisle/pair-to-pair gaps) stay gated as `None` and are never
+  inferred. Frozen sizing is unchanged (`git diff` over frozen modules empty).
+- L2 Site Array / report integration from `252bc75` preserved unchanged.
+
 ## 3. Next boundary
 
 The package deliberately stops before a Concept Master Layout. Unlocking it
@@ -115,8 +138,8 @@ seams; maintenance should exploit them instead of scanning everything.
 | Domain | Packages | Size | Change frequency |
 | --- | --- | --- | --- |
 | Sizing core (FROZEN) | `services/stage*_service`, `dc_pipeline`, AC capacity/calculation services | part of `services/` (29 files, 6.3k lines) | Frozen — no edits without explicit logic-upgrade approval |
-| SLD engine | `sld/` (18 files, 3.1k), `services/sld_*`, `schemas/sld_*`, `schemas/ac_electrical_topology.py`, `adapters/ac_to_sld_adapter.py` | ~6k lines | High — owns AC-to-SLD physical topology contract and remains the most active area |
-| Diagram renderers | `calb_diagrams/` (12 files, 6.6k) | 6.6k lines | Medium — renderer/template work only |
+| SLD engine | `sld/` (18 files, 3.1k), `services/sld_*`, `schemas/sld_*`, `schemas/ac_electrical_topology.py`, `schemas/governed_ac_block_config.py`, `adapters/ac_to_sld_adapter.py` | ~6k lines | High — owns AC-to-SLD physical topology contract and the governed AC Block configuration; remains the most active area |
+| Diagram renderers | `calb_diagrams/` (incl. `ac_block_bilateral_layout.py`) | ~6.9k lines | Medium — renderer/template + governed layout-variant engines |
 | Layout / constraint gate | `plugins/layout_*`, `services/site_constraint_*` | ~1k lines | Medium — P2 Master Layout work lands here |
 | Reporting | `reporting/` (5 files, 2.0k) | 2k lines | Low — wording/section changes |
 | Web UI | `ui/` (18 files, 6.7k), `state/`, `app.py` | ~7.5k lines | Medium — copy and workflow polish |
