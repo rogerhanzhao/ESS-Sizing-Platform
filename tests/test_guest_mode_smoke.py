@@ -6,7 +6,41 @@
 
 from pathlib import Path
 
+import pytest
 from streamlit.testing.v1 import AppTest
+
+from calb_sizing_tool.services.auth_service import AuthService
+
+
+@pytest.fixture(autouse=True)
+def _isolated_db_with_seeded_user(tmp_path, monkeypatch):
+    """Point the app at an isolated DB that already has a user.
+
+    The login view shows the initial "Create Admin Account" bootstrap screen
+    while ``auth_service.has_users()`` is False, and only shows the
+    "Continue as Guest" button once at least one user exists. A fresh CI
+    database has no users, so these guest-mode smoke tests must seed one first
+    (otherwise every test fails at StopIteration looking for the guest button).
+
+    The schema is built via Alembic — the same path ``app.py`` runs at startup
+    (``_run_startup_migrations``) — rather than ``Base.metadata.create_all``.
+    create_all would leave no ``alembic_version`` stamp, so the app's startup
+    migration would then re-``upgrade head`` onto already-existing tables, raise
+    RuntimeError, and halt before the login view renders.
+    """
+    db_url = f"sqlite:///{(tmp_path / 'guest_smoke.sqlite').as_posix()}"
+    monkeypatch.setenv("CALB_DATABASE_URL", db_url)
+
+    from alembic import command as alembic_command
+    from alembic.config import Config as AlembicConfig
+
+    alembic_ini = Path(__file__).resolve().parents[1] / "alembic.ini"
+    alembic_command.upgrade(AlembicConfig(str(alembic_ini)), "head")
+
+    service = AuthService(db_url)
+    service.ensure_system_roles()
+    service.create_user(username="admin", password="secret-admin-pw", role_codes=["admin"])
+    yield
 
 
 def _app() -> AppTest:
