@@ -107,6 +107,10 @@ def test_sld_clear_preview_removes_runtime_artifacts():
 def test_sld_open_engineering_settings_navigates_to_settings_page():
     app = _app()
     _login(app)
+    # Initialize the Streamlit session before injecting route-specific state.
+    # This mirrors the normal sign-in flow and keeps the test independent of
+    # AppTest's session-state initialization order.
+    app.run()
     app.session_state["active_case_id"] = "case-test"
     app.session_state["active_case_name"] = "Case Test"
     _go_to(app, "Single Line Diagram")
