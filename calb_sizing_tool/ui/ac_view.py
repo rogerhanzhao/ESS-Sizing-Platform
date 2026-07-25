@@ -418,16 +418,22 @@ def show():
                 with st.expander("Site composition (Phase B decomposition)", expanded=False):
                     try:
                         from calb_sizing_tool.services.governed_ac_block_service import (
-                            build_governed_site_plan,
+                            build_governed_site_run,
                         )
 
-                        _plan = build_governed_site_plan(dc_blocks_total, with_products=True)
+                        # Orchestrate the mixed site: one runnable AC output per
+                        # governed group, auto-binding a catalogue product where
+                        # one qualifies. Each group renders its own SLD (each is
+                        # internally uniform under the SLD V1 contract).
+                        _run = build_governed_site_run(
+                            dc_blocks_total, bind_products=True
+                        )
                         st.caption(
-                            f"{_plan.dc_blocks_total} DC Blocks → {_plan.ac_blocks_total} AC Block(s) "
-                            f"in {len(_plan.groups)} governed group(s) · "
-                            f"{_plan.ac_power_mw_total:.2f} MW total. A total that is not a multiple "
+                            f"{_run.dc_blocks_total} DC Blocks → {_run.ac_blocks_total} AC Block(s) "
+                            f"in {len(_run.groups)} governed group(s) · "
+                            f"{_run.ac_power_mw_total:.2f} MW total. A total that is not a multiple "
                             "of 8 is placed into smaller governed AC Blocks (8/4/2/1), never an "
-                            "average split."
+                            "average split. Each governed group renders its own SLD."
                         )
                         render_static_table(
                             [
@@ -436,11 +442,21 @@ def show():
                                     "Count": _g.ac_block_count,
                                     "DC/PCS": f"{_g.dc_blocks_per_ac_block}/{_g.pcs_per_ac_block}",
                                     "MW": _g.ac_power_mw_total,
-                                    "Eligible products": ", ".join(_g.eligible_product_codes) or "—",
+                                    "Bound product": _g.bound_product_code or "—",
+                                    "Transformer MVA": (
+                                        f"{_g.ac_output['transformer_mva']:g} MVA"
+                                        if _g.ac_output.get("transformer_mva")
+                                        else "TBD (confirm in Engineering Settings)"
+                                    ),
                                 }
-                                for _g in _plan.groups
+                                for _g in _run.groups
                             ]
                         )
+                        if _run.provisional_unresolved:
+                            st.caption(
+                                "Unresolved across groups (never inferred): "
+                                + ", ".join(_run.provisional_unresolved)
+                            )
                     except Exception as _exc:  # pragma: no cover - defensive UI guard
                         st.caption(f"Site composition unavailable: {_exc}")
 

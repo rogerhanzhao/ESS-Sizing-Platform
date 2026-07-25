@@ -398,6 +398,123 @@ def build_governed_site_plan(
     )
 
 
+@dataclass(frozen=True)
+class GovernedSiteRunGroup:
+    """One homogeneous governed group with its own authoritative AC output.
+
+    A group covering ``ac_block_count`` identical AC Blocks is represented by a
+    single uniform ``SldAuthoritativeAcOutput`` (``ac_output``) — every block in
+    the group is identical, so exactly one SLD drawing represents the group under
+    the SLD V1 uniform-block contract. ``bound_product_code`` records the real
+    catalogue product supplying the group's provisional values (or ``None`` when
+    the run is settings-only or no product qualifies).
+    """
+
+    configuration_code: str
+    layout_variant: str
+    ac_block_count: int
+    dc_blocks_per_ac_block: int
+    dc_blocks_total: int
+    pcs_per_ac_block: int
+    ac_power_mw_total: float
+    bound_product_code: Optional[str]
+    eligible_product_codes: tuple[str, ...]
+    ac_output: dict[str, Any]
+    provisional_unresolved: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class GovernedSiteRun:
+    """A fully-orchestrated mixed governed site: one AC output per group.
+
+    This turns the Phase B decomposition into a runnable multi-block site: each
+    ``GovernedSiteRunGroup`` carries a valid, individually SLD-renderable AC
+    output, and the run aggregates the site totals plus the union of every
+    provisional field still awaiting owner confirmation across all groups.
+    """
+
+    dc_blocks_total: int
+    ac_blocks_total: int
+    ac_power_mw_total: float
+    groups: tuple[GovernedSiteRunGroup, ...]
+    provisional_unresolved: tuple[str, ...]
+
+
+def build_governed_site_run(
+    dc_blocks_total: int,
+    *,
+    project_settings: dict[str, Any] | None = None,
+    source_fields: Optional[dict[str, Any]] = None,
+    db_url: str | None = None,
+    bind_products: bool = False,
+) -> GovernedSiteRun:
+    """Orchestrate a mixed governed site into one AC output per governed group.
+
+    The site is decomposed (greedy 8/4/2/1) into homogeneous groups; each group
+    is expanded into its own authoritative ``SldAuthoritativeAcOutput`` so a
+    heterogeneous site becomes N valid, individually SLD-renderable AC outputs
+    (one per governed configuration present) instead of a single per-group demo.
+
+    When ``bind_products`` is set, each group binds the first catalogue product
+    eligible for its configuration (datasheet-sourced MVA / vector group /
+    cooling); otherwise the group is built from ``project_settings`` alone. Either
+    way a provisional value is never fabricated — unresolved fields are reported
+    per group and unioned onto the run, so downstream SLD/report stay gated until
+    the owner confirms them.
+    """
+    plan = build_governed_site_plan(
+        dc_blocks_total, db_url=db_url, with_products=bind_products
+    )
+    groups: list[GovernedSiteRunGroup] = []
+    run_unresolved: list[str] = []
+    for group in plan.groups:
+        eligible = group.eligible_product_codes
+        bound_code: Optional[str] = None
+        if bind_products and eligible:
+            bound_code = eligible[0]
+            ac_output = build_governed_ac_output_from_product(
+                group.configuration_code,
+                bound_code,
+                project_settings=project_settings,
+                dc_blocks_total=group.dc_blocks_total,
+                source_fields=source_fields,
+                db_url=db_url,
+            )
+        else:
+            ac_output = build_governed_site_ac_output(
+                group.configuration_code,
+                project_settings,
+                dc_blocks_total=group.dc_blocks_total,
+                source_fields=source_fields,
+            )
+        unresolved = tuple(ac_output.get("provisional_unresolved", ()) or ())
+        for field in unresolved:
+            if field not in run_unresolved:
+                run_unresolved.append(field)
+        groups.append(
+            GovernedSiteRunGroup(
+                configuration_code=group.configuration_code,
+                layout_variant=group.layout_variant,
+                ac_block_count=group.ac_block_count,
+                dc_blocks_per_ac_block=group.dc_blocks_per_ac_block,
+                dc_blocks_total=group.dc_blocks_total,
+                pcs_per_ac_block=group.pcs_per_ac_block,
+                ac_power_mw_total=group.ac_power_mw_total,
+                bound_product_code=bound_code,
+                eligible_product_codes=eligible,
+                ac_output=ac_output,
+                provisional_unresolved=unresolved,
+            )
+        )
+    return GovernedSiteRun(
+        dc_blocks_total=plan.dc_blocks_total,
+        ac_blocks_total=plan.ac_blocks_total,
+        ac_power_mw_total=plan.ac_power_mw_total,
+        groups=tuple(groups),
+        provisional_unresolved=tuple(run_unresolved),
+    )
+
+
 def unresolved_provisional_fields(
     configuration_code: str,
     project_settings: dict[str, Any] | None,
@@ -414,10 +531,13 @@ def unresolved_provisional_fields(
 __all__ = [
     "GovernedSiteGroup",
     "GovernedSitePlan",
+    "GovernedSiteRun",
+    "GovernedSiteRunGroup",
     "build_governed_ac_output_from_product",
     "build_governed_ac_output_from_settings",
     "build_governed_site_ac_output",
     "build_governed_site_plan",
+    "build_governed_site_run",
     "eligible_products_for",
     "map_engineering_settings_to_overrides",
     "product_overrides",

@@ -32,8 +32,21 @@ Baseline: `ops/ubuntu-docker-coexist-20260311`.
 - Wired into the app: the AC Sizing governed panel shows a "Site composition
   (Phase B decomposition)" table, and report §9 renders the governed composition
   figure + group table for a governed run (replacing the linear L2 site array).
+- Multi-group run orchestration
+  (`services.governed_ac_block_service.build_governed_site_run()`): turns the
+  decomposition into a runnable multi-block site — one valid, individually
+  SLD-renderable `SldAuthoritativeAcOutput` per governed group (a group of N
+  identical blocks is one uniform output; N distinct governed configurations ->
+  N distinct SLDs). With `bind_products=True` each group auto-binds the first
+  eligible catalogue product (datasheet MVA / vector group / cooling); otherwise
+  it builds from Engineering Settings. A provisional value is never fabricated —
+  each group reports its unresolved fields and the run unions them, so a group
+  without a product or owner MVA stays gated (not silently rendered). The AC
+  Sizing composition table now shows each group's bound product and transformer
+  MVA readiness from this run.
 - Tests: `tests/unit/test_governed_phase_b_decomposition.py`,
-  `test_governed_ac_block_product_binding.py`, `test_governed_site_composition.py`.
+  `test_governed_ac_block_product_binding.py`, `test_governed_site_composition.py`,
+  `test_governed_site_run_orchestration.py`.
 
 Example: `188 -> 23 x ACBLK-10MW (bilateral) + 1 x ACBLK-5MW (linear tail)`.
 
