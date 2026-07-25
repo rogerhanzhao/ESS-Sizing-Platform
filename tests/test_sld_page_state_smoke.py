@@ -21,7 +21,10 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from calb_sizing_tool.infra.db.session import session_scope
+from calb_sizing_tool.repositories.case_repository import CaseRepository
 from calb_sizing_tool.schemas.diagram_inputs import DiagramArtifactBundle
+from calb_sizing_tool.services.auth_service import AuthService
 
 
 def _app() -> AppTest:
@@ -42,27 +45,42 @@ def _go_to(app: AppTest, page: str) -> AppTest:
     return app.run()
 
 
-def _sld_settings_navigation_app() -> None:
-    """Render the two pages involved in the SLD settings handoff only."""
-    import streamlit as st
+@pytest.fixture
+def _sld_settings_case(tmp_path, monkeypatch):
+    """Create the persisted workspace required by the registered-user SLD path."""
+    db_url = f"sqlite:///{(tmp_path / 'sld_settings_smoke.sqlite').as_posix()}"
+    monkeypatch.setenv("CALB_DATABASE_URL", db_url)
 
-    st.session_state.setdefault(
-        "auth_context",
-        {
-            "user_id": "test-admin",
-            "username": "admin",
-            "display_name": "Admin",
-            "roles": ["admin"],
-        },
-    )
-    st.session_state.setdefault("active_case_id", "case-test")
-    st.session_state.setdefault("active_case_name", "Case Test")
+    from alembic import command as alembic_command
+    from alembic.config import Config as AlembicConfig
 
-    if st.session_state.get("main_nav") == "Engineering Settings":
-        from calb_sizing_tool.ui.engineering_settings_view import show
-    else:
-        from calb_sizing_tool.ui.single_line_diagram_view import show
-    show()
+    alembic_ini = Path(__file__).resolve().parents[1] / "alembic.ini"
+    alembic_command.upgrade(AlembicConfig(str(alembic_ini)), "head")
+
+    auth_service = AuthService(db_url)
+    auth_service.ensure_system_roles()
+    auth_service.create_user(username="admin", password="secret-admin-pw", role_codes=["admin"])
+
+    with session_scope(db_url) as session:
+        case_repo = CaseRepository(session)
+        project = case_repo.get_or_create_project(project_code="sld-smoke", project_name="SLD Smoke")
+        session.flush()
+        case = case_repo.create_case(
+            project_id=project.project_id,
+            case_code="sld-smoke-case",
+            case_name="SLD Smoke Case",
+            stage_scope="proposal",
+            scenario_mode="container_only",
+            input_json={},
+            source_ref="test_sld_page_state_smoke",
+        )
+        session.flush()
+        return {
+            "project_id": project.project_id,
+            "project_name": project.project_name,
+            "case_id": case.sizing_case_id,
+            "case_name": case.case_name,
+        }
 
 
 def test_sld_first_visit_no_crash():
@@ -127,9 +145,14 @@ def test_sld_clear_preview_removes_runtime_artifacts():
     assert "sld_pipeline_meta" not in app.session_state
     assert not app.exception
 
-def test_sld_open_engineering_settings_navigates_to_settings_page():
-    app = AppTest.from_function(_sld_settings_navigation_app, default_timeout=10)
-    app.run()
+def test_sld_open_engineering_settings_navigates_to_settings_page(_sld_settings_case):
+    app = _app()
+    _login(app)
+    app.session_state["active_project_id"] = _sld_settings_case["project_id"]
+    app.session_state["active_project_name"] = _sld_settings_case["project_name"]
+    app.session_state["active_case_id"] = _sld_settings_case["case_id"]
+    app.session_state["active_case_name"] = _sld_settings_case["case_name"]
+    _go_to(app, "Single Line Diagram")
 
     settings_button = next(button for button in app.button if button.label == "Open Engineering Settings")
     settings_button.click()
