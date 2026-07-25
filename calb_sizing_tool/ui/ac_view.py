@@ -346,54 +346,48 @@ def show():
     )
     from calb_sizing_tool.schemas.governed_ac_block_config import governed_duration_gate
 
-    _PRODUCT_METHOD = "Standard product presets"
-    _AUTO_METHOD = "Auto-recommended / Custom AC Block"
     selected_product_code = None
     num_units = 0
 
-    # System duration is a KNOWN input (POI energy / POI power), so AC Sizing is
-    # duration-aware and never blocks. Standard product presets currently cover
-    # 4 h systems (real catalogue); any other duration is auto-recommended /
-    # custom-sized — the PCS is matched to the DC Block power at the project
-    # duration, so 2/3/8 h all size correctly without getting stuck.
+    # ONE AC Sizing flow (auto-recommend ratio + PCS, then power/energy validation
+    # → pass/hold) is the trunk below. A real productized AC Block (the 10 MW /
+    # 8-DC bilateral standard block + its 5/2.5/1.25 MW tails) is an OPTIONAL
+    # preset on top — a shortcut to a confirmed catalogue product, never a second
+    # engine or a gate. System duration is a known input (POI energy / power); the
+    # preset's real products currently cover 4 h, so for other durations the flow
+    # falls through to the duration-aware auto-recommend trunk (never stuck).
     _project_duration_h = (target_mwh / target_mw) if (target_mw and target_mw > 0) else None
     _dur_ok, _dur_msg = governed_duration_gate(_project_duration_h)
 
     with st.container(border=True):
-        ac_method = st.radio(
-            "AC Sizing method",
-            (_PRODUCT_METHOD, _AUTO_METHOD),
-            index=(0 if _dur_ok else 1),   # default by duration; the user can switch
-            horizontal=True,
-            key="ac_sizing_method",
+        use_governed = bool(st.checkbox(
+            "Use a standard product AC Block preset (real catalogue: 10 MW / 8-DC bilateral + tails)",
+            value=False,
+            key="use_product_preset",
             help=(
-                "Standard product presets: real productized AC Block families "
-                "(10 / 5 / 2.5 / 1.25 MW = 1:8 / 1:4 / 1:2 / 1:1 DC-per-block) with real "
-                "transformer nameplates and layout — offered when they match the project "
-                "(4 h today). Auto-recommended / Custom: the AC Block is composed from POI "
-                "power minus losses and the DC Block power at the project duration (PCS "
-                "count × rating, transformer windings), auto-recommended and manually "
-                "adjustable, for any system duration."
+                "Optional shortcut to a real productized AC Block with a confirmed "
+                "transformer nameplate, vector group and layout. Leave unchecked for the "
+                "auto-recommended sizing below (any duration). The preset's real products "
+                "currently cover 4 h systems."
             ),
-        )
-        use_governed = (ac_method == _PRODUCT_METHOD)
+        ))
         governed_ready = use_governed and _dur_ok
         if use_governed and not _dur_ok:
-            # Not a wall: standard presets are 4 h products; steer to the
-            # duration-aware auto-recommended path, which sizes this system.
+            # Not a wall: the preset's products are 4 h; uncheck to auto-size this
+            # duration in the trunk flow below.
             _dur_txt = f"{_project_duration_h:.1f} h" if _project_duration_h else "this"
             st.info(
-                f"Standard product presets currently cover 4 h systems; your project is "
-                f"{_dur_txt}. Use “{_AUTO_METHOD}” — the PCS is auto-recommended for "
-                f"{_dur_txt} and stays manually adjustable."
+                f"The standard product preset currently covers 4 h systems; your project is "
+                f"{_dur_txt}. Uncheck it — the sizing below is auto-recommended for {_dur_txt} "
+                f"and stays manually adjustable."
             )
         if governed_ready:
             section_header(
-                "Standard Product Configuration",
-                "Real productized AC Block families (1:1–1:8 DC-per-block) matched to the "
-                "project; any non-multiple-of-8 remainder is placed into smaller blocks "
-                "(mixed station), never an average split.",
-                eyebrow="Recommended",
+                "Standard Product AC Block",
+                "Real productized AC Block (1:1–1:8 DC-per-block) matched to the project; "
+                "any non-multiple-of-8 remainder is placed into smaller blocks (mixed "
+                "station), never an average split.",
+                eyebrow="Optional preset",
             )
         if governed_ready:
             project_settings = load_case_sld_project_settings(workspace.get("case_id"))
@@ -595,15 +589,16 @@ def show():
             render_pipeline_next_steps("AC Sizing", is_guest=bool(_auth_ctx and _auth_ctx.is_guest))
         return
 
-    # ============= AUTO-RECOMMENDED / CUSTOM AC BLOCK =============
-    # The duration-aware sizing engine: POI power minus losses → AC:DC ratio → PCS
-    # count × rating (auto-recommended for the project duration) → transformer
-    # windings, all manually adjustable. Works for any system duration.
+    # ================= AC SIZING (auto-recommend trunk) =================
+    # The single duration-aware sizing flow: POI power minus losses → AC:DC ratio →
+    # PCS count × rating (auto-recommended for the project duration) → transformer
+    # windings → power/energy validation, all manually adjustable, any duration.
     st.caption(
         "Auto-recommended for the project duration; adjust the AC:DC grouping, PCS and "
-        "transformer below. The transformer here is an AC Block MW ÷ PF estimate — bind a "
-        "real catalogue product via “Standard product presets” when one matches for a "
-        "confirmed nameplate, vector group and layout."
+        "transformer below, then run to validate against the POI requirement. The "
+        "transformer here is an AC Block MW ÷ PF estimate — tick the standard product "
+        "preset above to bind a real catalogue product (confirmed nameplate, vector "
+        "group and layout) when one matches."
     )
 
     # ========== STEP 2: Generate Options & Auto-select Best ==========
