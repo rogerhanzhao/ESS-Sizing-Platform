@@ -30,6 +30,30 @@ def test_pure_multiple_of_eight_single_family_layout():
     assert "20.00 MW" in svg
 
 
+def test_typed_api_and_explicit_params():
+    from calb_diagrams.governed_site_layout_concept import (
+        ConceptSiteLayoutParameters,
+        concept_site_layout_from_run,
+        render_concept_site_layout_svg,
+    )
+
+    run = build_governed_site_run(92)
+    layout = concept_site_layout_from_run(run)
+    # Strongly typed: blocks carry their own fields (no ac_output duck-typing).
+    assert layout.ac_blocks_total == 12
+    codes = [b.configuration_code for b in layout.blocks]
+    assert codes == [
+        "ACBLK-10MW-8PCS-8DC-40FT-BILATERAL",
+        "ACBLK-5MW-4PCS-4DC-40FT-LINEAR",
+    ]
+    # Packing constants are explicit parameters, not module globals.
+    params = ConceptSiteLayoutParameters(site_width_m=200.0, aisle_m=8.0, row_gap_m=12.0)
+    svg = render_concept_site_layout_svg(layout, params=params, title="SITE")
+    assert svg.startswith("<svg") and svg.endswith("</svg>")
+    assert "CONCEPT ONLY" in svg
+    assert "8 m aisle" in svg  # reflects the explicit param
+
+
 def test_report_equipment_schedule_and_layout_for_governed_run():
     import io
 

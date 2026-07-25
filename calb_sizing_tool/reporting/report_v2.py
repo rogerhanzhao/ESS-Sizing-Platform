@@ -337,8 +337,40 @@ def _governed_run_from_ctx(ctx: ReportContext):
         build_governed_site_plan,
     )
 
-    plan = build_governed_site_plan(int(ctx.dc_blocks_total or 0))
     ac_output = ctx.ac_output if isinstance(ctx.ac_output, dict) else {}
+
+    # Preferred: consume the persisted, versioned site run recorded at AC Sizing
+    # time — the report never re-decomposes, so it cannot drift if the catalogue
+    # or decomposition rules change after the run was saved.
+    persisted = ac_output.get("governed_site_run")
+    if isinstance(persisted, dict) and persisted.get("groups"):
+        groups = []
+        for gg in persisted["groups"]:
+            groups.append(SimpleNamespace(
+                configuration_code=gg.get("configuration_code"),
+                layout_variant=gg.get("layout_variant"),
+                ac_block_count=int(gg.get("ac_block_count") or 0),
+                dc_blocks_per_ac_block=int(gg.get("dc_blocks_per_ac_block") or 0),
+                pcs_per_ac_block=int(gg.get("pcs_per_ac_block") or 0),
+                pcs_kw=float(gg.get("pcs_kw") or 0.0),
+                ac_power_mw_total=float(gg.get("ac_power_mw_total") or 0.0),
+                bound_product_code=gg.get("bound_product_code"),
+                product_confirmation=gg.get("product_confirmation") or "none",
+                ac_output={
+                    "transformer_mva": gg.get("transformer_mva"),
+                    "transformer_vector_group": gg.get("transformer_vector_group"),
+                },
+            ))
+        return SimpleNamespace(
+            dc_blocks_total=int(persisted.get("dc_blocks_total") or 0),
+            ac_blocks_total=int(persisted.get("ac_blocks_total") or 0),
+            ac_power_mw_total=float(persisted.get("ac_power_mw_total") or 0.0),
+            groups=groups,
+        )
+
+    # Legacy fallback: an older run without a persisted site run — reconstruct the
+    # geometry deterministically from the DC total (as before).
+    plan = build_governed_site_plan(int(ctx.dc_blocks_total or 0))
     governed_groups = ac_output.get("governed_groups")
 
     # code -> (transformer_mva, vector_group, product, product_confirmation)

@@ -33,7 +33,7 @@ needs a project site-constraint set).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Sequence
+from typing import List, Optional
 from xml.sax.saxutils import escape as _xml_escape
 
 from calb_diagrams.ac_block_arrangement_v2 import US_NFPA_OIL, compute_layout
@@ -49,10 +49,75 @@ _TAIL_EDGE = "#7fa262"
 _MUTED = "#5b6367"
 _AISLE = "#c6cac5"
 
-# Plan-view scale and packing constants (metres).
-_AISLE_M = 6.0            # nominal drivable aisle between adjacent AC blocks
-_SITE_WIDTH_M = 120.0     # nominal usable site width the blocks wrap within
-_ROW_GAP_M = 10.0         # gap between packed rows
+@dataclass(frozen=True)
+class ConceptSiteLayoutParameters:
+    """Plan-view packing parameters for the concept site layout (metres).
+
+    These are L2 concept constants (nominal aisle + wrap width) ONLY. They do not
+    encode fire access, roads, boundaries or setbacks — that is the project Site
+    Constraint Set / L3 Master Layout, which this concept never claims to satisfy.
+    """
+
+    site_width_m: float = 120.0   # nominal usable width the blocks wrap within
+    aisle_m: float = 6.0          # nominal drivable aisle between adjacent blocks
+    row_gap_m: float = 10.0       # gap between packed rows
+
+
+DEFAULT_CONCEPT_LAYOUT_PARAMS = ConceptSiteLayoutParameters()
+
+
+@dataclass(frozen=True)
+class ConceptSiteBlock:
+    """One homogeneous group of identical AC Blocks for the concept plan."""
+
+    configuration_code: str
+    layout_variant: str
+    ac_block_count: int
+    dc_blocks_per_ac_block: int
+    pcs_per_ac_block: int
+    bound_product_code: Optional[str] = None
+    transformer_mva: Optional[float] = None
+
+
+@dataclass(frozen=True)
+class ConceptSiteLayout:
+    """Strongly-typed input for the concept site layout renderer."""
+
+    dc_blocks_total: int
+    ac_blocks_total: int
+    ac_power_mw_total: float
+    blocks: tuple[ConceptSiteBlock, ...]
+
+
+def concept_site_layout_from_run(run) -> ConceptSiteLayout:
+    """Adapt a governed site run into the typed ConceptSiteLayout.
+
+    Accepts a ``services.governed_ac_block_service.GovernedSiteRun`` (groups carry
+    an ``ac_output`` dict) or the report's persisted-run view (groups carry
+    ``transformer_mva`` directly); the renderer itself only sees the strong type.
+    """
+    blocks: list[ConceptSiteBlock] = []
+    for g in run.groups:
+        mva = getattr(g, "transformer_mva", None)
+        if mva is None:
+            ac_out = getattr(g, "ac_output", None)
+            if isinstance(ac_out, dict):
+                mva = ac_out.get("transformer_mva")
+        blocks.append(ConceptSiteBlock(
+            configuration_code=g.configuration_code,
+            layout_variant=g.layout_variant,
+            ac_block_count=int(g.ac_block_count),
+            dc_blocks_per_ac_block=int(g.dc_blocks_per_ac_block),
+            pcs_per_ac_block=int(g.pcs_per_ac_block),
+            bound_product_code=getattr(g, "bound_product_code", None),
+            transformer_mva=mva,
+        ))
+    return ConceptSiteLayout(
+        dc_blocks_total=int(run.dc_blocks_total),
+        ac_blocks_total=int(run.ac_blocks_total),
+        ac_power_mw_total=float(run.ac_power_mw_total),
+        blocks=tuple(blocks),
+    )
 
 
 @dataclass(frozen=True)
@@ -86,16 +151,19 @@ def _text(parts, x, y, s, size=12, anchor="start", weight=700, fill=_INK):
     )
 
 
-def render_governed_site_layout_concept_svg(run, *, title: str = "CONCEPT SITE LAYOUT") -> str:
-    """Render a scaled concept plan of every governed AC Block.
+def render_concept_site_layout_svg(
+    layout: ConceptSiteLayout,
+    *,
+    params: ConceptSiteLayoutParameters = DEFAULT_CONCEPT_LAYOUT_PARAMS,
+    title: str = "CONCEPT SITE LAYOUT",
+) -> str:
+    """Render a scaled concept plan of every AC Block at its real footprint.
 
-    ``run`` is a services.governed_ac_block_service.GovernedSiteRun (duck-typed:
-    needs ``dc_blocks_total`` / ``ac_blocks_total`` / ``ac_power_mw_total`` and a
-    ``groups`` iterable of items with configuration_code / layout_variant /
-    ac_block_count / dc_blocks_per_ac_block / pcs_per_ac_block / bound_product_code
-    and an ``ac_output`` dict carrying an optional ``transformer_mva``).
+    ``layout`` is a strongly-typed :class:`ConceptSiteLayout`; ``params`` holds the
+    L2 packing constants (nominal aisle / wrap width). This is a concept plan only
+    and does not represent a site boundary, roads or fire access.
     """
-    groups: Sequence = tuple(run.groups)
+    blocks = tuple(layout.blocks)
 
     # ---- pack blocks (metres) into rows within the nominal site width ----
     @dataclass
@@ -111,27 +179,22 @@ def render_governed_site_layout_concept_svg(run, *, title: str = "CONCEPT SITE L
     cursor_y = 0.0
     row_max_d = 0.0
     site_w_m = 0.0
-    for g in groups:
-        fp = _footprint(g.configuration_code, g.layout_variant, g.dc_blocks_per_ac_block)
-        is_tail = g.layout_variant != BILATERAL_VARIANT
-        mva = None
-        try:
-            mva = (g.ac_output or {}).get("transformer_mva")
-        except AttributeError:
-            mva = None
-        mva_txt = f"{float(mva):g} MVA" if mva else "MVA TBD"
-        prod = getattr(g, "bound_product_code", None) or "no product"
-        for i in range(int(g.ac_block_count)):
-            if cursor_x > 0.0 and cursor_x + fp.w_m > _SITE_WIDTH_M:
+    for b in blocks:
+        fp = _footprint(b.configuration_code, b.layout_variant, b.dc_blocks_per_ac_block)
+        is_tail = b.layout_variant != BILATERAL_VARIANT
+        mva_txt = f"{float(b.transformer_mva):g} MVA" if b.transformer_mva else "MVA TBD"
+        prod = b.bound_product_code or "no product"
+        for _ in range(int(b.ac_block_count)):
+            if cursor_x > 0.0 and cursor_x + fp.w_m > params.site_width_m:
                 cursor_x = 0.0
-                cursor_y += row_max_d + _ROW_GAP_M
+                cursor_y += row_max_d + params.row_gap_m
                 row_max_d = 0.0
             placed.append(
-                _Placed(cursor_x, cursor_y, fp, is_tail, f"{g.pcs_per_ac_block}P/{g.dc_blocks_per_ac_block}D · {mva_txt} · {prod}")
+                _Placed(cursor_x, cursor_y, fp, is_tail, f"{b.pcs_per_ac_block}P/{b.dc_blocks_per_ac_block}D · {mva_txt} · {prod}")
             )
-            cursor_x += fp.w_m + _AISLE_M
+            cursor_x += fp.w_m + params.aisle_m
             row_max_d = max(row_max_d, fp.d_m)
-            site_w_m = max(site_w_m, cursor_x - _AISLE_M)
+            site_w_m = max(site_w_m, cursor_x - params.aisle_m)
     site_d_m = cursor_y + row_max_d
 
     # ---- scale metres -> pixels ----
@@ -151,8 +214,8 @@ def render_governed_site_layout_concept_svg(run, *, title: str = "CONCEPT SITE L
     _text(parts, margin_l, 40, title, size=16)
     _text(
         parts, margin_l, 62,
-        f"{run.dc_blocks_total} DC Blocks  ·  {run.ac_blocks_total} AC Blocks  ·  "
-        f"{run.ac_power_mw_total:.2f} MW  ·  site envelope ~ {site_w_m:.0f} × {site_d_m:.0f} m (concept)",
+        f"{layout.dc_blocks_total} DC Blocks  ·  {layout.ac_blocks_total} AC Blocks  ·  "
+        f"{layout.ac_power_mw_total:.2f} MW  ·  site envelope ~ {site_w_m:.0f} × {site_d_m:.0f} m (concept)",
         size=11.5, weight=600, fill=_MUTED,
     )
 
@@ -173,11 +236,24 @@ def render_governed_site_layout_concept_svg(run, *, title: str = "CONCEPT SITE L
     _text(
         parts, margin_l, height - 24,
         "CONCEPT ONLY — NOT FOR CONSTRUCTION · blocks shown at actual product footprint with a "
-        f"nominal {_AISLE_M:.0f} m aisle; site boundary, roads and fire access are not represented.",
+        f"nominal {params.aisle_m:.0f} m aisle; site boundary, roads and fire access are not represented.",
         size=10.5, weight=600, fill=_MUTED,
     )
     parts.append("</svg>")
     return "".join(parts)
 
 
-__all__ = ["render_governed_site_layout_concept_svg"]
+def render_governed_site_layout_concept_svg(run, *, title: str = "CONCEPT SITE LAYOUT") -> str:
+    """Backward-compatible entry: adapt a governed site run and render the plan."""
+    return render_concept_site_layout_svg(concept_site_layout_from_run(run), title=title)
+
+
+__all__ = [
+    "ConceptSiteBlock",
+    "ConceptSiteLayout",
+    "ConceptSiteLayoutParameters",
+    "DEFAULT_CONCEPT_LAYOUT_PARAMS",
+    "concept_site_layout_from_run",
+    "render_concept_site_layout_svg",
+    "render_governed_site_layout_concept_svg",
+]

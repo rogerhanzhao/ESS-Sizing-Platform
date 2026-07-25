@@ -44,6 +44,11 @@ from calb_sizing_tool.schemas.governed_ac_block_config import (
     get_governed_configuration,
 )
 
+# Schema version of the persisted governed_site_run record carried on the AC
+# output. Bump when the serialized group shape changes so a reader can detect an
+# old record instead of silently misreading it.
+GOVERNED_SITE_RUN_SCHEMA_VERSION = 1
+
 # Nominal ISO 40 ft footprint (length x width) used when a product record only
 # names the container class. Length = container W, width = container D.
 _CONTAINER_FOOTPRINT_M = {
@@ -573,33 +578,39 @@ def build_governed_primary_ac_output(
         head_product = None
     head_unresolved = list(head_output.get("provisional_unresolved", ()))
 
-    if len(run.groups) == 1:
-        return head_output
+    def _pcs_kw(code: str) -> float:
+        try:
+            return float(get_governed_configuration(code).pcs_rating_kw)
+        except Exception:  # pragma: no cover - defensive
+            return 0.0
 
-    # Mixed site: overlay the true site rollup (never mutate the SLD-authoritative
-    # uniform fields, so the head SLD stays renderable). The tails keep their
-    # auto-bound catalogue product from the run; the head reflects the choice above.
-    def _group_summary(g: GovernedSiteRunGroup, product, mva, unresolved, confirmation) -> dict[str, Any]:
+    # product_confirmation records HOW the product got bound so the report never
+    # presents an auto-bound tail product as owner-confirmed:
+    #   owner_selected   — the owner explicitly picked it (head only, today)
+    #   provisional_auto — auto-bound "first eligible" (tails); NOT confirmed
+    #   none             — no catalogue product bound (settings-only)
+    def _group_summary(g, product, mva, vector, unresolved, confirmation) -> dict[str, Any]:
         return {
             "configuration_code": g.configuration_code,
+            "layout_variant": g.layout_variant,
             "ac_block_count": g.ac_block_count,
             "pcs_per_ac_block": g.pcs_per_ac_block,
+            "pcs_kw": _pcs_kw(g.configuration_code),
             "dc_blocks_per_ac_block": g.dc_blocks_per_ac_block,
             "ac_power_mw_total": g.ac_power_mw_total,
             "bound_product_code": product,
-            # product_confirmation records HOW the product got bound so the report
-            # never presents an auto-bound tail product as owner-confirmed:
-            #   owner_selected  — the owner explicitly picked it (head only, today)
-            #   provisional_auto — auto-bound "first eligible" (tails); NOT confirmed
-            #   none            — no catalogue product bound (settings-only)
             "product_confirmation": confirmation,
             "transformer_mva": mva,
+            "transformer_vector_group": vector,
             "provisional_unresolved": list(unresolved),
         }
 
     head_confirmation = "owner_selected" if head_product else "none"
     groups_summary = [
-        _group_summary(head, head_product, head_output.get("transformer_mva"), head_unresolved, head_confirmation)
+        _group_summary(
+            head, head_product, head_output.get("transformer_mva"),
+            head_output.get("transformer_vector_group"), head_unresolved, head_confirmation,
+        )
     ]
     union_unresolved: set[str] = set(head_unresolved)
     for g in run.groups[1:]:
@@ -607,21 +618,34 @@ def build_governed_primary_ac_output(
         groups_summary.append(
             _group_summary(
                 g, g.bound_product_code, g.ac_output.get("transformer_mva"),
-                g.provisional_unresolved, tail_confirmation,
+                g.ac_output.get("transformer_vector_group"), g.provisional_unresolved, tail_confirmation,
             )
         )
         union_unresolved |= set(g.provisional_unresolved)
 
+    # Versioned, persistable site run — report / SLD / layout consume THIS record,
+    # never re-decompose the DC total, so a historical run cannot drift when the
+    # catalogue, decomposition rules or governed families change later (P1).
     output = dict(head_output)
-    output["governed_is_mixed"] = True
-    output["governed_site_ac_blocks_total"] = run.ac_blocks_total
-    output["governed_site_pcs_total"] = sum(
-        g.pcs_per_ac_block * g.ac_block_count for g in run.groups
-    )
-    output["governed_site_total_ac_mw"] = run.ac_power_mw_total
-    output["governed_site_dc_blocks_total"] = run.dc_blocks_total
-    output["governed_groups"] = groups_summary
-    output["provisional_unresolved"] = sorted(union_unresolved)
+    output["governed_site_run"] = {
+        "schema_version": GOVERNED_SITE_RUN_SCHEMA_VERSION,
+        "dc_blocks_total": run.dc_blocks_total,
+        "ac_blocks_total": run.ac_blocks_total,
+        "ac_power_mw_total": run.ac_power_mw_total,
+        "groups": groups_summary,
+    }
+    if len(run.groups) > 1:
+        # Mixed site: also carry the site rollup (the SLD-authoritative uniform
+        # fields stay the head's, so the head SLD remains renderable).
+        output["governed_is_mixed"] = True
+        output["governed_site_ac_blocks_total"] = run.ac_blocks_total
+        output["governed_site_pcs_total"] = sum(
+            g.pcs_per_ac_block * g.ac_block_count for g in run.groups
+        )
+        output["governed_site_total_ac_mw"] = run.ac_power_mw_total
+        output["governed_site_dc_blocks_total"] = run.dc_blocks_total
+        output["governed_groups"] = groups_summary
+        output["provisional_unresolved"] = sorted(union_unresolved)
     return output
 
 
