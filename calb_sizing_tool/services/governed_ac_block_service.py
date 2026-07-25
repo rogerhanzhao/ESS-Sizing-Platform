@@ -579,7 +579,7 @@ def build_governed_primary_ac_output(
     # Mixed site: overlay the true site rollup (never mutate the SLD-authoritative
     # uniform fields, so the head SLD stays renderable). The tails keep their
     # auto-bound catalogue product from the run; the head reflects the choice above.
-    def _group_summary(g: GovernedSiteRunGroup, product, mva, unresolved) -> dict[str, Any]:
+    def _group_summary(g: GovernedSiteRunGroup, product, mva, unresolved, confirmation) -> dict[str, Any]:
         return {
             "configuration_code": g.configuration_code,
             "ac_block_count": g.ac_block_count,
@@ -587,17 +587,28 @@ def build_governed_primary_ac_output(
             "dc_blocks_per_ac_block": g.dc_blocks_per_ac_block,
             "ac_power_mw_total": g.ac_power_mw_total,
             "bound_product_code": product,
+            # product_confirmation records HOW the product got bound so the report
+            # never presents an auto-bound tail product as owner-confirmed:
+            #   owner_selected  — the owner explicitly picked it (head only, today)
+            #   provisional_auto — auto-bound "first eligible" (tails); NOT confirmed
+            #   none            — no catalogue product bound (settings-only)
+            "product_confirmation": confirmation,
             "transformer_mva": mva,
             "provisional_unresolved": list(unresolved),
         }
 
+    head_confirmation = "owner_selected" if head_product else "none"
     groups_summary = [
-        _group_summary(head, head_product, head_output.get("transformer_mva"), head_unresolved)
+        _group_summary(head, head_product, head_output.get("transformer_mva"), head_unresolved, head_confirmation)
     ]
     union_unresolved: set[str] = set(head_unresolved)
     for g in run.groups[1:]:
+        tail_confirmation = "provisional_auto" if g.bound_product_code else "none"
         groups_summary.append(
-            _group_summary(g, g.bound_product_code, g.ac_output.get("transformer_mva"), g.provisional_unresolved)
+            _group_summary(
+                g, g.bound_product_code, g.ac_output.get("transformer_mva"),
+                g.provisional_unresolved, tail_confirmation,
+            )
         )
         union_unresolved |= set(g.provisional_unresolved)
 

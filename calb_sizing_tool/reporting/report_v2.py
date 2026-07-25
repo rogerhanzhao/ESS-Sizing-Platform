@@ -43,6 +43,10 @@ from calb_diagrams.ac_block_bilateral_layout import (
     render_bilateral_plan_svg,
 )
 from calb_diagrams.governed_site_layout_concept import render_governed_site_layout_concept_svg
+from calb_sizing_tool.services.ac_power_reconciliation import (
+    BAND_BASIS as _RECON_BAND_BASIS,
+    reconcile_governed_power,
+)
 from calb_diagrams.site_array_concept import (
     US_NFPA_SITE as SITE_PROFILE,
     compute_site_array,
@@ -340,7 +344,7 @@ def _governed_run_from_ctx(ctx: ReportContext):
     ac_output = ctx.ac_output if isinstance(ctx.ac_output, dict) else {}
     governed_groups = ac_output.get("governed_groups")
 
-    # code -> (transformer_mva, vector_group, product) from the actual run
+    # code -> (transformer_mva, vector_group, product, product_confirmation)
     by_code: dict[str, tuple] = {}
     if isinstance(governed_groups, list) and governed_groups:
         for gg in governed_groups:
@@ -348,22 +352,25 @@ def _governed_run_from_ctx(ctx: ReportContext):
                 gg.get("transformer_mva"),
                 None,  # tail vector groups are not carried per group
                 gg.get("bound_product_code"),
+                gg.get("product_confirmation") or ("owner_selected" if gg.get("bound_product_code") else "none"),
             )
         # the head also carries a confirmed vector group on the output
         head_code = str(ac_output.get("configuration_code") or "")
         if head_code in by_code:
-            mva, _vg, prod = by_code[head_code]
-            by_code[head_code] = (mva, ac_output.get("transformer_vector_group"), prod)
+            mva, _vg, prod, conf = by_code[head_code]
+            by_code[head_code] = (mva, ac_output.get("transformer_vector_group"), prod, conf)
     elif ac_output.get("configuration_code"):
+        prod = ac_output.get("governed_product_block_code")
         by_code[str(ac_output.get("configuration_code"))] = (
             ac_output.get("transformer_mva"),
             ac_output.get("transformer_vector_group"),
-            ac_output.get("governed_product_block_code"),
+            prod,
+            "owner_selected" if prod else "none",
         )
 
     groups = []
     for g in plan.groups:
-        mva, vg, prod = by_code.get(g.configuration_code, (None, None, None))
+        mva, vg, prod, conf = by_code.get(g.configuration_code, (None, None, None, "none"))
         try:
             pcs_kw = float(get_governed_configuration(g.configuration_code).pcs_rating_kw)
         except Exception:
@@ -377,6 +384,7 @@ def _governed_run_from_ctx(ctx: ReportContext):
             pcs_kw=pcs_kw,
             ac_power_mw_total=g.ac_power_mw_total,
             bound_product_code=prod,
+            product_confirmation=conf,
             ac_output={"transformer_mva": mva, "transformer_vector_group": vg},
         ))
     return SimpleNamespace(
@@ -1033,6 +1041,55 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     ]
     _add_table(doc, s4_rows, ["Parameter", "Value"])
 
+    # Power reconciliation (POI <-> AC Block), governed runs only. Read-only check
+    # that the AC aggregate covers the POI power within the adjustment band; it
+    # does not change any sizing (dc_power_required is the frozen Stage 1 value).
+    if is_governed:
+        ac_rated_total_mw = None
+        if isinstance(ctx.ac_output, dict) and ctx.ac_output.get("governed_site_total_ac_mw"):
+            ac_rated_total_mw = float(ctx.ac_output["governed_site_total_ac_mw"])
+        elif ctx.ac_block_size_mw and ctx.ac_blocks_total:
+            ac_rated_total_mw = float(ctx.ac_block_size_mw) * int(ctx.ac_blocks_total)
+        head_pcs_kw = head_dc_power_kw = None
+        try:
+            from calb_sizing_tool.schemas.governed_ac_block_config import get_governed_configuration
+            _hcfg = get_governed_configuration(ctx.configuration_code)
+            head_pcs_kw = float(_hcfg.pcs_rating_kw)
+            head_dc_power_kw = float(_hcfg.dc_block_nameplate_power_kw)
+        except Exception:
+            pass
+        if ac_rated_total_mw and ctx.poi_power_requirement_mw:
+            recon = reconcile_governed_power(
+                poi_power_mw=ctx.poi_power_requirement_mw,
+                eff_ac_cables_sw_rmu=ctx.efficiency_components_frac.get("eff_ac_cables_sw_rmu_frac") or 0.0,
+                eff_hvt_others=ctx.efficiency_components_frac.get("eff_hvt_others_frac") or 0.0,
+                eff_chain=ctx.efficiency_chain_oneway_frac or 0.0,
+                ac_rated_total_mw=ac_rated_total_mw,
+                poi_energy_mwh=ctx.poi_energy_requirement_mwh,
+                pcs_kw=head_pcs_kw,
+                dc_block_power_kw=head_dc_power_kw,
+            )
+            doc.add_heading("6.1  Power Reconciliation (POI ↔ AC Block)", level=3)
+            _keep_next_para(doc.add_paragraph(
+                "Read-only check that the governed AC aggregate covers the POI power within the "
+                f"adjustment band ({_RECON_BAND_BASIS}). This does not change sizing; "
+                "DC Power Required is the frozen Stage 1 value."
+            ))
+            _pct = lambda v: f"{v*100:.1f}%" if v is not None else "—"
+            recon_rows = [
+                ("POI Power Requirement (MW)", f"{recon.poi_power_mw:.2f}"),
+                ("System Duration (h) = E/P", f"{recon.discharge_duration_h:.2f}" if recon.discharge_duration_h else "—"),
+                ("Efficiency AC-block MV → POI", _pct(recon.eff_mv_to_poi)),
+                ("AC Aggregate Rated (MW)", f"{recon.ac_rated_total_mw:.2f}"),
+                ("AC Deliverable at POI (MW)", f"{recon.ac_poi_deliverable_mw:.2f}"),
+                ("POI Power Coverage", _pct(recon.poi_coverage_frac) + ("  ✓" if recon.poi_within_band else "  ⚠ out of band")),
+                ("DC:AC Power Ratio", (f"{recon.dc_ac_ratio:.2f}" if recon.dc_ac_ratio else "—") + ("  ✓" if recon.dc_ac_within_band else "  ⚠")),
+                ("PCS Utilization (DC power / PCS kW)", _pct(recon.pcs_utilization_frac) + ("  ✓ within overload" if recon.pcs_within_overload else "  ⚠ exceeds overload")),
+            ]
+            _add_table(doc, recon_rows, ["Reconciliation", "Value"])
+            for note in recon.notes:
+                doc.add_paragraph(f"⚠ {note}")
+
     # --- Section 7: Single Line Diagram ---
     doc.add_page_break()
     doc.add_heading("7.  Single Line Diagram", level=2)
@@ -1173,9 +1230,15 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
 
             _keep_next_para(doc.add_paragraph(
                 "Provisional equipment schedule — values marked TBD await owner confirmation "
-                "(never inferred). Each governed AC Block binds a real catalogue product where one "
-                "is available."
+                "(never inferred). Product status: “owner-selected” = confirmed by the owner; "
+                "“provisional (auto)” = auto-matched first eligible catalogue product, NOT yet "
+                "owner-confirmed; “—” = no catalogue product bound."
             ))
+            _confirm_label = {
+                "owner_selected": "owner-selected",
+                "provisional_auto": "provisional (auto)",
+                "none": "—",
+            }
             schedule_rows = []
             for g in run_like.groups:
                 mva = (g.ac_output or {}).get("transformer_mva")
@@ -1183,13 +1246,17 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 xf = f"{float(mva):g} MVA" if mva else "TBD"
                 if vg:
                     xf += f" · {vg}"
+                conf = _confirm_label.get(getattr(g, "product_confirmation", "none"), "—")
+                product_cell = (g.bound_product_code or "TBD (no catalogue product)")
+                if g.bound_product_code:
+                    product_cell += f"  [{conf}]"
                 schedule_rows.append((
                     g.configuration_code,
                     f"{g.ac_block_count}",
                     f"{g.pcs_per_ac_block} × {g.pcs_kw:.0f} kW",
                     f"{g.dc_blocks_per_ac_block} per block",
                     xf,
-                    g.bound_product_code or "TBD (no catalogue product)",
+                    product_cell,
                 ))
             _add_table(
                 doc,

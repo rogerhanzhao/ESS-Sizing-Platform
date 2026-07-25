@@ -344,6 +344,7 @@ def show():
         build_governed_primary_ac_output,
         build_governed_site_plan,
     )
+    from calb_sizing_tool.schemas.governed_ac_block_config import governed_duration_gate
 
     _GOVERNED_METHOD = "Governed product (recommended)"
     _LEGACY_METHOD = "Legacy abstract estimate (no product)"
@@ -367,7 +368,19 @@ def show():
             ),
         )
         use_governed = (ac_method == _GOVERNED_METHOD)
-        if use_governed:
+        # P0 duration gate: the governed families are the 4 h / 1250 kW profile.
+        # A 2/3/8 h system needs a different DC-nameplate power → different PCS /
+        # transformer, so it must NOT be built on the 4 h family (spec Option C).
+        _project_duration_h = (target_mwh / target_mw) if (target_mw and target_mw > 0) else None
+        _dur_ok, _dur_msg = governed_duration_gate(_project_duration_h)
+        governed_ready = use_governed and _dur_ok
+        if use_governed and not _dur_ok:
+            st.error(f"Governed AC sizing is gated — {_dur_msg}")
+            compact_note(
+                "Switch the AC Sizing method to “Legacy abstract estimate (no product)”, "
+                "or set POI energy/power to a defined-duration system (currently 4 h)."
+            )
+        if governed_ready:
             section_header(
                 "Governed Configuration",
                 "Primary AC Sizing path. The site is composed of real governed AC Block "
@@ -375,7 +388,7 @@ def show():
                 "into smaller governed blocks (Phase B), never an average split.",
                 eyebrow="Recommended",
             )
-        if use_governed:
+        if governed_ready:
             project_settings = load_case_sld_project_settings(workspace.get("case_id"))
             _plan = build_governed_site_plan(dc_blocks_total)
             num_units = _plan.ac_blocks_total
@@ -435,8 +448,8 @@ def show():
                     "Central vertical 40 ft AC Block; west 4-DC + east 4-DC mirrored 田 fields; "
                     "DC-1..8 -> PCS-1..8; two independent LV secondaries (4+4)."
                 )
-        if use_governed:
-            if use_governed:
+        if governed_ready:
+            if governed_ready:
 
                 with st.expander("Site composition (Phase B decomposition)", expanded=False):
                     try:

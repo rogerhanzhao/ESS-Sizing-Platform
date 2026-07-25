@@ -92,6 +92,14 @@ class GovernedACBlockConfiguration:
     lv_winding_count: int
     pcs_per_lv_winding: tuple[int, ...]
 
+    # --- confirmed duration / DC-power profile ---
+    # A governed family is defined for ONE system duration: the DC Block nameplate
+    # power (kW) is a function of duration (dc_block_nameplate_profile_data), and
+    # the PCS rating is matched to it. The current families are the 4 h / 1250 kW
+    # profile; 2/3/8 h families are not yet defined (Rule S1 / spec Option C).
+    system_duration_h: float = 4.0
+    dc_block_nameplate_power_kw: float = 1250.0
+
     # --- provisional engineering values (owner-confirmation pending) ---
     transformer_mva: Optional[float] = None
     transformer_vector_group: Optional[str] = None
@@ -102,6 +110,17 @@ class GovernedACBlockConfiguration:
     ac_station_length_m: Optional[float] = None
     ac_station_width_m: Optional[float] = None
     provisional_fields: frozenset[str] = field(default_factory=frozenset)
+
+    def pcs_power_matches_dc(self, overload_factor: float = 1.10) -> bool:
+        """Rule A1: PCS continuous rating × overload must cover the DC block power.
+
+        For the dedicated 1 PCS ↔ 1 DC policy, one PCS must carry one DC Block's
+        nameplate power at the family duration. The PCS nameplate is not a hard
+        ceiling — short-term overload headroom is allowed (``overload_factor``).
+        """
+        return float(self.pcs_rating_kw) * float(overload_factor) + 1e-9 >= float(
+            self.dc_block_nameplate_power_kw
+        )
 
     # ------------------------------------------------------------------
     # Derived, purely-geometric/topological facts (no sizing formulas)
@@ -396,8 +415,53 @@ def decompose_governed_site(dc_blocks_total: int) -> list[tuple[GovernedACBlockC
     return groups
 
 
+# Durations for which a governed AC Block family is currently DEFINED. The
+# families are the 4 h / 1250 kW profile; 2/3/8 h families need their own real
+# product matrix (PCS rating matched to the DC nameplate power at that duration)
+# before they may be built (spec Option C — do not silently reuse the 4 h family).
+GOVERNED_SUPPORTED_DURATIONS_H: tuple[float, ...] = tuple(
+    sorted({cfg.system_duration_h for cfg in GOVERNED_DECOMPOSITION_CONFIGS})
+)
+GOVERNED_DURATION_TOLERANCE_H: float = 0.25
+
+
+def governed_duration_gate(
+    project_duration_h: float | None,
+    *,
+    tolerance: float = GOVERNED_DURATION_TOLERANCE_H,
+) -> tuple[bool, str]:
+    """Hard gate: is a governed family defined for this project system duration?
+
+    ``project_duration_h`` is the project E/P ratio (poi_energy / poi_power). A
+    governed family is only valid for its declared ``system_duration_h`` because
+    the PCS rating is matched to the DC Block nameplate power at that duration.
+    Returns ``(ok, message)``; when not ok the caller must refuse the governed
+    path (fall back to legacy / adjust inputs), never build a mismatched family.
+    """
+    try:
+        duration = float(project_duration_h) if project_duration_h is not None else None
+    except (TypeError, ValueError):
+        duration = None
+    if duration is None or duration <= 0:
+        return False, "System duration is unknown (need POI energy / POI power) — governed sizing gated."
+    for supported in GOVERNED_SUPPORTED_DURATIONS_H:
+        if abs(duration - supported) <= tolerance:
+            return True, f"{duration:.2f} h system matches the defined {supported:g} h governed family."
+    defined = ", ".join(f"{d:g} h" for d in GOVERNED_SUPPORTED_DURATIONS_H)
+    return (
+        False,
+        f"Governed AC Block family not yet defined for a {duration:.2f} h system "
+        f"(only {defined} defined). The DC Block nameplate power differs at this "
+        f"duration, so the PCS/transformer must change — use the legacy path or "
+        f"confirm a real {duration:.1f} h product family first.",
+    )
+
+
 __all__ = [
     "ACBLK_10MW_8PCS_8DC_40FT_BILATERAL",
+    "GOVERNED_DURATION_TOLERANCE_H",
+    "GOVERNED_SUPPORTED_DURATIONS_H",
+    "governed_duration_gate",
     "ACBLK_5MW_4PCS_4DC_40FT_LINEAR",
     "ACBLK_2P5MW_2PCS_2DC_20FT_LINEAR",
     "ACBLK_1P25MW_1PCS_1DC_20FT_LINEAR",
