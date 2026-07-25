@@ -82,6 +82,30 @@ The remainder of this document is the original design rationale.
 
 ---
 
+## AC Sizing page redesign (governed-primary) + report deliverables
+
+Owner direction: stop stacking the governed panel on top of the generic
+ratio flow (a "缝合怪"). The governed families ARE the DC-per-block ratio axis —
+10 / 5 / 2.5 / 1.25 MW = 1:8 / 1:4 / 1:2 / 1:1 — so:
+
+- `ui/ac_view.py` now leads with an **AC Sizing method** toggle: **Governed
+  product (default)** vs **Legacy abstract estimate (no product)**. Governed is
+  the primary path (real product families, real transformer, whole-site layout);
+  the legacy `1:1/1:2/1:4` + `MW ÷ PF` grouping is reached only when the toggle
+  selects it, clearly labelled as an abstract, no-product estimate. The frozen
+  `ac_sizing_service` (and its `SUPPORTED_AC_DC_RATIOS`) is untouched — 1:8 is
+  provided by the governed 10 MW family, not by editing the frozen ratio set.
+- Report §9 is now **Concept Site Layout & Equipment Schedule (Provisional)**:
+  `calb_diagrams/governed_site_layout_concept.py` draws every governed AC Block
+  at its real product footprint (bilateral head vs linear tails) with a
+  site-envelope estimate, and a provisional equipment schedule lists each
+  governed group's PCS / DC / transformer (real MVA or explicit TBD) and bound
+  product. Values come from the actual AC Sizing run on `ctx`
+  (`_governed_run_from_ctx`), never re-derived. The single main SLD (§7) stays
+  the governed head. Marked CONCEPT ONLY — the geometric Master Layout (site
+  boundary / roads / fire access) remains L3 / P2.
+- Tests: `test_governed_site_layout_concept.py`.
+
 ## 1. Problem
 
 Phase A ships the governed `ACBLK-10MW-8PCS-8DC-40FT-BILATERAL` under a strict

@@ -345,28 +345,36 @@ def show():
         build_governed_site_plan,
     )
 
-    use_governed = False
+    _GOVERNED_METHOD = "Governed product (recommended)"
+    _LEGACY_METHOD = "Legacy abstract estimate (no product)"
     selected_product_code = None
     num_units = 0
     with st.container(border=True):
-        section_header(
-            "Governed Configuration",
-            "Fixed, owner-confirmed governed AC Block(s). Any DC total is composable — "
-            "a non-multiple-of-8 remainder is placed into smaller governed blocks "
-            "(Phase B 8/4/2/1), never an average split. Overrides the generic grouping below.",
-            eyebrow="Recommended",
+        # Governed is the primary AC Sizing path; the legacy abstract grouping
+        # (1:1/1:2/1:4 + MW ÷ PF transformer, no real product) is tucked behind
+        # this toggle so the two models are never stacked into one screen.
+        ac_method = st.radio(
+            "AC Sizing method",
+            (_GOVERNED_METHOD, _LEGACY_METHOD),
+            index=0,
+            horizontal=True,
+            key="ac_sizing_method",
+            help=(
+                "Governed: the site is composed of real productized AC Block families "
+                "(10 / 5 / 2.5 / 1.25 MW = 1:8 / 1:4 / 1:2 / 1:1 DC-per-block) with real "
+                "transformer nameplates and layout. Legacy: an abstract DC-per-AC grouping "
+                "with the transformer estimated as AC Block MW ÷ PF and no bound product."
+            ),
         )
-        use_governed = bool(
-            st.checkbox(
-                f"Use governed configuration ({_GOVERNED.configuration_code} + Phase B tails)",
-                key="use_governed_ac_block",
-                help=(
-                    "10 MW / 8 x 1250 kW PCS / 8 DC / 40 ft central bilateral 4+4, plus "
-                    "governed 5 / 2.5 / 1.25 MW tails for any remainder. PCS count, rating, "
-                    "LV topology and layout are fixed by the governed product identity."
-                ),
+        use_governed = (ac_method == _GOVERNED_METHOD)
+        if use_governed:
+            section_header(
+                "Governed Configuration",
+                "Primary AC Sizing path. The site is composed of real governed AC Block "
+                "families (1:1–1:8 DC-per-block); any non-multiple-of-8 remainder is placed "
+                "into smaller governed blocks (Phase B), never an average split.",
+                eyebrow="Recommended",
             )
-        )
         if use_governed:
             project_settings = load_case_sld_project_settings(workspace.get("case_id"))
             _plan = build_governed_site_plan(dc_blocks_total)
@@ -566,6 +574,15 @@ def show():
             _auth_ctx = get_auth_context()
             render_pipeline_next_steps("AC Sizing", is_guest=bool(_auth_ctx and _auth_ctx.is_guest))
         return
+
+    # ================= LEGACY ABSTRACT PATH =================
+    # Reached only when the method toggle above selects it. This path is not
+    # product-bound: the transformer nameplate is an AC Block MW ÷ PF estimate.
+    st.caption(
+        "Legacy abstract estimate — no real product; the transformer is estimated as "
+        "AC Block MW ÷ PF. Switch to “Governed product” above for productized sizing "
+        "(real nameplate, vector group, whole-site layout)."
+    )
 
     # ========== STEP 2: Generate Options & Auto-select Best ==========
     with st.container(border=True):

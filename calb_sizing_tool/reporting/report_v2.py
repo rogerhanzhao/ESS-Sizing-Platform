@@ -42,7 +42,7 @@ from calb_diagrams.ac_block_bilateral_layout import (
     compute_bilateral_layout,
     render_bilateral_plan_svg,
 )
-from calb_diagrams.governed_site_composition import render_governed_site_composition_svg
+from calb_diagrams.governed_site_layout_concept import render_governed_site_layout_concept_svg
 from calb_diagrams.site_array_concept import (
     US_NFPA_SITE as SITE_PROFILE,
     compute_site_array,
@@ -315,6 +315,76 @@ def _compute_site_layout(ctx: ReportContext):
         )
     except Exception:
         return None
+
+
+def _governed_run_from_ctx(ctx: ReportContext):
+    """Assemble a governed site run-like object from the report context.
+
+    Geometry / grouping comes from the deterministic decomposition of the DC
+    total; the per-group transformer nameplate, vector group and bound product
+    come from the ACTUAL AC Sizing output on ``ctx`` (never re-bound here), so the
+    site layout and equipment schedule match what the AC Sizing page produced. A
+    mixed run carries this per group in ``governed_groups``; a pure run carries it
+    once on the output itself.
+    """
+    from types import SimpleNamespace
+
+    from calb_sizing_tool.schemas.governed_ac_block_config import (
+        get_governed_configuration,
+    )
+    from calb_sizing_tool.services.governed_ac_block_service import (
+        build_governed_site_plan,
+    )
+
+    plan = build_governed_site_plan(int(ctx.dc_blocks_total or 0))
+    ac_output = ctx.ac_output if isinstance(ctx.ac_output, dict) else {}
+    governed_groups = ac_output.get("governed_groups")
+
+    # code -> (transformer_mva, vector_group, product) from the actual run
+    by_code: dict[str, tuple] = {}
+    if isinstance(governed_groups, list) and governed_groups:
+        for gg in governed_groups:
+            by_code[str(gg.get("configuration_code"))] = (
+                gg.get("transformer_mva"),
+                None,  # tail vector groups are not carried per group
+                gg.get("bound_product_code"),
+            )
+        # the head also carries a confirmed vector group on the output
+        head_code = str(ac_output.get("configuration_code") or "")
+        if head_code in by_code:
+            mva, _vg, prod = by_code[head_code]
+            by_code[head_code] = (mva, ac_output.get("transformer_vector_group"), prod)
+    elif ac_output.get("configuration_code"):
+        by_code[str(ac_output.get("configuration_code"))] = (
+            ac_output.get("transformer_mva"),
+            ac_output.get("transformer_vector_group"),
+            ac_output.get("governed_product_block_code"),
+        )
+
+    groups = []
+    for g in plan.groups:
+        mva, vg, prod = by_code.get(g.configuration_code, (None, None, None))
+        try:
+            pcs_kw = float(get_governed_configuration(g.configuration_code).pcs_rating_kw)
+        except Exception:
+            pcs_kw = 0.0
+        groups.append(SimpleNamespace(
+            configuration_code=g.configuration_code,
+            layout_variant=g.layout_variant,
+            ac_block_count=g.ac_block_count,
+            dc_blocks_per_ac_block=g.dc_blocks_per_ac_block,
+            pcs_per_ac_block=g.pcs_per_ac_block,
+            pcs_kw=pcs_kw,
+            ac_power_mw_total=g.ac_power_mw_total,
+            bound_product_code=prod,
+            ac_output={"transformer_mva": mva, "transformer_vector_group": vg},
+        ))
+    return SimpleNamespace(
+        dc_blocks_total=plan.dc_blocks_total,
+        ac_blocks_total=plan.ac_blocks_total,
+        ac_power_mw_total=plan.ac_power_mw_total,
+        groups=groups,
+    )
 
 
 def _normalize_template_label(value) -> str:
@@ -1067,47 +1137,64 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 "Typical AC Block Arrangement not generated. "
                 "Generate it from the corresponding concept page.")
 
-    # --- Section 9: Concept Site Arrangement ---
-    # For a governed run, show the Phase B site composition (how many governed
-    # units of each type make up the site). Otherwise the L2 linear site array.
+    # --- Section 9: Concept Site Layout + Provisional Equipment Schedule ---
+    # For a governed run, draw the whole-site concept layout (every governed AC
+    # Block at its real product footprint) and list the provisional equipment
+    # schedule (per governed group, with the bound product + transformer). Values
+    # come from the actual AC Sizing run on ctx — never re-derived here. A generic
+    # run keeps the legacy L2 linear site array.
     if ctx.configuration_code:
-        comp_png = None
-        plan = None
+        site_png = None
+        run_like = None
         try:
-            from calb_sizing_tool.services.governed_ac_block_service import build_governed_site_plan
-            plan = build_governed_site_plan(int(ctx.dc_blocks_total or 0))
-            comp_svg = render_governed_site_composition_svg(
-                plan, title=f"GOVERNED SITE COMPOSITION · {ctx.configuration_code}"
+            run_like = _governed_run_from_ctx(ctx)
+            layout_svg = render_governed_site_layout_concept_svg(
+                run_like, title=f"CONCEPT SITE LAYOUT · {ctx.configuration_code}"
             )
-            comp_png = _svg_bytes_to_png(comp_svg.encode("utf-8"))
+            site_png = _svg_bytes_to_png(layout_svg.encode("utf-8"))
         except Exception:
-            comp_png, plan = None, None
-        if comp_png and plan is not None:
+            site_png, run_like = None, None
+        if site_png and run_like is not None:
             doc.add_page_break()
-            doc.add_heading("9.  Governed Site Composition (Concept Only)", level=2)
+            doc.add_heading("9.  Concept Site Layout & Equipment Schedule (Provisional)", level=2)
             _keep_next_para(doc.add_paragraph(
                 f"Governed configuration {ctx.configuration_code}: {ctx.dc_blocks_total} DC Blocks "
-                f"compose {plan.ac_blocks_total} AC Block(s) across {len(plan.groups)} governed "
-                f"group(s), {plan.ac_power_mw_total:.2f} MW total. This is a composition overview "
-                f"(governed unit counts), not a geometric Master Layout."
+                f"compose {run_like.ac_blocks_total} AC Block(s) across {len(run_like.groups)} governed "
+                f"group(s), {run_like.ac_power_mw_total:.2f} MW total. Blocks are placed at their real "
+                f"product footprint (bilateral head vs linear tails); this is a concept arrangement, "
+                f"not a geometric Master Layout against a site boundary."
             ))
-            doc.add_picture(io.BytesIO(comp_png), width=Inches(6.7))
+            doc.add_picture(io.BytesIO(site_png), width=Inches(6.7))
             _keep_next_para(doc.paragraphs[-1])
             _keep_next_para(doc.add_paragraph(
-                f"Figure {figure_index}: Governed Site Composition — Concept Only"
+                f"Figure {figure_index}: Concept Site Layout (governed, real product footprints) — Concept Only"
             ))
             figure_index += 1
+
+            _keep_next_para(doc.add_paragraph(
+                "Provisional equipment schedule — values marked TBD await owner confirmation "
+                "(never inferred). Each governed AC Block binds a real catalogue product where one "
+                "is available."
+            ))
+            schedule_rows = []
+            for g in run_like.groups:
+                mva = (g.ac_output or {}).get("transformer_mva")
+                vg = (g.ac_output or {}).get("transformer_vector_group")
+                xf = f"{float(mva):g} MVA" if mva else "TBD"
+                if vg:
+                    xf += f" · {vg}"
+                schedule_rows.append((
+                    g.configuration_code,
+                    f"{g.ac_block_count}",
+                    f"{g.pcs_per_ac_block} × {g.pcs_kw:.0f} kW",
+                    f"{g.dc_blocks_per_ac_block} per block",
+                    xf,
+                    g.bound_product_code or "TBD (no catalogue product)",
+                ))
             _add_table(
                 doc,
-                [
-                    (
-                        g.configuration_code,
-                        f"x{g.ac_block_count} · {g.dc_blocks_per_ac_block} DC / "
-                        f"{g.pcs_per_ac_block} PCS · {g.ac_power_mw_total:.2f} MW",
-                    )
-                    for g in plan.groups
-                ],
-                ["Governed group", "Composition"],
+                schedule_rows,
+                ["Governed AC Block", "Qty", "PCS", "DC Blocks", "Transformer (per block)", "Bound product"],
             )
         # A governed run does not also draw the linear L2 site array.
         site_layout = None
