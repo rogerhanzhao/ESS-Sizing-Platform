@@ -172,8 +172,8 @@ def render_governed_site_layout_concept_svg(run, *, title: str = "CONCEPT SITE L
 
     _text(
         parts, margin_l, height - 24,
-        "CONCEPT ONLY — NOT FOR CONSTRUCTION · blocks at real product footprint + nominal "
-        f"{_AISLE_M:.0f} m aisle; no site boundary / roads / fire access (L3 Master Layout).",
+        "CONCEPT ONLY — NOT FOR CONSTRUCTION · blocks shown at actual product footprint with a "
+        f"nominal {_AISLE_M:.0f} m aisle; site boundary, roads and fire access are not represented.",
         size=10.5, weight=600, fill=_MUTED,
     )
     parts.append("</svg>")

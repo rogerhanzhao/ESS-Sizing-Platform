@@ -43,10 +43,7 @@ from calb_diagrams.ac_block_bilateral_layout import (
     render_bilateral_plan_svg,
 )
 from calb_diagrams.governed_site_layout_concept import render_governed_site_layout_concept_svg
-from calb_sizing_tool.services.ac_power_reconciliation import (
-    BAND_BASIS as _RECON_BAND_BASIS,
-    reconcile_governed_power,
-)
+from calb_sizing_tool.services.ac_power_reconciliation import reconcile_governed_power
 from calb_diagrams.site_array_concept import (
     US_NFPA_SITE as SITE_PROFILE,
     compute_site_array,
@@ -647,14 +644,14 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             # Mixed governed (Phase B): state the true governed decomposition, not
             # a single uniform template or an average DC-per-AC ratio.
             _comp = " + ".join(
-                f"{int(g.get('ac_block_count') or 0)}×{g.get('configuration_code')}"
+                f"{int(g.get('ac_block_count') or 0)} × {g.get('configuration_code')}"
                 for g in _exec_governed_groups
             )
             config_para = doc.add_paragraph(
-                f"Configuration (governed, Phase B): {ctx.dc_blocks_total} DC Blocks "
+                f"Configuration: {ctx.dc_blocks_total} DC Blocks "
                 f"({format_value(ctx.dc_total_energy_mwh, 'MWh')} MWh nameplate @BOL) · "
-                f"{ctx.ac_blocks_total} governed AC Blocks · {ctx.pcs_modules_total} PCS modules — "
-                f"{_comp} (see §9 for the group composition)."
+                f"{ctx.ac_blocks_total} AC Blocks · {ctx.pcs_modules_total} PCS modules — "
+                f"{_comp} (see Section 9 for the equipment schedule)."
             )
         else:
             config_para = doc.add_paragraph(
@@ -994,16 +991,12 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     if is_governed:
         if ctx.transformer_rating_kva:
             transformer_formula = (
-                f"Owner-confirmed governed product nameplate "
-                f"{format_value(ctx.transformer_rating_kva / 1000.0, 'MVA')} MVA "
-                f"(not derived from AC Block MW ÷ PF)"
+                f"Manufacturer nameplate rating "
+                f"{format_value(ctx.transformer_rating_kva / 1000.0, 'MVA')} MVA (from product datasheet)"
             )
         else:
-            transformer_formula = (
-                "TBD — owner-confirmed governed product nameplate "
-                "(never derived from AC Block MW ÷ PF)"
-            )
-        transformer_basis_label = "Transformer Sizing Basis (governed)"
+            transformer_formula = "To be confirmed from the product datasheet"
+        transformer_basis_label = "Transformer Basis"
     else:
         transformer_mva = None
         if ctx.grid_power_factor and ctx.grid_power_factor > 0 and ctx.ac_block_size_mw:
@@ -1012,12 +1005,12 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         if transformer_mva is not None and ctx.ac_block_size_mw and ctx.grid_power_factor:
             transformer_formula = (
                 f"{format_value(ctx.ac_block_size_mw, 'MW')} MW ÷ {format_value(ctx.grid_power_factor, 'PF')} (PF)"
-                f" = {format_value(transformer_mva, 'MVA')} MVA"
+                f" = {format_value(transformer_mva, 'MVA')} MVA (estimate)"
             )
-        transformer_basis_label = "Transformer Sizing Basis (AC Block MW ÷ PF)"
+        transformer_basis_label = "Transformer Sizing Basis"
 
     transformer_rating_label = (
-        "Transformer Rating (per governed head block; tail groups in §9)"
+        "Transformer Rating (per lead AC Block; see Section 9 for the full schedule)"
         if (is_governed and isinstance(governed_groups, list) and len(governed_groups) > 1)
         else "Transformer Rating (per block)"
     )
@@ -1069,26 +1062,26 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 pcs_kw=head_pcs_kw,
                 dc_block_power_kw=head_dc_power_kw,
             )
-            doc.add_heading("6.1  Power Reconciliation (POI ↔ AC Block)", level=3)
+            doc.add_heading("6.1  Power Balance (POI vs AC Block)", level=3)
             _keep_next_para(doc.add_paragraph(
-                "Read-only check that the governed AC aggregate covers the POI power within the "
-                f"adjustment band ({_RECON_BAND_BASIS}). This does not change sizing; "
-                "DC Power Required is the frozen Stage 1 value."
+                "Verification that the installed AC Block capacity meets the POI power requirement "
+                "within the design margin. Design bands: POI coverage 95–105%, DC:AC power ratio "
+                "1.00–1.50, PCS loading within its rating and short-term overload headroom."
             ))
             _pct = lambda v: f"{v*100:.1f}%" if v is not None else "—"
             recon_rows = [
                 ("POI Power Requirement (MW)", f"{recon.poi_power_mw:.2f}"),
-                ("System Duration (h) = E/P", f"{recon.discharge_duration_h:.2f}" if recon.discharge_duration_h else "—"),
-                ("Efficiency AC-block MV → POI", _pct(recon.eff_mv_to_poi)),
-                ("AC Aggregate Rated (MW)", f"{recon.ac_rated_total_mw:.2f}"),
-                ("AC Deliverable at POI (MW)", f"{recon.ac_poi_deliverable_mw:.2f}"),
-                ("POI Power Coverage", _pct(recon.poi_coverage_frac) + ("  ✓" if recon.poi_within_band else "  ⚠ out of band")),
-                ("DC:AC Power Ratio", (f"{recon.dc_ac_ratio:.2f}" if recon.dc_ac_ratio else "—") + ("  ✓" if recon.dc_ac_within_band else "  ⚠")),
-                ("PCS Utilization (DC power / PCS kW)", _pct(recon.pcs_utilization_frac) + ("  ✓ within overload" if recon.pcs_within_overload else "  ⚠ exceeds overload")),
+                ("System Duration (h)", f"{recon.discharge_duration_h:.2f}" if recon.discharge_duration_h else "—"),
+                ("Efficiency, AC Block to POI", _pct(recon.eff_mv_to_poi)),
+                ("Installed AC Block Rated Power (MW)", f"{recon.ac_rated_total_mw:.2f}"),
+                ("Deliverable Power at POI (MW)", f"{recon.ac_poi_deliverable_mw:.2f}"),
+                ("POI Power Coverage", _pct(recon.poi_coverage_frac) + ("  ✓" if recon.poi_within_band else "  — outside design margin")),
+                ("DC:AC Power Ratio", (f"{recon.dc_ac_ratio:.2f}" if recon.dc_ac_ratio else "—") + ("  ✓" if recon.dc_ac_within_band else "  —")),
+                ("PCS Loading", _pct(recon.pcs_utilization_frac) + ("  ✓ within rating" if recon.pcs_within_overload else "  — exceeds rating")),
             ]
-            _add_table(doc, recon_rows, ["Reconciliation", "Value"])
+            _add_table(doc, recon_rows, ["Parameter", "Value"])
             for note in recon.notes:
-                doc.add_paragraph(f"⚠ {note}")
+                doc.add_paragraph(note)
 
     # --- Section 7: Single Line Diagram ---
     doc.add_page_break()
@@ -1147,15 +1140,14 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
 
     if plan_png and plan_layout is not None and is_bilateral:
         _keep_next_para(doc.add_paragraph(
-            f"Governed configuration {ctx.configuration_code}: central vertical "
+            f"AC Block model {ctx.configuration_code}: central vertical "
             f"40 ft AC Block with west 4-DC and east 4-DC mirrored fields "
-            f"(bilateral 4+4, DC-1..8 → PCS-1..8):"
+            f"(4 + 4 arrangement, one DC Block per PCS):"
         ))
         doc.add_picture(io.BytesIO(plan_png), width=Inches(6.7))
         _keep_next_para(doc.paragraphs[-1])
         _keep_next_para(doc.add_paragraph(
-            f"Figure {figure_index}: Typical AC Block Arrangement "
-            f"({ctx.layout_variant}) — equipment envelope ≈ "
+            f"Figure {figure_index}: Typical AC Block Arrangement — equipment envelope ≈ "
             f"{plan_layout.envelope_w_m:.2f} × {plan_layout.envelope_d_m:.2f} m. "
             f"Concept only; spacing and 40 ft dimensions provisional."
         ))
@@ -1215,28 +1207,26 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             doc.add_page_break()
             doc.add_heading("9.  Concept Site Layout & Equipment Schedule (Provisional)", level=2)
             _keep_next_para(doc.add_paragraph(
-                f"Governed configuration {ctx.configuration_code}: {ctx.dc_blocks_total} DC Blocks "
-                f"compose {run_like.ac_blocks_total} AC Block(s) across {len(run_like.groups)} governed "
-                f"group(s), {run_like.ac_power_mw_total:.2f} MW total. Blocks are placed at their real "
-                f"product footprint (bilateral head vs linear tails); this is a concept arrangement, "
-                f"not a geometric Master Layout against a site boundary."
+                f"{ctx.dc_blocks_total} DC Blocks compose {run_like.ac_blocks_total} AC Block(s) "
+                f"across {len(run_like.groups)} configuration(s), {run_like.ac_power_mw_total:.2f} MW "
+                f"total. Blocks are placed at their actual product footprint; this is a concept "
+                f"arrangement, not a construction site layout against a project boundary."
             ))
             doc.add_picture(io.BytesIO(site_png), width=Inches(6.7))
             _keep_next_para(doc.paragraphs[-1])
             _keep_next_para(doc.add_paragraph(
-                f"Figure {figure_index}: Concept Site Layout (governed, real product footprints) — Concept Only"
+                f"Figure {figure_index}: Concept Site Layout (actual product footprints) — Concept Only"
             ))
             figure_index += 1
 
             _keep_next_para(doc.add_paragraph(
-                "Provisional equipment schedule — values marked TBD await owner confirmation "
-                "(never inferred). Product status: “owner-selected” = confirmed by the owner; "
-                "“provisional (auto)” = auto-matched first eligible catalogue product, NOT yet "
-                "owner-confirmed; “—” = no catalogue product bound."
+                "Equipment schedule. Values marked TBD await confirmation. Product status: "
+                "“confirmed” = selected and confirmed; “provisional” = preliminary product match, "
+                "to be confirmed; “—” = product to be selected."
             ))
             _confirm_label = {
-                "owner_selected": "owner-selected",
-                "provisional_auto": "provisional (auto)",
+                "owner_selected": "confirmed",
+                "provisional_auto": "provisional",
                 "none": "—",
             }
             schedule_rows = []
@@ -1261,7 +1251,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             _add_table(
                 doc,
                 schedule_rows,
-                ["Governed AC Block", "Qty", "PCS", "DC Blocks", "Transformer (per block)", "Bound product"],
+                ["AC Block Model", "Qty", "PCS", "DC Blocks", "Transformer (per block)", "Product"],
             )
         # A governed run does not also draw the linear L2 site array.
         site_layout = None

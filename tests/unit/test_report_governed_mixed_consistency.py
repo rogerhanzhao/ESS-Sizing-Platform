@@ -20,7 +20,7 @@ from calb_sizing_tool.services.governed_ac_block_service import (
 
 def _stage13() -> dict:
     return {
-        "project_name": "Governed Mixed Consistency",
+        "project_name": "Riverside BESS 115MW",
         "poi_power_req_mw": 115.0,
         "poi_energy_req_mwh": 400.0,
         "project_life_years": 20,
@@ -90,8 +90,33 @@ def test_full_report_doc_builds_for_governed_mixed():
         for row in table.rows:
             parts.extend(cell.text for cell in row.cells)
     text = "\n".join(parts)
-    # Governed Phase B composition is stated; the generic 4-per-block average and
-    # the MW/PF fabrication are absent.
-    assert "governed" in text.lower()
+    # The true mixed site is stated (both product models, 115 MW total); the
+    # generic 4-per-block average and the MW/PF fabrication are absent.
+    assert "ACBLK-10MW-8PCS-8DC-40FT-BILATERAL" in text
+    assert "ACBLK-5MW-4PCS-4DC-40FT-LINEAR" in text
     assert "115" in text  # true site MW appears somewhere
     assert "÷ 0.9" not in text and "/ 0.9" not in text
+
+
+def test_customer_report_has_no_internal_jargon_or_code_identifiers():
+    """The exported report is customer-facing: it must not leak internal code
+    module names, developer jargon or pipeline stage-names."""
+    import io
+
+    from docx import Document
+
+    from calb_sizing_tool.reporting.report_v2 import export_report_v2_1
+
+    ctx = _mixed_ctx()
+    doc = Document(io.BytesIO(export_report_v2_1(ctx)))
+    parts = [p.text for p in doc.paragraphs]
+    for table in doc.tables:
+        for row in table.rows:
+            parts.extend(cell.text for cell in row.cells)
+    text = "\n".join(parts).lower()
+    for token in (
+        "ac_power_reconciliation", "phase b", "phase a", "governed", "layout_variant",
+        "mw ÷ pf", "owner-confirmed", "owner_selected", "provisional_auto", "rule a",
+        "read-only", "settings-only", "frozen stage", "l3 master", "not-for-construction",
+    ):
+        assert token not in text, f"internal token leaked into customer report: {token!r}"
