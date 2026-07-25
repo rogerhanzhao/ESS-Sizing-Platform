@@ -257,6 +257,19 @@ def build_report_context(
     if pcs_modules_total <= 0 and ac_blocks_total > 0 and pcs_per_block > 0:
         pcs_modules_total = ac_blocks_total * pcs_per_block
 
+    # A mixed governed (Phase B) site stores the uniform HEAD group as the
+    # SLD-renderable ac_output but carries the true site rollup separately. The
+    # report's site-level totals must reflect the whole governed decomposition
+    # (e.g. 92 DC → 11×10 MW bilateral + 1×5 MW tail = 12 AC Blocks / 115 MW),
+    # never just the head group, and never an average 4-per-block reconstruction.
+    if isinstance(ac_output, dict) and ac_output.get("governed_is_mixed"):
+        site_blocks = _safe_int(ac_output.get("governed_site_ac_blocks_total"), 0)
+        if site_blocks > 0:
+            ac_blocks_total = site_blocks
+        site_pcs = _safe_int(ac_output.get("governed_site_pcs_total"), 0)
+        if site_pcs > 0:
+            pcs_modules_total = site_pcs
+
     transformer_rating_kva = ac_output.get("transformer_kva")
     if transformer_rating_kva is None:
         transformer_rating_kva = ac_output.get("transformer_rating_kva")

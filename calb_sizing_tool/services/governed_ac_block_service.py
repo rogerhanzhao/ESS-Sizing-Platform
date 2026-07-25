@@ -515,6 +515,105 @@ def build_governed_site_run(
     )
 
 
+def build_governed_primary_ac_output(
+    dc_blocks_total: int,
+    *,
+    project_settings: dict[str, Any] | None = None,
+    source_fields: Optional[dict[str, Any]] = None,
+    head_product_block_code: Optional[str] = None,
+    db_url: str | None = None,
+) -> dict[str, Any]:
+    """The AC output the AC Sizing page stores for ANY governed DC total.
+
+    This is the single entry the UI uses so a non-multiple-of-8 project still
+    reaches the governed identity instead of silently falling back to the generic
+    average-ratio grouping. It decomposes the site (Phase B, greedy 8/4/2/1) and
+    returns the **head (largest) governed group's uniform AC output** — which
+    stays a valid, single-drawing ``SldAuthoritativeAcOutput`` so the SLD renders
+    the governed head cleanly (Dy11y11, no override preset).
+
+    For a mixed site the head output additionally carries the honest SITE rollup
+    (``governed_is_mixed`` + ``governed_site_*`` totals + ``governed_groups``) so
+    the report states the true site (e.g. 92 DC → 11×10 MW bilateral + 1×5 MW
+    tail = 115 MW / 12 AC Blocks) and enumerates every governed group with its
+    bound product — never an average 23×4-PCS reconstruction, never a fabricated
+    ``MW ÷ PF`` nameplate. A pure multiple-of-8 total yields a single group and
+    the plain uniform output (no rollup), identical to Phase A.
+    """
+    run = build_governed_site_run(
+        dc_blocks_total,
+        project_settings=project_settings,
+        source_fields=source_fields,
+        db_url=db_url,
+        bind_products=True,
+    )
+    head = run.groups[0]
+    head_code = head.configuration_code
+
+    # The head group honours the owner's explicit product choice. When none is
+    # selected it is built settings-only (no silent auto-bind), so an unconfirmed
+    # transformer MVA stays TBD instead of adopting an arbitrary catalogue value.
+    if head_product_block_code:
+        head_output = build_governed_ac_output_from_product(
+            head_code,
+            head_product_block_code,
+            project_settings=project_settings,
+            dc_blocks_total=head.dc_blocks_total,
+            source_fields=source_fields,
+            db_url=db_url,
+        )
+        head_product = head_product_block_code
+    else:
+        head_output = build_governed_site_ac_output(
+            head_code,
+            project_settings,
+            dc_blocks_total=head.dc_blocks_total,
+            source_fields=source_fields,
+        )
+        head_product = None
+    head_unresolved = list(head_output.get("provisional_unresolved", ()))
+
+    if len(run.groups) == 1:
+        return head_output
+
+    # Mixed site: overlay the true site rollup (never mutate the SLD-authoritative
+    # uniform fields, so the head SLD stays renderable). The tails keep their
+    # auto-bound catalogue product from the run; the head reflects the choice above.
+    def _group_summary(g: GovernedSiteRunGroup, product, mva, unresolved) -> dict[str, Any]:
+        return {
+            "configuration_code": g.configuration_code,
+            "ac_block_count": g.ac_block_count,
+            "pcs_per_ac_block": g.pcs_per_ac_block,
+            "dc_blocks_per_ac_block": g.dc_blocks_per_ac_block,
+            "ac_power_mw_total": g.ac_power_mw_total,
+            "bound_product_code": product,
+            "transformer_mva": mva,
+            "provisional_unresolved": list(unresolved),
+        }
+
+    groups_summary = [
+        _group_summary(head, head_product, head_output.get("transformer_mva"), head_unresolved)
+    ]
+    union_unresolved: set[str] = set(head_unresolved)
+    for g in run.groups[1:]:
+        groups_summary.append(
+            _group_summary(g, g.bound_product_code, g.ac_output.get("transformer_mva"), g.provisional_unresolved)
+        )
+        union_unresolved |= set(g.provisional_unresolved)
+
+    output = dict(head_output)
+    output["governed_is_mixed"] = True
+    output["governed_site_ac_blocks_total"] = run.ac_blocks_total
+    output["governed_site_pcs_total"] = sum(
+        g.pcs_per_ac_block * g.ac_block_count for g in run.groups
+    )
+    output["governed_site_total_ac_mw"] = run.ac_power_mw_total
+    output["governed_site_dc_blocks_total"] = run.dc_blocks_total
+    output["governed_groups"] = groups_summary
+    output["provisional_unresolved"] = sorted(union_unresolved)
+    return output
+
+
 def unresolved_provisional_fields(
     configuration_code: str,
     project_settings: dict[str, Any] | None,
@@ -535,6 +634,7 @@ __all__ = [
     "GovernedSiteRunGroup",
     "build_governed_ac_output_from_product",
     "build_governed_ac_output_from_settings",
+    "build_governed_primary_ac_output",
     "build_governed_site_ac_output",
     "build_governed_site_plan",
     "build_governed_site_run",

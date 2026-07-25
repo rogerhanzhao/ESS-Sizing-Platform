@@ -340,35 +340,45 @@ def show():
         load_case_sld_project_settings,
     )
 
+    from calb_sizing_tool.services.governed_ac_block_service import (
+        build_governed_primary_ac_output,
+        build_governed_site_plan,
+    )
+
     use_governed = False
+    selected_product_code = None
+    num_units = 0
     with st.container(border=True):
         section_header(
-            "Governed Product (Phase A)",
-            "Fixed, owner-confirmed AC Block product. Overrides the generic grouping below.",
-            eyebrow="Optional",
+            "Governed Configuration",
+            "Fixed, owner-confirmed governed AC Block(s). Any DC total is composable — "
+            "a non-multiple-of-8 remainder is placed into smaller governed blocks "
+            "(Phase B 8/4/2/1), never an average split. Overrides the generic grouping below.",
+            eyebrow="Recommended",
         )
-        if not _GOVERNED.phase_a_eligible(dc_blocks_total):
-            compact_note(
-                f"{dc_blocks_total} DC Blocks is not eligible for "
-                f"{_GOVERNED.configuration_code} (needs a multiple of {_GOVERNED.dc_block_count})."
+        use_governed = bool(
+            st.checkbox(
+                f"Use governed configuration ({_GOVERNED.configuration_code} + Phase B tails)",
+                key="use_governed_ac_block",
+                help=(
+                    "10 MW / 8 x 1250 kW PCS / 8 DC / 40 ft central bilateral 4+4, plus "
+                    "governed 5 / 2.5 / 1.25 MW tails for any remainder. PCS count, rating, "
+                    "LV topology and layout are fixed by the governed product identity."
+                ),
             )
-        else:
-            use_governed = bool(
-                st.checkbox(
-                    f"Use governed product {_GOVERNED.configuration_code}",
-                    key="use_governed_ac_block",
-                    help=(
-                        "10 MW / 8 x 1250 kW PCS / 8 DC / 40 ft central bilateral 4+4. "
-                        "PCS count, rating, LV topology and layout are fixed by the product."
-                    ),
-                )
-            )
-            if use_governed:
-                num_units = _GOVERNED.ac_block_count_for(dc_blocks_total)
-                project_settings = load_case_sld_project_settings(workspace.get("case_id"))
+        )
+        if use_governed:
+            project_settings = load_case_sld_project_settings(workspace.get("case_id"))
+            _plan = build_governed_site_plan(dc_blocks_total)
+            num_units = _plan.ac_blocks_total
+            is_mixed = len(_plan.groups) > 1
+            head_is_10mw = dc_blocks_total >= _GOVERNED.dc_block_count
 
-                # Bind to a real catalogue product so the transformer nameplate /
-                # LV / vector / cooling come from the datasheet instead of TBD.
+            # Bind the 10 MW head to a real catalogue product (transformer / LV /
+            # vector / cooling from the datasheet instead of TBD). Only shown when
+            # the site actually contains a 10 MW governed head. Phase B tails
+            # auto-bind their own eligible product.
+            if head_is_10mw:
                 try:
                     catalogue = eligible_products_for(_GOVERNED.configuration_code)
                 except Exception:
@@ -379,7 +389,7 @@ def show():
                     for p in catalogue
                 ]
                 product_choice = st.selectbox(
-                    "Bind to catalogue product (fills confirmed transformer/LV values)",
+                    "Bind 10 MW head to catalogue product (fills confirmed transformer/LV values)",
                     range(len(product_labels)),
                     index=0,
                     format_func=lambda i: product_labels[i],
@@ -391,29 +401,34 @@ def show():
                     catalogue[product_choice - 1]["block_code"] if product_choice > 0 else None
                 )
 
-                if selected_product_code:
-                    unresolved = list(
-                        build_governed_ac_output_from_product(
-                            _GOVERNED.configuration_code,
-                            selected_product_code,
-                            project_settings=project_settings,
-                            dc_blocks_total=dc_blocks_total,
-                        ).get("provisional_unresolved", [])
-                    )
-                else:
-                    unresolved = unresolved_provisional_fields(
-                        _GOVERNED.configuration_code, project_settings
-                    )
+            primary_preview = build_governed_primary_ac_output(
+                dc_blocks_total,
+                project_settings=project_settings,
+                head_product_block_code=selected_product_code,
+            )
+            unresolved = list(primary_preview.get("provisional_unresolved", []))
 
-                gc1, gc2, gc3, gc4 = st.columns(4)
-                gc1.metric("Governed AC Blocks", num_units)
-                gc2.metric("PCS per Block", _GOVERNED.pcs_count)
-                gc3.metric("PCS Rating", f"{_GOVERNED.pcs_rating_kw} kW")
-                gc4.metric("AC Power per Block", f"{_GOVERNED.block_size_mw:.1f} MW")
+            gc1, gc2, gc3, gc4 = st.columns(4)
+            gc1.metric("Governed AC Blocks", num_units)
+            gc2.metric("Governed Groups", len(_plan.groups))
+            gc3.metric("Site AC Power", f"{_plan.ac_power_mw_total:.1f} MW")
+            gc4.metric("DC Blocks", dc_blocks_total)
+            if is_mixed:
+                compact_note(
+                    f"Mixed governed site (Phase B): {dc_blocks_total} DC → "
+                    + " + ".join(
+                        f"{g.ac_block_count}×{g.configuration_code}" for g in _plan.groups
+                    )
+                    + ". Each governed group keeps its own SLD topology; the SLD below "
+                    "shows the 10 MW bilateral head."
+                )
+            else:
                 compact_note(
                     "Central vertical 40 ft AC Block; west 4-DC + east 4-DC mirrored 田 fields; "
                     "DC-1..8 -> PCS-1..8; two independent LV secondaries (4+4)."
                 )
+        if use_governed:
+            if use_governed:
 
                 with st.expander("Site composition (Phase B decomposition)", expanded=False):
                     try:
@@ -511,30 +526,26 @@ def show():
                     if selected_product_code:
                         source_fields["governed_product_block_code"] = selected_product_code
                     try:
-                        if selected_product_code:
-                            gov_output = build_governed_ac_output_from_product(
-                                _GOVERNED.configuration_code,
-                                selected_product_code,
-                                project_settings=project_settings,
-                                dc_blocks_total=dc_blocks_total,
-                                source_fields=source_fields,
-                            )
-                        else:
-                            gov_output = build_governed_site_ac_output(
-                                _GOVERNED.configuration_code,
-                                project_settings,
-                                dc_blocks_total=dc_blocks_total,
-                                source_fields=source_fields,
-                            )
+                        # Single governed entry for ANY DC total: a multiple of 8
+                        # yields one uniform bilateral output; any remainder is
+                        # decomposed (Phase B) with the true site rollup carried on
+                        # the output. The head stays a uniform, SLD-renderable block.
+                        gov_output = build_governed_primary_ac_output(
+                            dc_blocks_total,
+                            project_settings=project_settings,
+                            source_fields=source_fields,
+                            head_product_block_code=selected_product_code,
+                        )
                     except ValueError as exc:
                         st.error(f"Governed AC sizing failed: {exc}")
                         st.stop()
                     st.session_state["ac_output"] = gov_output
                     ac_results.update(gov_output)
                     set_run_time("ac_results")
+                    _site_mw = gov_output.get("governed_site_total_ac_mw") or gov_output.get("total_ac_mw", 0.0)
                     st.success(
-                        f"Governed AC sizing complete — {num_units} × "
-                        f"{_GOVERNED.configuration_code} ({gov_output['total_ac_mw']:.0f} MW)."
+                        f"Governed AC sizing complete — {num_units} governed AC Block(s) "
+                        f"across {len(_plan.groups)} group(s), {_site_mw:.0f} MW total."
                     )
                     _auth_ctx = get_auth_context()
                     if _auth_ctx and not _auth_ctx.is_guest:

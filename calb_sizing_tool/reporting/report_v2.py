@@ -562,12 +562,29 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             f"{'met' if meets_guarantee == 'Yes' else 'NOT met'}."
         )
         key_run.bold = True
-        config_para = doc.add_paragraph(
-            f"Configuration: {ctx.dc_blocks_total} DC Blocks "
-            f"({format_value(ctx.dc_total_energy_mwh, 'MWh')} MWh nameplate @BOL) · "
-            f"{ctx.ac_blocks_total} AC Blocks ({_normalize_template_label(ctx.ac_block_template_id)}) · "
-            f"{ctx.pcs_modules_total} PCS modules."
+        _exec_governed_groups = (
+            ctx.ac_output.get("governed_groups") if isinstance(ctx.ac_output, dict) else None
         )
+        if isinstance(_exec_governed_groups, list) and _exec_governed_groups:
+            # Mixed governed (Phase B): state the true governed decomposition, not
+            # a single uniform template or an average DC-per-AC ratio.
+            _comp = " + ".join(
+                f"{int(g.get('ac_block_count') or 0)}×{g.get('configuration_code')}"
+                for g in _exec_governed_groups
+            )
+            config_para = doc.add_paragraph(
+                f"Configuration (governed, Phase B): {ctx.dc_blocks_total} DC Blocks "
+                f"({format_value(ctx.dc_total_energy_mwh, 'MWh')} MWh nameplate @BOL) · "
+                f"{ctx.ac_blocks_total} governed AC Blocks · {ctx.pcs_modules_total} PCS modules — "
+                f"{_comp} (see §9 for the group composition)."
+            )
+        else:
+            config_para = doc.add_paragraph(
+                f"Configuration: {ctx.dc_blocks_total} DC Blocks "
+                f"({format_value(ctx.dc_total_energy_mwh, 'MWh')} MWh nameplate @BOL) · "
+                f"{ctx.ac_blocks_total} AC Blocks ({_normalize_template_label(ctx.ac_block_template_id)}) · "
+                f"{ctx.pcs_modules_total} PCS modules."
+            )
         _keep_next_para(key_para)
         _keep_next_para(config_para)
     exec_rows = [
@@ -591,7 +608,9 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             f"≈ {site_layout.envelope_w_m:.1f} × {site_layout.envelope_d_m:.1f} m",
         ))
     _add_table(doc, exec_rows, ["Metric", "Value"])
-    if ctx.dc_blocks_allocation:
+    # The generic average DC-to-AC split is meaningless for a governed run (each
+    # governed block has a fixed DC count); §9 shows the governed composition.
+    if ctx.dc_blocks_allocation and not ctx.configuration_code:
         alloc_parts = [
             f"{entry.get('dc_blocks_per_ac_block')} DC Blocks per AC Block × "
             f"{entry.get('ac_blocks_count')} AC Blocks"
@@ -864,8 +883,19 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     if ac_pcs_kw is None and isinstance(ctx.ac_output, dict):
         ac_pcs_kw = ctx.ac_output.get("pcs_power_kw")
     pcs_count_by_block = ctx.ac_output.get("pcs_count_by_block") if isinstance(ctx.ac_output, dict) else None
+    is_governed = bool(ctx.configuration_code) or (
+        isinstance(ctx.ac_output, dict) and bool(ctx.ac_output.get("governed_configuration"))
+    )
+    governed_groups = ctx.ac_output.get("governed_groups") if isinstance(ctx.ac_output, dict) else None
     pcs_by_block_text = ""
-    if isinstance(pcs_count_by_block, list) and pcs_count_by_block:
+    if isinstance(governed_groups, list) and governed_groups:
+        # Mixed governed (Phase B): describe the true per-group breakdown, not the
+        # uniform head that the SLD-authoritative output carries.
+        pcs_by_block_text = "; ".join(
+            f"{int(g.get('pcs_per_ac_block') or 0)} PCS × {int(g.get('ac_block_count') or 0)} block(s)"
+            for g in governed_groups
+        )
+    elif isinstance(pcs_count_by_block, list) and pcs_count_by_block:
         distinct_counts = {int(v) for v in pcs_count_by_block}
         if len(distinct_counts) == 1:
             pcs_by_block_text = (
@@ -878,15 +908,41 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             pcs_by_block_text = "; ".join(
                 f"{count} PCS × {n_blocks} blocks" for count, n_blocks in sorted(grouped.items(), reverse=True)
             )
-    transformer_mva = None
-    if ctx.grid_power_factor and ctx.grid_power_factor > 0 and ctx.ac_block_size_mw:
-        transformer_mva = ctx.ac_block_size_mw / ctx.grid_power_factor
-    transformer_formula = "n/a"
-    if transformer_mva is not None and ctx.ac_block_size_mw and ctx.grid_power_factor:
-        transformer_formula = (
-            f"{format_value(ctx.ac_block_size_mw, 'MW')} MW ÷ {format_value(ctx.grid_power_factor, 'PF')} (PF)"
-            f" = {format_value(transformer_mva, 'MVA')} MVA"
-        )
+
+    # Transformer sizing basis. A governed run's nameplate is an owner-confirmed
+    # product value (or an explicit TBD), NEVER an AC-power ÷ PF estimate — so the
+    # generic "MW ÷ PF" basis must not appear on a governed report (it would
+    # contradict the real product MVA, e.g. promote 10 MW / 0.9 to 11.11 MVA).
+    if is_governed:
+        if ctx.transformer_rating_kva:
+            transformer_formula = (
+                f"Owner-confirmed governed product nameplate "
+                f"{format_value(ctx.transformer_rating_kva / 1000.0, 'MVA')} MVA "
+                f"(not derived from AC Block MW ÷ PF)"
+            )
+        else:
+            transformer_formula = (
+                "TBD — owner-confirmed governed product nameplate "
+                "(never derived from AC Block MW ÷ PF)"
+            )
+        transformer_basis_label = "Transformer Sizing Basis (governed)"
+    else:
+        transformer_mva = None
+        if ctx.grid_power_factor and ctx.grid_power_factor > 0 and ctx.ac_block_size_mw:
+            transformer_mva = ctx.ac_block_size_mw / ctx.grid_power_factor
+        transformer_formula = "n/a"
+        if transformer_mva is not None and ctx.ac_block_size_mw and ctx.grid_power_factor:
+            transformer_formula = (
+                f"{format_value(ctx.ac_block_size_mw, 'MW')} MW ÷ {format_value(ctx.grid_power_factor, 'PF')} (PF)"
+                f" = {format_value(transformer_mva, 'MVA')} MVA"
+            )
+        transformer_basis_label = "Transformer Sizing Basis (AC Block MW ÷ PF)"
+
+    transformer_rating_label = (
+        "Transformer Rating (per governed head block; tail groups in §9)"
+        if (is_governed and isinstance(governed_groups, list) and len(governed_groups) > 1)
+        else "Transformer Rating (per block)"
+    )
     s4_rows = [
         ("AC:DC Ratio", ac_ratio or "—"),
         ("AC Block Template", _normalize_template_label(ctx.ac_block_template_id)),
@@ -902,8 +958,8 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         ("PCS AC Output Voltage (V_LL)", format_value(ctx.pcs_lv_voltage_v_ll_rms_ac, "V")),
         ("Total AC Blocks", f"{ctx.ac_blocks_total:d}"),
         ("Total PCS Modules", f"{ctx.pcs_modules_total:d}"),
-        ("Transformer Rating (per block)", _format_transformer_rating(ctx.transformer_rating_kva)),
-        ("Transformer Sizing Basis (AC Block MW ÷ PF)", transformer_formula),
+        (transformer_rating_label, _format_transformer_rating(ctx.transformer_rating_kva)),
+        (transformer_basis_label, transformer_formula),
     ]
     _add_table(doc, s4_rows, ["Parameter", "Value"])
 

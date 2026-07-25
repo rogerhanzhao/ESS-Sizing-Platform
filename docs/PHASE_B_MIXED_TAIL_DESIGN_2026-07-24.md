@@ -44,9 +44,37 @@ Baseline: `ops/ubuntu-docker-coexist-20260311`.
   without a product or owner MVA stays gated (not silently rendered). The AC
   Sizing composition table now shows each group's bound product and transformer
   MVA readiness from this run.
+- **UI reachability + report closure (fixes the "92 DC exported generic" gap).**
+  The AC Sizing governed panel previously only offered itself when
+  `dc_blocks_total % 8 == 0`, so a real non-multiple-of-8 project (e.g. 92 DC)
+  could never reach the governed path and silently fell back to the generic
+  average-ratio grouping (23 × 4-PCS blocks + a fabricated `5.0 MW / 0.9 = 5.56`
+  MVA nameplate). Now:
+  - `services.governed_ac_block_service.build_governed_primary_ac_output()` is the
+    single governed entry for ANY DC total. A multiple of 8 yields one uniform
+    bilateral output (Phase A, unchanged); any remainder is decomposed (Phase B)
+    and the **uniform head group** is returned as the SLD-renderable block while
+    the **true site rollup** (`governed_is_mixed`, `governed_site_ac_blocks_total`
+    / `_pcs_total` / `_total_ac_mw`, and the per-group `governed_groups`) rides on
+    the output. The head honours the owner's product choice; tails auto-bind.
+  - `ui/ac_view.py` offers the governed panel for any total and runs through this
+    entry.
+  - `reporting/report_context.py` reads the site rollup so the report states the
+    true governed site (12 AC Blocks / 115 MW / 92 PCS for 92 DC), not the head.
+  - `reporting/report_v2.py` §1/§6 are governed-aware: the executive-summary
+    configuration line states the governed decomposition, the generic average
+    DC-to-AC split line is suppressed, and the §6 "Transformer Sizing Basis" no
+    longer prints `MW ÷ PF` for a governed run (it shows the owner-confirmed
+    product nameplate or an explicit TBD) — removing the last place a governed
+    report could show a fabricated `10 MW / 0.9` figure.
+  - The DRAFT/OVERRIDE watermark + `Dyn11` + `Uk 7.0%` on an exported SLD come
+    from the SLD page's Override toggle (legacy preset); the strict governed path
+    (Override off) draws `Dy11y11` / standard-by-class Uk / dual LV bus, no
+    watermark.
 - Tests: `tests/unit/test_governed_phase_b_decomposition.py`,
   `test_governed_ac_block_product_binding.py`, `test_governed_site_composition.py`,
-  `test_governed_site_run_orchestration.py`.
+  `test_governed_site_run_orchestration.py`, `test_governed_primary_ac_output.py`,
+  `test_report_governed_mixed_consistency.py`.
 
 Example: `188 -> 23 x ACBLK-10MW (bilateral) + 1 x ACBLK-5MW (linear tail)`.
 
