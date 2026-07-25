@@ -42,6 +42,29 @@ def _go_to(app: AppTest, page: str) -> AppTest:
     return app.run()
 
 
+def _sld_settings_navigation_app() -> None:
+    """Render the two pages involved in the SLD settings handoff only."""
+    import streamlit as st
+
+    st.session_state.setdefault(
+        "auth_context",
+        {
+            "user_id": "test-admin",
+            "username": "admin",
+            "display_name": "Admin",
+            "roles": ["admin"],
+        },
+    )
+    st.session_state.setdefault("active_case_id", "case-test")
+    st.session_state.setdefault("active_case_name", "Case Test")
+
+    if st.session_state.get("main_nav") == "Engineering Settings":
+        from calb_sizing_tool.ui.engineering_settings_view import show
+    else:
+        from calb_sizing_tool.ui.single_line_diagram_view import show
+    show()
+
+
 def test_sld_first_visit_no_crash():
     app = _app()
     _login(app)
@@ -105,15 +128,8 @@ def test_sld_clear_preview_removes_runtime_artifacts():
     assert not app.exception
 
 def test_sld_open_engineering_settings_navigates_to_settings_page():
-    app = _app()
-    _login(app)
-    # Initialize the Streamlit session before injecting route-specific state.
-    # This mirrors the normal sign-in flow and keeps the test independent of
-    # AppTest's session-state initialization order.
+    app = AppTest.from_function(_sld_settings_navigation_app, default_timeout=10)
     app.run()
-    app.session_state["active_case_id"] = "case-test"
-    app.session_state["active_case_name"] = "Case Test"
-    _go_to(app, "Single Line Diagram")
 
     settings_button = next(button for button in app.button if button.label == "Open Engineering Settings")
     settings_button.click()
