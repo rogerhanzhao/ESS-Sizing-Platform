@@ -346,46 +346,53 @@ def show():
     )
     from calb_sizing_tool.schemas.governed_ac_block_config import governed_duration_gate
 
-    _GOVERNED_METHOD = "Governed product (recommended)"
-    _LEGACY_METHOD = "Legacy abstract estimate (no product)"
+    _PRODUCT_METHOD = "Standard product presets"
+    _AUTO_METHOD = "Auto-recommended / Custom AC Block"
     selected_product_code = None
     num_units = 0
+
+    # System duration is a KNOWN input (POI energy / POI power), so AC Sizing is
+    # duration-aware and never blocks. Standard product presets currently cover
+    # 4 h systems (real catalogue); any other duration is auto-recommended /
+    # custom-sized — the PCS is matched to the DC Block power at the project
+    # duration, so 2/3/8 h all size correctly without getting stuck.
+    _project_duration_h = (target_mwh / target_mw) if (target_mw and target_mw > 0) else None
+    _dur_ok, _dur_msg = governed_duration_gate(_project_duration_h)
+
     with st.container(border=True):
-        # Governed is the primary AC Sizing path; the legacy abstract grouping
-        # (1:1/1:2/1:4 + MW ÷ PF transformer, no real product) is tucked behind
-        # this toggle so the two models are never stacked into one screen.
         ac_method = st.radio(
             "AC Sizing method",
-            (_GOVERNED_METHOD, _LEGACY_METHOD),
-            index=0,
+            (_PRODUCT_METHOD, _AUTO_METHOD),
+            index=(0 if _dur_ok else 1),   # default by duration; the user can switch
             horizontal=True,
             key="ac_sizing_method",
             help=(
-                "Governed: the site is composed of real productized AC Block families "
+                "Standard product presets: real productized AC Block families "
                 "(10 / 5 / 2.5 / 1.25 MW = 1:8 / 1:4 / 1:2 / 1:1 DC-per-block) with real "
-                "transformer nameplates and layout. Legacy: an abstract DC-per-AC grouping "
-                "with the transformer estimated as AC Block MW ÷ PF and no bound product."
+                "transformer nameplates and layout — offered when they match the project "
+                "(4 h today). Auto-recommended / Custom: the AC Block is composed from POI "
+                "power minus losses and the DC Block power at the project duration (PCS "
+                "count × rating, transformer windings), auto-recommended and manually "
+                "adjustable, for any system duration."
             ),
         )
-        use_governed = (ac_method == _GOVERNED_METHOD)
-        # P0 duration gate: the governed families are the 4 h / 1250 kW profile.
-        # A 2/3/8 h system needs a different DC-nameplate power → different PCS /
-        # transformer, so it must NOT be built on the 4 h family (spec Option C).
-        _project_duration_h = (target_mwh / target_mw) if (target_mw and target_mw > 0) else None
-        _dur_ok, _dur_msg = governed_duration_gate(_project_duration_h)
+        use_governed = (ac_method == _PRODUCT_METHOD)
         governed_ready = use_governed and _dur_ok
         if use_governed and not _dur_ok:
-            st.error(f"Governed AC sizing is gated — {_dur_msg}")
-            compact_note(
-                "Switch the AC Sizing method to “Legacy abstract estimate (no product)”, "
-                "or set POI energy/power to a defined-duration system (currently 4 h)."
+            # Not a wall: standard presets are 4 h products; steer to the
+            # duration-aware auto-recommended path, which sizes this system.
+            _dur_txt = f"{_project_duration_h:.1f} h" if _project_duration_h else "this"
+            st.info(
+                f"Standard product presets currently cover 4 h systems; your project is "
+                f"{_dur_txt}. Use “{_AUTO_METHOD}” — the PCS is auto-recommended for "
+                f"{_dur_txt} and stays manually adjustable."
             )
         if governed_ready:
             section_header(
-                "Governed Configuration",
-                "Primary AC Sizing path. The site is composed of real governed AC Block "
-                "families (1:1–1:8 DC-per-block); any non-multiple-of-8 remainder is placed "
-                "into smaller governed blocks (Phase B), never an average split.",
+                "Standard Product Configuration",
+                "Real productized AC Block families (1:1–1:8 DC-per-block) matched to the "
+                "project; any non-multiple-of-8 remainder is placed into smaller blocks "
+                "(mixed station), never an average split.",
                 eyebrow="Recommended",
             )
         if governed_ready:
@@ -588,13 +595,15 @@ def show():
             render_pipeline_next_steps("AC Sizing", is_guest=bool(_auth_ctx and _auth_ctx.is_guest))
         return
 
-    # ================= LEGACY ABSTRACT PATH =================
-    # Reached only when the method toggle above selects it. This path is not
-    # product-bound: the transformer nameplate is an AC Block MW ÷ PF estimate.
+    # ============= AUTO-RECOMMENDED / CUSTOM AC BLOCK =============
+    # The duration-aware sizing engine: POI power minus losses → AC:DC ratio → PCS
+    # count × rating (auto-recommended for the project duration) → transformer
+    # windings, all manually adjustable. Works for any system duration.
     st.caption(
-        "Legacy abstract estimate — no real product; the transformer is estimated as "
-        "AC Block MW ÷ PF. Switch to “Governed product” above for productized sizing "
-        "(real nameplate, vector group, whole-site layout)."
+        "Auto-recommended for the project duration; adjust the AC:DC grouping, PCS and "
+        "transformer below. The transformer here is an AC Block MW ÷ PF estimate — bind a "
+        "real catalogue product via “Standard product presets” when one matches for a "
+        "confirmed nameplate, vector group and layout."
     )
 
     # ========== STEP 2: Generate Options & Auto-select Best ==========

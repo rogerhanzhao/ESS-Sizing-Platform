@@ -430,13 +430,15 @@ def governed_duration_gate(
     *,
     tolerance: float = GOVERNED_DURATION_TOLERANCE_H,
 ) -> tuple[bool, str]:
-    """Hard gate: is a governed family defined for this project system duration?
+    """Availability check: is a standard product preset defined for this duration?
 
     ``project_duration_h`` is the project E/P ratio (poi_energy / poi_power). A
-    governed family is only valid for its declared ``system_duration_h`` because
-    the PCS rating is matched to the DC Block nameplate power at that duration.
-    Returns ``(ok, message)``; when not ok the caller must refuse the governed
-    path (fall back to legacy / adjust inputs), never build a mismatched family.
+    standard product family is only valid for its declared ``system_duration_h``
+    because the PCS rating is matched to the DC Block nameplate power at that
+    duration. Returns ``(ok, message)``. This is NOT a hard block: when not ok the
+    caller offers the duration-aware auto-recommended path instead (which sizes any
+    duration) — it only prevents building a mismatched 4 h preset for another
+    duration.
     """
     try:
         duration = float(project_duration_h) if project_duration_h is not None else None
