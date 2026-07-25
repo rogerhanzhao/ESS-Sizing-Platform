@@ -93,38 +93,137 @@ where `√(DC_RTE)` is the one-way DC efficiency and `sc_loss` is the
 storage-&-conveyance (calendar) loss. **POI is always the reference plane**;
 every AC-side quantity is referred back to POI through `eff_chain`.
 
+### 2.1 Where is the POI power requirement — MV or HV? (authoritative)
+
+The POI power/energy requirement is stated **at the POI plane [6]**, and the POI
+plane's voltage is set by the project:
+
+- Default: `poi_nominal_voltage_kv = 33.0` (case.py) and `eff_hvt_others = 1.0`
+  (stage1) → **POI is at the MV collection bus (33 kV)**. There is no site main
+  step-up; the last modelled loss to POI is `eff_ac_cables_sw_rmu` (MV cables +
+  switchgear + RMU). This is the current governed default.
+- If the project connects at HV (e.g. a site main transformer 33 kV → 110/220 kV),
+  set `eff_hvt_others < 1.0` and `poi_nominal_voltage_kv` to the HV value → **POI
+  moves to the HV side** and the HV transformer loss is included.
+
+So the POI plane is explicit and configurable; the two governed cases are
+"POI = MV bus" (default) and "POI = HV side" (site main TR present). AC Sizing
+must refer POI power to the AC-block MV terminal through only the losses that lie
+between them:
+
+```
+eff(AC-block MV terminal → POI) = eff_ac_cables_sw_rmu · eff_hvt_others
+```
+
+**Segmented-percentage rule (owner-confirmed).** The efficiency chain is a set of
+named **segment percentages**; a segment at **100 % means it is absent / lossless**.
+The POI plane sits at the last segment carrying a loss:
+
+- `eff_hvt_others = 100 %` → no HV step-up → **POI at MV (33 kV)**, the default.
+- `eff_hvt_others < 100 %` → a site HV transformer/line is present → **POI at HV**.
+
+Reserved segments (e.g. an extra MV switch / breaker stage, or a DC-side segment)
+default to **100 % (lossless placeholder)** until a project supplies the real
+percentage, so the chain stays explicit and auditable without inventing losses.
+
 ---
 
 ## 3. AC Sizing normalized contract
 
-**Inputs (from DC sizing, read-only):**
-- `dc_blocks_total`, DC Block template (`Dc_Block_Code`, energy, form, container),
-- DC Block `nameplate_power_kw` @ project `system_duration_h`,
-- `poi_power_req_mw`, `poi_energy_req_mwh`, `eff_chain` (Stage 1).
+### 3.0 Two calculation lines that must reconcile
 
-**AC Block definition (normalized):** an AC Block = a group of DC Blocks + PCS +
-one step-up transformer + one MV connection (RMU). It is described by:
+AC Sizing is driven by **two lines** that meet at the AC Block; a correct scheme
+is where they agree within the adjustment band (§3.2).
+
+**Line 1 — Power, top-down from POI (product-library driven).**
+The contractual quantity is the **POI power** at the POI plane (§2.1). Refer it
+back to the AC-block MV terminal, then divide by a real AC Block product's rated
+power to get the block count — independent of the DC count:
+
+```
+ac_aggregate_mw   = poi_power_req_mw / (eff_ac_cables_sw_rmu · eff_hvt_others)
+ac_block_count(P) = ceil_within_band( ac_aggregate_mw / AcBlockRatedPowerMw(product) )
+```
+`AcBlockRatedPowerMw` and `PcsUnitRatedPowerKw` come from the AC Block / PCS
+catalogue (`AC_Block_Data_Dictionary`). The `ceil` is **soft** — see §3.2.
+
+**Line 2 — DC-side power, bottom-up (energy/duration driven).**
+DC sizing (frozen) grosses the POI requirement up through the whole chain
+(including the AC Block's own PCS + MV transformer efficiency) and picks DC Blocks
+by energy:
+
+```
+dc_power_required_mw = poi_power_req_mw / eff_chain      # deducts AC Block η too
+dc_energy_required   → Stage 1/2  →  dc_blocks_total (of a template @ duration)
+```
+
+**Reconciliation (the crux).** Line 1 says how many AC Blocks the *power* needs
+from the product library; Line 2 says how many DC Blocks the *energy* needs. The
+AC Sizing job is to group `dc_blocks_total` under AC Blocks so that:
+- the DC:AC grouping ratio is **reasonable** (`DcAcRatio`, §3.2), and
+- the resulting AC aggregate power covers `poi_power_req_mw` within the band.
+Single-config first (§3.3); mixed only when a single config cannot reconcile
+cleanly.
+
+### 3.1 AC Block definition (normalized)
+
+An AC Block = a group of DC Blocks + PCS + one step-up transformer + one MV
+connection (RMU), described by:
 - `dc_per_block` (DC Blocks under this AC Block) — this IS the "ratio" axis:
   1:1 / 1:2 / 1:4 / **1:8** = 1 / 2 / 4 / 8 DC per block,
-- `pcs_count`, `pcs_kw`,
-- `transformer_mva`, `vector_group`, `lv_winding_count`,
+- `pcs_count`, `pcs_kw` (**continuous** rated power, `PcsUnitRatedPowerKw`),
+- `transformer_mva` (ambient-dependent, see §3.2), `vector_group`, `lv_winding_count`,
 - `layout_variant` (arrangement engine), `container_type`.
 
-**Rule A1 (PCS power).** `pcs_count · pcs_kw ≥ dc_per_block · dc_block_nameplate_power_kw(duration)`.
-For the dedicated DC→PCS policy (1 PCS per DC), `pcs_kw ≥ dc_block_nameplate_power_kw(duration)`.
+### 3.2 The adjustment band — power matching is NOT a rigid equality
+
+Three real effects give the scheme its "adjustment room"; sizing must use bands,
+not hard nameplate equalities:
+
+1. **PCS overload.** `PcsUnitRatedPowerKw` is the **continuous** rating; a PCS has
+   short-term overload capability, so the DC block power may momentarily exceed
+   the PCS continuous nameplate. Model this with an explicit
+   `pcs_overload_factor` (≥ 1.0, e.g. 1.1) rather than treating the nameplate as a
+   hard ceiling.
+2. **DC:AC power ratio / over-provisioning** (`DcAcRatio` in the AC Block dict —
+   "DC 名义功率与 AC 额定功率的比例或能量超配系数"). The DC nominal power vs the AC
+   rated power sits in a reasonable band (typ. ~1.0–1.5); it is a design choice,
+   not a fixed 1:1.
+3. **Ambient-derated transformer.** A product's transformer nameplate depends on
+   ambient (e.g. Sineng EH-10000 `transformer_kva_by_ambient` = 11000 @30 °C /
+   10000 @45 °C / 8750 @50 °C, per `RatedPowerComment`). The MVA used must state
+   its ambient basis.
+
+**Rule A1 (PCS power, revised).** Instead of a rigid nameplate floor, require
+`dc_per_pcs · dc_block_nameplate_power_kw(duration) ≤ pcs_kw · pcs_overload_factor`.
+For the dedicated 1 PCS ↔ 1 DC policy this is
+`dc_block_nameplate_power_kw(duration) ≤ pcs_kw · pcs_overload_factor`.
 
 **Rule A2 (transformer).** Governed AC Blocks carry a real product nameplate
-(`transformer_mva` from the catalogue) — never `AC-block-MW ÷ PF`. Only the
+(`transformer_mva` at a stated ambient basis) — never `AC-block-MW ÷ PF`. Only the
 legacy abstract path may show the `MW ÷ PF` estimate, clearly labelled.
 
-**Rule A3 (POI power closure).** `Σ AC-block MW · eff(AC→POI) ≈ poi_power_req_mw`
-within the allowed oversize margin (`evaluate_ac_sizing_feasibility`).
+**Rule A3 (POI power closure, banded).** The chosen configuration must satisfy
+`poi_power_req_mw ≤ Σ AC-block deliverable power at POI ≤ poi_power_req_mw · (1 + oversize_max)`,
+where the AC-block deliverable at POI accounts for `eff(AC→POI)` and the allowed
+PCS overload / oversize margin (`evaluate_ac_sizing_feasibility`). Landing on a
+clean product configuration inside this band is the goal — not an exact equality.
 
-### 3.1 Two AC Sizing methods (already implemented, one primary)
+### 3.3 Single-config first, mixed only when needed (owner-confirmed)
+
+**Rule A4 (single-config priority).** Prefer a **single uniform AC Block
+configuration** for the whole site (Phase A — every AC Block identical). Use the
+**mixed** decomposition (Phase B — 8/4/2/1 governed families) only when a single
+config cannot reconcile the DC count / POI power cleanly. Mixed gives large or
+awkward projects more precision and flexibility, but it is the exception, not the
+default: a site that divides cleanly must stay single-config.
+
+### 3.4 Two AC Sizing methods (already implemented, one primary)
 
 - **Governed product (primary).** The site is composed of real productized AC
   Block families (below). `dc_per_block ∈ {8,4,2,1}` = 1:8/1:4/1:2/1:1. Real
-  transformer, real layout, real BOM. Non-multiple decompositions use Phase B.
+  transformer, real layout, real BOM. Single-config first (Rule A4); non-multiple
+  decompositions use Phase B.
 - **Legacy abstract (secondary, folded).** The frozen
   `ac_sizing_service` ratio set `{1:1,1:2,1:4}` + `MW ÷ PF` transformer, no
   product. Kept for a no-product quick estimate; never the report's basis.
