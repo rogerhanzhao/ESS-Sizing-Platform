@@ -821,6 +821,26 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         f"DC total nameplate @BOL: {_format_mwh_3(ctx.dc_total_energy_mwh)} MWh   |   "
         f"Oversize margin: {_format_mwh_3(oversize_mwh)} MWh"
     )
+    # State the DC packaging mode and, for a hybrid config, call out the cabinet
+    # tail explicitly (the DC-side counterpart of the AC-side tail AC Blocks).
+    _s2 = ctx.stage2 if isinstance(ctx.stage2, dict) else {}
+    _dc_mode = str(_s2.get("mode") or "")
+    _cont_n = int(_s2.get("container_count") or 0)
+    _cab_n = int(_s2.get("cabinet_count") or 0)
+    _mode_label = {
+        "container_only": "Container only",
+        "cabinet_only": "Cabinet only",
+        "hybrid": "Hybrid (full containers + a cabinet tail)",
+    }.get(_dc_mode, _dc_mode)
+    if _dc_mode:
+        _mode_txt = f"DC packaging: {_mode_label}"
+        if _dc_mode == "hybrid":
+            _mode_txt += f" — {_cont_n} container(s) + {_cab_n} cabinet(s) as the DC-side tail"
+        elif _dc_mode == "container_only":
+            _mode_txt += f" — {_cont_n} container(s)"
+        elif _dc_mode == "cabinet_only":
+            _mode_txt += f" — {_cab_n} cabinet(s)"
+        doc.add_paragraph(_mode_txt + ".")
 
     # --- Section 5: Stage 3 - Lifetime Degradation & POI Deliverable ---
     doc.add_page_break()
@@ -1217,6 +1237,11 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 "provisional_auto": "provisional",
                 "none": "—",
             }
+            # Head = the largest AC Block (most DC per block); the smaller blocks
+            # covering the remainder are the AC-side tail (mirrors the DC cabinet
+            # tail in §4). A single-group site has a head and no tail.
+            _max_dc_per = max((int(g.dc_blocks_per_ac_block or 0) for g in run_like.groups), default=0)
+            _is_mixed_ac = len(run_like.groups) > 1
             schedule_rows = []
             for g in run_like.groups:
                 mva = (g.ac_output or {}).get("transformer_mva")
@@ -1228,8 +1253,12 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 product_cell = (g.bound_product_code or "TBD (no catalogue product)")
                 if g.bound_product_code:
                     product_cell += f"  [{conf}]"
+                role = "Head" if (int(g.dc_blocks_per_ac_block or 0) == _max_dc_per) else "Tail"
+                if not _is_mixed_ac:
+                    role = "—"
                 schedule_rows.append((
                     g.configuration_code,
+                    role,
                     f"{g.ac_block_count}",
                     f"{g.pcs_per_ac_block} × {g.pcs_kw:.0f} kW",
                     f"{g.dc_blocks_per_ac_block} per block",
@@ -1239,8 +1268,13 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             _add_table(
                 doc,
                 schedule_rows,
-                ["AC Block Model", "Qty", "PCS", "DC Blocks", "Transformer (per block)", "Product"],
+                ["AC Block Model", "Role", "Qty", "PCS", "DC Blocks", "Transformer (per block)", "Product"],
             )
+            if _is_mixed_ac:
+                _keep_next_para(doc.add_paragraph(
+                    "Mixed AC Block station: a head AC Block plus smaller tail AC Blocks cover the "
+                    "remainder — the AC-side counterpart of the DC cabinet tail in Section 4."
+                ))
         # A governed run does not also draw the linear L2 site array.
         site_layout = None
     else:
