@@ -364,7 +364,35 @@ def show():
                 "auto-recommended sizing below."
             ),
         ))
-        governed_ready = use_governed
+        # Mixed AC Block station toggle — the AC parallel of DC Sizing's "Enable
+        # Hybrid Mode": places any non-multiple-of-8 remainder into smaller
+        # governed AC Blocks (10 MW head + 5/2.5/1.25 MW tails), just as DC hybrid
+        # places a remainder into cabinets after full containers. Auto-on only when
+        # a tail is actually needed. Off + a remainder cannot form a uniform site
+        # (an AC Block's DC count is a hard constraint), so it is refused with a
+        # clear message rather than silently padded.
+        _head_dc = int(_GOVERNED.dc_block_count)
+        _remainder = (dc_blocks_total % _head_dc) if dc_blocks_total > 0 else 0
+        _mixed_ok = True
+        if use_governed:
+            enable_mixed = bool(st.checkbox(
+                "Enable mixed AC Block station (place the remainder in smaller AC Blocks)",
+                value=(_remainder != 0),
+                key="enable_mixed_ac_station",
+                help=(
+                    "Symmetric to DC Sizing's Hybrid Mode. On: a 10 MW head block plus "
+                    "smaller 5 / 2.5 / 1.25 MW tail blocks cover any remainder (mixed station). "
+                    "Off: uniform 10 MW blocks only — needs a DC total that is a multiple of 8."
+                ),
+            ))
+            if (not enable_mixed) and _remainder != 0:
+                _mixed_ok = False
+                st.warning(
+                    f"Mixed station disabled and {_remainder} remainder DC Block(s) cannot form a "
+                    f"full {_head_dc}-DC (10 MW) AC Block. Enable the mixed station above, or set "
+                    f"DC Sizing to a multiple of {_head_dc} DC Blocks."
+                )
+        governed_ready = use_governed and _mixed_ok
         if governed_ready:
             section_header(
                 "Standard Product AC Block",
