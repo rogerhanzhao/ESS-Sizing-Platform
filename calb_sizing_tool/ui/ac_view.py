@@ -737,6 +737,35 @@ def show():
                 f"total AC {selected_option.ac_block_count * single_block_ac_power:.2f} MW)."
             )
 
+            # OPTIONAL — bind a real catalogue product that matches this spec (same
+            # PCS count × rating) so the transformer nameplate / vector group come
+            # from the datasheet instead of the MW ÷ PF estimate. This is a lookup
+            # by the spec already computed — it introduces no new parameter.
+            bound_ac_product = None
+            try:
+                from calb_sizing_tool.services.ac_block_product_match import match_ac_block_products
+                _matches = match_ac_block_products(pcs_per_ac, pcs_kw)
+            except Exception:
+                _matches = []
+            if _matches:
+                _labels = ["(none — transformer estimated as MW ÷ PF)"] + [
+                    f"{m.get('vendor') or ''} · {m['block_code']} · "
+                    f"{(m.get('transformer_kva') or 0) / 1000:.2f} MVA"
+                    + (f" · {m['transformer_vector_group']}" if m.get("transformer_vector_group") else "")
+                    for m in _matches
+                ]
+                _bind_choice = st.selectbox(
+                    "Bind catalogue product (optional — confirmed transformer / LV values)",
+                    range(len(_labels)),
+                    index=0,
+                    format_func=lambda i: _labels[i],
+                    key="ac_trunk_product_bind",
+                    help="Catalogue products whose PCS count and unit rating match this AC "
+                    "Block. Binding one replaces the MW ÷ PF transformer estimate with the "
+                    "real product nameplate; unmatched specs stay on the estimate.",
+                )
+                bound_ac_product = _matches[_bind_choice - 1] if _bind_choice > 0 else None
+
             submitted = st.button("Run AC Sizing", use_container_width=True, type="primary")
 
         # ========== STEP 4: Calculation & Validation ==========
@@ -876,6 +905,12 @@ def show():
                 "source_poi_nominal_voltage_kv": mv_kv,
                 "source_poi_frequency_hz": stage13_output.get("poi_frequency_hz"),
             }
+
+            # If a catalogue product was bound, replace the MW ÷ PF transformer
+            # estimate with the real product nameplate / vector group / cooling.
+            if bound_ac_product:
+                from calb_sizing_tool.services.ac_block_product_match import product_transformer_overrides
+                ac_output.update(product_transformer_overrides(bound_ac_product))
 
             st.session_state["ac_output"] = ac_output
             ac_results.update(ac_output)

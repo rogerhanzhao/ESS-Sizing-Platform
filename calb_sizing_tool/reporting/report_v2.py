@@ -989,8 +989,14 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     if ac_pcs_kw is None and isinstance(ctx.ac_output, dict):
         ac_pcs_kw = ctx.ac_output.get("pcs_power_kw")
     pcs_count_by_block = ctx.ac_output.get("pcs_count_by_block") if isinstance(ctx.ac_output, dict) else None
+    # "Product-backed" = the transformer nameplate comes from a real catalogue
+    # product (a governed configuration OR a catalogue product bound on the
+    # auto-recommend trunk), so the report shows the nameplate rather than MW ÷ PF.
     is_governed = bool(ctx.configuration_code) or (
-        isinstance(ctx.ac_output, dict) and bool(ctx.ac_output.get("governed_configuration"))
+        isinstance(ctx.ac_output, dict) and (
+            bool(ctx.ac_output.get("governed_configuration"))
+            or bool(ctx.ac_output.get("ac_block_product_block_code"))
+        )
     )
     governed_groups = ctx.ac_output.get("governed_groups") if isinstance(ctx.ac_output, dict) else None
     pcs_by_block_text = ""
