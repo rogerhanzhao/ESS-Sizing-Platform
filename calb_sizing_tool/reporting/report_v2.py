@@ -43,7 +43,6 @@ from calb_diagrams.ac_block_bilateral_layout import (
     render_bilateral_plan_svg,
 )
 from calb_diagrams.governed_site_layout_concept import render_governed_site_layout_concept_svg
-from calb_sizing_tool.services.ac_power_reconciliation import reconcile_governed_power
 from calb_diagrams.site_array_concept import (
     US_NFPA_SITE as SITE_PROFILE,
     compute_site_array,
@@ -1065,55 +1064,6 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         (transformer_basis_label, transformer_formula),
     ]
     _add_table(doc, s4_rows, ["Parameter", "Value"])
-
-    # Power reconciliation (POI <-> AC Block), governed runs only. Read-only check
-    # that the AC aggregate covers the POI power within the adjustment band; it
-    # does not change any sizing (dc_power_required is the frozen Stage 1 value).
-    if is_governed:
-        ac_rated_total_mw = None
-        if isinstance(ctx.ac_output, dict) and ctx.ac_output.get("governed_site_total_ac_mw"):
-            ac_rated_total_mw = float(ctx.ac_output["governed_site_total_ac_mw"])
-        elif ctx.ac_block_size_mw and ctx.ac_blocks_total:
-            ac_rated_total_mw = float(ctx.ac_block_size_mw) * int(ctx.ac_blocks_total)
-        head_pcs_kw = head_dc_power_kw = None
-        try:
-            from calb_sizing_tool.schemas.governed_ac_block_config import get_governed_configuration
-            _hcfg = get_governed_configuration(ctx.configuration_code)
-            head_pcs_kw = float(_hcfg.pcs_rating_kw)
-            head_dc_power_kw = float(_hcfg.dc_block_nameplate_power_kw)
-        except Exception:
-            pass
-        if ac_rated_total_mw and ctx.poi_power_requirement_mw:
-            recon = reconcile_governed_power(
-                poi_power_mw=ctx.poi_power_requirement_mw,
-                eff_ac_cables_sw_rmu=ctx.efficiency_components_frac.get("eff_ac_cables_sw_rmu_frac") or 0.0,
-                eff_hvt_others=ctx.efficiency_components_frac.get("eff_hvt_others_frac") or 0.0,
-                eff_chain=ctx.efficiency_chain_oneway_frac or 0.0,
-                ac_rated_total_mw=ac_rated_total_mw,
-                poi_energy_mwh=ctx.poi_energy_requirement_mwh,
-                pcs_kw=head_pcs_kw,
-                dc_block_power_kw=head_dc_power_kw,
-            )
-            doc.add_heading("6.1  Power Balance (POI vs AC Block)", level=3)
-            _keep_next_para(doc.add_paragraph(
-                "Verification that the installed AC Block capacity meets the POI power requirement "
-                "within the design margin. Design bands: POI coverage 95–105%, DC:AC power ratio "
-                "1.00–1.50, PCS loading within its rating and short-term overload headroom."
-            ))
-            _pct = lambda v: f"{v*100:.1f}%" if v is not None else "—"
-            recon_rows = [
-                ("POI Power Requirement (MW)", f"{recon.poi_power_mw:.2f}"),
-                ("System Duration (h)", f"{recon.discharge_duration_h:.2f}" if recon.discharge_duration_h else "—"),
-                ("Efficiency, AC Block to POI", _pct(recon.eff_mv_to_poi)),
-                ("Installed AC Block Rated Power (MW)", f"{recon.ac_rated_total_mw:.2f}"),
-                ("Deliverable Power at POI (MW)", f"{recon.ac_poi_deliverable_mw:.2f}"),
-                ("POI Power Coverage", _pct(recon.poi_coverage_frac) + ("  ✓" if recon.poi_within_band else "  — outside design margin")),
-                ("DC:AC Power Ratio", (f"{recon.dc_ac_ratio:.2f}" if recon.dc_ac_ratio else "—") + ("  ✓" if recon.dc_ac_within_band else "  —")),
-                ("PCS Loading", _pct(recon.pcs_utilization_frac) + ("  ✓ within rating" if recon.pcs_within_overload else "  — exceeds rating")),
-            ]
-            _add_table(doc, recon_rows, ["Parameter", "Value"])
-            for note in recon.notes:
-                doc.add_paragraph(note)
 
     # --- Section 7: Single Line Diagram ---
     doc.add_page_break()

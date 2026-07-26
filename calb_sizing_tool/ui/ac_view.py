@@ -344,7 +344,6 @@ def show():
         build_governed_primary_ac_output,
         build_governed_site_plan,
     )
-    from calb_sizing_tool.schemas.governed_ac_block_config import governed_duration_gate
 
     selected_product_code = None
     num_units = 0
@@ -353,19 +352,7 @@ def show():
     # → pass/hold) is the trunk below. A real productized AC Block (the 10 MW /
     # 8-DC bilateral standard block + its 5/2.5/1.25 MW tails) is an OPTIONAL
     # preset on top — a shortcut to a confirmed catalogue product, never a second
-    # engine or a gate. System duration is a known input (POI energy / power); the
-    # preset's real products currently cover 4 h, so for other durations the flow
-    # falls through to the duration-aware auto-recommend trunk (never stuck).
-    # System duration = POI energy requirement / POI power requirement (spec §1),
-    # NOT DC nameplate capacity / power — the DC capacity (target_mwh) is oversized
-    # for losses/degradation, so using it would read e.g. 4.6 h for a 4 h system.
-    _poi_power_req = float(stage13_output.get("poi_power_req_mw") or target_mw or 0.0)
-    _poi_energy_req = float(stage13_output.get("poi_energy_req_mwh") or 0.0)
-    _project_duration_h = (
-        (_poi_energy_req / _poi_power_req) if (_poi_power_req > 0 and _poi_energy_req > 0) else None
-    )
-    _dur_ok, _dur_msg = governed_duration_gate(_project_duration_h)
-
+    # engine. Feasibility is validated by the existing power/energy check.
     with st.container(border=True):
         use_governed = bool(st.checkbox(
             "Use a standard product AC Block preset (real catalogue: 10 MW / 8-DC bilateral + tails)",
@@ -374,20 +361,10 @@ def show():
             help=(
                 "Optional shortcut to a real productized AC Block with a confirmed "
                 "transformer nameplate, vector group and layout. Leave unchecked for the "
-                "auto-recommended sizing below (any duration). The preset's real products "
-                "currently cover 4 h systems."
+                "auto-recommended sizing below."
             ),
         ))
-        governed_ready = use_governed and _dur_ok
-        if use_governed and not _dur_ok:
-            # Not a wall: the preset's products are 4 h; uncheck to auto-size this
-            # duration in the trunk flow below.
-            _dur_txt = f"{_project_duration_h:.1f} h" if _project_duration_h else "this"
-            st.info(
-                f"The standard product preset currently covers 4 h systems; your project is "
-                f"{_dur_txt}. Uncheck it — the sizing below is auto-recommended for {_dur_txt} "
-                f"and stays manually adjustable."
-            )
+        governed_ready = use_governed
         if governed_ready:
             section_header(
                 "Standard Product AC Block",

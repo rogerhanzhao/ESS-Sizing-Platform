@@ -10,6 +10,26 @@ Baseline: `ops/ubuntu-docker-coexist-20260311`.
 
 ---
 
+## ⚠ CORRECTION (2026-07-25) — the "system duration family" concept is WITHDRAWN
+
+Sections that treat **system duration (2/3/4/8 h)** as a stored parameter, a DC
+Block nameplate-power-by-duration profile, a governed "family per duration", or a
+duration gate (Rule S1, §1's duration table, §4's family matrix, the PCS-overload
+"adjustment band" tied to a duration nameplate power) **do not reflect this
+project's real logic and have been removed from the code.** They fabricated a
+parameter that the live sizing does not use.
+
+What is real (and unchanged): the DC-side rate parameter is **C-rate**
+(`effective_c_rate`, `chosen_soh_c_rate`, `chosen_rte_c_rate`) — computed in the
+frozen Stage 3 (it selects the SOH / RTE profiles) and already shown in the
+report. AC Sizing continues the existing logic: auto-recommend AC:DC ratio + PCS,
+then the existing power/energy validation (`evaluate_ac_sizing_feasibility`) →
+pass/hold. The standard product AC Block is an optional preset, not gated by any
+duration. Keep the still-valid parts below (POI plane / efficiency chain / POI is
+the reference plane); ignore anything that introduces a duration family.
+
+---
+
 ## 0. Why this spec
 
 Real projects are **duration systems** — 2 h / 3 h / 4 h, and a likely future
