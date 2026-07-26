@@ -69,6 +69,10 @@ A change is not done until ALL of these pass:
 5. **Parameter-source check (R6)** — any new parameter is grep-confirmed to be
    consumed by live code or present in the real data/catalogue; a dictionary
    field with no live consumer is not wired in.
+6. **Run the real app** for any change to a page's flow — the function-level
+   suite cannot see UI-integration bugs. `python scripts/smoke_app_ac_sizing.py`
+   drives guest → DC → AC in the actual Streamlit app (it caught the duration
+   bug the unit tests missed). PASS(0) / FAIL(1) / SKIP(2 if no browser).
 
 If any fails, fix or revert before committing. A green suite that skips these
 guards is not sufficient.
