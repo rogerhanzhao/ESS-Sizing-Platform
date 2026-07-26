@@ -315,6 +315,13 @@ def show():
         col2.metric("DC Capacity", f"{total_energy_mwh:.1f} MWh")
         col3.metric("POI Power Req.", f"{target_mw:.1f} MW")
         col4.metric("POI Energy Req.", f"{target_mwh:.0f} MWh")
+        if dc_cabinet_count > 0:
+            compact_note(
+                f"DC side used a hybrid packaging: {dc_container_count} container(s) + "
+                f"{dc_cabinet_count} cabinet(s) as the DC tail. The AC mixed station (in the "
+                "standard product preset) is the AC-side counterpart that places the remainder "
+                "into smaller AC Blocks."
+            )
 
     st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
 
