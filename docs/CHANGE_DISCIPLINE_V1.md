@@ -11,7 +11,7 @@ Read this before starting any change. The paired automated checks are in
 
 ---
 
-## 1. The five rules
+## 1. The six rules
 
 **R1 — One flow, no parallel systems.** There is ONE AC Sizing engine (auto-
 recommend ratio + PCS, duration-aware, then power/energy validation → pass/hold)
@@ -42,6 +42,16 @@ primary path, a new gate, or reverses a prior decision: **state the plan and get
 owner confirmation first.** Do only what the request needs — no speculative
 scope.
 
+**R6 — No fabricated parameters.** A new sizing/engineering parameter may be
+introduced ONLY when it already has a source in real data (a used column in the
+data dictionary / product catalogue) or in the existing frozen calculation. If a
+value exists in a dictionary sheet but no live code consumes it, it is reference
+meta — NOT a business parameter — and must not be wired into sizing, gating or
+the report. Continue the existing calculation and display; do not invent a new
+axis (e.g. a "system duration family") to sit beside a real one (e.g. C-rate).
+When unsure whether a parameter is real, grep the live code for its use and ask
+the owner before introducing it.
+
 ---
 
 ## 2. The verification mechanism (run on every change)
@@ -56,6 +66,9 @@ A change is not done until ALL of these pass:
    tokens in the exported DOCX).
 4. **Scope check** — the diff touches only the layers the request needs; no new
    parallel sizing path introduced (R1); no fabricated values (R3).
+5. **Parameter-source check (R6)** — any new parameter is grep-confirmed to be
+   consumed by live code or present in the real data/catalogue; a dictionary
+   field with no live consumer is not wired in.
 
 If any fails, fix or revert before committing. A green suite that skips these
 guards is not sufficient.
@@ -71,6 +84,9 @@ guards is not sufficient.
 - You are recomputing in the report/SLD/layout what the sizing run already
   produced (consume the persisted run instead).
 - You are about to write an internal term into a customer-facing string.
+- You are introducing a parameter you found in a dictionary sheet without first
+  confirming that live code already consumes it (R6) — or you are adding a new
+  sizing axis next to one that already exists (e.g. duration next to C-rate).
 
 Any of these means: stop, simplify back to one flow + optional layers, and
 confirm with the owner.
