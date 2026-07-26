@@ -356,7 +356,14 @@ def show():
     # engine or a gate. System duration is a known input (POI energy / power); the
     # preset's real products currently cover 4 h, so for other durations the flow
     # falls through to the duration-aware auto-recommend trunk (never stuck).
-    _project_duration_h = (target_mwh / target_mw) if (target_mw and target_mw > 0) else None
+    # System duration = POI energy requirement / POI power requirement (spec §1),
+    # NOT DC nameplate capacity / power — the DC capacity (target_mwh) is oversized
+    # for losses/degradation, so using it would read e.g. 4.6 h for a 4 h system.
+    _poi_power_req = float(stage13_output.get("poi_power_req_mw") or target_mw or 0.0)
+    _poi_energy_req = float(stage13_output.get("poi_energy_req_mwh") or 0.0)
+    _project_duration_h = (
+        (_poi_energy_req / _poi_power_req) if (_poi_power_req > 0 and _poi_energy_req > 0) else None
+    )
     _dur_ok, _dur_msg = governed_duration_gate(_project_duration_h)
 
     with st.container(border=True):
