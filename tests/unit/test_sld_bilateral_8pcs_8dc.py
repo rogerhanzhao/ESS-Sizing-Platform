@@ -44,6 +44,10 @@ def _governed_ac_snapshot() -> AcSnapshot:
             "lv_voltage_v": _PROVISIONAL_LV_VOLTAGE_V,
         }
     )
+    # The governed configuration intentionally leaves vector group provisional
+    # until it is bound to product/engineering data.  Carry the selected
+    # product-style value on the AC-to-SLD output contract for this 8-PCS test.
+    output["transformer_vector_group"] = "Dy11y11"
     return AcSnapshot(
         inputs={"grid_kv": 33.0, "lv_voltage_v": _PROVISIONAL_LV_VOLTAGE_V},
         output=output,
@@ -54,6 +58,7 @@ def _governed_ac_snapshot() -> AcSnapshot:
 def _governed_topology(sample_excel_path):
     run_bundle = _build_run_bundle(sample_excel_path)
     override_payload = legacy_sld_override_preset()
+    override_payload["transformer_vector_group"] = "Dy11y11"
     override_payload["dc_block_voltage_v"] = 1500.0
     canonical = build_sld_canonical_input(
         run_bundle=run_bundle,
@@ -149,3 +154,8 @@ def test_layout_and_rendered_svg_have_no_collisions(sample_excel_path, tmp_path)
     assert "LV-B DISTRIBUTION SECTION" in svg_text
     assert "NO LV BUS TIE" in svg_text
     assert "3-winding: 1 MV primary + 2 independent LV secondaries" in svg_text
+    for winding in (1, 2):
+        prefix = f'tx-lv-winding-{winding}'
+        assert f'id="{prefix}-wye-left"' in svg_text
+        assert f'id="{prefix}-wye-right"' in svg_text
+        assert f'id="{prefix}-earth-bar-1"' not in svg_text

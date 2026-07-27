@@ -53,7 +53,7 @@
   },
   "project_settings": {
     "transformer": {
-      "vector_group": "Dyn11",
+      "vector_group": "Dyn11yn11",
       "uk_percent": 7.0
     },
     "dc_block_voltage_v": 1500.0,

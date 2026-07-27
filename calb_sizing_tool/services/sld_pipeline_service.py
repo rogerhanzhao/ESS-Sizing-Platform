@@ -209,8 +209,9 @@ def run_sld_pipeline_from_run_bundle(
     plugin_id: str = "sld_engineering_v1",
     actor: str | None = None,
     db_url: str | None = None,
+    register_artifacts: bool = True,
 ) -> ExecutedSldPipeline:
-    if not str(run_bundle.run_id or "").strip():
+    if register_artifacts and not str(run_bundle.run_id or "").strip():
         raise ValueError("SLD artifact registration requires a valid run_id.")
 
     prepared = prepare_sld_pipeline_from_run_bundle(
@@ -297,21 +298,22 @@ def run_sld_pipeline_from_run_bundle(
         artifact.metadata.update(shared_artifact_metadata)
         artifact.metadata.setdefault("content_hash", _hash_bytes(artifact.content))
 
-    persist_artifacts(
-        run_id=run_bundle.run_id,
-        artifacts=artifacts,
-        plugin_id=prepared.plugin_id,
-        plugin_version=prepared.plugin_version,
-        actor=actor,
-        db_url=db_url,
-        source_ref="sld_pipeline_service",
-    )
+    if register_artifacts:
+        persist_artifacts(
+            run_id=run_bundle.run_id,
+            artifacts=artifacts,
+            plugin_id=prepared.plugin_id,
+            plugin_version=prepared.plugin_version,
+            actor=actor,
+            db_url=db_url,
+            source_ref="sld_pipeline_service",
+        )
 
     artifact_bundle = DiagramArtifactBundle(
         plugin_id=prepared.plugin_id,
         plugin_version=prepared.plugin_version,
         run_id=run_bundle.run_id,
-        metadata=metadata,
+        metadata={**metadata, "artifacts_registered": bool(register_artifacts)},
         artifacts=[artifact.__dict__ for artifact in artifacts],
     )
     return ExecutedSldPipeline(

@@ -19,6 +19,7 @@ from calb_sizing_tool.reporting.report_v2 import export_report_v2_1
 from calb_sizing_tool.services.ac_block_product_seed_service import seed_ac_block_products
 from calb_sizing_tool.services.ac_block_product_match import (
     match_ac_block_products,
+    preferred_catalogue_architecture,
     product_transformer_overrides,
 )
 
@@ -46,6 +47,37 @@ def test_matches_same_pcs_combo_only(seeded_db):
 def test_invalid_spec_returns_empty(seeded_db):
     assert match_ac_block_products(0, 1250.0, db_url=seeded_db) == []
     assert match_ac_block_products(4, 0, db_url=seeded_db) == []
+
+
+def test_product_preference_is_contextual_and_does_not_change_matching_spec(seeded_db):
+    default = preferred_catalogue_architecture("1:4")
+    one_to_eight = preferred_catalogue_architecture("1:8")
+    assert (default["pcs_count"], default["pcs_kw"]) == (2, 2500)
+    assert (one_to_eight["pcs_count"], one_to_eight["pcs_kw"]) == (8, 1250)
+
+    # The 1:8 small-PCS candidates are returned only after the user selected
+    # 8 x 1250 and the compatible three-winding topology; no call substitutes
+    # that architecture for a different selected PCS combination.
+    matches = match_ac_block_products(
+        8,
+        1250.0,
+        grouping_ratio="1:8",
+        transformer_topology="three_winding",
+        db_url=seeded_db,
+    )
+    assert {m["block_code"] for m in matches} >= {
+        "SINENG-EH-10000-HB-UD-10-33",
+        "KEHUA-BCS10000K-C-HUD-T8",
+    }
+    assert all(m["transformer_topology"] in (None, "three_winding") for m in matches)
+    assert any(m["is_preferred_architecture"] for m in matches)
+    assert match_ac_block_products(
+        8,
+        1250.0,
+        grouping_ratio="1:8",
+        transformer_topology="two_winding",
+        db_url=seeded_db,
+    ) == []
 
 
 def test_overrides_carry_only_real_values(seeded_db):

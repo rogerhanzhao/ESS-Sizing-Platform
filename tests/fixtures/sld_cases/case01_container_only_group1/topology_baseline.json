@@ -234,7 +234,7 @@
         "transformer_tap_range": "+/-2x2.5%",
         "transformer_topology": "one_mv_primary_plus_independent_lv_secondaries",
         "transformer_uk_percent": 7.0,
-        "transformer_vector_group": "Dyn11",
+        "transformer_vector_group": "Dyn11yn11",
         "transformer_winding_count": 3
       },
       "dc_block_index": null,
@@ -545,7 +545,7 @@
       "attributes": {
         "transformer_rating_mva": 6.0,
         "transformer_uk_percent": 7.0,
-        "transformer_vector_group": "Dyn11",
+        "transformer_vector_group": "Dyn11yn11",
         "transformer_winding_count": 3
       },
       "dc_block_index": null,
@@ -923,7 +923,7 @@
     "transformer_rating_mva": 6.0,
     "transformer_topology": "three_winding",
     "transformer_uk_percent": 7.0,
-    "transformer_vector_group": "Dyn11"
+    "transformer_vector_group": "Dyn11yn11"
   },
   "validation_mode": "strict"
 }

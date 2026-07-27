@@ -103,3 +103,20 @@ The frozen canon changes only when the owner explicitly re-approves it. In that
 one commit: change the module, update its pinned SHA-256 in
 `test_frozen_canon_guard.py`, bump `SIZING_LOGIC_CANON_V1`, and note the approval
 here. Never edit a pinned hash merely to make the guard pass.
+
+### Approval register
+
+- **2026-07-27 — owner-authorized AC amendment V2.** The owner explicitly
+  requested generic 1:8 grouping, an optional 8 x 1250 kW small-PCS candidate,
+  removal of the governed-product UI branch, and product matching that cannot
+  lock AC sizing. `ac_sizing_service.py` changed only for that authorized
+  grouping/candidate and a protected-output capacity check. Its pinned SHA-256
+  was updated in the same change; DC formulas, POI energy semantics, SOH/RTE
+  and existing feasibility thresholds remain unchanged.
+- **2026-07-27 owner-authorized V2 visibility correction.** The owner then
+  required that the 1:8 small-PCS candidate be visibly available in the real
+  grouping page, rather than merely present in a hidden list. The same module
+  now places the optional 8 x 1,250 kW candidate first for a selected 1:8
+  grouping. This changes no calculation, POI gate, allocation, product lock or
+  feasibility threshold; it makes the already-authorized candidate selectable.
+  The SHA-256 pin above was refreshed for this narrowly scoped correction.

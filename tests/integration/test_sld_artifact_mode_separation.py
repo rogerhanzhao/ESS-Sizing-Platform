@@ -47,7 +47,7 @@ def _make_project_settings() -> dict:
     preset = legacy_sld_override_preset()
     return {
         "transformer": {
-            "vector_group": preset["transformer_vector_group"],
+            "vector_group": "Dyn11yn11",
             "uk_percent": preset["transformer_uk_percent"],
         },
         "dc_block_voltage_v": 1500.0,
@@ -124,6 +124,7 @@ def test_sld_artifact_mode_separation(sample_excel_path, tmp_path):
     )
 
     override_payload = legacy_sld_override_preset()
+    override_payload["transformer_vector_group"] = "Dyn11yn11"
     override_payload["dc_block_voltage_v"] = 1500.0
     override_payload["dc_blocks_per_feeder"] = [1, 1, 1, 1]
     render_sld_from_run_bundle(

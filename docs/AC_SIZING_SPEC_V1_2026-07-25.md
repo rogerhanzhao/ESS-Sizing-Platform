@@ -8,6 +8,13 @@ sizing (`SIZING_LOGIC_CANON_V1`) and does not change it.
 
 Baseline: `ops/ubuntu-docker-coexist-20260311`.
 
+> **Owner override, 2026-07-27.** For current implementation and all future
+> changes, read `AC_SIZING_UNIFIED_FLOW_V2_2026-07-27.md` first. The former
+> governed-product preset and its fixed 8/4/2/1 tail decomposition are retained
+> only as historical/persisted-run compatibility; they are not the new-run AC
+> sizing path. The supported generic grouping set includes 1:8, and product
+> matching is optional enrichment after grouping, PCS and topology selection.
+
 ---
 
 ## ⚠ CORRECTION (2026-07-25) — the "system duration family" concept is WITHDRAWN
@@ -238,15 +245,14 @@ config cannot reconcile the DC count / POI power cleanly. Mixed gives large or
 awkward projects more precision and flexibility, but it is the exception, not the
 default: a site that divides cleanly must stay single-config.
 
-### 3.4 Two AC Sizing methods (already implemented, one primary)
+### 3.4 Superseded two-method design (historical record only)
 
-- **Governed product (primary).** The site is composed of real productized AC
-  Block families (below). `dc_per_block ∈ {8,4,2,1}` = 1:8/1:4/1:2/1:1. Real
-  transformer, real layout, real BOM. Single-config first (Rule A4); non-multiple
-  decompositions use Phase B.
-- **Legacy abstract (secondary, folded).** The frozen
-  `ac_sizing_service` ratio set `{1:1,1:2,1:4}` + `MW ÷ PF` transformer, no
-  product. Kept for a no-product quick estimate; never the report's basis.
+The former governed-product-primary design and its `{8,4,2,1}` tail
+decomposition are superseded for new runs. There is one sizing trunk: select a
+generic ratio from `{1:1,1:2,1:4,1:8}`, select PCS architecture and actual
+transformer topology, validate, then optionally bind a matching product. See
+`AC_SIZING_UNIFIED_FLOW_V2_2026-07-27.md`; do not implement this older section
+as a second UI flow.
 
 ---
 

@@ -23,6 +23,7 @@ def _build_v2_plan(sample_excel_path):
 def _build_v2_plan_with_dc_allocation(sample_excel_path, allocation):
     run_bundle = _build_run_bundle(sample_excel_path)
     override_payload = legacy_sld_override_preset()
+    override_payload["transformer_vector_group"] = "Dyn11yn11"
     override_payload["dc_block_voltage_v"] = 1500.0
     override_payload["dc_blocks_per_feeder"] = list(allocation)
     canonical = build_sld_canonical_input(

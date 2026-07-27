@@ -1147,8 +1147,13 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             plan_png, plan_layout = None, None
 
     if plan_png and plan_layout is not None and is_bilateral:
+        _bilateral_model_label = (
+            (ctx.ac_output or {}).get("ac_block_model_name")
+            or ctx.configuration_code
+            or "1:8 / 8 x 1250 kW PCS concept"
+        )
         _keep_next_para(doc.add_paragraph(
-            f"AC Block model {ctx.configuration_code}: central vertical "
+            f"AC Block model {_bilateral_model_label}: central vertical "
             f"40 ft AC Block with west 4-DC and east 4-DC mirrored fields "
             f"(4 + 4 arrangement, one DC Block per PCS):"
         ))

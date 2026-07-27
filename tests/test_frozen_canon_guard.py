@@ -23,7 +23,7 @@ FROZEN_CANON_SHA256 = {
     "calb_sizing_tool/services/stage2_service.py": "15b6568cf91906da605aeab458cbf0e32fed0fd77f9d8b0c9817c548ecd07086",
     "calb_sizing_tool/services/stage3_service.py": "a38bd529f97b58e8d74fe53ac0867e3ea6e44a273b8cdc45b646a7c1ab80b2ef",
     "calb_sizing_tool/services/dc_pipeline_service.py": "4424c34955ccf01f774ee79d1f111faccd879a8651180e3dcb31fa652a66cb83",
-    "calb_sizing_tool/services/ac_sizing_service.py": "ea1dad77ab30630f6695a1d532c0d0d3e37921fb36e07810db0b0556850c0474",
+    "calb_sizing_tool/services/ac_sizing_service.py": "b5e017dd28f6ee120fcd79f6d425d1bc9e04691c38ccb8a1244c7b609a14b496",
     "calb_sizing_tool/common/ac_block.py": "067468655f88f3512c695f2bb7b1162bc14e87c7eaa0b88a6d8bf9cb99887ed2",
     "calb_sizing_tool/common/allocation.py": "30bfa38462c2903b6fbfec67eea89d3962757ed02b4287010c9611d0b9c22cfa",
 }

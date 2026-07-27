@@ -370,8 +370,8 @@ def build_report_context(
                 f"but report uses {ac_blocks_total}."
             )
     selected_ratio = ac_output.get("selected_ratio")
-    if selected_ratio in ("1:1", "1:2", "1:4") and dc_blocks_total > 0:
-        ratio_map = {"1:1": 1, "1:2": 2, "1:4": 4}
+    if selected_ratio in ("1:1", "1:2", "1:4", "1:8") and dc_blocks_total > 0:
+        ratio_map = {"1:1": 1, "1:2": 2, "1:4": 4, "1:8": 8}
         denom = ratio_map.get(selected_ratio)
         if denom:
             expected_blocks = int(math.ceil(dc_blocks_total / denom))

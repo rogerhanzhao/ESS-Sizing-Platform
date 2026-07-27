@@ -18,7 +18,7 @@
 
 """
 AC SIZING V2 - DC block based recommendation engine.
-Prioritizes 1:1, 1:2, and 1:4 ratio options.
+Supports 1:1, 1:2, 1:4, and 1:8 grouping options.
 """
 from pathlib import Path
 
@@ -32,8 +32,10 @@ from calb_sizing_tool.reporting.report_v2 import export_report_v2_1
 from calb_sizing_tool.services.ac_sizing_service import (
     build_simplified_ac_block_models,
     build_dc_allocation_plan,
+    dc_grouping_has_feeder_capacity,
     evaluate_ac_sizing_feasibility,
     generate_ac_sizing_options,
+    minimum_dc_blocks_for_pcs_feeders,
     select_ac_block_container_type,
 )
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot
@@ -46,7 +48,9 @@ from calb_sizing_tool.state.workspace_state import get_workspace_context
 # Transformer topology is now selected explicitly. A two-winding transformer
 # can serve any supported PCS count on one common LV busbar; a three-winding
 # transformer balances the PCS feeders across two independent LV secondaries.
-_CUSTOM_PCS_COUNT_CHOICES = (1, 2, 3, 4, 5, 6)
+_CUSTOM_PCS_COUNT_CHOICES = (1, 2, 3, 4, 5, 6, 8)
+_TRANSFORMER_TOPOLOGIES = ("two_winding", "three_winding")
+_TOPOLOGY_CONFIRMATION = "confirmed_by_user"
 
 
 def _format_float(val, decimals=2) -> str:
@@ -75,6 +79,46 @@ def _resolve_mv_kv(stage13_output: dict, ac_inputs: dict) -> float:
         if parsed > 0:
             return parsed
     return 33.0
+
+
+def _positive_float(*values, default: float) -> float:
+    """First positive numeric value, keeping legacy state as a fallback only."""
+    for value in values:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            continue
+        if parsed > 0:
+            return parsed
+    return float(default)
+
+
+def _resolve_authoritative_poi_requirements(
+    stage13_output: dict | None,
+    dc_data: dict | None,
+) -> tuple[float, float]:
+    """Resolve POI power/energy from the Stage 1/3 handoff before legacy UI data.
+
+    ``dc_data["mwh"]`` is retained only as a compatibility fallback.  It must
+    never outrank the Stage 1/3 POI value because legacy callers can use ``mwh``
+    for a DC-side quantity.
+    """
+    stage13 = stage13_output if isinstance(stage13_output, dict) else {}
+    dc_summary = dc_data if isinstance(dc_data, dict) else {}
+    poi_power_mw = _positive_float(
+        stage13.get("poi_power_req_mw"),
+        dc_summary.get("poi_power_req_mw"),
+        dc_summary.get("target_mw"),
+        default=10.0,
+    )
+    poi_energy_mwh = _positive_float(
+        stage13.get("poi_energy_req_mwh"),
+        dc_summary.get("poi_energy_mwh"),
+        dc_summary.get("target_mwh"),
+        dc_summary.get("mwh"),
+        default=0.0,
+    )
+    return poi_power_mw, poi_energy_mwh
 
 
 def _ac_block_grouping_label(ratio: str) -> str:
@@ -161,6 +205,22 @@ def _saved_pcs_choice_index(ac_output: dict | None, recommendations: list) -> in
         if abs(rec_pcs_kw - saved_pcs_kw) < 1e-6:
             return idx
     return 0
+
+
+def _saved_confirmed_transformer_topology(ac_output: dict | None) -> str | None:
+    """Return only a topology that an operator explicitly confirmed.
+
+    Earlier generic AC runs silently selected three windings for more than two
+    PCS.  That legacy default is not engineering evidence and must not be
+    restored as though it were an owner/OEM-confirmed transformer design.
+    """
+    if not isinstance(ac_output, dict):
+        return None
+    topology = str(ac_output.get("transformer_topology") or "").strip()
+    confirmation = str(ac_output.get("transformer_topology_confirmation") or "").strip()
+    if topology in _TRANSFORMER_TOPOLOGIES and confirmation == _TOPOLOGY_CONFIRMATION:
+        return topology
+    return None
 
 
 def _saved_ac_block_model_choice_index(
@@ -287,8 +347,9 @@ def show():
         )
         if dc_total_mwh_hint > 0 and dc_blocks_total > 0:
             dc_block_mwh = dc_total_mwh_hint / dc_blocks_total
-        target_mw = float(dc_data.get("target_mw", stage13_output.get("poi_power_req_mw", 10.0)))
-        target_mwh = float(dc_data.get("mwh", stage13_output.get("poi_energy_req_mwh", 0.0)))
+        target_mw, target_mwh = _resolve_authoritative_poi_requirements(
+            stage13_output, dc_data
+        )
 
     except Exception as exc:
         st.error(f"Data structure mismatch: {exc}")
@@ -319,8 +380,8 @@ def show():
             compact_note(
                 f"DC side used a hybrid packaging: {dc_container_count} container(s) + "
                 f"{dc_cabinet_count} cabinet(s) as the DC tail. The AC mixed station (in the "
-                "standard product preset) is the AC-side counterpart that places the remainder "
-                "into smaller AC Blocks."
+                "AC configuration must be selected from the same grouping and PCS flow; "
+                "the DC tail does not select a fixed AC product."
             )
 
     st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
@@ -330,294 +391,20 @@ def show():
         _render_saved_ac_snapshot(saved_ac_output, section_header=section_header)
         st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
 
-    # ========== Governed Product (Phase A, optional) ==========
-    # A fixed, owner-confirmed product identity. When selected it overrides the
-    # generic grouping/model flow below and drives AC->SLD->Layout->Report by
-    # configuration_code / layout_variant instead of an average DC-per-AC ratio.
-    from calb_sizing_tool.schemas.governed_ac_block_config import (
-        ACBLK_10MW_8PCS_8DC_40FT_BILATERAL as _GOVERNED,
-    )
-    from calb_sizing_tool.services.governed_ac_block_service import (
-        build_governed_ac_output_from_product,
-        build_governed_site_ac_output,
-        eligible_products_for,
-        unresolved_provisional_fields,
-    )
-    from calb_sizing_tool.services.sld_engineering_settings_service import (
-        load_case_sld_project_settings,
-    )
-
-    from calb_sizing_tool.services.governed_ac_block_service import (
-        build_governed_primary_ac_output,
-        build_governed_site_plan,
-    )
-
-    selected_product_code = None
-    num_units = 0
-
-    # ONE AC Sizing flow (auto-recommend ratio + PCS, then power/energy validation
-    # → pass/hold) is the trunk below. A real productized AC Block (the 10 MW /
-    # 8-DC bilateral standard block + its 5/2.5/1.25 MW tails) is an OPTIONAL
-    # preset on top — a shortcut to a confirmed catalogue product, never a second
-    # engine. Feasibility is validated by the existing power/energy check.
-    with st.container(border=True):
-        use_governed = bool(st.checkbox(
-            "Use a standard product AC Block preset (real catalogue: 10 MW / 8-DC bilateral + tails)",
-            value=False,
-            key="use_product_preset",
-            help=(
-                "Optional shortcut to a real productized AC Block with a confirmed "
-                "transformer nameplate, vector group and layout. Leave unchecked for the "
-                "auto-recommended sizing below."
-            ),
-        ))
-        # Mixed AC Block station toggle — the AC parallel of DC Sizing's "Enable
-        # Hybrid Mode": places any non-multiple-of-8 remainder into smaller
-        # governed AC Blocks (10 MW head + 5/2.5/1.25 MW tails), just as DC hybrid
-        # places a remainder into cabinets after full containers. Auto-on only when
-        # a tail is actually needed. Off + a remainder cannot form a uniform site
-        # (an AC Block's DC count is a hard constraint), so it is refused with a
-        # clear message rather than silently padded.
-        _head_dc = int(_GOVERNED.dc_block_count)
-        _remainder = (dc_blocks_total % _head_dc) if dc_blocks_total > 0 else 0
-        _mixed_ok = True
-        if use_governed:
-            enable_mixed = bool(st.checkbox(
-                "Enable mixed AC Block station (place the remainder in smaller AC Blocks)",
-                value=(_remainder != 0),
-                key="enable_mixed_ac_station",
-                help=(
-                    "Symmetric to DC Sizing's Hybrid Mode. On: a 10 MW head block plus "
-                    "smaller 5 / 2.5 / 1.25 MW tail blocks cover any remainder (mixed station). "
-                    "Off: uniform 10 MW blocks only — needs a DC total that is a multiple of 8."
-                ),
-            ))
-            if (not enable_mixed) and _remainder != 0:
-                _mixed_ok = False
-                st.warning(
-                    f"Mixed station disabled and {_remainder} remainder DC Block(s) cannot form a "
-                    f"full {_head_dc}-DC (10 MW) AC Block. Enable the mixed station above, or set "
-                    f"DC Sizing to a multiple of {_head_dc} DC Blocks."
-                )
-        governed_ready = use_governed and _mixed_ok
-        if governed_ready:
-            section_header(
-                "Standard Product AC Block",
-                "Real productized AC Block (1:1–1:8 DC-per-block) matched to the project; "
-                "any non-multiple-of-8 remainder is placed into smaller blocks (mixed "
-                "station), never an average split.",
-                eyebrow="Optional preset",
-            )
-        if governed_ready:
-            project_settings = load_case_sld_project_settings(workspace.get("case_id"))
-            _plan = build_governed_site_plan(dc_blocks_total)
-            num_units = _plan.ac_blocks_total
-            is_mixed = len(_plan.groups) > 1
-            head_is_10mw = dc_blocks_total >= _GOVERNED.dc_block_count
-
-            # Bind the 10 MW head to a real catalogue product (transformer / LV /
-            # vector / cooling from the datasheet instead of TBD). Only shown when
-            # the site actually contains a 10 MW governed head. Phase B tails
-            # auto-bind their own eligible product.
-            if head_is_10mw:
-                try:
-                    catalogue = eligible_products_for(_GOVERNED.configuration_code)
-                except Exception:
-                    catalogue = []
-                product_labels = ["(none — Engineering Settings only)"] + [
-                    f"{p.get('vendor') or ''} · {p['block_code']} · "
-                    f"{(p.get('transformer_kva') or 0) / 1000:.1f} MVA"
-                    for p in catalogue
-                ]
-                product_choice = st.selectbox(
-                    "Bind 10 MW head to catalogue product (fills confirmed transformer/LV values)",
-                    range(len(product_labels)),
-                    index=0,
-                    format_func=lambda i: product_labels[i],
-                    key="governed_product_choice",
-                    help="Datasheet-derived product record. Uk% is never published on "
-                    "these datasheets and still comes from Engineering Settings.",
-                )
-                selected_product_code = (
-                    catalogue[product_choice - 1]["block_code"] if product_choice > 0 else None
-                )
-
-            primary_preview = build_governed_primary_ac_output(
-                dc_blocks_total,
-                project_settings=project_settings,
-                head_product_block_code=selected_product_code,
-            )
-            unresolved = list(primary_preview.get("provisional_unresolved", []))
-
-            gc1, gc2, gc3, gc4 = st.columns(4)
-            gc1.metric("Governed AC Blocks", num_units)
-            gc2.metric("Governed Groups", len(_plan.groups))
-            gc3.metric("Site AC Power", f"{_plan.ac_power_mw_total:.1f} MW")
-            gc4.metric("DC Blocks", dc_blocks_total)
-            if is_mixed:
-                compact_note(
-                    f"Mixed governed site (Phase B): {dc_blocks_total} DC → "
-                    + " + ".join(
-                        f"{g.ac_block_count}×{g.configuration_code}" for g in _plan.groups
-                    )
-                    + ". Each governed group keeps its own SLD topology; the SLD below "
-                    "shows the 10 MW bilateral head."
-                )
-            else:
-                compact_note(
-                    "Central vertical 40 ft AC Block; west 4-DC + east 4-DC mirrored 田 fields; "
-                    "DC-1..8 -> PCS-1..8; two independent LV secondaries (4+4)."
-                )
-        if governed_ready:
-            if governed_ready:
-
-                with st.expander("Site composition (Phase B decomposition)", expanded=False):
-                    try:
-                        from calb_sizing_tool.services.governed_ac_block_service import (
-                            build_governed_site_run,
-                        )
-
-                        # Orchestrate the mixed site: one runnable AC output per
-                        # governed group, auto-binding a catalogue product where
-                        # one qualifies. Each group renders its own SLD (each is
-                        # internally uniform under the SLD V1 contract).
-                        _run = build_governed_site_run(
-                            dc_blocks_total, bind_products=True
-                        )
-                        st.caption(
-                            f"{_run.dc_blocks_total} DC Blocks → {_run.ac_blocks_total} AC Block(s) "
-                            f"in {len(_run.groups)} governed group(s) · "
-                            f"{_run.ac_power_mw_total:.2f} MW total. A total that is not a multiple "
-                            "of 8 is placed into smaller governed AC Blocks (8/4/2/1), never an "
-                            "average split. Each governed group renders its own SLD."
-                        )
-                        render_static_table(
-                            [
-                                {
-                                    "Governed group": _g.configuration_code,
-                                    "Count": _g.ac_block_count,
-                                    "DC/PCS": f"{_g.dc_blocks_per_ac_block}/{_g.pcs_per_ac_block}",
-                                    "MW": _g.ac_power_mw_total,
-                                    "Bound product": _g.bound_product_code or "—",
-                                    "Transformer MVA": (
-                                        f"{_g.ac_output['transformer_mva']:g} MVA"
-                                        if _g.ac_output.get("transformer_mva")
-                                        else "TBD (confirm in Engineering Settings)"
-                                    ),
-                                }
-                                for _g in _run.groups
-                            ]
-                        )
-                        if _run.provisional_unresolved:
-                            st.caption(
-                                "Unresolved across groups (never inferred): "
-                                + ", ".join(_run.provisional_unresolved)
-                            )
-                    except Exception as _exc:  # pragma: no cover - defensive UI guard
-                        st.caption(f"Site composition unavailable: {_exc}")
-
-                if unresolved:
-                    st.warning(
-                        "Provisional engineering values still unresolved (never inferred): "
-                        + ", ".join(unresolved)
-                        + ". Enter them in Engineering Settings — the SLD stays gated until the "
-                        "transformer MVA is confirmed."
-                    )
-                if st.button(
-                    "Run AC Sizing (Governed)",
-                    type="primary",
-                    use_container_width=True,
-                    key="run_governed_ac",
-                ):
-                    bump_run_id_ac()
-                    ac_run_id = project_state.get("ac", {}).get("run_id")
-                    mv_kv = float(mv_kv_value or 33.0)
-                    lv_v = float(st.session_state.get("pcs_lv_v", 690.0))
-                    source_run_id = (
-                        workspace.get("run_id")
-                        or dc_results.get("last_run_id")
-                        or project_state.get("dc", {}).get("run_id")
-                    )
-                    source_fields = {
-                        "project_name": project_name,
-                        "grid_kv": mv_kv,
-                        "mv_kv": mv_kv,
-                        "mv_voltage_kv": mv_kv,
-                        "lv_v": lv_v,
-                        "lv_voltage_v": lv_v,
-                        "inverter_lv_v": lv_v,
-                        "dc_total_mwh": total_energy_mwh,
-                        "poi_power_mw": target_mw,
-                        "poi_energy_mwh": target_mwh,
-                        "ac_block_container_type": _GOVERNED.ac_container_type,
-                        "ac_block_template_id": f"{_GOVERNED.pcs_count}x{_GOVERNED.pcs_rating_kw}kw",
-                        "ac_block_model_name": _GOVERNED.configuration_code,
-                        "ac_block_model_source": "governed_product",
-                        "source_project_id": workspace.get("project_id"),
-                        "source_project_code": workspace.get("project_code"),
-                        "source_project_name": workspace.get("project_name") or project_name,
-                        "source_case_id": workspace.get("case_id"),
-                        "source_case_code": workspace.get("case_code"),
-                        "source_case_name": workspace.get("case_name"),
-                        "source_run_id": source_run_id,
-                        "source_ac_run_id": ac_run_id,
-                        "source_poi_nominal_voltage_kv": mv_kv,
-                        "source_poi_frequency_hz": stage13_output.get("poi_frequency_hz"),
-                    }
-                    if selected_product_code:
-                        source_fields["governed_product_block_code"] = selected_product_code
-                    try:
-                        # Single governed entry for ANY DC total: a multiple of 8
-                        # yields one uniform bilateral output; any remainder is
-                        # decomposed (Phase B) with the true site rollup carried on
-                        # the output. The head stays a uniform, SLD-renderable block.
-                        gov_output = build_governed_primary_ac_output(
-                            dc_blocks_total,
-                            project_settings=project_settings,
-                            source_fields=source_fields,
-                            head_product_block_code=selected_product_code,
-                        )
-                    except ValueError as exc:
-                        st.error(f"Governed AC sizing failed: {exc}")
-                        st.stop()
-                    st.session_state["ac_output"] = gov_output
-                    ac_results.update(gov_output)
-                    set_run_time("ac_results")
-                    _site_mw = gov_output.get("governed_site_total_ac_mw") or gov_output.get("total_ac_mw", 0.0)
-                    st.success(
-                        f"Governed AC sizing complete — {num_units} governed AC Block(s) "
-                        f"across {len(_plan.groups)} group(s), {_site_mw:.0f} MW total."
-                    )
-                    _auth_ctx = get_auth_context()
-                    if _auth_ctx and not _auth_ctx.is_guest:
-                        persist_ac_runtime_snapshot(
-                            run_id=source_run_id,
-                            ac_inputs=ac_inputs,
-                            ac_output=gov_output,
-                            results={},
-                            source_ref="ac_view_governed",
-                            actor=_auth_ctx.username,
-                        )
-                        st.info("Configuration saved.")
-
-    if use_governed:
-        st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
-        _latest = st.session_state.get("ac_output") if isinstance(st.session_state.get("ac_output"), dict) else ac_results
-        if _snapshot_output_matches_run(_latest, active_run_id):
-            _auth_ctx = get_auth_context()
-            render_pipeline_next_steps("AC Sizing", is_guest=bool(_auth_ctx and _auth_ctx.is_guest))
-        return
+    # Historical governed product helpers remain available for reading old persisted
+    # runs. They are deliberately not exposed in this UI: AC sizing now has one
+    # trunk where grouping and PCS architecture are selected before any optional
+    # catalogue binding.
 
     # ================= AC SIZING (auto-recommend trunk) =================
     # The single duration-aware sizing flow: POI power minus losses → AC:DC ratio →
     # PCS count × rating (auto-recommended for the project duration) → transformer
     # windings → power/energy validation, all manually adjustable, any duration.
     st.caption(
-        "Auto-recommended for the project duration; adjust the AC:DC grouping, PCS and "
-        "transformer below, then run to validate against the POI requirement. The "
-        "transformer here is an AC Block MW ÷ PF estimate — tick the standard product "
-        "preset above to bind a real catalogue product (confirmed nameplate, vector "
-        "group and layout) when one matches."
+        "AC sizing first selects the DC grouping, PCS architecture and transformer topology, "
+        "then validates the result against the POI requirement. Catalogue matching is optional "
+        "and can only enrich the selected configuration with confirmed nameplate, vector-group "
+        "and LV data; it never changes the grouping or PCS selection."
     )
 
     # ========== STEP 2: Generate Options & Auto-select Best ==========
@@ -660,20 +447,24 @@ def show():
         with st.container(border=True):
             section_header(
                 "AC Block Model per AC Block",
-                "Choose the simplified AC Block model. This sets PCS count, PCS rating, and container basis.",
+                "Choose the PCS architecture for one AC Block. This sets PCS count, PCS rating, and container basis.",
                 eyebrow="Step 2",
             )
             compact_note(
                 f"Selected AC/DC block grouping: {_ac_block_grouping_label(selected_option.ratio)}. "
                 "AC Block quantity comes from Step 1; the model below defines one AC Block only."
             )
-            model_options = build_simplified_ac_block_models(selected_option.pcs_recommendations)
+            model_options = build_simplified_ac_block_models(
+                selected_option.pcs_recommendations,
+                grouping_ratio=selected_option.ratio,
+            )
 
             # Model selection lives outside any st.form so a change reruns
             # immediately: picking "Custom..." must reveal the PCS inputs
             # before anything is executed (FT-20260714-12).
             model_labels = [model.readable for model in model_options]
             model_labels.append("Custom AC Block Model...")
+            model_widget_key = f"ac_block_model_choice_{selected_option.ratio.replace(':', 'to')}"
 
             model_choice = st.selectbox(
                 "Select AC Block Model",
@@ -684,8 +475,8 @@ def show():
                     custom_index=len(model_options),
                 ),
                 format_func=lambda i: model_labels[i],
-                key="ac_block_model_choice",
-                help="Simplified dropdown model derived from PCS count and rating; not a governed Product DB record.",
+                key=model_widget_key,
+                help="Sizing candidate derived from PCS count and rating. It is not a product record and does not lock a catalogue choice.",
             )
 
             if model_choice < len(model_options):
@@ -731,21 +522,51 @@ def show():
                 ac_block_model_source = "custom"
 
             electrical_col1, electrical_col2 = st.columns(2)
-            saved_transformer_topology = str((saved_ac_output or {}).get("transformer_topology") or "")
-            if saved_transformer_topology not in {"two_winding", "three_winding"}:
-                saved_transformer_topology = "three_winding" if pcs_per_ac > 2 else "two_winding"
-            transformer_topology = electrical_col1.selectbox(
+            saved_transformer_topology = _saved_confirmed_transformer_topology(saved_ac_output)
+            topology_options = ("__confirm_actual_topology__", *_TRANSFORMER_TOPOLOGIES)
+            topology_widget_key = "ac_transformer_topology"
+            # One-time migration for a live Streamlit session: clear the old
+            # widget value that was once auto-selected from PCS count.  Values
+            # chosen after this gate remain intact across reruns.
+            confirmation_gate_key = "ac_transformer_topology_confirmation_gate_v1"
+            if saved_transformer_topology is None and not st.session_state.get(confirmation_gate_key):
+                st.session_state[topology_widget_key] = "__confirm_actual_topology__"
+                st.session_state[confirmation_gate_key] = True
+            transformer_topology_choice = electrical_col1.selectbox(
                 "Transformer LV Topology",
-                ("two_winding", "three_winding"),
-                index=(0 if saved_transformer_topology == "two_winding" else 1),
+                topology_options,
+                index=(
+                    topology_options.index(saved_transformer_topology)
+                    if saved_transformer_topology in _TRANSFORMER_TOPOLOGIES
+                    else 0
+                ),
                 format_func=lambda value: (
-                    "2-winding — one common LV busbar for all PCS"
+                    "Select and confirm the actual transformer secondary arrangement"
+                    if value == "__confirm_actual_topology__"
+                    else "2-winding — one common LV busbar for all PCS"
                     if value == "two_winding"
                     else "3-winding — two independent LV secondary busbars"
                 ),
-                key="ac_transformer_topology",
-                help="Select the actual transformer secondary arrangement. It is not inferred from PCS count.",
+                key=topology_widget_key,
+                help=(
+                    "Select the actual transformer secondary arrangement from the OEM/product design. "
+                    "It is never inferred from PCS count; legacy automatic choices must be reconfirmed."
+                ),
             )
+            transformer_topology = (
+                transformer_topology_choice
+                if transformer_topology_choice in _TRANSFORMER_TOPOLOGIES
+                else None
+            )
+            if transformer_topology is None:
+                electrical_col1.info(
+                    "AC sizing cannot be issued until the transformer LV topology is explicitly confirmed."
+                )
+            elif transformer_topology == "three_winding":
+                electrical_col1.warning(
+                    "Three-winding requires an OEM-declared vector group with two LV tokens. "
+                    "A two-winding vector such as Dyn11 is not valid here."
+                )
             saved_dc_outputs = int((saved_ac_output or {}).get("dc_block_output_circuits") or 2)
             if saved_dc_outputs not in (1, 2):
                 saved_dc_outputs = 2
@@ -759,11 +580,42 @@ def show():
                     help="Default 2 for the 5 MWh DC Block. Select 1 only for a confirmed single-output product.",
                 )
             )
-            compact_note(
-                "Electrical topology: "
-                + ("one common LV busbar" if transformer_topology == "two_winding" else "two independent LV secondary busbars")
-                + f"; each DC Block has {dc_block_output_circuits} protected PCS output branch(es)."
+            if transformer_topology:
+                compact_note(
+                    "Electrical topology: "
+                    + (
+                        "one common LV busbar"
+                        if transformer_topology == "two_winding"
+                        else "two independent LV secondary busbars"
+                    )
+                    + f"; each DC Block has {dc_block_output_circuits} protected PCS output branch(es)."
+                )
+            _minimum_dc_blocks = minimum_dc_blocks_for_pcs_feeders(
+                pcs_per_ac,
+                dc_block_output_circuits=dc_block_output_circuits,
             )
+            if not dc_grouping_has_feeder_capacity(
+                selected_option.dc_blocks_per_ac,
+                pcs_per_ac,
+                dc_block_output_circuits=dc_block_output_circuits,
+            ):
+                st.warning(
+                    "Physical feeder check: this PCS selection needs at least "
+                    f"{_minimum_dc_blocks} DC Blocks in every AC Block, but the selected "
+                    f"grouping contains a {min(selected_option.dc_blocks_per_ac, default=0)}-DC tail. "
+                    "Run is blocked until the PCS count or grouping is adjusted."
+                )
+            elif (
+                selected_option.ratio == "1:8"
+                and pcs_per_ac == 8
+                and pcs_kw == 1250
+                and transformer_topology == "three_winding"
+                and all(dc_count == 8 for dc_count in selected_option.dc_blocks_per_ac)
+            ):
+                compact_note(
+                    "Exact 1:8 / 8 x 1250 kW / 3-winding selection: downstream concept "
+                    "layout and report will use the owner-confirmed central 40 ft, bilateral 4+4 arrangement."
+                )
 
             # Container size info - based on single AC block size
             compact_note(
@@ -772,21 +624,39 @@ def show():
                 f"total AC {selected_option.ac_block_count * single_block_ac_power:.2f} MW)."
             )
 
-            # OPTIONAL — bind a real catalogue product that matches this spec (same
-            # PCS count × rating) so the transformer nameplate / vector group come
-            # from the datasheet instead of the MW ÷ PF estimate. This is a lookup
-            # by the spec already computed — it introduces no new parameter.
+            # Catalogue matching happens only after grouping / PCS / transformer
+            # topology are chosen. It may enrich the selected configuration, but
+            # it cannot select or rewrite those sizing choices.
             bound_ac_product = None
             try:
-                from calb_sizing_tool.services.ac_block_product_match import match_ac_block_products
-                _matches = match_ac_block_products(pcs_per_ac, pcs_kw)
+                from calb_sizing_tool.services.ac_block_product_match import (
+                    match_ac_block_products,
+                    preferred_catalogue_architecture,
+                )
+                _catalogue_preference = preferred_catalogue_architecture(selected_option.ratio)
+                _matches = match_ac_block_products(
+                    pcs_per_ac,
+                    pcs_kw,
+                    grouping_ratio=selected_option.ratio,
+                    transformer_topology=transformer_topology,
+                )
             except Exception:
+                _catalogue_preference = None
                 _matches = []
+            if _catalogue_preference:
+                compact_note(
+                    "Catalogue comparison preference: "
+                    + str(_catalogue_preference["label"])
+                    + ". "
+                    + str(_catalogue_preference["reason"])
+                )
             if _matches:
                 _labels = ["(none — transformer estimated as MW ÷ PF)"] + [
                     f"{m.get('vendor') or ''} · {m['block_code']} · "
                     f"{(m.get('transformer_kva') or 0) / 1000:.2f} MVA"
                     + (f" · {m['transformer_vector_group']}" if m.get("transformer_vector_group") else "")
+                    + (" · preferred" if m.get("is_preferred_architecture") else "")
+                    + (" · engineering data partial" if m.get("engineering_data_status") == "partial" else "")
                     for m in _matches
                 ]
                 _bind_choice = st.selectbox(
@@ -794,17 +664,49 @@ def show():
                     range(len(_labels)),
                     index=0,
                     format_func=lambda i: _labels[i],
-                    key="ac_trunk_product_bind",
-                    help="Catalogue products whose PCS count and unit rating match this AC "
-                    "Block. Binding one replaces the MW ÷ PF transformer estimate with the "
-                    "real product nameplate; unmatched specs stay on the estimate.",
+                    key=(
+                        f"ac_trunk_product_bind_{selected_option.ratio.replace(':', 'to')}_"
+                        f"{pcs_per_ac}x{pcs_kw}_{transformer_topology or 'unconfirmed'}"
+                    ),
+                    help="Only catalogue products matching the selected PCS count, unit rating and "
+                    "declared transformer topology are shown. Binding replaces only the transformer "
+                    "estimate with real nameplate data; unmatched specs remain valid sizing candidates.",
                 )
                 bound_ac_product = _matches[_bind_choice - 1] if _bind_choice > 0 else None
+            else:
+                st.caption(
+                    "No compatible catalogue record for this selected PCS/topology combination. "
+                    "The sizing candidate remains available with transformer values to be confirmed in Engineering Settings."
+                )
 
             submitted = st.button("Run AC Sizing", use_container_width=True, type="primary")
 
         # ========== STEP 4: Calculation & Validation ==========
         if submitted:
+            if transformer_topology not in _TRANSFORMER_TOPOLOGIES:
+                st.error(
+                    "Confirm the actual transformer LV topology before running AC sizing. "
+                    "The system will not infer it from the PCS quantity."
+                )
+                st.stop()
+            minimum_dc_blocks = minimum_dc_blocks_for_pcs_feeders(
+                pcs_per_ac,
+                dc_block_output_circuits=dc_block_output_circuits,
+            )
+            if not dc_grouping_has_feeder_capacity(
+                selected_option.dc_blocks_per_ac,
+                pcs_per_ac,
+                dc_block_output_circuits=dc_block_output_circuits,
+            ):
+                smallest_group = min(selected_option.dc_blocks_per_ac, default=0)
+                st.error(
+                    "Selected grouping cannot physically feed every PCS branch: "
+                    f"{pcs_per_ac} PCS with {dc_block_output_circuits} protected output circuit(s) "
+                    f"per DC Block needs at least {minimum_dc_blocks} DC Blocks in each AC Block, "
+                    f"but this grouping includes a {smallest_group}-DC tail. Select a smaller PCS count "
+                    "or a grouping without that tail."
+                )
+                st.stop()
             bump_run_id_ac()
             ac_run_id = project_state.get("ac", {}).get("run_id")
 
@@ -920,6 +822,7 @@ def show():
                 "inverter_lv_v": lv_v,
                 "transformer_mva": transformer_mva,
                 "transformer_topology": transformer_topology,
+                "transformer_topology_confirmation": _TOPOLOGY_CONFIRMATION,
                 "lv_winding_count": 1 if transformer_topology == "two_winding" else 2,
                 "lv_busbar_topology": (
                     "common_single_lv_busbar"
@@ -940,6 +843,25 @@ def show():
                 "source_poi_nominal_voltage_kv": mv_kv,
                 "source_poi_frequency_hz": stage13_output.get("poi_frequency_hz"),
             }
+
+            # This is a concept-layout routing condition, not a standard-product
+            # lock. It is available only for a physically homogeneous 1:8 block
+            # with the selected 8 x 1250 kW small-PCS / 3-winding architecture.
+            if (
+                selected_option.ratio == "1:8"
+                and pcs_per_block == 8
+                and int(pcs_kw) == 1250
+                and transformer_topology == "three_winding"
+                and all(dc_count == 8 for dc_count in dc_blocks_per_ac_block_list)
+            ):
+                ac_output.update(
+                    {
+                        "layout_variant": "central_40ft_bilateral_4plus4",
+                        "layout_variant_source": "owner_confirmed_1to8_small_pcs_concept",
+                        "dc_field_split": [4, 4],
+                        "ac_block_arrangement": "central_40ft_bilateral_4plus4",
+                    }
+                )
 
             # If a catalogue product was bound, replace the MW ÷ PF transformer
             # estimate with the real product nameplate / vector group / cooling.

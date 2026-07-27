@@ -308,4 +308,8 @@ def legacy_sld_override_preset() -> dict:
         },
         "transformer_vector_group": "Dyn11",
         "transformer_uk_percent": 7.0,
+        # Draft SLDs need an explicit voltage as well.  This is only the
+        # existing UI draft preset; strict/formal SLDs still require project
+        # settings or an explicit override.
+        "dc_block_voltage_v": 1500.0,
     }

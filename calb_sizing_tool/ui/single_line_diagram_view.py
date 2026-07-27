@@ -213,6 +213,19 @@ def _validate_ac_snapshot_context(
     if not isinstance(ac_output, dict) or not ac_output:
         return "AC snapshot not found. Run AC sizing before generating SLD."
 
+    # Governed product output is allowed to reach the SLD only after the AC
+    # product mix has been checked at the POI.  Historical governed snapshots
+    # predate this contract and may have one PCS per aging-energy DC Block,
+    # which can materially overbuild power; force a fresh AC run instead of
+    # rendering that old topology as a current engineering selection.
+    from calb_sizing_tool.services.governed_ac_block_service import (
+        governed_poi_power_closure_issue,
+    )
+
+    power_closure_issue = governed_poi_power_closure_issue(ac_output)
+    if power_closure_issue:
+        return power_closure_issue
+
     source_run_id = str(ac_output.get("source_run_id") or "").strip()
     if not source_run_id:
         return "AC snapshot is missing source_run_id provenance. Re-run AC sizing from the active database run."
@@ -266,6 +279,7 @@ def _execute_sld_pipeline(
     plugin_id: str,
     actor: str,
     project_settings: dict[str, Any] | None = None,
+    register_artifacts: bool = True,
 ):
     return run_sld_pipeline_from_run_bundle(
         bundle,
@@ -274,6 +288,7 @@ def _execute_sld_pipeline(
         project_settings=project_settings,
         plugin_id=plugin_id,
         actor=actor,
+        register_artifacts=register_artifacts,
     )
 
 
@@ -559,6 +574,7 @@ def show() -> None:
                 project_settings=persisted_project_settings,
                 plugin_id=selected_plugin,
                 actor=auth_user.username,
+                register_artifacts=not _is_guest,
             )
         except Exception as exc:
             st.error(f"SLD generation failed: {exc}")
@@ -592,11 +608,18 @@ def show() -> None:
             "topology_hash": artifact_bundle.metadata.get("topology_hash"),
             "render_spec_hash": artifact_bundle.metadata.get("render_spec_hash"),
             "artifact_hashes": artifact_hashes,
+            "artifacts_registered": bool(artifact_bundle.metadata.get("artifacts_registered", True)),
             "ac_runtime_source": runtime_status.source,
             "runtime_source_mode": runtime_status.mode,
             "forced_draft_by_source": bool(runtime_status.force_draft),
         }
-        if artifact_bundle.metadata.get("document_status") == "official":
+        artifacts_registered = bool(artifact_bundle.metadata.get("artifacts_registered", True))
+        if not artifacts_registered:
+            st.warning(
+                "Concept SLD generated for this session preview. "
+                "It is not registered or persisted; sign in to create a traceable run artifact."
+            )
+        elif artifact_bundle.metadata.get("document_status") == "official":
             st.success("Formal SLD generated and artifacts registered.")
         else:
             st.warning(

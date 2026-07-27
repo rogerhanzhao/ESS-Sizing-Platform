@@ -34,6 +34,7 @@ from calb_sizing_tool.state.session_state import init_shared_state
 from calb_sizing_tool.state.workspace_state import get_workspace_context
 from calb_sizing_tool.services.sld_data_source_service import AcSnapshotResolution, resolve_preferred_ac_snapshot
 from calb_sizing_tool.services.artifact_service import load_artifact_bytes_from_db
+from calb_sizing_tool.services.governed_ac_block_service import governed_poi_power_closure_issue
 
 
 def _load_product_assets_for_block(block_code: str | None) -> list[dict[str, Any]]:
@@ -292,6 +293,11 @@ def show():
                 "DC results found but AC sizing is missing. "
                 "Run AC Sizing on this project/case, or restore a run that includes AC results."
             )
+        return
+
+    power_closure_issue = governed_poi_power_closure_issue(ac_output)
+    if power_closure_issue:
+        st.error(f"Report export blocked: {power_closure_issue}")
         return
 
     project_name = None

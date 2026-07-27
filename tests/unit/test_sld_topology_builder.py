@@ -84,6 +84,9 @@ def _make_ac_snapshot() -> AcSnapshot:
 def _build_canonical_input(sample_excel_path):
     run_bundle = _build_run_bundle(sample_excel_path)
     override_payload = legacy_sld_override_preset()
+    # This fixture deliberately models two independent LV sections; its
+    # vector group must therefore declare both of them explicitly.
+    override_payload["transformer_vector_group"] = "Dyn11yn11"
     override_payload["dc_block_voltage_v"] = 1500.0
     override_payload["dc_blocks_per_feeder"] = [1, 1, 1, 1]
     canonical = build_sld_canonical_input(

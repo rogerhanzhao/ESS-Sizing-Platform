@@ -48,7 +48,7 @@ def _make_project_settings() -> dict:
     preset = legacy_sld_override_preset()
     return {
         "transformer": {
-            "vector_group": preset["transformer_vector_group"],
+            "vector_group": "Dyn11yn11",
             "uk_percent": preset["transformer_uk_percent"],
         },
         "dc_block_voltage_v": 1500.0,

@@ -412,7 +412,7 @@
 | `source_dc_run_id` | `uuid` | FK -> `dc_runs.dc_run_id` | 来源 DC 运行 |
 | `source_dc_scenario_id` | `uuid` | FK -> `dc_scenarios.dc_scenario_id` | 来源 DC 场景 |
 | `ac_dictionary_version_id` | `uuid` | FK -> `dictionary_versions.dictionary_version_id` | 使用的 AC 字典版本 |
-| `selected_ratio` | `varchar(16)` | NOT NULL | `1:1/1:2/1:4` |
+| `selected_ratio` | `varchar(16)` | NOT NULL | `1:1/1:2/1:4/1:8` |
 | `input_json` | `jsonb` | NOT NULL | 页面原始输入 |
 | `options_json` | `jsonb` | NULL | 当次生成的所有 ratio/PCS 选项 |
 | `output_json` | `jsonb` | NOT NULL | 全量 AC 输出 |

@@ -4,7 +4,30 @@ from calb_sizing_tool.services.ac_sizing_service import (
     build_simplified_ac_block_models,
     generate_ac_sizing_options,
 )
-from calb_sizing_tool.ui.ac_view import _saved_ac_block_model_choice_index, _saved_pcs_choice_index
+from calb_sizing_tool.ui.ac_view import (
+    _resolve_authoritative_poi_requirements,
+    _saved_confirmed_transformer_topology,
+    _saved_ac_block_model_choice_index,
+    _saved_pcs_choice_index,
+)
+
+
+def test_poi_requirements_prefer_stage13_over_legacy_dc_summary_mwh():
+    power, energy = _resolve_authoritative_poi_requirements(
+        {
+            "poi_power_req_mw": 200.0,
+            "poi_energy_req_mwh": 800.0,
+        },
+        {
+            "target_mw": 200.0,
+            # A legacy record may carry BOL DC energy here; it must not override
+            # the Stage 1/3 POI energy requirement used by AC sizing.
+            "mwh": 1013.232,
+        },
+    )
+
+    assert power == 200.0
+    assert energy == 800.0
 
 
 def test_saved_pcs_choice_index_restores_persisted_pcs_configuration():
@@ -36,6 +59,19 @@ def test_saved_pcs_choice_index_falls_back_to_first_option_when_unmatched():
     ratio_12 = next(option for option in options if option.ratio == "1:2")
 
     assert _saved_pcs_choice_index({"pcs_per_block": 3, "pcs_kw": 3333}, ratio_12.pcs_recommendations) == 0
+
+
+def test_legacy_topology_is_not_restored_without_explicit_confirmation():
+    # A previous UI version silently selected three windings for PCS > 2.  The
+    # stored value alone is not evidence of an actual transformer design.
+    assert _saved_confirmed_transformer_topology({"transformer_topology": "three_winding"}) is None
+
+    assert _saved_confirmed_transformer_topology(
+        {
+            "transformer_topology": "three_winding",
+            "transformer_topology_confirmation": "confirmed_by_user",
+        }
+    ) == "three_winding"
 
 
 def test_saved_ac_block_model_choice_index_prefers_persisted_model_code():

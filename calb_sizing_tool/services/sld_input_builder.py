@@ -19,6 +19,10 @@ from calb_sizing_tool.sld.standard_transformer_impedance import (
     STANDARD_IMPEDANCE_BASIS,
     standard_impedance_percent,
 )
+from calb_sizing_tool.sld.transformer_vector_group import (
+    TransformerVectorGroupError,
+    parse_transformer_vector_group,
+)
 from calb_sizing_tool.sld.voltage_contract import resolve_mv_rmu_voltage_contract
 
 
@@ -176,29 +180,6 @@ class SldInputBuilder:
             errors,
         )
 
-        # Vector group precedence: project settings (owner) first, then the
-        # governed product's confirmed value carried on the AC output, then any
-        # explicit override / draft preset. The vector group drives the LV
-        # winding-connection symbol (yn -> grounded wye with earth; y -> isolated
-        # neutral, no earth), so a real product's Dy11y11 must win over the
-        # generic grounded-wye preset.
-        transformer_vector_group = self._optional_text(
-            [
-                _deep_get(project_settings, "transformer", "vector_group"),
-                ac_output.get("transformer_vector_group"),
-            ]
-        )
-        transformer_vector_group = self._fill_text_from_override_or_draft(
-            "transformer_vector_group",
-            transformer_vector_group,
-            override_mode,
-            override.transformer_vector_group if override else None,
-            validation_mode,
-            draft_warnings,
-            errors,
-            legacy_sld_override_preset().get("transformer_vector_group"),
-        )
-
         # Transformer impedance (Uk%) is NOT a sizing parameter and is usually a
         # project grid-interconnection filing value the owner does not have at
         # concept stage. It must never block the SLD: use a project-declared or
@@ -257,6 +238,60 @@ class SldInputBuilder:
                     "configured LV winding count was invalid and was ignored in favour of the authoritative AC block."
                 )
 
+        # A vector group declares the actual winding/neutral connection.  It
+        # must therefore be resolved only after the authoritative LV topology
+        # is known.  Product data owns this declaration for governed AC blocks;
+        # a stale Engineering Settings value is a visible conflict, never a
+        # silent replacement.  For all other AC sizing paths, persisted project
+        # settings remain the owner-facing source before the AC output.
+        product_vector = self._optional_text([ac_output.get("transformer_vector_group")])
+        project_vector = self._optional_text([
+            _deep_get(project_settings, "transformer", "vector_group")
+        ])
+        product_conflict = ac_output.get("transformer_vector_group_conflict")
+        is_governed_product = bool(ac_output.get("governed_product_block_code"))
+        if product_conflict:
+            detail = (
+                f"transformer vector group conflict: product={product_conflict.get('product')!r}, "
+                f"engineering_setting={product_conflict.get('engineering_setting')!r}."
+                if isinstance(product_conflict, dict)
+                else "transformer vector group conflict between the governed product and Engineering Settings."
+            )
+            if validation_mode == "strict":
+                errors.append(detail)
+            else:
+                draft_warnings.append(detail + " The winding symbol is shown as TBD; no grounding was inferred.")
+            transformer_vector_group = "TBD"
+        else:
+            transformer_vector_group = (
+                product_vector if is_governed_product and product_vector else
+                self._optional_text([project_vector, product_vector])
+            )
+            transformer_vector_group = self._fill_text_from_override_or_draft(
+                "transformer_vector_group",
+                transformer_vector_group,
+                override_mode,
+                override.transformer_vector_group if override else None,
+                validation_mode,
+                draft_warnings,
+                errors,
+                "TBD" if validation_mode == "draft" else None,
+            )
+        if transformer_vector_group and transformer_vector_group != "TBD":
+            try:
+                parse_transformer_vector_group(
+                    transformer_vector_group,
+                    lv_winding_count=lv_winding_count,
+                )
+            except TransformerVectorGroupError as exc:
+                if validation_mode == "strict":
+                    errors.append(str(exc))
+                else:
+                    draft_warnings.append(
+                        f"{exc} The winding symbol is shown as TBD; no grounding was inferred."
+                    )
+                    transformer_vector_group = "TBD"
+
         dc_block_energy_mwh = self._resolve_dc_block_energy(run_bundle, errors)
         dc_blocks_per_feeder = self._resolve_group_feeder_allocation(
             authoritative_ac.dc_blocks_per_feeder_by_block if authoritative_ac else None,
@@ -309,7 +344,7 @@ class SldInputBuilder:
             validation_mode,
             draft_warnings,
             errors,
-            None,
+            legacy_sld_override_preset()["dc_block_voltage_v"],
         )
 
         labels = self._resolve_labels(

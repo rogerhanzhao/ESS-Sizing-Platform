@@ -25,13 +25,14 @@ def test_sld_ui_pipeline_delegates_to_pipeline_service(monkeypatch):
         ),
     )
 
-    def _fake_pipeline(bundle, *, ac_snapshot, options, project_settings, plugin_id, actor):
+    def _fake_pipeline(bundle, *, ac_snapshot, options, project_settings, plugin_id, actor, register_artifacts):
         calls["bundle"] = bundle
         calls["ac_snapshot"] = ac_snapshot
         calls["options"] = options
         calls["project_settings"] = project_settings
         calls["plugin_id"] = plugin_id
         calls["actor"] = actor
+        calls["register_artifacts"] = register_artifacts
         return fake_result
 
     monkeypatch.setattr(single_line_diagram_view, "run_sld_pipeline_from_run_bundle", _fake_pipeline)
@@ -55,11 +56,38 @@ def test_sld_ui_pipeline_delegates_to_pipeline_service(monkeypatch):
     assert calls["project_settings"] is None
     assert calls["plugin_id"] == "sld_engineering_v1"
     assert calls["actor"] == "tester"
+    assert calls["register_artifacts"] is True
+
+
+def test_sld_ui_pipeline_can_run_a_guest_preview_without_registering_artifacts(monkeypatch):
+    calls = {}
+
+    def _fake_pipeline(bundle, **kwargs):
+        calls["bundle"] = bundle
+        calls.update(kwargs)
+        return SimpleNamespace()
+
+    monkeypatch.setattr(single_line_diagram_view, "run_sld_pipeline_from_run_bundle", _fake_pipeline)
+
+    bundle = SimpleNamespace(run_id="guest-session")
+    single_line_diagram_view._execute_sld_pipeline(
+        bundle=bundle,
+        ac_snapshot=AcSnapshot(inputs={}, output={"num_blocks": 1}, results={}),
+        options=SldRenderOptions(group_index=1, theme="dark"),
+        plugin_id="sld_engineering_v1",
+        actor="guest",
+        register_artifacts=False,
+    )
+
+    assert calls["bundle"] is bundle
+    assert calls["register_artifacts"] is False
 
 
 def test_sld_ui_module_does_not_own_core_builder_logic():
     source = inspect.getsource(single_line_diagram_view)
     assert "run_sld_pipeline_from_run_bundle" in source
+    assert "artifacts_registered" in source
+    assert "not registered or persisted" in source
     assert "build_sld_canonical_input" not in source
     assert "build_sld_topology" not in source
     assert "render_sld_svg" not in source
@@ -89,6 +117,39 @@ def test_sld_ui_rejects_ac_snapshot_from_different_run():
 
     assert "run-old" in message
     assert "run-new" in message
+
+
+def test_sld_ui_rejects_governed_snapshot_without_poi_power_closure():
+    message = single_line_diagram_view._validate_ac_snapshot_context(
+        {
+            "governed_configuration": True,
+            "source_project_id": "project-1",
+            "source_case_id": "case-1",
+            "source_run_id": "run-1",
+        },
+        expected_run_id="run-1",
+        expected_case_id="case-1",
+        expected_project_id="project-1",
+    )
+
+    assert "no POI power-closure record" in message
+
+
+def test_sld_ui_allows_power_closed_governed_snapshot():
+    message = single_line_diagram_view._validate_ac_snapshot_context(
+        {
+            "governed_configuration": True,
+            "governed_poi_power_closure": {"status": "pass"},
+            "source_project_id": "project-1",
+            "source_case_id": "case-1",
+            "source_run_id": "run-1",
+        },
+        expected_run_id="run-1",
+        expected_case_id="case-1",
+        expected_project_id="project-1",
+    )
+
+    assert message is None
 
 
 def test_sld_ui_clears_cached_preview_when_render_controls_change(monkeypatch):

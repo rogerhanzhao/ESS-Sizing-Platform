@@ -74,6 +74,8 @@ def _make_ac_snapshot(*, input_overrides: dict | None = None, output_overrides: 
         "pcs_kw": 1250.0,
         "block_size_mw": 5.0,
         "transformer_mva": 6.0,
+        "transformer_topology": "two_winding",
+        "lv_winding_count": 1,
         "dc_allocation_plan": [
             {"ac_block_index": 1, "dc_blocks_total": 4, "feeder_allocations": [1, 1, 1, 1]}
         ],
@@ -131,6 +133,18 @@ def test_builder_strict_mode_rejects_missing_critical_fields(sample_excel_path):
     assert "transformer_uk_percent" not in message
     assert "dc_block_voltage_v" in message
     assert "equipment_ratings" in message
+
+
+def test_builder_draft_mode_uses_existing_voltage_preset_when_settings_are_absent(sample_excel_path):
+    canonical = build_sld_canonical_input(
+        run_bundle=_build_run_bundle(sample_excel_path),
+        ac_snapshot=_make_ac_snapshot(),
+        options=SldRenderOptions(group_index=1),
+        validation_mode="draft",
+    )
+
+    assert canonical.dc_block_voltage_v == 1500.0
+    assert "dc_block_voltage_v was filled from legacy draft preset." in canonical.draft_warnings
 
 
 def test_builder_requires_explicit_override_mode(sample_excel_path):
@@ -202,3 +216,53 @@ def test_builder_rejects_conflicting_persisted_case_input_voltage_and_frequency(
     message = str(exc_info.value)
     assert "mv_voltage_kv conflicts between case_input.poi_nominal_voltage_kv=33" in message
     assert "project_frequency_hz conflicts between case_input.poi_frequency_hz=50" in message
+
+
+def test_builder_rejects_single_lv_vector_group_for_three_winding_ac_topology(sample_excel_path):
+    run_bundle = _build_run_bundle(sample_excel_path)
+    override_payload = legacy_sld_override_preset()
+    override_payload["dc_block_voltage_v"] = 1500.0
+
+    with pytest.raises(SldInputValidationError) as exc_info:
+        build_sld_canonical_input(
+            run_bundle=run_bundle,
+            ac_snapshot=_make_ac_snapshot(
+                output_overrides={
+                    "transformer_topology": "three_winding",
+                    "lv_winding_count": 2,
+                }
+            ),
+            options=SldRenderOptions(
+                group_index=1,
+                override_mode=True,
+                overrides=SldInputOverride.model_validate(override_payload),
+            ),
+            validation_mode="strict",
+        )
+
+    assert "declares 1 LV winding(s), but the AC topology requires 2" in str(exc_info.value)
+
+
+def test_builder_draft_marks_invalid_vector_group_tbd_without_guessing_grounding(sample_excel_path):
+    run_bundle = _build_run_bundle(sample_excel_path)
+    override_payload = legacy_sld_override_preset()
+    override_payload["dc_block_voltage_v"] = 1500.0
+
+    canonical = build_sld_canonical_input(
+        run_bundle=run_bundle,
+        ac_snapshot=_make_ac_snapshot(
+            output_overrides={
+                "transformer_topology": "three_winding",
+                "lv_winding_count": 2,
+            }
+        ),
+        options=SldRenderOptions(
+            group_index=1,
+            override_mode=True,
+            overrides=SldInputOverride.model_validate(override_payload),
+        ),
+        validation_mode="draft",
+    )
+
+    assert canonical.transformer_vector_group == "TBD"
+    assert any("no grounding was inferred" in warning for warning in canonical.draft_warnings)

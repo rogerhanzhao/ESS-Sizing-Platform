@@ -25,13 +25,15 @@ def test_ac_sizing_service_freezes_supported_ratios_and_recommendations():
     )
 
     assert tuple(option.ratio for option in options) == SUPPORTED_AC_DC_RATIOS
-    assert [option.ac_block_count for option in options] == [9, 5, 3]
+    assert [option.ac_block_count for option in options] == [9, 5, 3, 2]
     assert options[0].dc_blocks_per_ac == [1] * 9
     assert options[1].dc_blocks_per_ac == [2, 2, 2, 2, 1]
     assert options[2].dc_blocks_per_ac == [3, 3, 3]
+    assert options[3].dc_blocks_per_ac == [5, 4]
     assert options[0].is_recommended is False
     assert options[1].is_recommended is True
     assert options[2].is_recommended is True
+    assert options[3].is_recommended is False
 
 
 def test_ac_sizing_service_freezes_standard_pcs_library():
@@ -60,6 +62,46 @@ def test_ac_sizing_service_builds_simplified_ac_block_models_from_pcs_library():
     assert four_pcs_5mw.block_size_mw == 5.0
     assert four_pcs_5mw.container_type == "20ft"
     assert "4 x 1250 kW PCS" in four_pcs_5mw.readable
+
+
+def test_one_to_eight_adds_optional_small_pcs_candidate_without_locking_product():
+    models = build_simplified_ac_block_models(
+        standard_pcs_recommendations(),
+        grouping_ratio="1:8",
+    )
+    small_pcs = next(model for model in models if (model.pcs_count, model.pcs_kw) == (8, 1250))
+
+    assert (models[0].pcs_count, models[0].pcs_kw) == (8, 1250)
+    assert small_pcs.block_size_mw == 10.0
+    assert small_pcs.container_type == "40ft"
+    assert small_pcs.source == "one_to_eight_small_pcs_candidate"
+    assert "small-PCS combination" in small_pcs.display_name
+
+
+def test_one_to_eight_distribution_and_feeder_capacity_are_physical_not_product_locked():
+    from calb_sizing_tool.services.ac_sizing_service import (
+        dc_grouping_has_feeder_capacity,
+        minimum_dc_blocks_for_pcs_feeders,
+    )
+
+    options = generate_ac_sizing_options(202, 200.0, 800.0, 5.0)
+    one_to_eight = next(option for option in options if option.ratio == "1:8")
+    assert one_to_eight.ac_block_count == 26
+    # Generic grouping remains balanced, rather than manufacturing a fixed
+    # 8-DC head plus a small product tail: 202 = 20 x 8 DC + 6 x 7 DC.
+    assert one_to_eight.dc_blocks_per_ac.count(8) == 20
+    assert one_to_eight.dc_blocks_per_ac.count(7) == 6
+
+    # Both architectures are valid for a balanced 202-DC 1:8 selection. A
+    # small project with only three DC Blocks is correctly rejected for 8 PCS.
+    assert minimum_dc_blocks_for_pcs_feeders(2) == 1
+    assert minimum_dc_blocks_for_pcs_feeders(8) == 4
+    assert dc_grouping_has_feeder_capacity(one_to_eight.dc_blocks_per_ac, 2)
+    assert dc_grouping_has_feeder_capacity(one_to_eight.dc_blocks_per_ac, 8)
+    small_one_to_eight = next(
+        option for option in generate_ac_sizing_options(3, 10.0, 40.0, 5.0) if option.ratio == "1:8"
+    )
+    assert not dc_grouping_has_feeder_capacity(small_one_to_eight.dc_blocks_per_ac, 8)
 
 
 def test_ac_sizing_service_builds_authoritative_dc_allocation_plan():

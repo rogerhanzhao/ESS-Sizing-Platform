@@ -6,7 +6,8 @@
 
 Launches the actual Streamlit app and drives it as a user would — guest mode →
 DC Sizing (POI inputs) → AC Sizing — then asserts the AC Sizing page renders the
-single trunk flow plus the optional standard-product preset checkbox. This is the
+single trunk flow, including the 1:8 grouping option and no legacy product-preset
+toggle. This is the
 verification mechanism Change Discipline §2 step "run the real app" points to: it
 caught a real UI bug (duration read from DC nameplate capacity instead of POI
 energy) that the function-level tests could not.
@@ -114,10 +115,11 @@ def main() -> int:
             ac = pg.inner_text('[data-testid="stApp"]')
 
             checks = {
-                "preset checkbox present": "Use a standard product AC Block preset" in ac,
+                "legacy preset removed": "Use a standard product AC Block preset" not in ac,
                 "trunk grouping present": "AC Block Grouping" in ac,
+                "1:8 grouping present": "1 AC Block : 8 DC Blocks" in ac,
                 "grouping computed": "AC Blocks" in ac and "DC Block" in ac,
-                "run button present": "Run AC Sizing" in ac or "Run AC Sizing (Governed)" in ac,
+                "single run button present": "Run AC Sizing" in ac and "Run AC Sizing (Governed)" not in ac,
                 "no fabricated duration steer": "currently covers 4 h systems" not in ac,
             }
             for name, ok in checks.items():

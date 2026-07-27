@@ -33,7 +33,7 @@ def test_engineering_v2_renderer_emits_svg_from_layout_plan(sample_excel_path, t
     assert "Battery Energy Storage System" in svg_text
     assert "RMU-01" in svg_text
     assert "Transformer Feeder" in svg_text
-    assert "Dyn11" in svg_text
+    assert "Dyn11yn11" in svg_text
     assert "LV-A DISTRIBUTION SECTION" in svg_text
     assert "LV-B DISTRIBUTION SECTION" in svg_text
     assert "NO LV BUS TIE" in svg_text
@@ -93,8 +93,8 @@ def test_transformer_vector_symbol_is_drawn_as_shapes_not_text():
     # The winding-mark dispatcher owns the shape selection…
     dispatcher_source = inspect.getsource(renderer_module._winding_mark)
     assert "_delta_mark" in dispatcher_source
-    assert "_wye_grounded_mark" in dispatcher_source
     assert "_wye_mark" in dispatcher_source
+    assert "_wye_grounded_mark" not in dispatcher_source
 
     # …and both transformer symbols derive their marks from the vector group.
     for symbol in (renderer_module._transformer_2w,
@@ -109,8 +109,9 @@ def test_parse_vector_group_tokens():
     parse = renderer_module._parse_vector_group
 
     assert parse("Dyn11", 1) == ("D", ["yn11"])
-    # A single secondary token applies to both identical LV windings.
-    assert parse("Dyn11", 2) == ("D", ["yn11", "yn11"])
+    # A single secondary token may not be copied to two independent LV windings.
+    assert parse("Dyn11", 2) == ("", [])
+    assert parse("Dy11y11", 2) == ("D", ["y11", "y11"])
     assert parse("YNd11y0", 2) == ("YN", ["d11", "y0"])
     # Unparsable input falls back to text annotation (no symbol guessing).
     assert parse("", 2) == ("", [])
@@ -164,10 +165,88 @@ def test_three_winding_transformer_circles_interlock(sample_excel_path, tmp_path
     # The vector group is printed exactly once at the transformer (nameplate);
     # the old renderer printed a second standalone copy.
     tx_region = [
-        line for line in svg_text.splitlines() if "Dyn11" in line
+        line for line in svg_text.splitlines() if "Dyn11yn11" in line
     ]
-    standalone = [line for line in tx_region if ">Dyn11<" in line]
+    standalone = [line for line in tx_region if ">Dyn11yn11<" in line]
     assert not standalone, "vector group must not be printed as a duplicate standalone label"
+
+
+def test_three_winding_product_dy_marks_both_lvs_as_ungrounded_wye(sample_excel_path, tmp_path):
+    """A product Dy11y11 must draw two plain Y marks and no neutral earth bars."""
+    from tests.unit.test_sld_shared_dc_blocks import _shared_topology
+    from calb_sizing_tool.services.sld_engineering_v2_builder import (
+        build_sld_engineering_v2_graph as _build_graph,
+    )
+
+    topology = _shared_topology(sample_excel_path)
+    topology = topology.model_copy(
+        update={
+            "summary": topology.summary.model_copy(
+                update={"transformer_vector_group": "Dy11y11"}
+            )
+        }
+    )
+    plan = build_sld_engineering_v2_layout_plan(_build_graph(topology))
+    svg_path = tmp_path / "three_winding_dy11y11.svg"
+    render_sld_engineering_v2_svg(plan, svg_path)
+    svg_text = svg_path.read_text(encoding="utf-8")
+
+    for winding in (1, 2):
+        prefix = f'tx-lv-winding-{winding}'
+        assert f'id="{prefix}-wye-left"' in svg_text
+        assert f'id="{prefix}-wye-right"' in svg_text
+        assert f'id="{prefix}-neutral-leg"' in svg_text
+        assert f'id="{prefix}-earth-bar-1"' not in svg_text
+        assert f'id="{prefix}-earth-bar-2"' not in svg_text
+        assert f'id="{prefix}-earth-bar-3"' not in svg_text
+
+
+def test_two_winding_dyn_marks_the_single_lv_as_plain_wye(sample_excel_path, tmp_path):
+    """``n`` means neutral brought out; it must never infer neutral earthing."""
+    from tests.unit.test_sld_layout_engine import _build_single_winding_topology
+    from calb_sizing_tool.services.sld_engineering_v2_builder import (
+        build_sld_engineering_v2_graph as _build_graph,
+    )
+
+    plan = build_sld_engineering_v2_layout_plan(
+        _build_graph(_build_single_winding_topology(sample_excel_path))
+    )
+    svg_path = tmp_path / "two_winding_dyn11.svg"
+    render_sld_engineering_v2_svg(plan, svg_path)
+    svg_text = svg_path.read_text(encoding="utf-8")
+
+    prefix = "tx-lv-winding-1"
+    assert f'id="{prefix}-wye-left"' in svg_text
+    assert f'id="{prefix}-wye-right"' in svg_text
+    assert f'id="{prefix}-neutral-leg"' in svg_text
+    assert f'id="{prefix}-earth-bar-1"' not in svg_text
+    assert f'id="{prefix}-earth-bar-2"' not in svg_text
+    assert f'id="{prefix}-earth-bar-3"' not in svg_text
+
+
+@pytest.mark.parametrize("token", ("y0", "yn0", "z0", "zn0"))
+def test_all_wye_family_tokens_never_infer_an_earth_connection(token, tmp_path):
+    """Connection and neutral tokens must not fabricate a protection design."""
+    import svgwrite
+
+    svg_path = tmp_path / f"winding_{token}.svg"
+    drawing = svgwrite.Drawing(str(svg_path), profile="full")
+    renderer_module._winding_mark(
+        drawing,
+        100,
+        100,
+        token,
+        id_prefix="test-winding",
+    )
+    drawing.save()
+    svg_text = svg_path.read_text(encoding="utf-8")
+
+    assert 'id="test-winding-wye-left"' in svg_text
+    assert 'id="test-winding-wye-right"' in svg_text
+    assert 'id="test-winding-neutral-leg"' in svg_text
+    assert 'id="test-winding-earth-bar-1"' not in svg_text
+    assert 'id="test-winding-earth-bar-2"' not in svg_text
+    assert 'id="test-winding-earth-bar-3"' not in svg_text
 
 
 def test_two_winding_transformer_circles_interlock(sample_excel_path, tmp_path):

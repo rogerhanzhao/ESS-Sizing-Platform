@@ -1,5 +1,26 @@
 # Sizing Logic Canon V1
 
+## Owner-approved AC amendment V2 (2026-07-27)
+
+This amendment is the explicit owner approval required to revise the frozen
+`ac_sizing_service.py` contract. It does not alter Stage 1/2/3, SOH/RTE,
+`K_MAX_FIXED`, POI energy semantics, or the existing power/energy feasibility
+thresholds.
+
+- The generic AC grouping set is extended from `1:1 / 1:2 / 1:4` to
+  `1:1 / 1:2 / 1:4 / 1:8`, with `ceil(DC / ratio)` and the existing balanced
+  allocation rule.
+- A user-selected 1:8 grouping exposes an optional `8 x 1250 kW` small-PCS
+  candidate. It is not a product lock and catalogue matching is downstream of
+  the PCS selection.
+- A protected-output capacity validation prevents a PCS count that cannot be
+  physically supplied by the smallest balanced DC group. It adds no sizing
+  formula or fabricated engineering parameter.
+
+The current authoritative handoff is
+`AC_SIZING_UNIFIED_FLOW_V2_2026-07-27.md`. The matching SHA-256 is pinned in
+`tests/test_frozen_canon_guard.py` as part of this same approval.
+
 ## 目标
 
 这份文档把当前项目已经实现并上线使用的 sizing 逻辑固定为 V1 铁律。

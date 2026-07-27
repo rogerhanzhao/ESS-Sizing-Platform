@@ -47,10 +47,11 @@ All in the SLD engine / diagram renderer domain; frozen sizing core untouched.
   below), LV lead labels beside their own leads, nameplate clear of wiring,
   explicit `Secondaries: 2 x yn11 (LV-A, LV-B)` note.
 - `_transformer_2w`: properly interlocked two-circle symbol.
-- `_parse_vector_group` + `_winding_mark`: winding marks (Δ / Y / grounded-Y)
-  are now **derived from the vector-group input**; unparsable input degrades
-  to a text annotation so the symbol can never contradict the nameplate.
-- `_wye_grounded_mark` redrawn to stay inside its winding circle.
+- `_parse_vector_group` + `_winding_mark`: winding marks (Δ / Y) are derived
+  from the vector-group input; unparsable input degrades to a text annotation
+  so the symbol can never contradict the nameplate. The earlier grounded-Y
+  interpretation was superseded on 2026-07-27: `n` means a neutral terminal is
+  brought out, not that the neutral is earthed.
 - Duplicate standalone `Dyn11` label removed (nameplate is the single source).
 - Defensive gate: a transformer declaring N LV windings refuses to render if
   the PCS groups resolve to a different count.

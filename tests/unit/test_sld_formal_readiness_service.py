@@ -16,7 +16,7 @@ def _professional_project_settings() -> dict:
             "to_other_rmu": "To Other RMU",
         },
         "transformer": {
-            "vector_group": "Dyn11",
+            "vector_group": "Dyn11yn11",
             "uk_percent": 7.0,
         },
         "dc_block_voltage_v": 1500.0,
@@ -51,6 +51,11 @@ def _professional_project_settings() -> dict:
 def test_formal_readiness_flags_renderer_fixture_as_not_formal(sample_excel_path):
     case_dir = Path(__file__).resolve().parents[1] / "fixtures" / "sld_cases" / "case01_container_only_group1"
     run_bundle, ac_snapshot, options, project_settings = build_case_inputs(load_case_definition(case_dir))
+    project_settings = dict(project_settings)
+    project_settings["transformer"] = {
+        **dict(project_settings.get("transformer") or {}),
+        "vector_group": "Dyn11yn11",
+    }
     options = options.model_copy(update={"renderer_mode": "engineering_v2"})
     canonical = build_sld_canonical_input(
         run_bundle=run_bundle,

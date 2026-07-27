@@ -96,6 +96,7 @@ def test_sld_plugin_from_run_snapshot(sample_excel_path, tmp_path):
     assert run_bundle is not None
 
     override_payload = legacy_sld_override_preset()
+    override_payload["transformer_vector_group"] = "Dyn11yn11"
     override_payload["dc_block_voltage_v"] = 1500.0
     override_payload["dc_blocks_per_feeder"] = [1, 1, 1, 1]
     options = SldRenderOptions(

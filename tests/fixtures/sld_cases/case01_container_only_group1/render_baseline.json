@@ -3,8 +3,8 @@
     "artifact_mode": "official",
     "engineering_v2_connector_count": 24,
     "engineering_v2_edge_count": 24,
-    "engineering_v2_graph_hash": "cdfa02596d3ca2cb33dcd43d7dad07958e4210957f8015134ffb073721076509",
-    "engineering_v2_layout_hash": "177c6fbba7b94dc3cee6501763f268d5072ac86eb1817ee8db4b2e9da1c699c6",
+    "engineering_v2_graph_hash": "3c951d2165efd26bf152d27bd0a3c42eee87a52cedcbb52f616d05da7ac1ce62",
+    "engineering_v2_layout_hash": "0aab429026d8e17f8a276b1f3d2d94ce8abc77dd74f3a136ffacea4fd09b8773",
     "engineering_v2_layout_issue_count": 0,
     "engineering_v2_layout_warning_count": 4,
     "engineering_v2_node_count": 25,
@@ -12,8 +12,8 @@
     "engineering_v2_png_width": 2000,
     "engineering_v2_template": "professional_electrical_reference_v1",
     "group_index": 1,
-    "input_hash": "d853ecc71b2f22618bed741a3042a088b8d0843b0e7546505d278fc3243f7238",
-    "render_spec_hash": "7f2c78d43d364225e1f95bf39db62f2d467d4689a80cefbb7c37deef3f7fcd9f",
+    "input_hash": "7daead7449c06b67612f640bf2bfb87836c50677efee0391cd47c6b16592d6d7",
+    "render_spec_hash": "68f0baa1c15703271fb0f69621c52fdc93db92495da03982886333c5113b0de0",
     "renderer_lineage": "port_bay_engineering_v2_preview",
     "renderer_mode": "engineering_v2",
     "renderer_version": "1.3.0",
@@ -21,7 +21,7 @@
     "scenario_id": "container_only",
     "server_baseline_commit": null,
     "topology_edge_count": 18,
-    "topology_hash": "c4e01c849770406c29243068c05a78f5bf16f4a1768717d9ca9cce0f9cdb77c2",
+    "topology_hash": "cc9fc0d906e9c801a2c11c9c83aaf90c3a2ce3fe2f7efb8eaa6bfb59d68e595d",
     "topology_node_count": 19,
     "validation_mode": "strict"
   },
@@ -66,7 +66,7 @@
         "cooling": "ONAN",
         "tap_range": "+/-2x2.5%",
         "uk_percent": 7.0,
-        "vector_group": "Dyn11"
+        "vector_group": "Dyn11yn11"
       }
     },
     "group_index": 1,
@@ -95,7 +95,7 @@
     ],
     "transformer_mva": 6.0,
     "transformer_uk_percent": 7.0,
-    "transformer_vector_group": "Dyn11"
+    "transformer_vector_group": "Dyn11yn11"
   },
   "svg": {
     "class_counts": {
@@ -111,14 +111,14 @@
       "tb": 8,
       "tbh": 3,
       "tbtitle": 1,
-      "thin": 130,
+      "thin": 124,
       "title": 5,
       "wire": 51
     },
     "element_counts": {
       "circle": 26,
       "defs": 1,
-      "line": 178,
+      "line": 172,
       "polygon": 2,
       "polyline": 6,
       "rect": 42,
@@ -306,7 +306,7 @@
       {
         "class": "notes",
         "tag": "text",
-        "text": "Dyn11, Uk=7.0%",
+        "text": "Dyn11yn11, Uk=7.0%",
         "text-anchor": "start",
         "x": 48.0,
         "y": 358.0
@@ -1090,17 +1090,17 @@
         "class": "thin",
         "tag": "line",
         "x1": 1087.8,
-        "x2": 1080.3354,
+        "x2": 1079.6568,
         "y1": 544.16,
-        "y2": 539.87
+        "y2": 539.48
       },
       {
         "class": "thin",
         "tag": "line",
         "x1": 1087.8,
-        "x2": 1095.2646,
+        "x2": 1095.9432,
         "y1": 544.16,
-        "y2": 539.87
+        "y2": 539.48
       },
       {
         "class": "thin",
@@ -1108,31 +1108,7 @@
         "x1": 1087.8,
         "x2": 1087.8,
         "y1": 544.16,
-        "y2": 550.4
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1082.184,
-        "x2": 1093.416,
-        "y1": 550.4,
-        "y2": 550.4
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1084.212,
-        "x2": 1091.388,
-        "y1": 552.74,
-        "y2": 552.74
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1086.24,
-        "x2": 1089.36,
-        "y1": 555.08,
-        "y2": 555.08
+        "y2": 553.52
       },
       {
         "class": "tag",
@@ -1153,17 +1129,17 @@
         "class": "thin",
         "tag": "line",
         "x1": 1146.2,
-        "x2": 1138.7354,
+        "x2": 1138.0568,
         "y1": 544.16,
-        "y2": 539.87
+        "y2": 539.48
       },
       {
         "class": "thin",
         "tag": "line",
         "x1": 1146.2,
-        "x2": 1153.6646,
+        "x2": 1154.3432,
         "y1": 544.16,
-        "y2": 539.87
+        "y2": 539.48
       },
       {
         "class": "thin",
@@ -1171,31 +1147,7 @@
         "x1": 1146.2,
         "x2": 1146.2,
         "y1": 544.16,
-        "y2": 550.4
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1140.584,
-        "x2": 1151.816,
-        "y1": 550.4,
-        "y2": 550.4
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1142.612,
-        "x2": 1149.788,
-        "y1": 552.74,
-        "y2": 552.74
-      },
-      {
-        "class": "thin",
-        "tag": "line",
-        "x1": 1144.64,
-        "x2": 1147.76,
-        "y1": 555.08,
-        "y2": 555.08
+        "y2": 553.52
       },
       {
         "class": "tag",
@@ -1224,7 +1176,7 @@
       {
         "class": "label",
         "tag": "text",
-        "text": "Dyn11, Uk=7.0%",
+        "text": "Dyn11yn11, Uk=7.0%",
         "text-anchor": "start",
         "x": 1195.0,
         "y": 512.0
@@ -2920,7 +2872,7 @@
       {
         "class": "tb",
         "tag": "text",
-        "text": "33kV MV Grid Connection | 33.0/0.690 kV, 6.0 MVA, Dyn11, Uk=7.0%, 3-winding transformer (1 MV primary + 2 independent LV secondaries), ONAN",
+        "text": "33kV MV Grid Connection | 33.0/0.690 kV, 6.0 MVA, Dyn11yn11, Uk=7.0%, 3-winding transformer (1 MV primary + 2 independent LV secondaries), ONAN",
         "text-anchor": "start",
         "x": 50.0,
         "y": 1105.0
@@ -3024,7 +2976,7 @@
       "Step-up Transformer (OIL)",
       "33.0/0.690 kV",
       "6.0 MVA",
-      "Dyn11, Uk=7.0%",
+      "Dyn11yn11, Uk=7.0%",
       "3-winding: 1 MV primary + 2 independent LV secondaries",
       "ONAN",
       "LV Connecting Cable",
@@ -3056,7 +3008,7 @@
       "LV-B",
       "33.0/0.690 kV",
       "6.0 MVA",
-      "Dyn11, Uk=7.0%",
+      "Dyn11yn11, Uk=7.0%",
       "3-winding: 1 MV primary + 2 independent LV secondaries",
       "ONAN",
       "Secondaries: 2 x yn11 (LV-A, LV-B)",
@@ -3114,7 +3066,7 @@
       "0.836 MWh",
       "BESS-04",
       "SINGLE LINE DIAGRAM \u2014 BATTERY ENERGY STORAGE SYSTEM (BESS)",
-      "33kV MV Grid Connection | 33.0/0.690 kV, 6.0 MVA, Dyn11, Uk=7.0%, 3-winding transformer (1 MV primary + 2 independent LV secondaries), ONAN",
+      "33kV MV Grid Connection | 33.0/0.690 kV, 6.0 MVA, Dyn11yn11, Uk=7.0%, 3-winding transformer (1 MV primary + 2 independent LV secondaries), ONAN",
       "DRG NO.",
       "SLD-BESS-001",
       "DATE",

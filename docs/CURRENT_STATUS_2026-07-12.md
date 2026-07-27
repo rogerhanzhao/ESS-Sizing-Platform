@@ -9,6 +9,32 @@ the agreed direction for future maintenance decomposition. The previous status
 baseline (`CURRENT_STATUS_2026-04-13.md`) remains valid as the frozen sizing
 reference; this document supersedes it only for SLD/Layout document governance.
 
+## Active AC Sizing direction (owner decision, 2026-07-27)
+
+For new AC runs, `AC_SIZING_UNIFIED_FLOW_V2_2026-07-27.md` is the governing
+handoff. It replaces the UI-level governed-product preset with one generic
+grouping -> PCS -> explicit topology -> optional product-match flow. The
+supported grouping set now includes 1:8, but 1:8 is not a locked standard
+product: 2 x 2,500 kW remains the normal comparison preference and 8 x 1,250
+kW is an optional small-PCS candidate only for a user-selected 1:8 case.
+
+Local verification on 2026-07-27: `AC_SIZING_UNIFIED_FLOW_V2_2026-07-27.md`
+records 477 passing tests and a real Guest 1:8 -> 8 x 1,250 kW -> 3-winding
+catalogue-bound SLD render. Guest SLD previews are intentionally not persisted;
+formal run artifacts remain a signed-in, traceable workflow.
+
+Cloud implementation handoff and the machine-enforced cross-module acceptance
+contract are in `CLAUDE_CLOUD_AC_SIZING_SLD_EXECUTION_GUIDE_2026-07-28.md` and
+`tests/integration/test_claude_ac_sizing_handoff.py`. They record the active
+new-run rules, P0/P1/P2 remaining work and the requirement that 1:8 remain a
+generic grouping rather than a product lock. The 2026-07-28 checkout collected
+481 tests and passed the full suite after adding that contract; the 477 figure
+above remains the 2026-07-27 historical verification record.
+
+Sections 2.3–2.5 below are retained as implementation history and compatibility
+context for persisted governed outputs. They must not be used to restore the
+old checkbox or a separate sizing engine.
+
 ## 1. Completed in this version
 
 ### SLD Proposal Package V1 (P1)
@@ -121,6 +147,49 @@ The bilateral 4+4 1:8 configuration handed off in §2.3 is now implemented as a
   MVA), report §8 routes to the bilateral engine by `layout_variant`, and the
   linear §9 site figure is suppressed for the bilateral variant. Ungoverned
   runs unchanged; locked by `tests/unit/test_report_governed_consistency.py`.
+
+### 2.5 Governed AC POI power-closure gate (2026-07-27)
+
+- `services/governed_ac_block_service.py` now evaluates the already-selected
+  governed PCS capacity at the POI plane using the Stage 1 MVT, MV
+  cable/switchgear and HVT efficiency handoff. It does not change a sizing
+  formula or synthesize a smaller station configuration.
+- A governed output is held when it cannot meet POI power or exceeds the
+  temporary 10% POI oversize safety ceiling. The 200 MW / 202 DC example
+  (252.5 MW installed PCS; approximately 249.23 MW deliverable at POI) is
+  therefore held at approximately 24.6% excess instead of being persisted as
+  a valid AC, SLD or report selection.
+- The AC page now prefers the Stage 1/3 POI P/E handoff over legacy summary
+  aliases. SLD rejects historical governed snapshots without a passing
+  persisted POI-closure record, so an old one-DC-to-one-PCS result cannot be
+  rendered as a current engineering selection. A physically usable smaller
+  PCS/station mix remains a separate DC-augmentation and connection-contract
+  implementation; it must not be represented by an average DC split.
+
+### 2.6 AC-to-SLD transformer vector-group contract (2026-07-27)
+
+- `sld/transformer_vector_group.py` is the shared authoritative parser for
+  every AC Sizing route.  It requires exactly one declared LV vector token per
+  independently drawn LV winding: `Dyn11` is valid only for a two-winding
+  transformer; `Dy11y11` / `Dy11-y11` declares two LV windings.
+- SLD strict mode rejects a vector/topology mismatch. Draft mode renders `TBD`
+  without inferring a neutral or earth connection. `n` only means the neutral
+  terminal is brought out; all `y` / `yn` / `z` / `zn` vector tokens render as
+  a plain Y unless a future explicit grounding-design contract is provided.
+- For governed catalogue products, product vector data cannot be silently
+  overridden by a conflicting Engineering Settings value. The conflict is
+  explicit (strict rejection or draft `TBD`). Engineering V2 SVG regression
+  tests assert actual winding elements and the absence of earth-bar elements,
+  including both low-voltage windings for `Dy11y11` and a `Dyn11` two-winding
+  path.
+- The approved `case01` regression fixture now explicitly declares its two
+  LV neutral terminals as `Dyn11yn11`; normalized topology/render baselines
+  are regenerated through `scripts/generate_sld_regression_baseline.py`.
+- Generic AC Sizing no longer auto-selects a three-winding transformer merely
+  because an AC Block has more than two PCS.  New runs, and legacy runs without
+  an explicit confirmation marker, require the operator to select the actual
+  secondary arrangement before they can be issued.  A three-winding selection
+  warns that an OEM-declared vector group with two LV tokens is required.
 
 ## 3. Next boundary
 

@@ -21,10 +21,35 @@ from calb_sizing_tool.infra.db.session import session_scope
 _PCS_KW_TOL = 1.0  # kW; PCS unit ratings are integer-ish, match near-exact.
 
 
+def preferred_catalogue_architecture(grouping_ratio: str | None) -> dict[str, Any]:
+    """Return a UI-only preference, never a sizing or product-selection rule.
+
+    The normal commercial preference is a 5 MW AC Block assembled from two
+    2.5 MW PCS units. For a user-selected 1:8 grouping, the relevant optional
+    comparison is an 8 x 1.25 MW small-PCS combination. Callers must still
+    choose a PCS model and may bind no product at all.
+    """
+    if grouping_ratio == "1:8":
+        return {
+            "pcs_count": 8,
+            "pcs_kw": 1250,
+            "label": "1:8 preference: 8 x 1250 kW PCS small-PCS combination",
+            "reason": "Optional 1:8 comparison architecture; it does not lock a product.",
+        }
+    return {
+        "pcs_count": 2,
+        "pcs_kw": 2500,
+        "label": "Default preference: 2 x 2500 kW PCS / 5 MW AC Block",
+        "reason": "Product matching does not alter AC grouping or PCS sizing.",
+    }
+
+
 def match_ac_block_products(
     pcs_count: int,
     pcs_kw: float,
     *,
+    grouping_ratio: str | None = None,
+    transformer_topology: str | None = None,
     db_url: str | None = None,
 ) -> list[dict[str, Any]]:
     """Catalogue products whose PCS count and unit rating match the given spec.
@@ -32,7 +57,10 @@ def match_ac_block_products(
     Returns a list (possibly empty) of lightweight dicts with the confirmed
     transformer / LV values, ordered by block_code. A match requires the same
     PCS-per-block count and the same PCS unit power (within a small tolerance);
-    the resulting AC Block power therefore also matches.
+    the resulting AC Block power therefore also matches. When a transformer
+    topology is supplied, records that explicitly declare a conflicting topology
+    are excluded. Records with no topology metadata remain available but are
+    marked incomplete, not guessed.
     """
     try:
         want_count = int(pcs_count)
@@ -42,6 +70,7 @@ def match_ac_block_products(
     if want_count <= 0 or want_kw <= 0:
         return []
 
+    preference = preferred_catalogue_architecture(grouping_ratio)
     results: list[dict[str, Any]] = []
     with session_scope(db_url) as session:
         rows = (
@@ -56,6 +85,13 @@ def match_ac_block_products(
             if abs(float(row.pcs_power_kw) - want_kw) > _PCS_KW_TOL:
                 continue
             metadata = row.metadata_json if isinstance(row.metadata_json, dict) else {}
+            product_topology = metadata.get("transformer_topology")
+            if (
+                transformer_topology in {"two_winding", "three_winding"}
+                and product_topology
+                and product_topology != transformer_topology
+            ):
+                continue
             results.append({
                 "block_code": row.block_code,
                 "block_name": row.block_name,
@@ -64,12 +100,30 @@ def match_ac_block_products(
                 "pcs_power_kw": row.pcs_power_kw,
                 "transformer_kva": row.transformer_kva,
                 "transformer_vector_group": metadata.get("transformer_vector_group"),
+                "transformer_topology": product_topology,
                 "transformer_cooling": metadata.get("transformer_cooling"),
                 "lv_voltage_v": row.lv_voltage_v,
                 "hv_voltage_kv": row.hv_voltage_kv,
                 "ac_power_mw": metadata.get("ac_power_mw"),
+                "dc_inputs": metadata.get("dc_inputs"),
+                "is_preferred_architecture": (
+                    int(row.pcs_count) == int(preference["pcs_count"])
+                    and abs(float(row.pcs_power_kw) - float(preference["pcs_kw"])) <= _PCS_KW_TOL
+                ),
+                "engineering_data_status": (
+                    "complete"
+                    if metadata.get("transformer_vector_group") and product_topology
+                    else "partial"
+                ),
             })
-    return results
+    return sorted(
+        results,
+        key=lambda item: (
+            not bool(item.get("is_preferred_architecture")),
+            item.get("engineering_data_status") != "complete",
+            str(item.get("block_code") or ""),
+        ),
+    )
 
 
 def product_transformer_overrides(product: Optional[dict[str, Any]]) -> dict[str, Any]:
@@ -93,4 +147,8 @@ def product_transformer_overrides(product: Optional[dict[str, Any]]) -> dict[str
     return out
 
 
-__all__ = ["match_ac_block_products", "product_transformer_overrides"]
+__all__ = [
+    "match_ac_block_products",
+    "preferred_catalogue_architecture",
+    "product_transformer_overrides",
+]

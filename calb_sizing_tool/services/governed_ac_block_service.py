@@ -34,7 +34,7 @@ transformer MVA is taken only from ``project_settings["transformer_rating_mva"]`
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from calb_sizing_tool.infra.db.models import ProductACBlock
 from calb_sizing_tool.infra.db.session import session_scope
@@ -49,12 +49,151 @@ from calb_sizing_tool.schemas.governed_ac_block_config import (
 # old record instead of silently misreading it.
 GOVERNED_SITE_RUN_SCHEMA_VERSION = 1
 
+# The governed configurations currently bind one DC Block to one PCS feeder.
+# That topology is valid only while its installed PCS power also closes at the
+# project POI.  Until a separate, typed DC-augmentation contract exists, do not
+# silently accept a material POI-power excess simply because every DC Block was
+# assigned a PCS.  Ten percent is a conservative temporary safety ceiling, not
+# a replacement for an owner-confirmed project tolerance.
+DEFAULT_GOVERNED_POI_OVERSIZE_MAX = 0.10
+
 # Nominal ISO 40 ft footprint (length x width) used when a product record only
 # names the container class. Length = container W, width = container D.
 _CONTAINER_FOOTPRINT_M = {
     "40ft": (12.192, 2.438),
     "20ft": (6.058, 2.438),
 }
+
+
+@dataclass(frozen=True)
+class GovernedPoiPowerClosure:
+    """POI-plane power check for a governed AC site.
+
+    This is deliberately a runtime gate, not a sizing formula.  It evaluates
+    the AC capacity already selected by the governed product/topology against
+    the Stage 1 POI requirement after the downstream AC losses (MVT, MV
+    cable/switchgear and HVT).  It prevents a one-DC-to-one-PCS topology from
+    being persisted as a feasible AC selection when its PCS count is materially
+    above the POI need.
+    """
+
+    poi_power_mw: float
+    site_ac_lv_mw: float
+    poi_delivery_efficiency: float
+    required_ac_lv_mw: float
+    deliverable_poi_mw: float
+    poi_power_margin_mw: float
+    poi_oversize_pct: float
+    max_poi_oversize_pct: float
+    status: str
+    blockers: tuple[str, ...]
+
+    @property
+    def is_feasible(self) -> bool:
+        return self.status == "pass"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Stable persisted representation for AC snapshots and reports."""
+        return {
+            "poi_power_mw": self.poi_power_mw,
+            "site_ac_lv_mw": self.site_ac_lv_mw,
+            "poi_delivery_efficiency": self.poi_delivery_efficiency,
+            "required_ac_lv_mw": self.required_ac_lv_mw,
+            "deliverable_poi_mw": self.deliverable_poi_mw,
+            "poi_power_margin_mw": self.poi_power_margin_mw,
+            "poi_oversize_pct": self.poi_oversize_pct,
+            "max_poi_oversize_pct": self.max_poi_oversize_pct,
+            "status": self.status,
+            "blockers": list(self.blockers),
+        }
+
+
+def assess_governed_poi_power_closure(
+    *,
+    poi_power_mw: float,
+    site_ac_lv_mw: float,
+    eff_mvt_frac: float,
+    eff_ac_cables_sw_rmu_frac: float,
+    eff_hvt_others_frac: float,
+    max_poi_oversize_pct: float = DEFAULT_GOVERNED_POI_OVERSIZE_MAX,
+) -> GovernedPoiPowerClosure:
+    """Return a fail-safe POI power closure for a governed AC site.
+
+    ``site_ac_lv_mw`` is the installed PCS AC capacity before the MVT and MV
+    collection losses.  The function intentionally does not create a smaller
+    replacement configuration: assigning aged-energy DC Blocks to fewer PCS
+    units needs an explicit DC augmentation/connection contract that the
+    current governed product schema does not yet contain.
+    """
+    poi_power = float(poi_power_mw)
+    site_ac_lv = float(site_ac_lv_mw)
+    max_oversize = float(max_poi_oversize_pct)
+    if poi_power <= 0:
+        raise ValueError("POI power must be positive for governed AC power closure.")
+    if site_ac_lv <= 0:
+        raise ValueError("Governed site AC power must be positive for POI power closure.")
+    if max_oversize < 0:
+        raise ValueError("Governed POI oversize limit cannot be negative.")
+
+    efficiency_values = (
+        float(eff_mvt_frac),
+        float(eff_ac_cables_sw_rmu_frac),
+        float(eff_hvt_others_frac),
+    )
+    if any(value <= 0 or value > 1 for value in efficiency_values):
+        raise ValueError(
+            "Stage 1 AC delivery efficiencies must be fractions greater than 0 and no more than 1."
+        )
+
+    poi_delivery_efficiency = (
+        efficiency_values[0] * efficiency_values[1] * efficiency_values[2]
+    )
+    required_ac_lv_mw = poi_power / poi_delivery_efficiency
+    deliverable_poi_mw = site_ac_lv * poi_delivery_efficiency
+    poi_power_margin_mw = deliverable_poi_mw - poi_power
+    poi_oversize_pct = (site_ac_lv / required_ac_lv_mw) - 1.0
+
+    blockers: list[str] = []
+    if poi_power_margin_mw < -1e-6:
+        blockers.append("poi_power_not_met")
+    if poi_oversize_pct > max_oversize + 1e-9:
+        blockers.append("poi_oversize_above_guard")
+
+    return GovernedPoiPowerClosure(
+        poi_power_mw=poi_power,
+        site_ac_lv_mw=site_ac_lv,
+        poi_delivery_efficiency=poi_delivery_efficiency,
+        required_ac_lv_mw=required_ac_lv_mw,
+        deliverable_poi_mw=deliverable_poi_mw,
+        poi_power_margin_mw=poi_power_margin_mw,
+        poi_oversize_pct=poi_oversize_pct,
+        max_poi_oversize_pct=max_oversize,
+        status="pass" if not blockers else "hold",
+        blockers=tuple(blockers),
+    )
+
+
+def governed_poi_power_closure_issue(ac_output: Mapping[str, Any] | None) -> str | None:
+    """Return the safety-gate reason for a persisted governed output, if any.
+
+    SLD, report and other runtime consumers call this before presenting an AC
+    snapshot as an engineering selection.  A pre-gate historical output is not
+    grandfathered: it must be re-run against the active Stage 1/3 POI handoff.
+    """
+    if not isinstance(ac_output, Mapping) or not ac_output.get("governed_configuration"):
+        return None
+    closure = ac_output.get("governed_poi_power_closure")
+    if not isinstance(closure, Mapping):
+        return (
+            "Governed AC snapshot has no POI power-closure record. Re-run AC sizing under "
+            "the current POI power gate before using this output."
+        )
+    if closure.get("status") != "pass":
+        return (
+            "Governed AC snapshot is on POI power hold; reconcile the PCS/station mix "
+            "before using this output."
+        )
+    return None
 
 
 def map_engineering_settings_to_overrides(
@@ -301,14 +440,26 @@ def build_governed_ac_output_from_product(
 ) -> dict[str, Any]:
     """Site-level governed AC output using a real product for provisional values.
 
-    Precedence: product datasheet values form the base; explicit Engineering
-    Settings override them (so an owner-entered Uk%/MVA always wins). The result
-    still reports any remaining unresolved provisional fields (e.g. Uk%, which no
-    datasheet publishes).
+    Product datasheet values form the base.  Engineering Settings may override
+    project-specific ratings such as MVA or Uk%, but a conflicting vector group
+    is retained as an explicit SLD conflict rather than silently replacing the
+    product's winding/neutral declaration.
     """
     config = get_governed_configuration(configuration_code)
-    merged = product_overrides(product_block_code, config, db_url=db_url)
-    merged.update(map_engineering_settings_to_overrides(project_settings, config))
+    product = product_overrides(product_block_code, config, db_url=db_url)
+    engineering = map_engineering_settings_to_overrides(project_settings, config)
+    product_vector = str(product.get("transformer_vector_group") or "").strip()
+    engineering_vector = str(engineering.get("transformer_vector_group") or "").strip()
+    vector_group_conflict = bool(
+        product_vector and engineering_vector and product_vector != engineering_vector
+    )
+    if product_vector:
+        # Never let a persisted generic/default vector erase a product's real
+        # LV-neutral declaration.  The conflict is surfaced below for the SLD
+        # builder to reject (strict) or watermark as TBD (draft).
+        engineering.pop("transformer_vector_group", None)
+    merged = dict(product)
+    merged.update(engineering)
     output = build_governed_site_ac_output(
         configuration_code,
         None,
@@ -317,13 +468,19 @@ def build_governed_ac_output_from_product(
         extra_overrides=merged,
     )
     # Carry the confirmed transformer vector group / cooling through to the SLD.
-    # The vector group in particular drives the winding-connection symbols
-    # (e.g. Dy11y11 has an isolated LV neutral -> ungrounded-wye mark, no earth),
-    # so a real product must not fall back to a generic grounded-wye preset.
+    # The vector group drives the winding-connection symbols, but never an
+    # earthing symbol: ``n`` means the neutral terminal is brought out, not
+    # that it is connected to earth.  A real product must not be silently
+    # replaced by a generic/default vector declaration.
     if merged.get("transformer_vector_group"):
         output["transformer_vector_group"] = merged["transformer_vector_group"]
     if merged.get("transformer_cooling"):
         output["transformer_cooling"] = merged["transformer_cooling"]
+    if vector_group_conflict:
+        output["transformer_vector_group_conflict"] = {
+            "product": product_vector,
+            "engineering_setting": engineering_vector,
+        }
     output["governed_product_block_code"] = str(product_block_code)
     return output
 

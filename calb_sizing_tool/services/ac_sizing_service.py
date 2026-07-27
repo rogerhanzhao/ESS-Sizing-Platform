@@ -9,11 +9,12 @@ from calb_sizing_tool.common.allocation import evenly_distribute
 from calb_sizing_tool.schemas.ac_electrical_topology import build_dc_block_connection_plan
 
 
-SUPPORTED_AC_DC_RATIOS: tuple[str, ...] = ("1:1", "1:2", "1:4")
+SUPPORTED_AC_DC_RATIOS: tuple[str, ...] = ("1:1", "1:2", "1:4", "1:8")
 DEFAULT_RECOMMENDED_RATIO = "1:2"
 K_MAX_PCS_PER_BLOCK = 6
 SMALL_SYSTEM_MAX_DC_BLOCKS = 4
 LARGE_SYSTEM_MIN_DC_BLOCKS = 8
+VERY_LARGE_SYSTEM_MIN_DC_BLOCKS = 16
 STANDARD_PCS_COUNTS: tuple[int, ...] = (2, 4)
 STANDARD_PCS_RATINGS_KW: tuple[int, ...] = (1250, 1500, 1725, 2000, 2500)
 OPTIMAL_PCS_RATINGS_KW: tuple[int, ...] = (1000, 1250, 1500, 1725, 2000, 2500, 3000, 3500, 4000, 4500, 5000)
@@ -36,6 +37,9 @@ class PCSRecommendation:
 
 
 SIMPLIFIED_AC_BLOCK_MODEL_SOURCE = "simplified_dropdown"
+ONE_TO_EIGHT_SMALL_PCS_CANDIDATE_SOURCE = "one_to_eight_small_pcs_candidate"
+ONE_TO_EIGHT_SMALL_PCS_COUNT = 8
+ONE_TO_EIGHT_SMALL_PCS_KW = 1250
 
 
 @dataclass(frozen=True)
@@ -103,11 +107,20 @@ def _build_ac_block_model_code(pcs_count: int, pcs_kw: int, container_type: str)
     return f"ACBLK-{int(pcs_count)}X{int(pcs_kw)}KW-{str(container_type).upper()}"
 
 
-def build_simplified_ac_block_models(recommendations: List[PCSRecommendation]) -> List[ACBlockModelOption]:
+def build_simplified_ac_block_models(
+    recommendations: List[PCSRecommendation],
+    *,
+    grouping_ratio: str | None = None,
+) -> List[ACBlockModelOption]:
     """Convert PCS recommendations into selectable simplified AC Block models.
 
-    The model list deliberately derives from the frozen PCS recommendation library.
-    It is not a product database source and does not imply approved equipment data.
+    The model list deliberately derives from the PCS recommendation library. It is
+    not a product database source and does not imply approved equipment data.
+
+    The owner-authorized 1:8 grouping also exposes an 8 x 1250 kW small-PCS
+    combination. This is a selectable sizing candidate, not a mandated product
+    and not a fixed 1:8 station identity. A real product can be bound only after
+    the user has chosen the PCS architecture.
     """
     models: List[ACBlockModelOption] = []
     seen: set[tuple[int, int, str]] = set()
@@ -137,6 +150,39 @@ def build_simplified_ac_block_models(recommendations: List[PCSRecommendation]) -
                 block_size_mw=block_size_mw,
                 container_type=container_type,
                 is_optimal=bool(getattr(rec, "is_optimal", False)),
+            )
+        )
+
+    if grouping_ratio == "1:8":
+        pcs_count = ONE_TO_EIGHT_SMALL_PCS_COUNT
+        pcs_kw = ONE_TO_EIGHT_SMALL_PCS_KW
+        block_size_mw = pcs_count * pcs_kw / 1000.0
+        container_type = select_ac_block_container_type(block_size_mw, pcs_count)
+        key = (pcs_count, pcs_kw, container_type)
+        if key not in seen:
+            models.append(
+                ACBlockModelOption(
+                    model_code=_build_ac_block_model_code(pcs_count, pcs_kw, container_type),
+                    display_name=(
+                        f"{block_size_mw:.2f} MW AC Block - "
+                        f"{pcs_count} x {pcs_kw} kW PCS - {container_type} "
+                        "1:8 small-PCS combination"
+                    ),
+                    pcs_count=pcs_count,
+                    pcs_kw=pcs_kw,
+                    block_size_mw=block_size_mw,
+                    container_type=container_type,
+                    source=ONE_TO_EIGHT_SMALL_PCS_CANDIDATE_SOURCE,
+                )
+            )
+        # Make the optional 1:8 architecture visible without turning it into
+        # a product lock. The UI still exposes every generic candidate and
+        # applies its physical feeder-capacity gate before a run can issue.
+        models.sort(
+            key=lambda model: (
+                0 if (model.pcs_count, model.pcs_kw) == (pcs_count, pcs_kw) else 1,
+                model.pcs_count,
+                model.pcs_kw,
             )
         )
 
@@ -248,6 +294,24 @@ def generate_ac_sizing_options(
         )
     )
 
+    ac_blocks_d = math.ceil(dc_blocks_total / 8) if dc_blocks_total > 0 else 0
+    dc_per_ac_18 = evenly_distribute(dc_blocks_total, ac_blocks_d)
+    options.append(
+        ACBlockRatioOption(
+            ratio="1:8",
+            ac_block_count=ac_blocks_d,
+            dc_blocks_per_ac=dc_per_ac_18,
+            pcs_recommendations=_mark_optimal_recommendations(
+                base_recommendations, max(dc_per_ac_18, default=1), dc_block_mwh, discharge_duration_h
+            ),
+            description=(
+                "1 AC Block per up to 8 DC Blocks. Select PCS architecture separately; "
+                "the optional 8 x 1250 kW combination is not a locked product."
+            ),
+            is_recommended=dc_blocks_total >= VERY_LARGE_SYSTEM_MIN_DC_BLOCKS,
+        )
+    )
+
     return options
 
 
@@ -320,6 +384,37 @@ def evaluate_ac_sizing_feasibility(
     return errors, warnings
 
 
+def minimum_dc_blocks_for_pcs_feeders(
+    pcs_per_block: int,
+    *,
+    dc_block_output_circuits: int = DEFAULT_DC_BLOCK_OUTPUT_CIRCUITS,
+) -> int:
+    """Minimum DC Blocks needed to supply all PCS feeders in one AC Block.
+
+    Each DC Block has a finite number of protected output circuits. This is a
+    connection-capacity check only; it does not change DC or AC sizing formulas.
+    """
+    if int(pcs_per_block) <= 0:
+        return 0
+    if int(dc_block_output_circuits) <= 0:
+        raise ValueError("DC Block output circuit count must be positive.")
+    return int(math.ceil(int(pcs_per_block) / int(dc_block_output_circuits)))
+
+
+def dc_grouping_has_feeder_capacity(
+    dc_blocks_per_ac: List[int],
+    pcs_per_block: int,
+    *,
+    dc_block_output_circuits: int = DEFAULT_DC_BLOCK_OUTPUT_CIRCUITS,
+) -> bool:
+    """Whether every AC Block in a selected grouping can feed its PCS count."""
+    minimum = minimum_dc_blocks_for_pcs_feeders(
+        pcs_per_block,
+        dc_block_output_circuits=dc_block_output_circuits,
+    )
+    return all(int(dc_count) >= minimum for dc_count in dc_blocks_per_ac)
+
+
 def build_dc_allocation_plan(
     dc_blocks_total: int,
     ac_block_count: int,
@@ -354,6 +449,7 @@ class DCACRatio(str, Enum):
     ONE_TO_ONE = "1:1"
     ONE_TO_TWO = "1:2"
     ONE_TO_FOUR = "1:4"
+    ONE_TO_EIGHT = "1:8"
 
 
 class ACBlockConfig:
@@ -376,6 +472,8 @@ class ACBlockConfig:
             ac_blocks = math.ceil(dc_blocks_total / 2) if dc_blocks_total > 0 else 0
         elif ratio == DCACRatio.ONE_TO_FOUR:
             ac_blocks = math.ceil(dc_blocks_total / 4) if dc_blocks_total > 0 else 0
+        elif ratio == DCACRatio.ONE_TO_EIGHT:
+            ac_blocks = math.ceil(dc_blocks_total / 8) if dc_blocks_total > 0 else 0
         else:
             ac_blocks = dc_blocks_total
         return {"ac_blocks": ac_blocks}
@@ -409,6 +507,9 @@ __all__ = [
     "DEFAULT_RECOMMENDED_RATIO",
     "K_MAX_PCS_PER_BLOCK",
     "LARGE_SYSTEM_MIN_DC_BLOCKS",
+    "ONE_TO_EIGHT_SMALL_PCS_CANDIDATE_SOURCE",
+    "ONE_TO_EIGHT_SMALL_PCS_COUNT",
+    "ONE_TO_EIGHT_SMALL_PCS_KW",
     "OPTIMAL_PCS_RATINGS_KW",
     "PCSRecommendation",
     "SMALL_SYSTEM_MAX_DC_BLOCKS",
@@ -416,13 +517,16 @@ __all__ = [
     "STANDARD_PCS_RATINGS_KW",
     "SUGGESTION_PCS_RATINGS_KW",
     "SUPPORTED_AC_DC_RATIOS",
+    "VERY_LARGE_SYSTEM_MIN_DC_BLOCKS",
     "allocate_dc_blocks_to_pcs",
     "build_simplified_ac_block_models",
+    "dc_grouping_has_feeder_capacity",
     "build_dc_block_connection_plan",
     "build_dc_allocation_plan",
     "calculate_optimal_pcs_rating",
     "evaluate_ac_sizing_feasibility",
     "generate_ac_sizing_options",
+    "minimum_dc_blocks_for_pcs_feeders",
     "select_ac_block_container_type",
     "SIMPLIFIED_AC_BLOCK_MODEL_SOURCE",
     "standard_pcs_recommendations",

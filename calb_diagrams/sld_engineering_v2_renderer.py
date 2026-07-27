@@ -40,6 +40,10 @@ from calb_diagrams.sld_professional_sheet import (
 from calb_diagrams.sld_engineering_v2_validation import validate_rendered_sld_svg
 from calb_diagrams.specs import SLD_FONT_FAMILY
 from calb_diagrams.symbol_library import resolve_palette
+from calb_sizing_tool.sld.transformer_vector_group import (
+    TransformerVectorGroupError,
+    parse_transformer_vector_group,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -175,70 +179,51 @@ def _cable_3phase(dwg, x: float, y: float) -> None:
         _line(dwg, (x + ox - 8.0, y + 8.0), (x + ox + 8.0, y - 8.0), "thin")
 
 
-def _delta_mark(dwg, x: float, y: float, size: float = 14.0) -> None:
+def _delta_mark(dwg, x: float, y: float, size: float = 14.0, *, id_prefix: str | None = None) -> None:
     """Delta (Δ) triangle for transformer HV winding annotation."""
     top = (x, y - size * 0.60)
     bl  = (x - size * 0.55, y + size * 0.40)
     br  = (x + size * 0.55, y + size * 0.40)
-    _line(dwg, top, bl, "thin")
-    _line(dwg, bl, br, "thin")
-    _line(dwg, br, top, "thin")
+    for index, (start, end) in enumerate(((top, bl), (bl, br), (br, top)), start=1):
+        _line(dwg, start, end, "thin", **({"id": f"{id_prefix}-delta-{index}"} if id_prefix else {}))
 
 
-def _wye_grounded_mark(dwg, x: float, y: float, size: float = 14.0) -> None:
-    """Grounded-wye (yn) winding mark — Y with the neutral leg brought down to
-    ground bars. Total extent stays within ~0.85*size of the centre so the mark
-    never bleeds outside its winding circle."""
-    arm = size * 0.55
-    _line(dwg, (x, y), (x - arm * 0.87, y - arm * 0.50), "thin")
-    _line(dwg, (x, y), (x + arm * 0.87, y - arm * 0.50), "thin")
-    neutral_y = y + size * 0.40
-    _line(dwg, (x, y), (x, neutral_y), "thin")
-    for i, half in enumerate((size * 0.36, size * 0.23, size * 0.10)):
-        gy = neutral_y + i * size * 0.15
-        _line(dwg, (x - half, gy), (x + half, gy), "thin")
+def _wye_mark(dwg, x: float, y: float, size: float = 14.0, *, id_prefix: str | None = None) -> None:
+    """Wye winding mark — plain Y, never an inferred earth connection.
 
-
-def _wye_mark(dwg, x: float, y: float, size: float = 14.0) -> None:
-    """Ungrounded-wye (y) winding mark — plain Y, no earth bars."""
+    ``y``/``z`` declare a winding connection and ``yn``/``zn`` additionally
+    declare an available neutral terminal.  Neither declaration says that the
+    neutral terminal is earthed.  Grounding is a separate project protection
+    design and must not be fabricated from a transformer vector group.
+    """
     arm = size * 0.60
-    _line(dwg, (x, y), (x - arm * 0.87, y - arm * 0.50), "thin")
-    _line(dwg, (x, y), (x + arm * 0.87, y - arm * 0.50), "thin")
-    _line(dwg, (x, y), (x, y + arm), "thin")
-
-
-_VG_HV_TOKEN = re.compile(r"^(ZN|YN|Z|Y|D)")
-_VG_LV_TOKEN = re.compile(r"(zn|yn|z|y|d)(\d{0,2})")
+    _line(dwg, (x, y), (x - arm * 0.87, y - arm * 0.50), "thin", **({"id": f"{id_prefix}-wye-left"} if id_prefix else {}))
+    _line(dwg, (x, y), (x + arm * 0.87, y - arm * 0.50), "thin", **({"id": f"{id_prefix}-wye-right"} if id_prefix else {}))
+    _line(dwg, (x, y), (x, y + arm), "thin", **({"id": f"{id_prefix}-neutral-leg"} if id_prefix else {}))
 
 
 def _parse_vector_group(vector_group: str, secondary_count: int) -> tuple[str, list[str]]:
     """Split an IEC vector group string into HV token + one token per secondary.
 
     'Dyn11'   → ('D', ['yn11'])           (2-winding)
-    'Dyn11'   → ('D', ['yn11', 'yn11'])   (3-winding: identical secondaries)
+    'Dy11y11' → ('D', ['y11', 'y11'])     (3-winding)
     'YNd11y0' → ('YN', ['d11', 'y0'])
 
     Returns ('', []) when the string cannot be parsed — callers must then fall
     back to a text annotation so the symbol never contradicts the nameplate.
     """
-    vg = str(vector_group or "").strip()
-    if not vg:
+    try:
+        parsed = parse_transformer_vector_group(
+            vector_group,
+            lv_winding_count=secondary_count,
+        )
+    except TransformerVectorGroupError:
         return "", []
-    hv_match = _VG_HV_TOKEN.match(vg)
-    if not hv_match:
-        return "", []
-    hv_kind = hv_match.group(1)
-    rest = vg[hv_match.end():]
-    lv_tokens = [kind + clock for kind, clock in _VG_LV_TOKEN.findall(rest)]
-    if not lv_tokens:
-        return "", []
-    while len(lv_tokens) < secondary_count:
-        lv_tokens.append(lv_tokens[-1])
-    return hv_kind, lv_tokens[:secondary_count]
+    return parsed.hv_token, list(parsed.lv_tokens)
 
 
 def _winding_mark(dwg, x: float, y: float, token: str, size: float = 14.0,
-                  fallback_text: str = "") -> None:
+                  fallback_text: str = "", id_prefix: str | None = None) -> None:
     """Draw the winding-connection mark matching a vector-group token.
 
     Symbol selection is driven by the parsed token so the graphic can never
@@ -246,11 +231,9 @@ def _winding_mark(dwg, x: float, y: float, token: str, size: float = 14.0,
     """
     kind = re.sub(r"\d+$", "", str(token or "")).lower()
     if kind == "d":
-        _delta_mark(dwg, x, y, size=size)
-    elif kind in ("yn", "zn"):
-        _wye_grounded_mark(dwg, x, y, size=size)
-    elif kind in ("y", "z"):
-        _wye_mark(dwg, x, y, size=size)
+        _delta_mark(dwg, x, y, size=size, id_prefix=id_prefix)
+    elif kind in ("y", "yn", "z", "zn"):
+        _wye_mark(dwg, x, y, size=size, id_prefix=id_prefix)
     else:
         _text(dwg, fallback_text or str(token), x, y + 4.0, "label", anchor="middle")
 
@@ -261,8 +244,8 @@ def _transformer_2w(dwg, x: float, y: float,
 
     HV (primary) circle on top, LV (secondary) below; winding marks are derived
     from the vector group via _parse_vector_group -> _winding_mark
-    (_delta_mark / _wye_grounded_mark / _wye_mark). Wire entry at top of the HV
-    circle, exit at bottom of the LV circle.
+    (_delta_mark / _wye_mark). Wire entry at top of the HV circle, exit at
+    bottom of the LV circle. Vector groups do not authorise earth symbols.
     """
     r = 28.0
     overlap = 16.0     # classic interlocked-circles look (~0.57 r)
@@ -272,13 +255,14 @@ def _transformer_2w(dwg, x: float, y: float,
     dwg.add(dwg.circle(center=(x, hv_cy), r=r, class_="sfill", id="tx-hv-winding"))
     dwg.add(dwg.circle(center=(x, lv_cy), r=r, class_="sfill", id="tx-lv-winding-1"))
 
-    vg = str(vector_group or "Dyn11").strip()
+    vg = str(vector_group or "TBD").strip()
     hv_token, lv_tokens = _parse_vector_group(vg, 1)
     mark = r * 0.62
     # Marks sit in the non-overlapped part of each circle
-    _winding_mark(dwg, x, hv_cy - overlap * 0.35, hv_token, size=mark, fallback_text=vg)
+    _winding_mark(dwg, x, hv_cy - overlap * 0.35, hv_token, size=mark, fallback_text=vg,
+                  id_prefix="tx-hv-winding")
     _winding_mark(dwg, x, lv_cy + overlap * 0.35, lv_tokens[0] if lv_tokens else "",
-                  size=mark, fallback_text=vg)
+                  size=mark, fallback_text=vg, id_prefix="tx-lv-winding-1")
 
     # Nameplate lines to the right (vector group already appears in these
     # lines - do not print it a second time)
@@ -315,12 +299,13 @@ def _transformer_split_secondary(
     # Overlap guarantees: HV-LV centre distance = sqrt(24^2 + 34^2) ~ 41.6 < 2r = 52;
     # LV-LV centre distance = 48 < 52. All three circles interlock as one device.
 
-    vg = str(vector_group or "Dyn11").strip()
+    vg = str(vector_group or "TBD").strip()
     hv_token, lv_tokens = _parse_vector_group(vg, winding_count)
     mark = r * 0.60
 
     dwg.add(dwg.circle(center=(x, hv_cy), r=r, class_="sfill", id="tx-hv-winding"))
-    _winding_mark(dwg, x, hv_cy - r * 0.28, hv_token, size=mark, fallback_text=vg)
+    _winding_mark(dwg, x, hv_cy - r * 0.28, hv_token, size=mark, fallback_text=vg,
+                  id_prefix="tx-hv-winding")
 
     terminals: list[tuple[float, float]] = []
     for winding_index in range(1, winding_count + 1):
@@ -330,7 +315,8 @@ def _transformer_split_secondary(
                            id=f"tx-lv-winding-{winding_index}"))
         lv_token = lv_tokens[winding_index - 1] if lv_tokens else ""
         _winding_mark(dwg, cx + sign * r * 0.20, lv_cy + r * 0.16, lv_token,
-                      size=mark, fallback_text=vg)
+                      size=mark, fallback_text=vg,
+                      id_prefix=f"tx-lv-winding-{winding_index}")
         # Identify each secondary beside its own outgoing lead, on the outer
         # side, below the symbol: the draft watermark band sits over the
         # transformer and must not hide the LV-A / LV-B distinction.
@@ -714,20 +700,20 @@ def _draw_mv_rmu_and_transformer(
 
     # Filter standalone vector-group token from text lines (already drawn as winding marks)
     raw_lines = transformer.text_lines[1:] if transformer else ()
-    filtered_lines = tuple(ln for ln in raw_lines if ln.strip() != (vg_token or "Dyn11"))
+    filtered_lines = tuple(ln for ln in raw_lines if ln.strip() != (vg_token or "TBD"))
     if winding_count > 1:
         tx_top, tx_lv_terminals = _transformer_split_secondary(
             dwg,
             mv.center_x,
             mv.transformer_y,
-            vg_token or "Dyn11",
+            vg_token or "TBD",
             filtered_lines,
             winding_count,
         )
     else:
         tx_top, tx_bot = _transformer_2w(
             dwg, mv.center_x, mv.transformer_y,
-            vg_token or "Dyn11", filtered_lines,
+            vg_token or "TBD", filtered_lines,
         )
         tx_lv_terminals = [(mv.center_x, tx_bot)]
     _text(dwg, "T-01", mv.center_x - 62.0, mv.transformer_y + 18.0, "tag", anchor="end")
