@@ -24,9 +24,16 @@ source PDFs are not stored in the repository). This service is the mechanism to
 a starting catalogue.
 
 It is an idempotent upsert keyed by ``block_code``: existing rows are updated in
-place, new ones are created. It never fabricates unpublished values — fields the
-datasheet does not state (e.g. transformer Uk%) stay null and remain owner
-confirmation items.
+place, new ones are created. It never fabricates unpublished *numeric* values —
+fields the datasheet does not state (e.g. transformer Uk%) stay null and remain
+owner confirmation items.
+
+Transformer topology / vector group / LV arrangement are normalized on the way
+in (see ``ac_block_transformer_defaults``): they are *derived* from a stated
+datasheet vector group where possible, and only otherwise filled with a
+conservative standard default that is explicitly marked
+``standard_default_pending_confirmation`` so it is never mistaken for a
+confirmed OEM value.
 """
 
 from __future__ import annotations
@@ -37,6 +44,9 @@ from typing import Any
 
 from calb_sizing_tool.infra.db.models import ProductACBlock
 from calb_sizing_tool.infra.db.session import session_scope
+from calb_sizing_tool.services.ac_block_transformer_defaults import (
+    normalize_ac_product_transformer_fields,
+)
 
 SEED_PATH = Path(__file__).resolve().parents[2] / "data" / "ac_block_products_seed.json"
 
@@ -79,7 +89,9 @@ def seed_ac_block_products(
             if not block_code:
                 continue
             values = {field: product.get(field) for field in _SCALAR_FIELDS if field in product}
-            values["metadata_json"] = product.get("metadata_json") or {}
+            values["metadata_json"] = normalize_ac_product_transformer_fields(
+                product.get("metadata_json") or {}
+            )
             values["efficiency_curve_json"] = product.get("efficiency_curve_json") or {}
 
             row = (

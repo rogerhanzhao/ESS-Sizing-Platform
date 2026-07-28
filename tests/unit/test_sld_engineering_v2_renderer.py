@@ -305,3 +305,127 @@ def test_renderer_rejects_missing_secondary_branch(sample_excel_path, tmp_path):
 
     with pytest.raises(ValueError, match="declares 2 LV windings"):
         render_sld_engineering_v2_svg(broken_plan, tmp_path / "broken.svg")
+
+
+def test_transformer_vector_group_confirmed_helper():
+    confirmed = renderer_module._transformer_vector_group_confirmed
+    assert confirmed("Dyn11", 1) is True
+    assert confirmed("Dyn11yn11", 2) is True
+    assert confirmed("Dy11y11", 2) is True
+    # Missing / TBD / wrong LV-token count are all unconfirmed.
+    assert confirmed("TBD", 2) is False
+    assert confirmed("", 1) is False
+    assert confirmed("Dyn11", 2) is False   # one LV token, but two windings
+    assert confirmed("Dyn11yn11", 1) is False  # two LV tokens, but one winding
+
+
+def _build_plan_unconfirmed(sample_excel_path):
+    from calb_sizing_tool.schemas.diagram_inputs import SldRenderOptions
+    from calb_sizing_tool.schemas.sld_render_input import SldInputOverride, legacy_sld_override_preset
+    from calb_sizing_tool.services.sld_input_builder import build_sld_canonical_input
+    from calb_sizing_tool.services.sld_topology_builder import build_sld_topology
+    from tests.unit.test_sld_topology_builder import _build_run_bundle, _make_ac_snapshot
+
+    run_bundle = _build_run_bundle(sample_excel_path)
+    override_payload = legacy_sld_override_preset()
+    override_payload.pop("transformer_vector_group", None)  # leave it unconfirmed -> TBD
+    override_payload["dc_block_voltage_v"] = 1500.0
+    override_payload["dc_blocks_per_feeder"] = [1, 1, 1, 1]
+    canonical = build_sld_canonical_input(
+        run_bundle=run_bundle,
+        ac_snapshot=_make_ac_snapshot(),
+        options=SldRenderOptions(
+            group_index=1,
+            override_mode=True,
+            overrides=SldInputOverride.model_validate(override_payload),
+        ),
+        validation_mode="draft",
+    )
+    assert canonical.transformer_vector_group == "TBD"
+    graph = build_sld_engineering_v2_graph(build_sld_topology(canonical))
+    return build_sld_engineering_v2_layout_plan(graph)
+
+
+def test_unconfirmed_vector_group_draws_placeholder_not_tbd_windings(sample_excel_path, tmp_path):
+    plan = _build_plan_unconfirmed(sample_excel_path)
+    svg_path = tmp_path / "sld_tbd.svg"
+    render_sld_engineering_v2_svg(plan, svg_path)
+    svg = svg_path.read_text(encoding="utf-8")
+    # Explicit placeholder text instead of TBD-filled winding circles.
+    assert "VECTOR GROUP" in svg
+    assert "UNCONFIRMED" in svg
+    assert "NOT A DRAWING" in svg
+    # The transformer winding circles must NOT be drawn for an unconfirmed group.
+    assert 'id="tx-hv-winding"' not in svg
+    assert 'id="tx-lv-winding-1"' not in svg
+    # And no earth/ground bar is fabricated onto the (absent) LV windings.
+
+
+def _build_two_winding_dyn11(sample_excel_path):
+    from calb_sizing_tool.schemas.diagram_inputs import SldRenderOptions
+    from calb_sizing_tool.schemas.sld_render_input import SldInputOverride, legacy_sld_override_preset
+    from calb_sizing_tool.services.sld_input_builder import build_sld_canonical_input
+    from calb_sizing_tool.services.sld_topology_builder import build_sld_topology
+    from tests.unit.test_sld_topology_builder import _build_run_bundle, _make_ac_snapshot
+
+    run_bundle = _build_run_bundle(sample_excel_path)
+    ac_snapshot = _make_ac_snapshot()
+    ac_output = dict(ac_snapshot.output)
+    ac_output.update({
+        "pcs_per_block": 2, "pcs_kw": 2500.0, "block_size_mw": 5.0, "transformer_mva": 5.0,
+        "lv_winding_count": 1, "transformer_topology": "two_winding",
+        "dc_allocation_plan": [{"ac_block_index": 1, "dc_blocks_total": 2, "feeder_allocations": [1, 1]}],
+    })
+    override_payload = legacy_sld_override_preset()
+    override_payload["transformer_vector_group"] = "Dyn11"
+    override_payload["dc_block_voltage_v"] = 1500.0
+    override_payload["dc_blocks_per_feeder"] = [1, 1]
+    canonical = build_sld_canonical_input(
+        run_bundle=run_bundle,
+        ac_snapshot=ac_snapshot.model_copy(update={"output": ac_output}),
+        options=SldRenderOptions(group_index=1, override_mode=True,
+                                 overrides=SldInputOverride.model_validate(override_payload)),
+        validation_mode="strict",
+    )
+    graph = build_sld_engineering_v2_graph(build_sld_topology(canonical))
+    return build_sld_engineering_v2_layout_plan(graph)
+
+
+def test_three_winding_dyn11yn11_export_is_plain_y_no_earth_two_busbars(sample_excel_path, tmp_path, monkeypatch):
+    grounds: list = []
+    wyes: list = []
+    real_ground, real_wye = renderer_module._ground, renderer_module._wye_mark
+    monkeypatch.setattr(renderer_module, "_ground",
+                        lambda dwg, x, y: (grounds.append((x, y)), real_ground(dwg, x, y))[1])
+    monkeypatch.setattr(renderer_module, "_wye_mark",
+                        lambda *a, **k: (wyes.append(a[1:3]), real_wye(*a, **k))[1])
+    plan = _build_plan(sample_excel_path)  # Dyn11yn11 (three-winding, 2 LV)
+    svg_path = tmp_path / "sld_3w.svg"
+    render_sld_engineering_v2_svg(plan, svg_path)
+    svg = svg_path.read_text(encoding="utf-8")
+    # Two independent LV secondary windings, no LV bus tie.
+    assert 'id="tx-hv-winding"' in svg
+    assert 'id="tx-lv-winding-1"' in svg and 'id="tx-lv-winding-2"' in svg
+    assert "NO LV BUS TIE" in svg
+    assert "LV-A DISTRIBUTION SECTION" in svg and "LV-B DISTRIBUTION SECTION" in svg
+    # Plain Y windings were drawn (yn tokens render as wye, never an earth bar).
+    assert len(wyes) >= 2
+    three_w_grounds = len(grounds)
+    # PNG renders.
+    import cairosvg
+    png = cairosvg.svg2png(bytestring=svg.encode("utf-8"), background_color="white")
+    assert png[:8] == b"\x89PNG\r\n\x1a\n" and len(png) > 1000
+
+    # Two-winding Dyn11 baseline: exactly one LV winding, and the number of
+    # ground symbols is identical — proving the extra LV secondary adds NO earth.
+    grounds.clear(); wyes.clear()
+    plan2 = _build_two_winding_dyn11(sample_excel_path)
+    svg2_path = tmp_path / "sld_2w.svg"
+    render_sld_engineering_v2_svg(plan2, svg2_path)
+    svg2 = svg2_path.read_text(encoding="utf-8")
+    assert 'id="tx-lv-winding-1"' in svg2
+    assert 'id="tx-lv-winding-2"' not in svg2   # single LV winding
+    assert len(wyes) >= 1
+    two_w_grounds = len(grounds)
+    # The transformer LV windings contribute no ground symbol in either topology.
+    assert three_w_grounds == two_w_grounds

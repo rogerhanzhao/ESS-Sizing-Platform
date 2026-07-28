@@ -81,6 +81,8 @@ svg {{ font-family: {SLD_FONT_FAMILY}; font-size: 11px; }}
 .tbh     {{ fill: #1a1a1a; font-size: 11px; font-weight: bold; }}
 .tbtitle {{ fill: #1a1a1a; font-size: 13px; font-weight: bold; }}
 .dot     {{ fill: #1a1a1a; stroke: none; }}
+.warn    {{ stroke: #b00020; stroke-width: 1.8; fill: none; stroke-dasharray: 6 4; }}
+.warntx  {{ fill: #b00020; font-size: 10px; font-weight: bold; }}
 """))
     dwg.add(dwg.rect(insert=(0, 0), size=(plan.width, plan.height), class_="bg"))
     return dwg
@@ -341,6 +343,49 @@ def _transformer_split_secondary(
         _text(dwg, secondaries_note, plate_x, y + 6.0 + len(text_lines) * 13.0, "label")
 
     return hv_cy - r, terminals
+
+
+def _transformer_vector_group_confirmed(vector_group: str, winding_count: int) -> bool:
+    """True only when the vector group parses into exactly one LV token per
+    independent LV winding (e.g. ``Dyn11`` for 1, ``Dyn11yn11`` for 2)."""
+    hv_token, lv_tokens = _parse_vector_group(str(vector_group or "").strip(), winding_count)
+    return bool(hv_token) and len(lv_tokens) == winding_count
+
+
+def _transformer_unconfirmed_placeholder(
+    dwg, x: float, y: float, winding_count: int, text_lines: tuple[str, ...],
+) -> tuple[float, list[tuple[float, float]]]:
+    """Explicit placeholder for an unconfirmed transformer vector group.
+
+    A transformer whose vector group is not a valid IEC token set (e.g. TBD)
+    must NOT be drawn as winding circles annotated ``TBD`` — that reads as a real
+    engineering drawing. Draw a dashed box stating the drawing is unavailable
+    until the vector group is confirmed, and still return the HV connection y and
+    one LV terminal per winding so surrounding conductors resolve.
+    """
+    box_h = 96.0
+    half_w = 46.0 if winding_count > 1 else 34.0
+    top, bot = y, y + box_h
+    dwg.add(dwg.rect(insert=(x - half_w, top), size=(2 * half_w, box_h), class_="warn"))
+    _text(dwg, "TRANSFORMER", x, top + 24.0, "warntx", anchor="middle")
+    _text(dwg, "VECTOR GROUP", x, top + 40.0, "warntx", anchor="middle")
+    _text(dwg, "UNCONFIRMED", x, top + 56.0, "warntx", anchor="middle")
+    _text(dwg, "NOT A DRAWING", x, top + 76.0, "warntx", anchor="middle")
+    for idx, line in enumerate(text_lines):
+        _text(dwg, line, x + half_w + 12.0, top + 8.0 + idx * 13.0, "label")
+    hint = ("confirm Dyn11yn11 (two LV secondaries)" if winding_count > 1 else "confirm Dyn11")
+    _text(dwg, hint, x + half_w + 12.0, top + 8.0 + max(1, len(text_lines)) * 13.0, "tag")
+    terminals: list[tuple[float, float]] = []
+    for winding_index in range(1, winding_count + 1):
+        if winding_count == 1:
+            cx = x
+        else:
+            sign = -1.0 if winding_index == 1 else 1.0
+            cx = x + sign * (half_w * 0.5)
+        terminals.append((cx, bot))
+        if winding_count > 1:
+            _text(dwg, f"LV-{chr(64 + winding_index)}", cx, bot + 12.0, "tag", anchor="middle")
+    return top, terminals
 
 
 def _pcs_by_lv_winding(plan: SldV2LayoutPlan) -> dict[int, list[SldV2LayoutBox]]:
@@ -701,7 +746,15 @@ def _draw_mv_rmu_and_transformer(
     # Filter standalone vector-group token from text lines (already drawn as winding marks)
     raw_lines = transformer.text_lines[1:] if transformer else ()
     filtered_lines = tuple(ln for ln in raw_lines if ln.strip() != (vg_token or "TBD"))
-    if winding_count > 1:
+    if not _transformer_vector_group_confirmed(vg_token, winding_count):
+        # Unconfirmed vector group: draw an explicit placeholder instead of
+        # winding circles filled with TBD, so the sheet cannot be mistaken for a
+        # real drawing. The formal-readiness gate independently keeps it
+        # non-official.
+        tx_top, tx_lv_terminals = _transformer_unconfirmed_placeholder(
+            dwg, mv.center_x, mv.transformer_y, winding_count, filtered_lines,
+        )
+    elif winding_count > 1:
         tx_top, tx_lv_terminals = _transformer_split_secondary(
             dwg,
             mv.center_x,

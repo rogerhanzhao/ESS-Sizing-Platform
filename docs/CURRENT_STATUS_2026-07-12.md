@@ -287,9 +287,30 @@ Landed so far (this increment):
   `canonical_input`. Strict build already *requires* a vector group; this makes
   the draft/TBD path carry an explicit non-formal reason.
 
-Still open: **#1 renderer placeholder** (draw an explicit "vector group
-unconfirmed — not a drawing" block instead of TBD winding circles),
-**#3 product-data standard defaults**, **#4 two-/three-winding PNG acceptance**.
+- **#1 renderer placeholder done** — `sld_engineering_v2_renderer` now draws an
+  explicit dashed "TRANSFORMER / VECTOR GROUP / UNCONFIRMED / NOT A DRAWING"
+  placeholder (with connection stubs so surrounding conductors still resolve)
+  whenever the vector group does not parse into one LV token per winding, instead
+  of winding circles annotated `TBD`. Confirmed vector groups are unaffected
+  (regression baseline regenerated only for the two added CSS classes).
+- **#3 product-data defaults done** — `ac_block_transformer_defaults.normalize_ac_product_transformer_fields`
+  derives `transformer_topology` / `lv_winding_count` / `lv_arrangement` from a
+  stated datasheet vector group, flags ambiguous datasheet text as
+  `unconfirmed`, and only otherwise fills a conservative single-LV-winding
+  default (`Dyn11`, `common_single_lv_busbar`) — never a PCS-count three-winding
+  guess (honours §2.6) — with a `*_basis` marker
+  (`datasheet` / `derived_from_vector_group` / `standard_default_pending_confirmation`).
+  Applied in `seed_ac_block_products`; the matcher already reads these fields.
+- **#4 export acceptance done** — a two-winding/`Dyn11` and three-winding/`Dyn11yn11`
+  render assert single vs two LV windings, `NO LV BUS TIE`, plain-Y windings, an
+  identical ground-symbol count between topologies (the extra LV secondary adds
+  no earth bar), and a valid PNG.
+
+Residual (flagged, not blocking): a `standard_default_pending_confirmation`
+vector group parses, so a bound assumed-default product could currently reach
+official readiness — the `*_basis` marker is recorded but not yet threaded into
+the formal-readiness gate. Raise to owner before relying on assumed-default
+products as formal output.
 
 ## 3. Next boundary
 
