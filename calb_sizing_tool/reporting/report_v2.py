@@ -317,6 +317,29 @@ def _compute_site_layout(ctx: ReportContext):
         return None
 
 
+def _compute_typical_group_layout(ctx: ReportContext):
+    """A single representative project group, drawn at legible page scale.
+
+    The full-site concept array is a tall linear strip (all groups stacked in
+    one column), which collapses to an illegible sliver when fit to a page. A
+    real site simply repeats one project group, so the report draws ONE typical
+    group at legible scale and states the whole-site composition (N such groups)
+    in the summary instead of drawing every block.
+    """
+    if ctx.ac_blocks_total <= 0 or ctx.dc_blocks_total <= 0:
+        return None
+    if ctx.layout_variant == BILATERAL_LAYOUT_VARIANT:
+        return None
+    dc_per_ac = max(1, int(round(ctx.dc_blocks_total / ctx.ac_blocks_total)))
+    group_blocks = min(SITE_PROFILE.default_blocks_per_group, ctx.ac_blocks_total)
+    try:
+        return compute_site_array(
+            group_blocks, dc_per_ac, ARRANGEMENT_PROFILE, SITE_PROFILE
+        )
+    except Exception:
+        return None
+
+
 def _governed_run_from_ctx(ctx: ReportContext):
     """Assemble a governed site run-like object from the report context.
 
@@ -1282,11 +1305,15 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 ))
         # A governed run does not also draw the linear L2 site array.
         site_layout = None
+        group_layout = None
     else:
         site_layout = _compute_site_layout(ctx)
-    if site_layout is not None:
+        group_layout = _compute_typical_group_layout(ctx)
+    if site_layout is not None and group_layout is not None:
         try:
-            site_svg = render_site_svg(site_layout, SITE_PROFILE)
+            # Draw ONE representative project group at legible scale, not the
+            # full-site strip (which fits a page only as an illegible sliver).
+            site_svg = render_site_svg(group_layout, SITE_PROFILE)
             site_png = _svg_bytes_to_png(site_svg.encode("utf-8"))
         except Exception:
             site_png = None
@@ -1294,45 +1321,53 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             doc.add_page_break()
             doc.add_heading("9.  Concept Site Arrangement (Concept Only)", level=2)
             _keep_next_para(doc.add_paragraph(
-                f"{site_layout.n_blocks} × AC Block "
-                f"({site_layout.dc_per_block} × DC each) arranged in "
-                f"{site_layout.rows} row(s), grouped into {site_layout.groups} "
-                f"project group(s) of up to {site_layout.blocks_per_group} blocks. "
-                f"Fire apparatus access roads run between groups and along the "
-                f"perimeter — not between every row — so each block stays within "
-                f"{SITE_PROFILE.fire_access_limit_m:.0f} m of a road "
-                f"(worst case {site_layout.fire_access_reach_m:.1f} m). Within each "
-                f"row the two AC blocks are mirrored so both PCS & MV stations face a "
-                f"shared central MV corridor; feeders collect there and route one "
-                f"direction along the access road to the substation."
+                f"The site repeats one project group, so the figure below shows a "
+                f"single representative project group of {group_layout.n_blocks} × "
+                f"AC Block ({group_layout.dc_per_block} × DC each) at legible scale. "
+                f"The complete site comprises {site_layout.groups} such group(s) "
+                f"({site_layout.n_blocks} blocks total); drawing every block at "
+                f"page scale would be illegible. Within a group the two AC blocks in "
+                f"each row are mirrored so both PCS & MV stations face a shared "
+                f"central MV corridor; feeders collect there and route one direction "
+                f"along the access road to the substation. Fire apparatus access "
+                f"roads run between groups and along the perimeter — not between "
+                f"every row — so each block stays within "
+                f"{SITE_PROFILE.fire_access_limit_m:.0f} m of a road (worst case "
+                f"{site_layout.fire_access_reach_m:.1f} m within a group)."
             ))
-            # Tall (portrait) sites would overflow a page at fixed width, so
-            # cap by height when the envelope is deeper than it is wide.
-            if site_layout.envelope_d_m > site_layout.envelope_w_m:
-                doc.add_picture(io.BytesIO(site_png), height=Inches(8.0))
+            # A single group is compact; cap by height only if it is deeper
+            # than it is wide, otherwise fit to the text column width.
+            if group_layout.envelope_d_m > group_layout.envelope_w_m:
+                doc.add_picture(io.BytesIO(site_png), height=Inches(5.5))
             else:
-                doc.add_picture(io.BytesIO(site_png), width=Inches(6.7))
+                doc.add_picture(io.BytesIO(site_png), width=Inches(6.2))
             _keep_next_para(doc.paragraphs[-1])
             _keep_next_para(doc.add_paragraph(
-                f"Figure {figure_index}: Concept Site Arrangement — "
-                f"site envelope ≈ {site_layout.envelope_w_m:.1f} × "
-                f"{site_layout.envelope_d_m:.1f} m "
+                f"Figure {figure_index}: Concept Site Arrangement — one "
+                f"representative project group (≈ {group_layout.envelope_w_m:.1f} × "
+                f"{group_layout.envelope_d_m:.1f} m; {group_layout.n_blocks} × "
+                f"{group_layout.total_power_mw / max(1, group_layout.n_blocks):.0f} MW "
+                f"per block). The full site is {site_layout.groups} such group(s) "
+                f"≈ {site_layout.envelope_w_m:.1f} × {site_layout.envelope_d_m:.1f} m "
                 f"({site_layout.total_power_mw:.0f} MW / "
-                f"{site_layout.total_energy_mwh:.1f} MWh). Concept only — "
-                f"a full Master Layout requires a registered site constraint set."
+                f"{site_layout.total_energy_mwh:.1f} MWh). Concept only — a full "
+                f"Master Layout requires a registered site constraint set."
             ))
             figure_index += 1
             site_rows = [
-                ("AC Blocks", f"{site_layout.n_blocks:d} × "
+                ("AC Blocks (whole site)", f"{site_layout.n_blocks:d} × "
                               f"{site_layout.dc_per_block} DC/block"),
-                ("Grouping", f"{site_layout.groups} group(s) × ≤ "
+                ("Project groups", f"{site_layout.groups} group(s) × ≤ "
                              f"{site_layout.blocks_per_group} blocks · "
                              f"{site_layout.fire_roads} internal fire road(s)"),
+                ("Representative group (drawn)",
+                 f"{group_layout.n_blocks} block(s) · ≈ "
+                 f"{group_layout.envelope_w_m:.1f} × {group_layout.envelope_d_m:.1f} m"),
                 ("Fire access reach", f"≤ {site_layout.fire_access_reach_m:.1f} m "
                                       f"(limit {SITE_PROFILE.fire_access_limit_m:.0f} m)"),
-                ("Site envelope (concept)",
+                ("Site envelope (concept, whole site)",
                  f"≈ {site_layout.envelope_w_m:.1f} × {site_layout.envelope_d_m:.1f} m"),
-                ("Rated power / energy",
+                ("Rated power / energy (whole site)",
                  f"{site_layout.total_power_mw:.0f} MW / "
                  f"{site_layout.total_energy_mwh:.1f} MWh"),
             ]
