@@ -298,6 +298,41 @@ def _add_cover_page_v2(doc: Document, ctx: ReportContext, brand: BrandProfile) -
     doc.add_page_break()
 
 
+def _mixed_head_entry(ctx: ReportContext):
+    """The Head AC Block model entry of a genuinely mixed station, else None.
+
+    Uniform stations (a single AC Block model, however DC Blocks are
+    distributed) carry a single-entry breakdown and return None, so callers fall
+    back to the plain average.
+    """
+    ac_output = ctx.ac_output if isinstance(ctx.ac_output, dict) else {}
+    if not ac_output.get("ac_block_mixed"):
+        return None
+    breakdown = ac_output.get("ac_block_breakdown")
+    if not isinstance(breakdown, list) or len(breakdown) <= 1:
+        return None
+    return next((entry for entry in breakdown if entry.get("role") == "Head"), breakdown[0])
+
+
+def _representative_dc_per_ac(ctx: ReportContext) -> int:
+    """DC Blocks per AC Block for the *representative* block drawn in §8/§9.
+
+    A mixed station has no single average block — the fractional mean matches no
+    real AC Block. Draw the HEAD block instead (consistent with the §6.1
+    schedule and the SLD head-fleet projection); tail blocks are described in
+    §6.1. Uniform stations keep the plain average.
+    """
+    head = _mixed_head_entry(ctx)
+    if head is not None:
+        dc_each = head.get("dc_blocks_each")
+        if dc_each is None:
+            dc_each = head.get("dc_blocks_max") or head.get("dc_blocks_min")
+        return max(1, int(dc_each or 1))
+    if ctx.ac_blocks_total <= 0:
+        return 0
+    return max(1, int(round(ctx.dc_blocks_total / ctx.ac_blocks_total)))
+
+
 def _compute_site_layout(ctx: ReportContext):
     """Concept site-array layout from the sizing result (None if not sizeable)."""
     if ctx.ac_blocks_total <= 0 or ctx.dc_blocks_total <= 0:
@@ -308,10 +343,38 @@ def _compute_site_layout(ctx: ReportContext):
     # the linear site figure here rather than render inconsistent geometry.
     if ctx.layout_variant == BILATERAL_LAYOUT_VARIANT:
         return None
-    dc_per_ac = max(1, int(round(ctx.dc_blocks_total / ctx.ac_blocks_total)))
+    dc_per_ac = _representative_dc_per_ac(ctx)
+    if dc_per_ac <= 0:
+        return None
     try:
         return compute_site_array(
             ctx.ac_blocks_total, dc_per_ac, ARRANGEMENT_PROFILE, SITE_PROFILE
+        )
+    except Exception:
+        return None
+
+
+def _compute_typical_group_layout(ctx: ReportContext):
+    """A single representative project group, drawn at legible page scale.
+
+    The full-site concept array is a tall linear strip (all groups stacked in
+    one column), which collapses to an illegible sliver when fit to a page. A
+    real site simply repeats one project group, so the report draws ONE typical
+    group at legible scale and states the whole-site composition (N such groups)
+    in the summary instead of drawing every block. For a mixed station the
+    representative block is the Head AC Block (tails are listed in §6.1).
+    """
+    if ctx.ac_blocks_total <= 0 or ctx.dc_blocks_total <= 0:
+        return None
+    if ctx.layout_variant == BILATERAL_LAYOUT_VARIANT:
+        return None
+    dc_per_ac = _representative_dc_per_ac(ctx)
+    if dc_per_ac <= 0:
+        return None
+    group_blocks = min(SITE_PROFILE.default_blocks_per_group, ctx.ac_blocks_total)
+    try:
+        return compute_site_array(
+            group_blocks, dc_per_ac, ARRANGEMENT_PROFILE, SITE_PROFILE
         )
     except Exception:
         return None
@@ -1091,6 +1154,58 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     ]
     _add_table(doc, s4_rows, ["Parameter", "Value"])
 
+    # Mixed AC Block station: a head AC Block model plus smaller tail model(s).
+    # This is the AC-side counterpart of the DC container + cabinet tail, driven
+    # off the manual per-AC-Block adjustment in AC Sizing. Uniform stations carry
+    # a single-entry breakdown, so the schedule is shown only when it adds
+    # information (more than one distinct AC Block model).
+    ac_breakdown = (
+        ctx.ac_output.get("ac_block_breakdown") if isinstance(ctx.ac_output, dict) else None
+    )
+    if (
+        isinstance(ctx.ac_output, dict)
+        and ctx.ac_output.get("ac_block_mixed")
+        and isinstance(ac_breakdown, list)
+        and len(ac_breakdown) > 1
+    ):
+        doc.add_heading("6.1  Mixed AC Block Station Schedule", level=3)
+        _keep_next_para(doc.add_paragraph(
+            "This station mixes AC Block models: a head model covers most DC Blocks "
+            "and smaller tail model(s) cover the remainder — the AC-side counterpart "
+            "of the DC container + cabinet tail in Section 4."
+        ))
+        _keep_next_para(doc.add_paragraph(
+            "Concept / draft: a mixed station is a manual engineering adjustment. "
+            "Per-model OEM product and transformer data are not individually confirmed — "
+            "each model's transformer rating below is a MW ÷ PF estimate, not a bound "
+            "product nameplate — and the SLD (§7) renders the representative Head AC Block "
+            "fleet only. Confirm each model's product and transformer data before use as a "
+            "formal engineering result."
+        ))
+        pf = ctx.grid_power_factor if (ctx.grid_power_factor and ctx.grid_power_factor > 0) else None
+        schedule_rows = []
+        for entry in ac_breakdown:
+            block_mw = float(entry.get("block_mw") or 0.0)
+            dc_each = entry.get("dc_blocks_each")
+            if dc_each is None:
+                dc_text = f"{entry.get('dc_blocks_min')}–{entry.get('dc_blocks_max')} per block"
+            else:
+                dc_text = f"{int(dc_each)} per block"
+            xf = f"{block_mw / pf:.2f} MVA (est.)" if pf else "TBD"
+            schedule_rows.append((
+                str(entry.get("role") or "—"),
+                f"{int(entry.get('count') or 0)}",
+                f"{int(entry.get('pcs_count') or 0)} × {float(entry.get('pcs_kw') or 0):.0f} kW",
+                f"{block_mw:.2f} MW",
+                dc_text,
+                xf,
+            ))
+        _add_table(
+            doc,
+            schedule_rows,
+            ["Role", "Qty", "PCS", "AC Block Size", "DC Blocks", "Transformer (per block)"],
+        )
+
     # --- Section 7: Single Line Diagram ---
     doc.add_page_break()
     doc.add_heading("7.  Single Line Diagram", level=2)
@@ -1137,7 +1252,10 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         except Exception:
             plan_png, plan_layout = None, None
     elif ctx.ac_blocks_total > 0 and ctx.dc_blocks_total > 0:
-        dc_per_ac = max(1, int(round(ctx.dc_blocks_total / ctx.ac_blocks_total)))
+        # For a mixed station the fractional average matches no real AC Block,
+        # so draw the Head AC Block (consistent with §6.1 and the SLD head
+        # fleet); tail AC Block(s) are described in §6.1.
+        dc_per_ac = _representative_dc_per_ac(ctx)
         try:
             plan_svg, plan_layout = render_ac_block_plan_svg(
                 dc_per_ac, ARRANGEMENT_PROFILE
@@ -1168,6 +1286,12 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         for note in getattr(plan_layout, "provisional_notes", ()):
             doc.add_paragraph(f"Provisional: {note}.")
     elif plan_png and plan_layout is not None:
+        if _mixed_head_entry(ctx) is not None:
+            _keep_next_para(doc.add_paragraph(
+                "Mixed AC Block station: the arrangement below is the representative "
+                "Head AC Block. Tail AC Block model(s) differ and are listed in the "
+                "Mixed AC Block Station Schedule (§6.1)."
+            ))
         _keep_next_para(doc.add_paragraph(
             f"Rule-based typical arrangement ({dc_per_ac} × DC per block, "
             f"mirrored back-to-back pairs, doors facing outward aisles):"
@@ -1282,59 +1406,91 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 ))
         # A governed run does not also draw the linear L2 site array.
         site_layout = None
+        group_layout = None
     else:
         site_layout = _compute_site_layout(ctx)
-    if site_layout is not None:
+        group_layout = _compute_typical_group_layout(ctx)
+    if site_layout is not None and group_layout is not None:
         try:
-            site_svg = render_site_svg(site_layout, SITE_PROFILE)
+            # Draw ONE representative project group at legible scale, not the
+            # full-site strip (which fits a page only as an illegible sliver).
+            site_svg = render_site_svg(group_layout, SITE_PROFILE)
             site_png = _svg_bytes_to_png(site_svg.encode("utf-8"))
         except Exception:
             site_png = None
         if site_png:
+            # A mixed station has no single "average" block; the figure draws the
+            # Head AC Block group and the whole-site power/energy come from the
+            # actual head + tail sizing, not a uniform multiplication.
+            _mixed_head = _mixed_head_entry(ctx)
+            _ac_out = ctx.ac_output if isinstance(ctx.ac_output, dict) else {}
+            ws_power_mw = site_layout.total_power_mw
+            ws_energy_mwh = site_layout.total_energy_mwh
+            ws_blocks_desc = f"{site_layout.n_blocks:d} × {site_layout.dc_per_block} DC/block"
+            if _mixed_head is not None:
+                if _ac_out.get("total_ac_mw"):
+                    ws_power_mw = float(_ac_out["total_ac_mw"])
+                if ctx.dc_total_energy_mwh:
+                    ws_energy_mwh = float(ctx.dc_total_energy_mwh)
+                ws_blocks_desc = f"{site_layout.n_blocks:d} (mixed head + tail — see §6.1)"
             doc.add_page_break()
             doc.add_heading("9.  Concept Site Arrangement (Concept Only)", level=2)
+            if _mixed_head is not None:
+                _keep_next_para(doc.add_paragraph(
+                    "Mixed AC Block station: the representative group below is drawn "
+                    "with the Head AC Block. Tail AC Block model(s) differ (see the "
+                    "Mixed AC Block Station Schedule, §6.1); the whole-site power and "
+                    "energy stated here reflect the full head + tail composition."
+                ))
             _keep_next_para(doc.add_paragraph(
-                f"{site_layout.n_blocks} × AC Block "
-                f"({site_layout.dc_per_block} × DC each) arranged in "
-                f"{site_layout.rows} row(s), grouped into {site_layout.groups} "
-                f"project group(s) of up to {site_layout.blocks_per_group} blocks. "
-                f"Fire apparatus access roads run between groups and along the "
-                f"perimeter — not between every row — so each block stays within "
-                f"{SITE_PROFILE.fire_access_limit_m:.0f} m of a road "
-                f"(worst case {site_layout.fire_access_reach_m:.1f} m). Within each "
-                f"row the two AC blocks are mirrored so both PCS & MV stations face a "
-                f"shared central MV corridor; feeders collect there and route one "
-                f"direction along the access road to the substation."
+                f"The site repeats one project group, so the figure below shows a "
+                f"single representative project group of {group_layout.n_blocks} × "
+                f"AC Block ({group_layout.dc_per_block} × DC each) at legible scale. "
+                f"The complete site comprises {site_layout.groups} such group(s) "
+                f"({site_layout.n_blocks} blocks total); drawing every block at "
+                f"page scale would be illegible. Within a group the two AC blocks in "
+                f"each row are mirrored so both PCS & MV stations face a shared "
+                f"central MV corridor; feeders collect there and route one direction "
+                f"along the access road to the substation. Fire apparatus access "
+                f"roads run between groups and along the perimeter — not between "
+                f"every row — so each block stays within "
+                f"{SITE_PROFILE.fire_access_limit_m:.0f} m of a road (worst case "
+                f"{site_layout.fire_access_reach_m:.1f} m within a group)."
             ))
-            # Tall (portrait) sites would overflow a page at fixed width, so
-            # cap by height when the envelope is deeper than it is wide.
-            if site_layout.envelope_d_m > site_layout.envelope_w_m:
-                doc.add_picture(io.BytesIO(site_png), height=Inches(8.0))
+            # A single group is compact; cap by height only if it is deeper
+            # than it is wide, otherwise fit to the text column width.
+            if group_layout.envelope_d_m > group_layout.envelope_w_m:
+                doc.add_picture(io.BytesIO(site_png), height=Inches(5.5))
             else:
-                doc.add_picture(io.BytesIO(site_png), width=Inches(6.7))
+                doc.add_picture(io.BytesIO(site_png), width=Inches(6.2))
             _keep_next_para(doc.paragraphs[-1])
             _keep_next_para(doc.add_paragraph(
-                f"Figure {figure_index}: Concept Site Arrangement — "
-                f"site envelope ≈ {site_layout.envelope_w_m:.1f} × "
-                f"{site_layout.envelope_d_m:.1f} m "
-                f"({site_layout.total_power_mw:.0f} MW / "
-                f"{site_layout.total_energy_mwh:.1f} MWh). Concept only — "
-                f"a full Master Layout requires a registered site constraint set."
+                f"Figure {figure_index}: Concept Site Arrangement — one "
+                f"representative project group (≈ {group_layout.envelope_w_m:.1f} × "
+                f"{group_layout.envelope_d_m:.1f} m; {group_layout.n_blocks} × "
+                f"{group_layout.total_power_mw / max(1, group_layout.n_blocks):.0f} MW "
+                f"per block). The full site is {site_layout.groups} such group(s) "
+                f"≈ {site_layout.envelope_w_m:.1f} × {site_layout.envelope_d_m:.1f} m "
+                f"({ws_power_mw:.0f} MW / "
+                f"{ws_energy_mwh:.1f} MWh). Concept only — a full "
+                f"Master Layout requires a registered site constraint set."
             ))
             figure_index += 1
             site_rows = [
-                ("AC Blocks", f"{site_layout.n_blocks:d} × "
-                              f"{site_layout.dc_per_block} DC/block"),
-                ("Grouping", f"{site_layout.groups} group(s) × ≤ "
+                ("AC Blocks (whole site)", ws_blocks_desc),
+                ("Project groups", f"{site_layout.groups} group(s) × ≤ "
                              f"{site_layout.blocks_per_group} blocks · "
                              f"{site_layout.fire_roads} internal fire road(s)"),
+                ("Representative group (drawn)",
+                 f"{group_layout.n_blocks} block(s) · ≈ "
+                 f"{group_layout.envelope_w_m:.1f} × {group_layout.envelope_d_m:.1f} m"),
                 ("Fire access reach", f"≤ {site_layout.fire_access_reach_m:.1f} m "
                                       f"(limit {SITE_PROFILE.fire_access_limit_m:.0f} m)"),
-                ("Site envelope (concept)",
+                ("Site envelope (concept, whole site)",
                  f"≈ {site_layout.envelope_w_m:.1f} × {site_layout.envelope_d_m:.1f} m"),
-                ("Rated power / energy",
-                 f"{site_layout.total_power_mw:.0f} MW / "
-                 f"{site_layout.total_energy_mwh:.1f} MWh"),
+                ("Rated power / energy (whole site)",
+                 f"{ws_power_mw:.0f} MW / "
+                 f"{ws_energy_mwh:.1f} MWh"),
             ]
             site_rows.extend(
                 (item, f"{value} — {basis}")

@@ -120,6 +120,25 @@ def assess_sld_formal_readiness(
     issues: list[SldFormalReadinessIssue] = []
     project_settings = project_settings or {}
 
+    # A mixed AC Block station cannot be drawn as one uniform SLD (SLD V1 is
+    # uniform-only), so it is projected onto its representative Head AC-Block
+    # fleet. That projection is a legitimate concept drawing but NEVER a formal
+    # whole-station SLD — the tail AC Block model(s) are not on it. Mark it
+    # non-official explicitly, so the drawing is watermarked CONCEPT for this
+    # honest reason rather than the incidental head-vs-whole DC-total mismatch.
+    is_representative_of_mixed = bool(ac_snapshot.output.get("sld_representative_of_mixed"))
+    if is_representative_of_mixed:
+        issues.append(
+            _issue(
+                "representative_head_fleet_only",
+                "error",
+                "This SLD is the representative Head AC-Block fleet of a mixed AC Block "
+                "station, not a full-site drawing. Tail AC Block model(s) are described in "
+                "the report AC Block schedule; a per-model mixed SLD (SLD V2) is required "
+                "for a formal whole-station SLD.",
+            )
+        )
+
     if canonical_input.validation_mode != "strict" or bool(canonical_input.override_mode):
         issues.append(
             _issue(
@@ -158,7 +177,11 @@ def assess_sld_formal_readiness(
                 "AC allocation total DC Block count is unavailable.",
             )
         )
-    elif dc_run_blocks_total != ac_blocks_total:
+    elif dc_run_blocks_total != ac_blocks_total and not is_representative_of_mixed:
+        # For a representative Head fleet the head-only DC total is expected to be
+        # smaller than the whole DC run; the explicit representative blocker above
+        # already keeps the drawing non-official, so this incidental mismatch is
+        # suppressed to avoid a misleading "data error" reason.
         issues.append(
             _issue(
                 "dc_ac_block_total_mismatch",
@@ -189,7 +212,7 @@ def assess_sld_formal_readiness(
             )
         )
 
-    if dc_run_mwh is not None and ac_blocks_total is not None:
+    if dc_run_mwh is not None and ac_blocks_total is not None and not is_representative_of_mixed:
         represented_mwh = float(canonical_input.dc_block_energy_mwh) * float(ac_blocks_total)
         if abs(represented_mwh - dc_run_mwh) > max(0.01, dc_run_mwh * 0.001):
             issues.append(

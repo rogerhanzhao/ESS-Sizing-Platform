@@ -38,6 +38,13 @@ from calb_sizing_tool.services.ac_sizing_service import (
     minimum_dc_blocks_for_pcs_feeders,
     select_ac_block_container_type,
 )
+from calb_sizing_tool.services.ac_mixed_station import (
+    build_mixed_dc_allocation_plan,
+    default_uniform_rows,
+    is_mixed_station,
+    summarize_ac_block_rows,
+    validate_ac_block_rows,
+)
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot
 from calb_sizing_tool.services.sld_data_source_service import persist_ac_runtime_snapshot, resolve_preferred_ac_snapshot
 from calb_sizing_tool.state.auth_state import get_auth_context
@@ -679,6 +686,121 @@ def show():
                     "The sizing candidate remains available with transformer values to be confirmed in Engineering Settings."
                 )
 
+            # ===== Optional: mixed AC Block station (manual adjustment) =====
+            # Off by default: the clean uniform trunk stays the norm. This is the
+            # AC-side counterpart of DC Sizing's "Hybrid Mode" (container + cabinet
+            # tail) — a head AC Block plus smaller tail AC Blocks for an uneven DC
+            # remainder or a deliberate product mix. Uniform is just the
+            # single-model case of the same per-block table, so nothing forks.
+            mixed_rows = None
+            mixed_valid = None
+            st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
+            mixed_enabled = st.checkbox(
+                "Enable mixed AC Block station (advanced manual adjustment)",
+                value=bool(saved_ac_output.get("ac_block_mixed")),
+                key=f"ac_mixed_enabled_{selected_option.ratio.replace(':', 'to')}",
+                help=(
+                    "By default every AC Block uses the single model above. Enable this only "
+                    "to cover an uneven DC remainder, or to deliberately mix a smaller tail "
+                    "AC Block — the AC-side counterpart of the DC container + cabinet tail."
+                ),
+            )
+            if mixed_enabled:
+                st.caption(
+                    "Edit any AC Block row to make it different (the head model above pre-fills "
+                    "every row). The grouping fixes how many AC Blocks there are; mixing changes "
+                    "each block's PCS model and DC Blocks. Keep the DC Blocks assigned equal to the "
+                    "DC total, and give each block enough DC Blocks to feed its PCS. Identical rows "
+                    "are grouped into head / tail models downstream."
+                )
+                _mixed_ratio_key = selected_option.ratio.replace(":", "to")
+                _saved_rows = saved_ac_output.get("ac_block_rows")
+                if (
+                    isinstance(_saved_rows, list)
+                    and _saved_rows
+                    and saved_ac_output.get("ac_block_grouping_ratio") == selected_option.ratio
+                ):
+                    _seed_rows = [dict(r) for r in _saved_rows]
+                else:
+                    _seed_rows = default_uniform_rows(
+                        selected_option.dc_blocks_per_ac, pcs_per_ac, pcs_kw
+                    )
+                # Editable per-AC-Block grid built from number_input widgets.
+                # st.data_editor/st.dataframe are banned in the UI (PyArrow crash
+                # containment, tests/test_ui_table_rendering.py), so the grid is
+                # rendered as one widget row per AC Block.
+                _hdr = st.columns([1.4, 1.3, 1.6, 1.3])
+                _hdr[0].caption("AC Block")
+                _hdr[1].caption("PCS count")
+                _hdr[2].caption("PCS rating (kW)")
+                _hdr[3].caption("DC Blocks")
+                mixed_rows = []
+                for _i, _seed in enumerate(_seed_rows):
+                    _row_cols = st.columns([1.4, 1.3, 1.6, 1.3])
+                    _row_cols[0].markdown(f"**{_i + 1}**")
+                    _pcs_i = _row_cols[1].number_input(
+                        f"PCS count for AC Block {_i + 1}",
+                        min_value=1, max_value=8, step=1,
+                        value=int(_seed.get("pcs_count") or pcs_per_ac),
+                        key=f"ac_mixed_pcs_{_mixed_ratio_key}_{_i}",
+                        label_visibility="collapsed",
+                    )
+                    _kw_i = _row_cols[2].number_input(
+                        f"PCS rating for AC Block {_i + 1}",
+                        min_value=1000, max_value=5000, step=50,
+                        value=int(_seed.get("pcs_kw") or pcs_kw),
+                        key=f"ac_mixed_kw_{_mixed_ratio_key}_{_i}",
+                        label_visibility="collapsed",
+                    )
+                    _dc_i = _row_cols[3].number_input(
+                        f"DC Blocks for AC Block {_i + 1}",
+                        min_value=1, step=1,
+                        value=int(_seed.get("dc_blocks") or 1),
+                        key=f"ac_mixed_dc_{_mixed_ratio_key}_{_i}",
+                        label_visibility="collapsed",
+                    )
+                    mixed_rows.append(
+                        {"pcs_count": int(_pcs_i), "pcs_kw": int(_kw_i), "dc_blocks": int(_dc_i)}
+                    )
+                mixed_valid = validate_ac_block_rows(
+                    mixed_rows,
+                    dc_blocks_total,
+                    dc_block_output_circuits=dc_block_output_circuits,
+                )
+                _tally_col1, _tally_col2, _tally_col3 = st.columns(3)
+                _tally_col1.metric(
+                    "DC Blocks assigned",
+                    f"{mixed_valid.total_dc_assigned} / {dc_blocks_total}",
+                    delta=(
+                        None
+                        if mixed_valid.total_dc_assigned == dc_blocks_total
+                        else mixed_valid.total_dc_assigned - dc_blocks_total
+                    ),
+                )
+                _tally_col2.metric("AC Blocks", f"{len(mixed_rows)}")
+                _tally_col3.metric("Total AC Power", f"{mixed_valid.total_ac_mw:.2f} MW")
+                if mixed_valid.ok:
+                    _distinct = summarize_ac_block_rows(mixed_rows)
+                    if len(_distinct) > 1:
+                        _head = next(e for e in _distinct if e["role"] == "Head")
+                        _tails = [e for e in _distinct if e["role"] == "Tail"]
+                        _tail_txt = ", ".join(
+                            f"{e['count']}×{e['block_mw']:.2f} MW ({e['pcs_count']}×{e['pcs_kw']:.0f} kW)"
+                            for e in _tails
+                        )
+                        compact_note(
+                            f"Mixed station: head {_head['count']}×{_head['block_mw']:.2f} MW "
+                            f"({_head['pcs_count']}×{_head['pcs_kw']:.0f} kW) + tail {_tail_txt}."
+                        )
+                    else:
+                        compact_note(
+                            "Table is uniform — every AC Block is identical, so this behaves "
+                            "exactly like the standard (non-mixed) station."
+                        )
+                else:
+                    for _msg in mixed_valid.messages:
+                        st.warning(_msg)
+
             submitted = st.button("Run AC Sizing", use_container_width=True, type="primary")
 
         # ========== STEP 4: Calculation & Validation ==========
@@ -689,31 +811,61 @@ def show():
                     "The system will not infer it from the PCS quantity."
                 )
                 st.stop()
-            minimum_dc_blocks = minimum_dc_blocks_for_pcs_feeders(
-                pcs_per_ac,
-                dc_block_output_circuits=dc_block_output_circuits,
-            )
-            if not dc_grouping_has_feeder_capacity(
-                selected_option.dc_blocks_per_ac,
-                pcs_per_ac,
-                dc_block_output_circuits=dc_block_output_circuits,
-            ):
-                smallest_group = min(selected_option.dc_blocks_per_ac, default=0)
+
+            # A mixed station replaces the single uniform model with the per-block
+            # table; it is pre-validated (feeder capacity + sum-to-total) in the
+            # editor, so gate on that instead of the single-grouping feeder check.
+            is_mixed_run = bool(mixed_enabled) and is_mixed_station(mixed_rows or [])
+            if mixed_enabled and not (mixed_valid and mixed_valid.ok):
                 st.error(
-                    "Selected grouping cannot physically feed every PCS branch: "
-                    f"{pcs_per_ac} PCS with {dc_block_output_circuits} protected output circuit(s) "
-                    f"per DC Block needs at least {minimum_dc_blocks} DC Blocks in each AC Block, "
-                    f"but this grouping includes a {smallest_group}-DC tail. Select a smaller PCS count "
-                    "or a grouping without that tail."
+                    "Resolve the mixed AC Block station issues listed above before running "
+                    "(DC Blocks must sum to the DC total and every AC Block must be feeder-feasible)."
                 )
                 st.stop()
+            if not is_mixed_run:
+                minimum_dc_blocks = minimum_dc_blocks_for_pcs_feeders(
+                    pcs_per_ac,
+                    dc_block_output_circuits=dc_block_output_circuits,
+                )
+                if not dc_grouping_has_feeder_capacity(
+                    selected_option.dc_blocks_per_ac,
+                    pcs_per_ac,
+                    dc_block_output_circuits=dc_block_output_circuits,
+                ):
+                    smallest_group = min(selected_option.dc_blocks_per_ac, default=0)
+                    st.error(
+                        "Selected grouping cannot physically feed every PCS branch: "
+                        f"{pcs_per_ac} PCS with {dc_block_output_circuits} protected output circuit(s) "
+                        f"per DC Block needs at least {minimum_dc_blocks} DC Blocks in each AC Block, "
+                        f"but this grouping includes a {smallest_group}-DC tail. Select a smaller PCS count "
+                        "or a grouping without that tail."
+                    )
+                    st.stop()
             bump_run_id_ac()
             ac_run_id = project_state.get("ac", {}).get("run_id")
 
-            num_blocks = selected_option.ac_block_count
-            pcs_per_block = pcs_per_ac
+            # Station rows drive both the uniform and mixed cases through one path:
+            # uniform = one model (however DC Blocks are distributed), mixed = the
+            # edited per-block table. The head model provides the representative
+            # scalars; the per-block lists carry the true composition.
+            station_rows = (
+                [dict(r) for r in mixed_rows]
+                if is_mixed_run
+                else default_uniform_rows(selected_option.dc_blocks_per_ac, pcs_per_ac, pcs_kw)
+            )
+            ac_block_breakdown = summarize_ac_block_rows(station_rows)
+            _head_entry = next(
+                (e for e in ac_block_breakdown if e.get("role") == "Head"),
+                ac_block_breakdown[0] if ac_block_breakdown else None,
+            )
+
+            num_blocks = len(station_rows)
+            pcs_per_block = int(_head_entry["pcs_count"]) if _head_entry else pcs_per_ac
+            pcs_kw = int(_head_entry["pcs_kw"]) if _head_entry else pcs_kw
             block_size_mw = pcs_per_block * pcs_kw / 1000.0
-            total_ac_mw = num_blocks * block_size_mw
+            total_ac_mw = round(
+                sum(int(r["pcs_count"]) * int(r["pcs_kw"]) / 1000.0 for r in station_rows), 3
+            )
             overhead = total_ac_mw - target_mw
 
             total_energy = total_energy_mwh
@@ -740,9 +892,48 @@ def show():
 
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("AC Blocks", num_blocks)
-            col2.metric("PCS per Block", pcs_per_block)
-            col3.metric("AC Power per Block", f"{block_size_mw:.2f} MW")
-            col4.metric("Total AC Power", f"{total_ac_mw:.2f} MW")
+            if is_mixed_run:
+                _tail_entries = [e for e in ac_block_breakdown if e.get("role") == "Tail"]
+                col2.metric(
+                    "AC Block models",
+                    f"{len(ac_block_breakdown)}",
+                    help="Distinct head + tail AC Block models in this mixed station.",
+                )
+                col3.metric("Head AC Block", f"{block_size_mw:.2f} MW")
+                _tail_summary = " + ".join(
+                    f"{e['count']}×{e['block_mw']:.2f} MW" for e in _tail_entries
+                )
+                col4.metric("Total AC Power", f"{total_ac_mw:.2f} MW", help=f"Tail: {_tail_summary}")
+            else:
+                col2.metric("PCS per Block", pcs_per_block)
+                col3.metric("AC Power per Block", f"{block_size_mw:.2f} MW")
+                col4.metric("Total AC Power", f"{total_ac_mw:.2f} MW")
+            if is_mixed_run:
+                _head_e = _head_entry or {}
+                _tail_txt = ", ".join(
+                    f"{e['count']}×{e['block_mw']:.2f} MW ({e['pcs_count']}×{e['pcs_kw']:.0f} kW)"
+                    for e in ac_block_breakdown
+                    if e.get("role") == "Tail"
+                )
+                compact_note(
+                    f"Mixed AC Block station: head {_head_e.get('count')}×"
+                    f"{block_size_mw:.2f} MW ({pcs_per_block}×{pcs_kw:.0f} kW) + tail {_tail_txt}. "
+                    "The AC-side counterpart of the DC container + cabinet tail."
+                )
+                st.info(
+                    "Concept/draft — this mixed station is a manual engineering adjustment. "
+                    "Per-model OEM product and transformer data are not individually confirmed "
+                    "(each model's transformer is a MW ÷ PF estimate), and the SLD renders the "
+                    "representative Head AC Block fleet only. Tail model(s) are listed in the "
+                    "report AC Block schedule (§6.1)."
+                )
+                if bound_ac_product:
+                    st.warning(
+                        "Catalogue product binding is disabled for a mixed station: a single "
+                        "product matches only the head spec and would mis-attribute its nameplate "
+                        "to differing tail blocks. Transformer ratings fall back to MW ÷ PF "
+                        "estimates per model."
+                    )
 
             st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
             section_header("DC Allocation", eyebrow="Detail")
@@ -760,12 +951,18 @@ def show():
 
             # --- DETAILED DC ALLOCATION ---
             try:
-                dc_allocation_plan = build_dc_allocation_plan(
-                    dc_blocks_total,
-                    num_blocks,
-                    pcs_per_block,
-                    dc_block_output_circuits=dc_block_output_circuits,
-                )
+                if is_mixed_run:
+                    dc_allocation_plan = build_mixed_dc_allocation_plan(
+                        station_rows,
+                        dc_block_output_circuits=dc_block_output_circuits,
+                    )
+                else:
+                    dc_allocation_plan = build_dc_allocation_plan(
+                        dc_blocks_total,
+                        num_blocks,
+                        pcs_per_block,
+                        dc_block_output_circuits=dc_block_output_circuits,
+                    )
             except ValueError as exc:
                 st.error(f"Invalid DC-to-PCS electrical topology: {exc}")
                 st.stop()
@@ -794,14 +991,14 @@ def show():
                 "ac_block_template_id": f"{pcs_per_block}x{int(round(pcs_kw))}kw",
                 "num_blocks": num_blocks,
                 "pcs_per_block": pcs_per_block,
-                "pcs_count_by_block": [pcs_per_block for _ in range(num_blocks)],
+                "pcs_count_by_block": [int(r["pcs_count"]) for r in station_rows],
                 "pcs_kw": pcs_kw,
                 "pcs_power_kw": pcs_kw,
                 "pcs_rating_kw_each": pcs_kw,
                 "block_size_mw": block_size_mw,
                 "total_ac_mw": total_ac_mw,
                 "overhead_mw": overhead,
-                "dc_blocks_per_ac": selected_option.dc_blocks_per_ac,
+                "dc_blocks_per_ac": [int(r["dc_blocks"]) for r in station_rows],
                 "dc_blocks_total_by_block": list(dc_blocks_per_ac_block_list),
                 "dc_blocks_per_feeder_by_block": [
                     list(plan.get("feeder_allocations", [])) for plan in dc_allocation_plan
@@ -831,7 +1028,12 @@ def show():
                 ),
                 "dc_block_output_circuits": dc_block_output_circuits,
                 "transformer_count": num_blocks,
-                "pcs_count_total": num_blocks * pcs_per_block,
+                "pcs_count_total": sum(int(r["pcs_count"]) for r in station_rows),
+                # Mixed AC Block station (head + tail models). Uniform is the
+                # single-entry case, so downstream reads one field either way.
+                "ac_block_mixed": bool(is_mixed_run),
+                "ac_block_rows": [dict(r) for r in station_rows],
+                "ac_block_breakdown": ac_block_breakdown,
                 "source_project_id": workspace.get("project_id"),
                 "source_project_code": workspace.get("project_code"),
                 "source_project_name": workspace.get("project_name") or project_name,
@@ -865,9 +1067,19 @@ def show():
 
             # If a catalogue product was bound, replace the MW ÷ PF transformer
             # estimate with the real product nameplate / vector group / cooling.
-            if bound_ac_product:
+            #
+            # A single bound product only matches the HEAD spec. In a mixed
+            # station a differing tail would inherit the head product's
+            # transformer nameplate and the report would present it as
+            # "per block" — a false attribution. So single-product binding is
+            # disabled for a mixed station; each block falls back to the
+            # MW ÷ PF estimate (per-model binding is future work). Uniform runs
+            # keep the confirmed product nameplate exactly as before.
+            if bound_ac_product and not is_mixed_run:
                 from calb_sizing_tool.services.ac_block_product_match import product_transformer_overrides
                 ac_output.update(product_transformer_overrides(bound_ac_product))
+            elif bound_ac_product and is_mixed_run:
+                ac_output["ac_block_product_binding_suppressed"] = "mixed_station"
 
             st.session_state["ac_output"] = ac_output
             ac_results.update(ac_output)

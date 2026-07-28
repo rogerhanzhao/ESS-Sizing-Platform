@@ -29,6 +29,7 @@ from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot, SldRenderOptions
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
 from calb_sizing_tool.schemas.sld_render_input import legacy_sld_override_preset
 from calb_sizing_tool.services.access_control_service import AccessControlService
+from calb_sizing_tool.services.ac_mixed_station import head_fleet_ac_output_for_sld
 from calb_sizing_tool.services.sld_data_source_service import AcSnapshotResolution, resolve_preferred_ac_snapshot
 from calb_sizing_tool.services.sld_engineering_settings_service import (
     load_case_sld_project_settings,
@@ -416,6 +417,37 @@ def show() -> None:
     else:
         st.warning(runtime_status.message)
 
+    # Mixed AC Block station: the SLD authoritative contract is uniform-only
+    # (SLD V1 requires a uniform PCS count per AC Block), so a head+tail station
+    # cannot be rendered directly. Project it onto its HEAD AC-Block fleet — a
+    # real uniform sub-station of the site — and render that, while the report's
+    # §6.1 schedule carries the full head + tail composition. This keeps the SLD
+    # coherent front-to-back instead of failing the AC->SLD adapter.
+    if ac_snapshot is not None and bool((ac_snapshot.output or {}).get("ac_block_mixed")):
+        representative = head_fleet_ac_output_for_sld(ac_snapshot.output or {})
+        if representative is not None:
+            head_count = int(representative.get("sld_head_fleet_block_count") or 0)
+            head_mw = float(representative.get("block_size_mw") or 0.0)
+            head_pcs = int(representative.get("pcs_per_block") or 0)
+            head_kw = float(representative.get("pcs_kw") or 0.0)
+            ac_snapshot = ac_snapshot.model_copy(update={"output": representative})
+            st.info(
+                f"🔀 **Mixed AC Block station** — the SLD renders the representative "
+                f"**head AC Block fleet** ({head_count} × {head_mw:.2f} MW, "
+                f"{head_pcs}×{head_kw:.0f} kW). Tail AC Block model(s) differ and are "
+                f"listed in the report's AC Block schedule (§6.1). A per-model SLD is a "
+                f"planned SLD V2 enhancement.",
+                icon=None,
+            )
+        else:
+            st.warning(
+                "Mixed AC Block station detected, but no head AC Block fleet could be "
+                "resolved for the SLD. See the report's AC Block schedule for the full "
+                "per-block composition."
+            )
+            ac_snapshot = None
+            ac_resolution = AcSnapshotResolution(snapshot=None, source="none")
+
     ac_blocks_total = _resolve_ac_blocks_total(ac_snapshot.output if ac_snapshot else {})
     mv_nominal_voltage_kv = _resolve_mv_nominal_voltage_kv(state, project_state, ac_snapshot)
     persisted_project_settings = load_case_sld_project_settings(workspace.get("case_id"))
@@ -612,6 +644,7 @@ def show() -> None:
             "ac_runtime_source": runtime_status.source,
             "runtime_source_mode": runtime_status.mode,
             "forced_draft_by_source": bool(runtime_status.force_draft),
+            "representative_of_mixed": bool((ac_snapshot.output or {}).get("sld_representative_of_mixed")),
         }
         artifacts_registered = bool(artifact_bundle.metadata.get("artifacts_registered", True))
         if not artifacts_registered:
