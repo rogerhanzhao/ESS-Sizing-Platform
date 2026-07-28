@@ -3,9 +3,12 @@ import pytest
 from calb_sizing_tool.schemas.diagram_inputs import SldRenderOptions
 from calb_sizing_tool.services.sld_renderer_mode_service import (
     AVAILABLE_SLD_RENDERER_MODES,
+    DEV_ONLY_SLD_RENDERER_MODES,
     PRODUCTION_BASELINE_SLD_RENDERER_MODE,
+    PUBLIC_SLD_RENDERER_MODES,
     RESERVED_SLD_RENDERER_MODES,
     is_sld_renderer_mode_available,
+    is_sld_renderer_mode_public,
     normalize_sld_renderer_mode,
     sld_renderer_mode_label,
 )
@@ -35,6 +38,17 @@ def test_topology_v1_is_retired_from_public_mode_list_but_reserved_for_compatibi
     assert "topology_v1" in RESERVED_SLD_RENDERER_MODES
     assert normalize_sld_renderer_mode("topology_v1") == "topology_v1"
     assert is_sld_renderer_mode_available("topology_v1") is False
+
+
+def test_legacy_is_dev_only_and_not_in_public_dropdown():
+    # Legacy stays available for dev/regression comparison, but the public
+    # renderer dropdown must offer only the professional engineering_v2 mode.
+    assert PUBLIC_SLD_RENDERER_MODES == ("engineering_v2",)
+    assert "legacy_server" in DEV_ONLY_SLD_RENDERER_MODES
+    assert "legacy_server" not in PUBLIC_SLD_RENDERER_MODES
+    assert "legacy_server" in AVAILABLE_SLD_RENDERER_MODES  # still reachable for dev tooling
+    assert is_sld_renderer_mode_public("engineering_v2") is True
+    assert is_sld_renderer_mode_public("legacy_server") is False
 
 
 def test_unknown_renderer_mode_fails_fast():

@@ -6,6 +6,12 @@ from calb_sizing_tool.schemas.diagram_inputs import SldRendererMode
 DEFAULT_SLD_RENDERER_MODE: SldRendererMode = "engineering_v2"
 PRODUCTION_BASELINE_SLD_RENDERER_MODE: SldRendererMode = "legacy_server"
 AVAILABLE_SLD_RENDERER_MODES: tuple[SldRendererMode, ...] = ("engineering_v2", "legacy_server")
+# Modes offered in the public renderer dropdown. Legacy is an internal
+# development / regression-comparison path only — it renders the old patched
+# style and must not be user-selectable in production. It stays in
+# AVAILABLE_SLD_RENDERER_MODES so dev tooling and tests can still request it.
+PUBLIC_SLD_RENDERER_MODES: tuple[SldRendererMode, ...] = ("engineering_v2",)
+DEV_ONLY_SLD_RENDERER_MODES: tuple[SldRendererMode, ...] = ("legacy_server",)
 RESERVED_SLD_RENDERER_MODES: tuple[SldRendererMode, ...] = ("topology_v1",)
 
 _MODE_LABELS: dict[str, str] = {
@@ -28,3 +34,7 @@ def sld_renderer_mode_label(mode: str) -> str:
 
 def is_sld_renderer_mode_available(mode: str) -> bool:
     return normalize_sld_renderer_mode(mode) in AVAILABLE_SLD_RENDERER_MODES
+
+
+def is_sld_renderer_mode_public(mode: str) -> bool:
+    return normalize_sld_renderer_mode(mode) in PUBLIC_SLD_RENDERER_MODES

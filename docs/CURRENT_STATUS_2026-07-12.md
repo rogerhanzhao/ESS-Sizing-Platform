@@ -262,6 +262,35 @@ station is never mistaken for a formal engineering result:
    and in report §6.1, directing the user to confirm per-model product and
    transformer data before formal use.
 
+### 2.10 SLD transformer-winding formality + renderer dropdown (2026-07-28, in progress)
+
+Review of a rendered SLD (uniform 25×2-PCS station) surfaced that a
+three-winding transformer with an unconfirmed vector group draws three "TBD"
+winding circles behind a DRAFT watermark — not a readable engineering drawing.
+Owner direction: (1) never pass a TBD-winding three-winding SLD off as a normal
+drawing; (2) drop the legacy renderer from the public dropdown; (3) backfill AC
+Block product topology / vector group / LV arrangement with standard defaults
+marked *assumed, pending confirmation*; (4) add real page-export acceptance for
+two-winding/`Dyn11` and three-winding/`Dyn11yn11` (plain Y, no earth bar,
+busbar structure, PNG).
+
+Landed so far (this increment):
+- **#2 done** — `sld_renderer_mode_service` gains `PUBLIC_SLD_RENDERER_MODES`
+  (`engineering_v2` only) + `DEV_ONLY_SLD_RENDERER_MODES` (`legacy_server`);
+  `is_sld_renderer_mode_public`. The SLD page dropdown offers only the public
+  mode; legacy is reachable only behind the dev entry `?sld_dev=1`. Legacy stays
+  in `AVAILABLE_*` for dev tooling/tests.
+- **#1 formality gate done** — `sld_formal_readiness_service` now raises
+  `transformer_vector_group_unconfirmed` (missing/TBD) or
+  `transformer_vector_group_topology_mismatch` (wrong LV-token count for the
+  winding count), reading the authoritative resolved value from
+  `canonical_input`. Strict build already *requires* a vector group; this makes
+  the draft/TBD path carry an explicit non-formal reason.
+
+Still open: **#1 renderer placeholder** (draw an explicit "vector group
+unconfirmed — not a drawing" block instead of TBD winding circles),
+**#3 product-data standard defaults**, **#4 two-/three-winding PNG acceptance**.
+
 ## 3. Next boundary
 
 The package deliberately stops before a Concept Master Layout. Unlocking it

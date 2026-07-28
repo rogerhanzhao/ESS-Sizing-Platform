@@ -38,6 +38,7 @@ from calb_sizing_tool.services.sld_engineering_settings_service import (
 from calb_sizing_tool.services.sld_pipeline_service import run_sld_pipeline_from_run_bundle
 from calb_sizing_tool.services.sld_renderer_mode_service import (
     AVAILABLE_SLD_RENDERER_MODES,
+    PUBLIC_SLD_RENDERER_MODES,
     sld_renderer_mode_label,
 )
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
@@ -469,25 +470,42 @@ def show() -> None:
     display_flag_col1, display_flag_col2 = st.columns(2)
     compact_mode = display_flag_col1.checkbox("Compact Mode", value=False)
     draw_summary = display_flag_col2.checkbox("Draw Summary", value=False)
-    renderer_mode_choices = list(AVAILABLE_SLD_RENDERER_MODES)
-    renderer_mode_default_index = 0
-    renderer_mode = st.selectbox(
-        "SLD Renderer Mode",
-        renderer_mode_choices,
-        index=renderer_mode_default_index,
-        format_func=sld_renderer_mode_label,
-        key="sld_renderer_mode_public_v2",
-        help=(
-            "Engineering V2 is the professional SLD candidate. Legacy compatibility "
-            "is kept only as an old-style comparison path."
-        ),
+    # Public users only get the professional renderer. The legacy "patched old
+    # style" path is a development / regression-comparison tool and is exposed
+    # only behind an explicit dev entry (URL `?sld_dev=1`), never in the normal
+    # dropdown.
+    try:
+        _sld_dev_mode = str(st.query_params.get("sld_dev") or "").strip() in {"1", "true", "yes"}
+    except Exception:
+        _sld_dev_mode = False
+    renderer_mode_choices = (
+        list(AVAILABLE_SLD_RENDERER_MODES) if _sld_dev_mode else list(PUBLIC_SLD_RENDERER_MODES)
     )
-    if renderer_mode == "legacy_server":
-        st.warning("Renderer mode: legacy compatibility path; this is an old-style comparison drawing.")
-    elif renderer_mode == "engineering_v2":
+    renderer_mode_default_index = 0
+    if len(renderer_mode_choices) == 1:
+        renderer_mode = renderer_mode_choices[0]
         st.caption("Renderer mode: engineering_v2 professional SLD candidate.")
     else:
-        st.warning("Renderer mode is retired and should only be used for internal compatibility checks.")
+        renderer_mode = st.selectbox(
+            "SLD Renderer Mode",
+            renderer_mode_choices,
+            index=renderer_mode_default_index,
+            format_func=sld_renderer_mode_label,
+            key="sld_renderer_mode_public_v2",
+            help=(
+                "Engineering V2 is the professional SLD candidate. Legacy compatibility "
+                "is a development-only old-style comparison path."
+            ),
+        )
+        if renderer_mode == "legacy_server":
+            st.warning(
+                "Developer mode: legacy compatibility path — old-style comparison drawing, "
+                "not for production output."
+            )
+        elif renderer_mode == "engineering_v2":
+            st.caption("Renderer mode: engineering_v2 professional SLD candidate.")
+        else:
+            st.warning("Renderer mode is retired and should only be used for internal compatibility checks.")
 
     if not _is_guest:
         if workspace.get("case_id"):

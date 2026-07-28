@@ -6,6 +6,10 @@ from typing import Any
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot, SldRenderOptions
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
 from calb_sizing_tool.schemas.sld_render_input import SldCanonicalInput
+from calb_sizing_tool.sld.transformer_vector_group import (
+    TransformerVectorGroupError,
+    parse_transformer_vector_group,
+)
 
 
 @dataclass(frozen=True)
@@ -147,6 +151,38 @@ def assess_sld_formal_readiness(
                 "Formal SLD requires strict validation mode without engineering override mode.",
             )
         )
+
+    # A transformer is defined by a vector group that declares one LV token per
+    # independent LV winding (e.g. Dyn11 for two-winding, Dyn11yn11 / Dy11y11 for
+    # a three-winding with two independent LV secondaries). The canonical input
+    # already resolves the authoritative value (from the AC output or case
+    # engineering settings) and normalizes an unconfirmed value to "TBD". A "TBD"
+    # winding symbol is not a readable engineering drawing, so it can never be a
+    # formal SLD — this keeps a three-winding station out of official output
+    # until a real dual-LV vector group is confirmed.
+    lv_winding_count = int(canonical_input.lv_winding_count or 1)
+    vector_group_raw = str(canonical_input.transformer_vector_group or "").strip()
+    if _missing_text(vector_group_raw):
+        issues.append(
+            _issue(
+                "transformer_vector_group_unconfirmed",
+                "error",
+                f"Formal SLD requires a confirmed transformer vector group with "
+                f"{lv_winding_count} LV token(s); none is set (TBD).",
+            )
+        )
+    else:
+        try:
+            parse_transformer_vector_group(vector_group_raw, lv_winding_count=lv_winding_count)
+        except TransformerVectorGroupError as exc:
+            issues.append(
+                _issue(
+                    "transformer_vector_group_topology_mismatch",
+                    "error",
+                    f"Transformer vector group {vector_group_raw!r} does not match a "
+                    f"{lv_winding_count}-LV-winding transformer: {exc}",
+                )
+            )
 
     run_id = str(run_bundle.run_id or "").strip()
     source_run_id = str(ac_snapshot.output.get("source_run_id") or "").strip()

@@ -212,3 +212,30 @@ def test_representative_head_fleet_suppresses_incidental_total_mismatch(sample_e
     assert "representative_head_fleet_only" in issue_ids
     assert "dc_ac_block_total_mismatch" not in issue_ids
     assert "sld_dc_energy_representation_mismatch" not in issue_ids
+
+
+def test_missing_transformer_vector_group_is_never_formal(sample_excel_path):
+    # Strict mode already *requires* a vector group at build time, so the only
+    # way to reach a drawing without one is draft mode, where the canonical input
+    # resolves it to "TBD". That TBD winding symbol must keep the SLD non-formal
+    # with an explicit vector-group reason (not only the generic draft reason).
+    run_bundle = _build_run_bundle(sample_excel_path)
+    project_settings = _professional_project_settings()
+    project_settings["transformer"] = {"uk_percent": 7.0}  # drop the vector_group
+    dc_total = int(run_bundle.snapshot.stage2.container_count + run_bundle.snapshot.stage2.cabinet_count)
+    base, remainder = dc_total // 4, dc_total % 4
+    feeders = [base + (1 if i < remainder else 0) for i in range(4)]
+    ac_snapshot = _consistent_ac_snapshot(run_bundle, dc_total=dc_total, feeder_allocations=feeders)
+    options = SldRenderOptions(group_index=1, renderer_mode="engineering_v2", override_mode=True)
+    canonical = build_sld_canonical_input(
+        run_bundle=run_bundle, ac_snapshot=ac_snapshot, options=options,
+        project_settings=project_settings, validation_mode="draft",
+    )
+    assert canonical.transformer_vector_group == "TBD"
+    report = assess_sld_formal_readiness(
+        run_bundle=run_bundle, ac_snapshot=ac_snapshot, canonical_input=canonical,
+        options=options, project_settings=project_settings,
+    )
+    issue_ids = {issue.issue_id for issue in report.issues}
+    assert report.ready is False
+    assert "transformer_vector_group_unconfirmed" in issue_ids
