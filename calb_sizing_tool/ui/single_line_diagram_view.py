@@ -644,6 +644,7 @@ def show() -> None:
             "ac_runtime_source": runtime_status.source,
             "runtime_source_mode": runtime_status.mode,
             "forced_draft_by_source": bool(runtime_status.force_draft),
+            "representative_of_mixed": bool((ac_snapshot.output or {}).get("sld_representative_of_mixed")),
         }
         artifacts_registered = bool(artifact_bundle.metadata.get("artifacts_registered", True))
         if not artifacts_registered:

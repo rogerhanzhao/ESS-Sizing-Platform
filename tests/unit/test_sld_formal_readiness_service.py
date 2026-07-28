@@ -132,3 +132,83 @@ def test_formal_readiness_passes_consistent_authoritative_inputs(sample_excel_pa
 
     assert report.ready is True
     assert report.error_count == 0
+
+
+def _consistent_ac_snapshot(run_bundle, *, dc_total: int, feeder_allocations, extra=None):
+    output = {
+        "source_run_id": run_bundle.run_id,
+        "num_blocks": 1,
+        "pcs_per_block": 4,
+        "pcs_kw": 1250.0,
+        "block_size_mw": 5.0,
+        "transformer_mva": 6.0,
+        "dc_allocation_plan": [
+            {
+                "ac_block_index": 1,
+                "dc_blocks_total": dc_total,
+                "feeder_allocations": feeder_allocations,
+            }
+        ],
+        "dc_blocks_total": dc_total,
+        "dc_total_mwh": run_bundle.snapshot.stage2.dc_nameplate_bol_mwh,
+        "mv_voltage_kv": 33.0,
+        "lv_voltage_v": 690.0,
+    }
+    output.update(extra or {})
+    return AcSnapshot(inputs={"grid_kv": 33.0, "lv_voltage_v": 690.0}, output=output, results={})
+
+
+def test_representative_head_fleet_is_never_formal(sample_excel_path):
+    run_bundle = _build_run_bundle(sample_excel_path)
+    project_settings = _professional_project_settings()
+    dc_total = int(run_bundle.snapshot.stage2.container_count + run_bundle.snapshot.stage2.cabinet_count)
+    base, remainder = dc_total // 4, dc_total % 4
+    feeders = [base + (1 if i < remainder else 0) for i in range(4)]
+    # Otherwise fully consistent + professional inputs (would be READY) — the
+    # representative-of-mixed marker alone must keep it non-official.
+    ac_snapshot = _consistent_ac_snapshot(
+        run_bundle, dc_total=dc_total, feeder_allocations=feeders,
+        extra={"sld_representative_of_mixed": True},
+    )
+    options = SldRenderOptions(group_index=1, renderer_mode="engineering_v2")
+    canonical = build_sld_canonical_input(
+        run_bundle=run_bundle, ac_snapshot=ac_snapshot, options=options,
+        project_settings=project_settings, validation_mode="strict",
+    )
+    report = assess_sld_formal_readiness(
+        run_bundle=run_bundle, ac_snapshot=ac_snapshot, canonical_input=canonical,
+        options=options, project_settings=project_settings,
+    )
+    issue_ids = {issue.issue_id for issue in report.issues}
+    assert report.ready is False
+    assert "representative_head_fleet_only" in issue_ids
+
+
+def test_representative_head_fleet_suppresses_incidental_total_mismatch(sample_excel_path):
+    run_bundle = _build_run_bundle(sample_excel_path)
+    project_settings = _professional_project_settings()
+    dc_total = int(run_bundle.snapshot.stage2.container_count + run_bundle.snapshot.stage2.cabinet_count)
+    # Head-only fleet carries fewer DC Blocks than the whole DC run (a tail was
+    # dropped). That mismatch is expected-by-design and must NOT surface as an
+    # error; only the explicit representative blocker should.
+    head_total = max(4, dc_total - 4)
+    base, remainder = head_total // 4, head_total % 4
+    feeders = [base + (1 if i < remainder else 0) for i in range(4)]
+    ac_snapshot = _consistent_ac_snapshot(
+        run_bundle, dc_total=head_total, feeder_allocations=feeders,
+        extra={"sld_representative_of_mixed": True},
+    )
+    options = SldRenderOptions(group_index=1, renderer_mode="engineering_v2")
+    canonical = build_sld_canonical_input(
+        run_bundle=run_bundle, ac_snapshot=ac_snapshot, options=options,
+        project_settings=project_settings, validation_mode="strict",
+    )
+    report = assess_sld_formal_readiness(
+        run_bundle=run_bundle, ac_snapshot=ac_snapshot, canonical_input=canonical,
+        options=options, project_settings=project_settings,
+    )
+    issue_ids = {issue.issue_id for issue in report.issues}
+    assert report.ready is False
+    assert "representative_head_fleet_only" in issue_ids
+    assert "dc_ac_block_total_mismatch" not in issue_ids
+    assert "sld_dc_energy_representation_mismatch" not in issue_ids

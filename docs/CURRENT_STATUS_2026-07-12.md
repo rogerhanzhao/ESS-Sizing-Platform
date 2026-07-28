@@ -237,6 +237,31 @@ The bilateral 4+4 1:8 configuration handed off in §2.3 is now implemented as a
   the mixed editor allows a per-row PCS rating that the SLD head-fleet does not
   render for tails. Both are low-priority edge cases, not regressions.
 
+### 2.9 Mixed AC Block station — formality boundary hardening (2026-07-28)
+
+Review follow-up (Codex) closing three engineering-integrity gaps so a mixed
+station is never mistaken for a formal engineering result:
+
+1. **Product nameplate attribution.** A bound catalogue product only matches the
+   HEAD spec; applying its transformer nameplate across a differing tail and
+   labelling it "per block" was a false attribution. `ui/ac_view.py` now
+   **disables single-product binding for a mixed run** (skips
+   `product_transformer_overrides`, records `ac_block_product_binding_suppressed`)
+   so every model falls back to a MW ÷ PF estimate; uniform runs keep the
+   confirmed nameplate. Per-model product binding is future work.
+2. **SLD formality.** The head-fleet projection was only forced non-official
+   *incidentally* (head DC total ≠ whole DC total). `sld_formal_readiness_service`
+   now raises an **explicit `representative_head_fleet_only` error** when
+   `sld_representative_of_mixed` is set (→ `document_status=concept`, CONCEPT
+   watermark, `not_for_construction`), and **suppresses the incidental
+   head-vs-whole total/energy mismatches** so the drawing carries an honest
+   reason. The marker is also threaded into `sld_pipeline_meta`.
+3. **Validation boundary.** The manual table validates DC sum / feeder capacity /
+   raw AC MW only — not per-model OEM data or full POI-efficiency capacity
+   closure. It is now explicitly labelled **concept/draft** in the AC Sizing UI
+   and in report §6.1, directing the user to confirm per-model product and
+   transformer data before formal use.
+
 ## 3. Next boundary
 
 The package deliberately stops before a Concept Master Layout. Unlocking it

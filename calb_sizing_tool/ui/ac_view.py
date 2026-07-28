@@ -920,6 +920,20 @@ def show():
                     f"{block_size_mw:.2f} MW ({pcs_per_block}×{pcs_kw:.0f} kW) + tail {_tail_txt}. "
                     "The AC-side counterpart of the DC container + cabinet tail."
                 )
+                st.info(
+                    "Concept/draft — this mixed station is a manual engineering adjustment. "
+                    "Per-model OEM product and transformer data are not individually confirmed "
+                    "(each model's transformer is a MW ÷ PF estimate), and the SLD renders the "
+                    "representative Head AC Block fleet only. Tail model(s) are listed in the "
+                    "report AC Block schedule (§6.1)."
+                )
+                if bound_ac_product:
+                    st.warning(
+                        "Catalogue product binding is disabled for a mixed station: a single "
+                        "product matches only the head spec and would mis-attribute its nameplate "
+                        "to differing tail blocks. Transformer ratings fall back to MW ÷ PF "
+                        "estimates per model."
+                    )
 
             st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
             section_header("DC Allocation", eyebrow="Detail")
@@ -1053,9 +1067,19 @@ def show():
 
             # If a catalogue product was bound, replace the MW ÷ PF transformer
             # estimate with the real product nameplate / vector group / cooling.
-            if bound_ac_product:
+            #
+            # A single bound product only matches the HEAD spec. In a mixed
+            # station a differing tail would inherit the head product's
+            # transformer nameplate and the report would present it as
+            # "per block" — a false attribution. So single-product binding is
+            # disabled for a mixed station; each block falls back to the
+            # MW ÷ PF estimate (per-model binding is future work). Uniform runs
+            # keep the confirmed product nameplate exactly as before.
+            if bound_ac_product and not is_mixed_run:
                 from calb_sizing_tool.services.ac_block_product_match import product_transformer_overrides
                 ac_output.update(product_transformer_overrides(bound_ac_product))
+            elif bound_ac_product and is_mixed_run:
+                ac_output["ac_block_product_binding_suppressed"] = "mixed_station"
 
             st.session_state["ac_output"] = ac_output
             ac_results.update(ac_output)

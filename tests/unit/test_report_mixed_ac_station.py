@@ -144,3 +144,12 @@ def test_mixed_report_draws_head_block_and_states_real_whole_site_power():
     # Whole-site power is the real 45 MW head + tail total, not the uniform
     # over-count of 5 blocks × 10 MW head = 50 MW.
     assert "50 MW / " not in text
+
+
+def test_mixed_report_is_concept_draft_and_not_product_backed():
+    text = _report_text(_mixed_ac_output())
+    # Issue 3: the mixed schedule is explicitly marked concept/draft.
+    assert "Concept / draft" in text
+    # Issue 1: with no bound product nameplate the transformer basis is an
+    # estimate, never a "product datasheet" nameplate falsely attributed per block.
+    assert "product datasheet" not in text

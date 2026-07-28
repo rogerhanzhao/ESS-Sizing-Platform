@@ -1174,6 +1174,14 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             "and smaller tail model(s) cover the remainder — the AC-side counterpart "
             "of the DC container + cabinet tail in Section 4."
         ))
+        _keep_next_para(doc.add_paragraph(
+            "Concept / draft: a mixed station is a manual engineering adjustment. "
+            "Per-model OEM product and transformer data are not individually confirmed — "
+            "each model's transformer rating below is a MW ÷ PF estimate, not a bound "
+            "product nameplate — and the SLD (§7) renders the representative Head AC Block "
+            "fleet only. Confirm each model's product and transformer data before use as a "
+            "formal engineering result."
+        ))
         pf = ctx.grid_power_factor if (ctx.grid_power_factor and ctx.grid_power_factor > 0) else None
         schedule_rows = []
         for entry in ac_breakdown:
