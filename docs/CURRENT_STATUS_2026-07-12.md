@@ -1,5 +1,9 @@
 # Current Status 2026-07-12
 
+> **Latest stage record: `docs/CURRENT_STATUS_2026-07-28.md`** (tip `20676fe`,
+> 517 tests). This doc remains the standing detail + module map (§2.7–§2.12,
+> §4.1); read the 2026-07-28 record first for the current milestone.
+
 Branch: `ops/ubuntu-docker-coexist-20260311`
 Milestone commit: `b992818` — "SLD Proposal Package V1 + Site Constraint Set V1"
 Verification: `python -m compileall` clean, 215/215 tests passing (~50 s).

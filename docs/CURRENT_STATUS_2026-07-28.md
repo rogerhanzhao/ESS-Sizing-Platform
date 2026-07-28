@@ -1,0 +1,104 @@
+# Current Status — 2026-07-28 (stage record)
+
+Milestone tip: `20676fe` on `ops/ubuntu-docker-coexist-20260311`
+(HEAD == origin; working tree clean).
+
+This document is a **stage record** for the AC-Sizing → Report → SLD work that
+landed on 2026-07-28. It supplements — does not replace — the standing detail
+doc `docs/CURRENT_STATUS_2026-07-12.md`, whose §2.7–§2.12 hold the per-change
+rationale and the module map. Read that doc's module map before scanning code.
+
+---
+
+## 1. Where the project is
+
+- **Branch / sync:** all 2026-07-28 work is on `ops/ubuntu-docker-coexist-20260311`,
+  committed directly (no feature branch), pushed to origin, HEAD == origin.
+- **Tests:** **517 passed, 2 skipped** (full suite, ~63 s). Guards green: frozen
+  canon SHA-256, report brand/leak, concept-SVG sanitization, UI PyArrow
+  serialization. Baseline `case01` regenerated (geometry unchanged; only the two
+  new watermark CSS classes + DC-block size differ).
+- **Frozen boundary intact:** no file in `SIZING_LOGIC_CANON_V1` was modified;
+  all new logic lives in non-frozen services / UI / reporting / diagrams.
+
+## 2. What shipped
+
+### 2a. Merged earlier this session via PR #38 (`2262a25`)
+- **Mixed AC Block station** — opt-in per-AC-Block manual adjustment on the
+  uniform AC-sizing trunk (head + tail models); one code path, report §6.1
+  head/tail schedule. `services/ac_mixed_station.py`.
+- **Report §9 legible site layout** — one representative project group at page
+  scale + whole-site composition in the caption/table.
+- **Report §8/§9 mixed-aware** — draw the Head AC Block (not the fractional
+  average) for a mixed station; §9 whole-site power/energy from real totals.
+- **Mixed → SLD head-fleet projection** — a mixed station renders its Head
+  AC-Block fleet (uniform sub-station) instead of crashing the uniform-only
+  SLD adapter.
+- **Codex round 1 formality** — mixed disables single-product binding;
+  representative SLD is non-official (CONCEPT watermark); mixed marked
+  concept/draft in UI + report §6.1.
+
+### 2b. Landed directly on ops (2026-07-28) — four commits
+- `1ff771e` — **Legacy renderer** removed from the public SLD dropdown
+  (`PUBLIC_SLD_RENDERER_MODES`; legacy reachable only via `?sld_dev=1`);
+  **vector-group formality gate** (unconfirmed/mismatched → non-formal).
+- `1f840f4` — **Unconfirmed-vector-group placeholder** in the engineering_v2
+  renderer (explicit "NOT A DRAWING" block instead of TBD winding circles);
+  **product-data standard defaults** (`ac_block_transformer_defaults`, derive
+  from datasheet vector group, else conservative single-LV default, all
+  `*_basis`-tagged); **two-/three-winding PNG export acceptance** tests.
+- `796036f` — **SLD sheet redesign** (electrical logic unchanged): AC Block
+  boundary box (RMU+TX+PCS); single-PCS LV winding draws no redundant busbar;
+  DC Block enlarged to container scale (116×84) and balanced against the
+  boundary. **Assumed-default vector-group readiness gate** (Codex round 2):
+  `standard_default_pending_confirmation` can never back a formal SLD.
+- `20676fe` — **Report rule:** every concept figure (SLD §7 / arrangement §8 /
+  site §9) is stamped `DRAFT / OVERRIDE - NOT FOR CONSTRUCTION` unconditionally,
+  in the existing watermark style. Plus a Workspace-Setup button-wrap fix.
+
+Detailed rationale: `CURRENT_STATUS_2026-07-12.md` §2.7 (SLD head-fleet), §2.8
+(report head-representative), §2.9 (Codex round 1), §2.10 (dropdown + vector
+gate + placeholder), §2.11 (sheet redesign), §2.12 (NOT-FOR-CONSTRUCTION rule).
+
+## 3. End-to-end coherence (audited)
+
+The mixed / SLD chain is consistent front-to-back:
+`AC Sizing (per-block table)` → `ac_output (breakdown + per-block lists)` →
+`Report §6.1 head/tail, §8/§9 head-representative` → `SLD head-fleet, non-official` →
+`Interactive Layout (already per-block)` → `Product catalogue (basis-tagged)`.
+Formality is enforced at the authoritative layer (`sld_formal_readiness_service`):
+a drawing is non-formal if it is a representative head fleet, an unconfirmed /
+mismatched vector group, or an assumed standard-default vector group; and the
+**report always stamps NOT FOR CONSTRUCTION regardless**.
+
+## 4. Standing rules recorded this stage
+
+1. **Report figures are always NOT FOR CONSTRUCTION** — embed via
+   `report_v2._add_concept_figure`, never a bare `doc.add_picture`.
+2. **No auto three-winding by PCS count** — winding count is operator-selected;
+   defaults only supply the vector group *for an already-chosen* winding count.
+3. **Assumed values are never formal** — any `*_basis =
+   standard_default_pending_confirmation` is refused by the formal-readiness gate.
+4. **SLD V1 is uniform-only** — a mixed station renders via the head-fleet
+   projection; a true per-model mixed SLD is deferred SLD V2.
+
+## 5. Residuals / deferred (none blocking)
+
+- **SLD V2 (per-model mixed SLD)** — draw head *and* tail blocks; needs the
+  versioned uniform invariant + topology builder + renderer extended.
+- **Manual-mixed vs governed** — a run carrying both `configuration_code` and
+  `ac_block_mixed` is an untested combination; low-priority edge case.
+- **Cosmetic** — in a multi-DC-per-feeder layout the `BESS-0x` tag can slightly
+  overlap the adjacent container box; label placement tweak only.
+- **Product catalogue OEM data** — the 10 KEHUA records carry assumed
+  `standard_default` vector groups (kept non-formal); real OEM values would
+  upgrade them to `datasheet` basis.
+
+## 6. For the next session
+
+1. Read `CURRENT_STATUS_2026-07-12.md` module map (§4.1) first.
+2. Work on `ops/ubuntu-docker-coexist-20260311` directly (owner directive: no
+   new branches); commit with `noreply@anthropic.com`.
+3. Run `python -m pytest tests/ -x -q` before committing; regenerate the SLD
+   baseline via `scripts/generate_sld_regression_baseline.py` only when a
+   *deliberate* rendering change is made, and confirm geometry is unchanged.
