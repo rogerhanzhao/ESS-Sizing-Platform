@@ -542,6 +542,76 @@ def _svg_bytes_to_png(svg_bytes: bytes, width_px: int = 900) -> Optional[bytes]:
 # (_concept_safe_svg): #B42318 at 0.28 opacity, bold, horizontal-centred.
 NOT_FOR_CONSTRUCTION_STAMP = "DRAFT / OVERRIDE - NOT FOR CONSTRUCTION"
 _STAMP_FILL = (180, 35, 24, 71)  # #B42318 @ ~0.28 opacity
+_STAMP_RED = (180, 35, 24)  # #B42318 opaque — placeholder border/text
+
+
+class WatermarkError(RuntimeError):
+    """The mandatory NOT-FOR-CONSTRUCTION mark could not be applied.
+
+    Raised only when the figure can neither be watermarked nor replaced with a
+    visibly-marked placeholder (e.g. Pillow itself is unavailable). Enforcement
+    is fail-closed: the report aborts rather than embed an unmarked drawing.
+    """
+
+
+def _load_stamp_font(draw, text: str, width: int) -> "object":
+    """Pick a bold font sized so *text* spans ~82% of *width* (shared by the
+    watermark and its failure placeholder)."""
+    from PIL import ImageFont
+
+    def _load(size: int):
+        for candidate in ("DejaVuSans-Bold.ttf", "DejaVuSans.ttf"):
+            try:
+                return ImageFont.truetype(candidate, size)
+            except Exception:
+                continue
+        return ImageFont.load_default()
+
+    ref_size = 100
+    ref_font = _load(ref_size)
+    ref_bbox = draw.textbbox((0, 0), text, font=ref_font)
+    ref_w = max(1, ref_bbox[2] - ref_bbox[0])
+    font_size = max(14, int(ref_size * (width * 0.82) / ref_w))
+    return _load(font_size)
+
+
+def _watermark_failure_placeholder(png_bytes: Optional[bytes]) -> Optional[bytes]:
+    """Opaque red-bordered placeholder embedded when watermarking fails.
+
+    Deliberately does NOT contain the source drawing — the whole point of
+    fail-closed enforcement is that an un-stampable figure must never reach the
+    report as a clean engineering drawing. Returns ``None`` only when even a
+    placeholder cannot be produced (Pillow unavailable), so the caller can raise.
+    """
+    try:
+        from PIL import Image, ImageDraw
+
+        width, height = 1600, 900
+        try:
+            with Image.open(io.BytesIO(png_bytes)) as src:
+                width, height = src.size
+        except Exception:
+            pass  # corrupt/unknown source — fall back to a default canvas size
+
+        img = Image.new("RGB", (width, height), (255, 240, 238))  # pale red wash
+        draw = ImageDraw.Draw(img)
+        border = max(4, min(width, height) // 60)
+        draw.rectangle([0, 0, width - 1, height - 1], outline=_STAMP_RED, width=border)
+
+        lines = [NOT_FOR_CONSTRUCTION_STAMP, "FIGURE WITHHELD — watermark could not be applied"]
+        font = _load_stamp_font(draw, lines[1], width)
+        y = height * 0.5
+        for i, line in enumerate(lines):
+            bbox = draw.textbbox((0, 0), line, font=font)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            draw.text(((width - tw) / 2.0 - bbox[0],
+                       y + (i - 0.5) * th * 1.6 - bbox[1]),
+                      line, font=font, fill=_STAMP_RED)
+        out = io.BytesIO()
+        img.save(out, format="PNG")
+        return out.getvalue()
+    except Exception:
+        return None
 
 
 def _stamp_not_for_construction(png_bytes: Optional[bytes]) -> Optional[bytes]:
@@ -549,14 +619,18 @@ def _stamp_not_for_construction(png_bytes: Optional[bytes]) -> Optional[bytes]:
 
     Matches the SLD-pipeline watermark style (horizontal, centred, #B42318 @ 0.28)
     and is applied to every concept figure before it is embedded, so the mark is
-    present regardless of the figure's own document status. Never raises — a
-    watermarking failure must not break the report; the original image is
-    returned instead.
+    present regardless of the figure's own document status.
+
+    Fail-closed: if the source image cannot be stamped, a visibly-marked red
+    placeholder is returned instead of the original — an un-stampable figure must
+    never be embedded as a clean drawing. If even the placeholder cannot be built
+    (Pillow unavailable) a :class:`WatermarkError` is raised so the report aborts
+    rather than silently emit an unmarked figure.
     """
     if not png_bytes:
         return png_bytes
     try:
-        from PIL import Image, ImageDraw, ImageFont
+        from PIL import Image, ImageDraw
 
         base = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
         width, height = base.size
@@ -564,22 +638,9 @@ def _stamp_not_for_construction(png_bytes: Optional[bytes]) -> Optional[bytes]:
         layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(layer)
 
-        def _load(size: int):
-            for candidate in ("DejaVuSans-Bold.ttf", "DejaVuSans.ttf"):
-                try:
-                    return ImageFont.truetype(candidate, size)
-                except Exception:
-                    continue
-            return ImageFont.load_default()
-
         # Scale the mark so the text spans ~82% of the figure width (matches the
         # moderate SVG overlay) and always fits, regardless of source resolution.
-        ref_size = 100
-        ref_font = _load(ref_size)
-        ref_bbox = draw.textbbox((0, 0), text, font=ref_font)
-        ref_w = max(1, ref_bbox[2] - ref_bbox[0])
-        font_size = max(14, int(ref_size * (width * 0.82) / ref_w))
-        font = _load(font_size)
+        font = _load_stamp_font(draw, text, width)
 
         bbox = draw.textbbox((0, 0), text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
@@ -590,8 +651,14 @@ def _stamp_not_for_construction(png_bytes: Optional[bytes]) -> Optional[bytes]:
         out = io.BytesIO()
         stamped.save(out, format="PNG")
         return out.getvalue()
-    except Exception:
-        return png_bytes
+    except Exception as exc:
+        placeholder = _watermark_failure_placeholder(png_bytes)
+        if placeholder is not None:
+            return placeholder
+        raise WatermarkError(
+            "Could not apply the mandatory NOT-FOR-CONSTRUCTION watermark and "
+            "could not build a placeholder; refusing to embed an unmarked figure."
+        ) from exc
 
 
 def _add_concept_figure(doc, png_bytes: bytes, *, width=None, height=None) -> None:
@@ -1353,7 +1420,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         _keep_next_para(doc.add_paragraph(
             f"Figure {figure_index}: Typical AC Block Arrangement — equipment envelope ≈ "
             f"{plan_layout.envelope_w_m:.2f} × {plan_layout.envelope_d_m:.2f} m. "
-            f"Concept only; spacing and 40 ft dimensions provisional."
+            f"Concept only; spacing and 40 ft dimensions provisional. — NOT FOR CONSTRUCTION"
         ))
         figure_index += 1
         for note in getattr(plan_layout, "provisional_notes", ()):
@@ -1374,7 +1441,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         _keep_next_para(doc.add_paragraph(
             f"Figure {figure_index}: Typical AC Block Arrangement (rule-based) — "
             f"envelope ≈ {plan_layout.envelope_w_m:.2f} × "
-            f"{plan_layout.envelope_d_m:.2f} m. Concept only."
+            f"{plan_layout.envelope_d_m:.2f} m. Concept only. — NOT FOR CONSTRUCTION"
         ))
         figure_index += 1
         basis_rows = [(item, f"{value} — {basis}")
@@ -1425,7 +1492,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             _add_concept_figure(doc, site_png, width=Inches(6.7))
             _keep_next_para(doc.paragraphs[-1])
             _keep_next_para(doc.add_paragraph(
-                f"Figure {figure_index}: Concept Site Layout (actual product footprints) — Concept Only"
+                f"Figure {figure_index}: Concept Site Layout (actual product footprints) — Concept Only · NOT FOR CONSTRUCTION"
             ))
             figure_index += 1
 
@@ -1546,7 +1613,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 f"≈ {site_layout.envelope_w_m:.1f} × {site_layout.envelope_d_m:.1f} m "
                 f"({ws_power_mw:.0f} MW / "
                 f"{ws_energy_mwh:.1f} MWh). Concept only — a full "
-                f"Master Layout requires a registered site constraint set."
+                f"Master Layout requires a registered site constraint set. — NOT FOR CONSTRUCTION"
             ))
             figure_index += 1
             site_rows = [
