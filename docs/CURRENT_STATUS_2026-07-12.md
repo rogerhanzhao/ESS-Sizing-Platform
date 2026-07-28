@@ -351,8 +351,15 @@ construction-issue drawing set.
   bold, horizontal-centred). `_add_concept_figure()` routes every §7/§8/§9 figure
   through the stamp before embedding, so the mark is present regardless of the
   figure's own document status (even an "official" SLD is stamped in the report).
-  Figure captions also carry `NOT FOR CONSTRUCTION`. The stamp never raises — a
-  watermarking failure returns the original image rather than breaking the report.
+  Every §7/§8/§9 Figure caption also carries `NOT FOR CONSTRUCTION`. Enforcement
+  is **fail-closed**: if a figure cannot be stamped, `_stamp_not_for_construction`
+  substitutes a visibly-marked red placeholder (`_watermark_failure_placeholder`)
+  — never the original drawing — and if even a placeholder cannot be produced
+  (Pillow unavailable) it raises `WatermarkError` so the report aborts rather than
+  emit an unmarked figure. `tests/test_report_watermark_fullreport.py` renders the
+  whole DOCX (non-governed and governed paths) and asserts every §7/§8/§9 concept
+  figure embedded in the report carries the red mark, that no un-watermarked source
+  image leaks through, and that every §7/§8/§9 caption states NOT FOR CONSTRUCTION.
 - Any new report figure that depicts an engineering drawing MUST be embedded via
   `_add_concept_figure` (never a bare `doc.add_picture`).
 
