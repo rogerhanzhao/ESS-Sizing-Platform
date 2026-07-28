@@ -221,3 +221,100 @@ def build_mixed_dc_allocation_plan(
         entry["ac_block_index"] = index
         plan.append(entry)
     return plan
+
+
+def _rows_from_ac_output(ac_output: Dict) -> List[AcBlockRow]:
+    """Recover the per-AC-Block table from a persisted AC output payload.
+
+    Prefers the authoritative ``ac_block_rows`` written by the AC Sizing page;
+    falls back to reconstructing rows from the per-block mirror lists so older
+    runs (persisted before the mixed table existed) still resolve.
+    """
+    rows = ac_output.get("ac_block_rows")
+    if isinstance(rows, list) and rows:
+        return [
+            {
+                "pcs_count": int(r.get("pcs_count") or 0),
+                "pcs_kw": int(r.get("pcs_kw") or 0),
+                "dc_blocks": int(r.get("dc_blocks") or 0),
+            }
+            for r in rows
+        ]
+    pcs_counts = ac_output.get("pcs_count_by_block") or []
+    dc_per_ac = ac_output.get("dc_blocks_per_ac") or ac_output.get("dc_blocks_total_by_block") or []
+    pcs_kw = int(ac_output.get("pcs_kw") or ac_output.get("pcs_power_kw") or 0)
+    reconstructed: List[AcBlockRow] = []
+    for index in range(len(pcs_counts)):
+        dc = int(dc_per_ac[index]) if index < len(dc_per_ac) else 0
+        reconstructed.append(
+            {"pcs_count": int(pcs_counts[index] or 0), "pcs_kw": pcs_kw, "dc_blocks": dc}
+        )
+    return reconstructed
+
+
+def head_fleet_ac_output_for_sld(ac_output: Dict) -> Dict | None:
+    """Project a (possibly mixed) AC output onto its HEAD AC-Block fleet.
+
+    The SLD authoritative contract is uniform-only by design (SLD V1 requires
+    ``pcs_count_by_block`` uniform), so a mixed station cannot be rendered
+    directly. The head-model AC Blocks, however, *already* form a real uniform
+    sub-station (same PCS count/rating; DC Blocks may still fill unevenly, which
+    V1 permits). This returns a uniform, SLD-V1-valid payload for exactly that
+    head fleet — a genuine subset of the site, nothing fabricated — so the SLD
+    can render the representative head AC Block while the report's §6.1 schedule
+    carries the full head + tail composition.
+
+    Returns ``None`` when there is no resolvable head fleet (no rows).
+    """
+    if not isinstance(ac_output, dict):
+        return None
+    rows = _rows_from_ac_output(ac_output)
+    breakdown = summarize_ac_block_rows(rows)
+    if not breakdown:
+        return None
+    head = next((entry for entry in breakdown if entry.get("role") == "Head"), breakdown[0])
+    head_key = (int(head["pcs_count"]), int(head["pcs_kw"]))
+    head_rows = [
+        row for row in rows if (int(row["pcs_count"]), int(row["pcs_kw"])) == head_key
+    ]
+    if not head_rows:
+        return None
+
+    circuits = int(ac_output.get("dc_block_output_circuits") or DEFAULT_DC_BLOCK_OUTPUT_CIRCUITS)
+    plan = build_mixed_dc_allocation_plan(head_rows, dc_block_output_circuits=circuits)
+    dc_total_by_block = [int(entry["dc_blocks_total"]) for entry in plan]
+
+    pcs_per_block = int(head["pcs_count"])
+    pcs_kw = int(head["pcs_kw"])
+    num_blocks = len(head_rows)
+
+    representative = dict(ac_output)
+    representative.update(
+        {
+            "num_blocks": num_blocks,
+            "pcs_per_block": pcs_per_block,
+            "pcs_count_by_block": [pcs_per_block for _ in head_rows],
+            "pcs_kw": pcs_kw,
+            "pcs_power_kw": pcs_kw,
+            "pcs_rating_kw_each": pcs_kw,
+            "block_size_mw": pcs_per_block * pcs_kw / 1000.0,
+            "dc_blocks_per_ac": [int(row["dc_blocks"]) for row in head_rows],
+            "dc_blocks_total_by_block": list(dc_total_by_block),
+            "dc_blocks_per_feeder_by_block": [
+                list(entry.get("feeder_allocations", [])) for entry in plan
+            ],
+            "dc_block_connections_by_block": [
+                list(entry.get("dc_block_connections", [])) for entry in plan
+            ],
+            "dc_allocation_plan": plan,
+            "dc_blocks_total": sum(dc_total_by_block),
+            "transformer_count": num_blocks,
+            "pcs_count_total": pcs_per_block * num_blocks,
+            # This projection is a uniform station in its own right; clear the
+            # mixed markers so downstream reads it as such, but keep a trail.
+            "ac_block_mixed": False,
+            "sld_representative_of_mixed": bool(ac_output.get("ac_block_mixed")),
+            "sld_head_fleet_block_count": num_blocks,
+        }
+    )
+    return representative

@@ -191,6 +191,30 @@ The bilateral 4+4 1:8 configuration handed off in §2.3 is now implemented as a
   secondary arrangement before they can be issued.  A three-winding selection
   warns that an OEM-declared vector group with two LV tokens is required.
 
+### 2.7 Mixed AC Block station → SLD head-fleet projection (2026-07-28)
+
+- The opt-in mixed AC Block station (head + tail models; report §6.1 schedule)
+  produces a non-uniform `pcs_count_by_block`. The SLD authoritative contract
+  is uniform-only *by design* — `schemas/sld_authoritative_input.py` requires
+  `pcs_count_by_block` uniform in SLD V1 — so feeding a mixed output straight to
+  `adapters/ac_to_sld_adapter.py` fails the contract (the adapter rebuilds a
+  uniform plan from the scalar `pcs_per_block` and it no longer matches the true
+  per-block lists). A mixed run therefore could not render an SLD at all.
+- `services/ac_mixed_station.py` gained `head_fleet_ac_output_for_sld()`: it
+  projects a (possibly mixed) AC output onto its **head AC-Block fleet** — a
+  genuine uniform sub-station of the real site (same PCS count/rating; DC Blocks
+  may still fill unevenly, which V1 permits), nothing fabricated. The tail
+  model(s) remain fully described by the report §6.1 schedule.
+- `ui/single_line_diagram_view.py` detects `ac_block_mixed` and swaps the
+  resolved `ac_snapshot` for this head-fleet projection, with an explicit note
+  that the SLD shows the representative head fleet and that tails live in the
+  report. Uniform stations (including single-model, uneven-DC ones) are
+  unaffected — the projection is an identity for them.
+- A true per-model mixed SLD (drawing head *and* tail blocks) is deferred as an
+  SLD V2 enhancement; it requires extending the versioned uniform invariant plus
+  the topology builder and renderer, out of scope for this manual-adjustment
+  layer.
+
 ## 3. Next boundary
 
 The package deliberately stops before a Concept Master Layout. Unlocking it
@@ -212,7 +236,7 @@ seams; maintenance should exploit them instead of scanning everything.
 | Domain | Packages | Size | Change frequency |
 | --- | --- | --- | --- |
 | Sizing core (FROZEN) | `services/stage*_service`, `dc_pipeline`, AC capacity/calculation services | part of `services/` (29 files, 6.3k lines) | Frozen — no edits without explicit logic-upgrade approval |
-| SLD engine | `sld/` (18 files, 3.1k), `services/sld_*`, `schemas/sld_*`, `schemas/ac_electrical_topology.py`, `schemas/governed_ac_block_config.py`, `adapters/ac_to_sld_adapter.py` | ~6k lines | High — owns AC-to-SLD physical topology contract and the governed AC Block configuration; remains the most active area |
+| SLD engine | `sld/` (18 files, 3.1k), `services/sld_*`, `schemas/sld_*`, `schemas/ac_electrical_topology.py`, `schemas/governed_ac_block_config.py`, `adapters/ac_to_sld_adapter.py`; mixed→SLD bridge in `services/ac_mixed_station.py` (`head_fleet_ac_output_for_sld`) | ~6k lines | High — owns AC-to-SLD physical topology contract and the governed AC Block configuration; SLD V1 is uniform-only, so mixed stations render via a head-fleet projection; remains the most active area |
 | Diagram renderers | `calb_diagrams/` (incl. `ac_block_bilateral_layout.py`) | ~6.9k lines | Medium — renderer/template + governed layout-variant engines |
 | Layout / constraint gate | `plugins/layout_*`, `services/site_constraint_*` | ~1k lines | Medium — P2 Master Layout work lands here |
 | Reporting | `reporting/` (5 files, 2.0k) | 2k lines | Low — wording/section changes |

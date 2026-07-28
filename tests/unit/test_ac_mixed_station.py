@@ -7,13 +7,45 @@ code path.
 """
 from __future__ import annotations
 
+from calb_sizing_tool.adapters.ac_to_sld_adapter import normalize_ac_output_for_sld
 from calb_sizing_tool.services.ac_mixed_station import (
     build_mixed_dc_allocation_plan,
     default_uniform_rows,
+    head_fleet_ac_output_for_sld,
     is_mixed_station,
     summarize_ac_block_rows,
     validate_ac_block_rows,
 )
+
+
+def _mixed_ac_output() -> dict:
+    """A 5-AC-Block station: 4 × (8 PCS, 8 DC) head + 1 × (4 PCS, 4 DC) tail."""
+    rows = [{"pcs_count": 8, "pcs_kw": 1250, "dc_blocks": 8} for _ in range(4)]
+    rows.append({"pcs_count": 4, "pcs_kw": 1250, "dc_blocks": 4})
+    plan = build_mixed_dc_allocation_plan(rows, dc_block_output_circuits=2)
+    return {
+        "num_blocks": 5,
+        "pcs_per_block": 8,
+        "pcs_kw": 1250,
+        "block_size_mw": 10.0,
+        "transformer_mva": 10.0 / 0.9,
+        "pcs_count_by_block": [r["pcs_count"] for r in rows],
+        "dc_blocks_per_ac": [r["dc_blocks"] for r in rows],
+        "dc_blocks_total_by_block": [p["dc_blocks_total"] for p in plan],
+        "dc_blocks_per_feeder_by_block": [list(p.get("feeder_allocations", [])) for p in plan],
+        "dc_block_connections_by_block": [list(p.get("dc_block_connections", [])) for p in plan],
+        "dc_allocation_plan": plan,
+        "dc_blocks_total": 36,
+        "transformer_count": 5,
+        "pcs_count_total": 36,
+        "transformer_topology": "three_winding",
+        "lv_winding_count": 2,
+        "mv_voltage_kv": 33.0,
+        "lv_voltage_v": 690.0,
+        "dc_block_output_circuits": 2,
+        "ac_block_mixed": True,
+        "ac_block_rows": rows,
+    }
 
 
 def test_uniform_rows_summarise_to_one_head_entry():
@@ -112,3 +144,55 @@ def test_mixed_dc_allocation_plan_indexes_every_block():
     for entry, row in zip(plan, rows):
         assert len(entry["feeder_allocations"]) == row["pcs_count"]
         assert all(count >= 1 for count in entry["feeder_allocations"])
+
+
+def test_head_fleet_projection_yields_uniform_head_only_station():
+    rep = head_fleet_ac_output_for_sld(_mixed_ac_output())
+    assert rep is not None
+    # Only the 4 head AC Blocks survive; the 5 MW tail is dropped.
+    assert rep["num_blocks"] == 4
+    assert rep["pcs_count_by_block"] == [8, 8, 8, 8]
+    assert rep["pcs_per_block"] == 8
+    assert rep["dc_blocks_total"] == 32
+    assert rep["dc_blocks_total_by_block"] == [8, 8, 8, 8]
+    assert rep["transformer_count"] == 4
+    assert rep["pcs_count_total"] == 32
+    # The projection is a uniform station in its own right, with a trail marker.
+    assert rep["ac_block_mixed"] is False
+    assert rep["sld_representative_of_mixed"] is True
+    assert rep["sld_head_fleet_block_count"] == 4
+
+
+def test_head_fleet_projection_passes_ac_to_sld_adapter():
+    rep = head_fleet_ac_output_for_sld(_mixed_ac_output())
+    out = normalize_ac_output_for_sld(rep)
+    assert out.num_blocks == 4
+    assert out.pcs_count_by_block == [8, 8, 8, 8]
+    assert out.dc_blocks_total_by_block == [8, 8, 8, 8]
+
+
+def test_head_fleet_projection_is_identity_for_uniform_station():
+    rows = default_uniform_rows([8, 8, 7], pcs_count=8, pcs_kw=1250)
+    plan = build_mixed_dc_allocation_plan(rows, dc_block_output_circuits=2)
+    uniform = {
+        "num_blocks": 3,
+        "pcs_per_block": 8,
+        "pcs_kw": 1250,
+        "pcs_count_by_block": [8, 8, 8],
+        "dc_blocks_per_ac": [8, 8, 7],
+        "dc_block_output_circuits": 2,
+        "ac_block_mixed": False,
+        "ac_block_rows": rows,
+    }
+    rep = head_fleet_ac_output_for_sld(uniform)
+    assert rep is not None
+    # A single-model station (uneven DC filling) keeps all its AC Blocks.
+    assert rep["num_blocks"] == 3
+    assert rep["pcs_count_by_block"] == [8, 8, 8]
+    assert rep["dc_blocks_per_ac"] == [8, 8, 7]
+    assert rep["sld_representative_of_mixed"] is False
+
+
+def test_head_fleet_projection_returns_none_without_rows():
+    assert head_fleet_ac_output_for_sld({}) is None
+    assert head_fleet_ac_output_for_sld({"pcs_count_by_block": []}) is None
