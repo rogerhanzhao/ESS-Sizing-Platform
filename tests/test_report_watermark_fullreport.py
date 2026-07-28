@@ -139,33 +139,56 @@ def test_full_report_watermarks_every_concept_figure_nongoverned():
     assert _stamp_not_for_construction(sld_src) in set(_media_images(report_bytes))
 
 
-def test_full_report_watermarks_every_concept_figure_governed():
-    """Governed path: §7 SLD (PNG) + §9 governed whole-site concept layout."""
+def _governed_ctx(container_count: int, *, poi_power_mw: float, poi_energy_mwh: float,
+                  sld_src: bytes):
     from calb_sizing_tool.services.governed_ac_block_service import (
         build_governed_primary_ac_output,
     )
 
-    sld_src = _white_png(900, 500)
-    ac = build_governed_primary_ac_output(92)  # 11x8 + 1x4 governed site
-    ctx = build_report_context(
+    ac = build_governed_primary_ac_output(container_count)
+    return build_report_context(
         session_state={"artifacts": {"sld_png_bytes": sld_src}},
         stage_outputs={
             "stage13_output": {
-                "project_name": "Mix",
-                "poi_power_req_mw": 115.0,
-                "poi_energy_req_mwh": 400.0,
+                "project_name": "Gov",
+                "poi_power_req_mw": poi_power_mw,
+                "poi_energy_req_mwh": poi_energy_mwh,
                 "project_life_years": 20,
                 "poi_guarantee_year": 0,
                 "cycles_per_year": 365,
             },
             "ac_output": ac,
-            "stage2": {"container_count": 92},
+            "stage2": {"container_count": container_count},
         },
         project_inputs={},
     )
+
+
+def test_full_report_watermarks_every_concept_figure_governed_bilateral():
+    """Governed pure-bilateral path: §7 SLD + §8 bilateral 4+4 AC block + §9 site."""
+    from calb_sizing_tool.reporting.report_v2 import BILATERAL_LAYOUT_VARIANT
+
+    sld_src = _white_png(900, 500)
+    ctx = _governed_ctx(16, poi_power_mw=20.0, poi_energy_mwh=80.0, sld_src=sld_src)  # 2 x 8
+    assert ctx.layout_variant == BILATERAL_LAYOUT_VARIANT, "expected the bilateral 4+4 branch"
     report_bytes = export_report_v2_1(ctx)
 
-    # §7 SLD and §9 governed site layout are both concept figures here.
+    # §7 SLD + §8 bilateral arrangement + §9 governed site — three concept figures.
+    _assert_report_is_fully_watermarked(
+        report_bytes, raw_sources=[sld_src], min_concept_figures=3
+    )
+    assert _stamp_not_for_construction(sld_src) in set(_media_images(report_bytes))
+
+
+def test_full_report_watermarks_every_concept_figure_governed_mixed():
+    """Governed mixed path (11x8 + 1x4): §7 SLD + §9 governed mixed site layout."""
+    sld_src = _white_png(900, 500)
+    ctx = _governed_ctx(92, poi_power_mw=115.0, poi_energy_mwh=400.0, sld_src=sld_src)
+    report_bytes = export_report_v2_1(ctx)
+
+    # §7 SLD + §9 governed mixed site layout are both concept figures here. (§8's
+    # bilateral field is fixed-8, so the mixed 7-DC/AC average legitimately falls
+    # back — the report's own guard covers it; still no unmarked figure appears.)
     _assert_report_is_fully_watermarked(
         report_bytes, raw_sources=[sld_src], min_concept_figures=2
     )
