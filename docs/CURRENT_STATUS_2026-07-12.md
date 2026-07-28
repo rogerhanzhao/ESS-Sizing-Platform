@@ -215,6 +215,28 @@ The bilateral 4+4 1:8 configuration handed off in §2.3 is now implemented as a
   the topology builder and renderer, out of scope for this manual-adjustment
   layer.
 
+### 2.8 Mixed AC Block station → report §8/§9 head-representative (2026-07-28)
+
+- Follow-up audit of the mixed-station chain: the report's §8 (Typical AC Block
+  Arrangement) and §9 (Concept Site Arrangement) still drew from the *fractional
+  average* `dc_per_ac = round(dc_total / ac_total)`, which for a mixed station is
+  a block that exists nowhere — inconsistent with §6.1 (head/tail schedule), §7
+  (SLD head fleet) and the interactive Layout page (already per-block via
+  `plugins/layout_engineering_plugin.py`, which reads `pcs_count_by_block[idx]`
+  and the per-block `dc_allocation_plan`).
+- `reporting/report_v2.py` gained `_representative_dc_per_ac()` /
+  `_mixed_head_entry()`: §8 and §9 now draw the **Head AC Block** for a mixed
+  station (identity/average for uniform, including single-model uneven-DC), with
+  an explicit note pointing to §6.1. §9's whole-site power/energy come from the
+  actual head + tail sizing (`total_ac_mw`, `dc_total_energy_mwh`) rather than a
+  uniform multiplication of the head block, and the "DC/block" label is replaced
+  by a mixed head + tail descriptor.
+- Not changed (by design / flagged for later): the manual-mixed toggle is not
+  gated from a governed run — a run carrying both `configuration_code` and
+  `ac_block_mixed` is an untested combination (governed §9 vs manual §6.1); and
+  the mixed editor allows a per-row PCS rating that the SLD head-fleet does not
+  render for tails. Both are low-priority edge cases, not regressions.
+
 ## 3. Next boundary
 
 The package deliberately stops before a Concept Master Layout. Unlocking it
