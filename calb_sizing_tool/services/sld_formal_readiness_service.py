@@ -184,6 +184,22 @@ def assess_sld_formal_readiness(
                 )
             )
 
+    # A syntactically valid vector group is still not formal if it is an assumed
+    # standard default (filled because the OEM datasheet stated none). The
+    # ``*_basis`` marker travels from the product catalogue on the AC output;
+    # ``standard_default_pending_confirmation`` must be confirmed by the owner/OEM
+    # before it can back a formal SLD.
+    vector_group_basis = str(ac_snapshot.output.get("transformer_vector_group_basis") or "").strip()
+    if vector_group_basis == "standard_default_pending_confirmation":
+        issues.append(
+            _issue(
+                "transformer_vector_group_assumed_default",
+                "error",
+                "Transformer vector group is an assumed standard default "
+                "(pending OEM/owner confirmation) and cannot back a formal SLD.",
+            )
+        )
+
     run_id = str(run_bundle.run_id or "").strip()
     source_run_id = str(ac_snapshot.output.get("source_run_id") or "").strip()
     if not source_run_id:

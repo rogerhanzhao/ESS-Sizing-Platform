@@ -100,7 +100,10 @@ def match_ac_block_products(
                 "pcs_power_kw": row.pcs_power_kw,
                 "transformer_kva": row.transformer_kva,
                 "transformer_vector_group": metadata.get("transformer_vector_group"),
+                "transformer_vector_group_basis": metadata.get("transformer_vector_group_basis"),
                 "transformer_topology": product_topology,
+                "transformer_topology_basis": metadata.get("transformer_topology_basis"),
+                "lv_arrangement": metadata.get("lv_arrangement"),
                 "transformer_cooling": metadata.get("transformer_cooling"),
                 "lv_voltage_v": row.lv_voltage_v,
                 "hv_voltage_kv": row.hv_voltage_kv,
@@ -140,6 +143,10 @@ def product_transformer_overrides(product: Optional[dict[str, Any]]) -> dict[str
         out["transformer_mva"] = round(float(product["transformer_kva"]) / 1000.0, 6)
     if product.get("transformer_vector_group"):
         out["transformer_vector_group"] = product["transformer_vector_group"]
+        # Carry the provenance so the formal-readiness gate can refuse an assumed
+        # standard default (never treat a pending-confirmation value as formal).
+        if product.get("transformer_vector_group_basis"):
+            out["transformer_vector_group_basis"] = product["transformer_vector_group_basis"]
     if product.get("transformer_cooling"):
         out["transformer_cooling"] = product["transformer_cooling"]
     if product.get("lv_voltage_v"):

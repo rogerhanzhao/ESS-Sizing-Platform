@@ -306,11 +306,30 @@ Landed so far (this increment):
   identical ground-symbol count between topologies (the extra LV secondary adds
   no earth bar), and a valid PNG.
 
-Residual (flagged, not blocking): a `standard_default_pending_confirmation`
-vector group parses, so a bound assumed-default product could currently reach
-official readiness — the `*_basis` marker is recorded but not yet threaded into
-the formal-readiness gate. Raise to owner before relying on assumed-default
-products as formal output.
+Residual now closed (Codex review): the `*_basis` marker is threaded from the
+product catalogue (`ac_block_product_match` exposes `transformer_vector_group_basis`,
+`product_transformer_overrides` carries it onto the AC output) into
+`sld_formal_readiness_service`, which raises
+`transformer_vector_group_assumed_default` when the basis is
+`standard_default_pending_confirmation`. An assumed standard-default vector group
+can therefore never back a formal SLD — only a `datasheet` /
+`derived_from_vector_group` value can. Regression tests cover both.
+
+### 2.11 SLD sheet redesign — AC Block boundary, single-PCS busbar, DC proportion (2026-07-28)
+
+Owner-directed visual redesign of the engineering_v2 sheet (electrical logic
+unchanged):
+- **AC Block boundary** — a dashed blue boundary (`ac-block-boundary`) is drawn
+  around the RMU + step-up transformer + PCS (down to just above the DC Blocks),
+  so the sheet reads as one physical AC Block skid.
+- **Single-PCS LV winding** — when a transformer LV winding serves a single PCS
+  there is nothing to bus, so no LV busbar line / tap junction is drawn; the
+  secondary connects straight to that one PCS feeder. Windings with ≥2 PCS keep
+  the busbar.
+- **DC Block proportion** — the DC Block symbol is enlarged to a container-scale
+  box (116×84, larger than the 80×60 PCS) and the row is raised to clear the
+  title block, visually balancing the AC Block boundary. Symbol size is a
+  drawing convention, not a physical footprint. Regression baseline regenerated.
 
 ## 3. Next boundary
 

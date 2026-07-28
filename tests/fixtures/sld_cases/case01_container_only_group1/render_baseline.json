@@ -99,6 +99,8 @@
   },
   "svg": {
     "class_counts": {
+      "acblock": 1,
+      "acblocktx": 1,
       "bg": 1,
       "busbar": 3,
       "dot": 9,
@@ -121,10 +123,10 @@
       "line": 172,
       "polygon": 2,
       "polyline": 6,
-      "rect": 42,
+      "rect": 43,
       "style": 1,
       "svg": 1,
-      "text": 112
+      "text": 113
     },
     "geometry": [
       {
@@ -1246,6 +1248,22 @@
         "tag": "circle"
       },
       {
+        "class": "acblock",
+        "height": 844.0,
+        "tag": "rect",
+        "width": 1277.0,
+        "x": 589.0,
+        "y": 30.0
+      },
+      {
+        "class": "acblocktx",
+        "tag": "text",
+        "text": "AC BLOCK BOUNDARY",
+        "text-anchor": "start",
+        "x": 601.0,
+        "y": 50.0
+      },
+      {
         "class": "outline",
         "height": 232.0,
         "tag": "rect",
@@ -1339,7 +1357,7 @@
         "text": "BATTERY STORAGE BANK",
         "text-anchor": "middle",
         "x": 1227.5,
-        "y": 932.0
+        "y": 906.0
       },
       {
         "class": "dot",
@@ -1629,63 +1647,63 @@
         "x1": 715.0,
         "x2": 715.0,
         "y1": 934.0,
-        "y2": 944.0
+        "y2": 918.0
       },
       {
         "class": "sfill",
-        "height": 66.0,
+        "height": 84.0,
         "tag": "rect",
-        "width": 90.0,
-        "x": 670.0,
-        "y": 944.0
+        "width": 116.0,
+        "x": 657.0,
+        "y": 918.0
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 688.0,
-        "x2": 742.0,
-        "y1": 955.88,
-        "y2": 955.88
+        "x1": 680.2,
+        "x2": 749.8,
+        "y1": 933.12,
+        "y2": 933.12
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 698.8,
-        "x2": 731.2,
-        "y1": 964.79,
-        "y2": 964.79
+        "x1": 694.12,
+        "x2": 735.88,
+        "y1": 944.46,
+        "y2": 944.46
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 688.0,
-        "x2": 742.0,
-        "y1": 973.7,
-        "y2": 973.7
+        "x1": 680.2,
+        "x2": 749.8,
+        "y1": 955.8,
+        "y2": 955.8
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 698.8,
-        "x2": 731.2,
-        "y1": 982.61,
-        "y2": 982.61
+        "x1": 694.12,
+        "x2": 735.88,
+        "y1": 967.14,
+        "y2": 967.14
       },
       {
         "class": "label",
         "tag": "text",
         "text": "+",
         "text-anchor": "start",
-        "x": 680.8,
-        "y": 953.24
+        "x": 670.92,
+        "y": 929.76
       },
       {
         "class": "label",
         "tag": "text",
         "text": "-",
         "text-anchor": "start",
-        "x": 680.8,
-        "y": 996.8
+        "x": 670.92,
+        "y": 985.2
       },
       {
         "class": "label",
@@ -1693,7 +1711,7 @@
         "text": "DC Block #1",
         "text-anchor": "middle",
         "x": 715.0,
-        "y": 1022.0
+        "y": 1014.0
       },
       {
         "class": "label",
@@ -1701,15 +1719,15 @@
         "text": "0.836 MWh",
         "text-anchor": "middle",
         "x": 715.0,
-        "y": 1034.0
+        "y": 1026.0
       },
       {
         "class": "tag",
         "tag": "text",
         "text": "BESS-01",
         "text-anchor": "start",
-        "x": 766.0,
-        "y": 956.0
+        "x": 779.0,
+        "y": 930.0
       },
       {
         "class": "dot",
@@ -1999,63 +2017,63 @@
         "x1": 1056.666667,
         "x2": 1056.666667,
         "y1": 934.0,
-        "y2": 944.0
+        "y2": 918.0
       },
       {
         "class": "sfill",
-        "height": 66.0,
+        "height": 84.0,
         "tag": "rect",
-        "width": 90.0,
-        "x": 1011.666667,
-        "y": 944.0
+        "width": 116.0,
+        "x": 998.666667,
+        "y": 918.0
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1029.666667,
-        "x2": 1083.666667,
-        "y1": 955.88,
-        "y2": 955.88
+        "x1": 1021.866667,
+        "x2": 1091.466667,
+        "y1": 933.12,
+        "y2": 933.12
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1040.466667,
-        "x2": 1072.866667,
-        "y1": 964.79,
-        "y2": 964.79
+        "x1": 1035.786667,
+        "x2": 1077.546667,
+        "y1": 944.46,
+        "y2": 944.46
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1029.666667,
-        "x2": 1083.666667,
-        "y1": 973.7,
-        "y2": 973.7
+        "x1": 1021.866667,
+        "x2": 1091.466667,
+        "y1": 955.8,
+        "y2": 955.8
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1040.466667,
-        "x2": 1072.866667,
-        "y1": 982.61,
-        "y2": 982.61
+        "x1": 1035.786667,
+        "x2": 1077.546667,
+        "y1": 967.14,
+        "y2": 967.14
       },
       {
         "class": "label",
         "tag": "text",
         "text": "+",
         "text-anchor": "start",
-        "x": 1022.466667,
-        "y": 953.24
+        "x": 1012.586667,
+        "y": 929.76
       },
       {
         "class": "label",
         "tag": "text",
         "text": "-",
         "text-anchor": "start",
-        "x": 1022.466667,
-        "y": 996.8
+        "x": 1012.586667,
+        "y": 985.2
       },
       {
         "class": "label",
@@ -2063,7 +2081,7 @@
         "text": "DC Block #2",
         "text-anchor": "middle",
         "x": 1056.666667,
-        "y": 1022.0
+        "y": 1014.0
       },
       {
         "class": "label",
@@ -2071,15 +2089,15 @@
         "text": "0.836 MWh",
         "text-anchor": "middle",
         "x": 1056.666667,
-        "y": 1034.0
+        "y": 1026.0
       },
       {
         "class": "tag",
         "tag": "text",
         "text": "BESS-02",
         "text-anchor": "start",
-        "x": 1107.666667,
-        "y": 956.0
+        "x": 1120.666667,
+        "y": 930.0
       },
       {
         "class": "dot",
@@ -2369,63 +2387,63 @@
         "x1": 1398.333333,
         "x2": 1398.333333,
         "y1": 934.0,
-        "y2": 944.0
+        "y2": 918.0
       },
       {
         "class": "sfill",
-        "height": 66.0,
+        "height": 84.0,
         "tag": "rect",
-        "width": 90.0,
-        "x": 1353.333333,
-        "y": 944.0
+        "width": 116.0,
+        "x": 1340.333333,
+        "y": 918.0
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1371.333333,
-        "x2": 1425.333333,
-        "y1": 955.88,
-        "y2": 955.88
+        "x1": 1363.533333,
+        "x2": 1433.133333,
+        "y1": 933.12,
+        "y2": 933.12
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1382.133333,
-        "x2": 1414.533333,
-        "y1": 964.79,
-        "y2": 964.79
+        "x1": 1377.453333,
+        "x2": 1419.213333,
+        "y1": 944.46,
+        "y2": 944.46
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1371.333333,
-        "x2": 1425.333333,
-        "y1": 973.7,
-        "y2": 973.7
+        "x1": 1363.533333,
+        "x2": 1433.133333,
+        "y1": 955.8,
+        "y2": 955.8
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1382.133333,
-        "x2": 1414.533333,
-        "y1": 982.61,
-        "y2": 982.61
+        "x1": 1377.453333,
+        "x2": 1419.213333,
+        "y1": 967.14,
+        "y2": 967.14
       },
       {
         "class": "label",
         "tag": "text",
         "text": "+",
         "text-anchor": "start",
-        "x": 1364.133333,
-        "y": 953.24
+        "x": 1354.253333,
+        "y": 929.76
       },
       {
         "class": "label",
         "tag": "text",
         "text": "-",
         "text-anchor": "start",
-        "x": 1364.133333,
-        "y": 996.8
+        "x": 1354.253333,
+        "y": 985.2
       },
       {
         "class": "label",
@@ -2433,7 +2451,7 @@
         "text": "DC Block #3",
         "text-anchor": "middle",
         "x": 1398.333333,
-        "y": 1022.0
+        "y": 1014.0
       },
       {
         "class": "label",
@@ -2441,15 +2459,15 @@
         "text": "0.836 MWh",
         "text-anchor": "middle",
         "x": 1398.333333,
-        "y": 1034.0
+        "y": 1026.0
       },
       {
         "class": "tag",
         "tag": "text",
         "text": "BESS-03",
         "text-anchor": "start",
-        "x": 1449.333333,
-        "y": 956.0
+        "x": 1462.333333,
+        "y": 930.0
       },
       {
         "class": "dot",
@@ -2739,63 +2757,63 @@
         "x1": 1740.0,
         "x2": 1740.0,
         "y1": 934.0,
-        "y2": 944.0
+        "y2": 918.0
       },
       {
         "class": "sfill",
-        "height": 66.0,
+        "height": 84.0,
         "tag": "rect",
-        "width": 90.0,
-        "x": 1695.0,
-        "y": 944.0
+        "width": 116.0,
+        "x": 1682.0,
+        "y": 918.0
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1713.0,
-        "x2": 1767.0,
-        "y1": 955.88,
-        "y2": 955.88
+        "x1": 1705.2,
+        "x2": 1774.8,
+        "y1": 933.12,
+        "y2": 933.12
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1723.8,
-        "x2": 1756.2,
-        "y1": 964.79,
-        "y2": 964.79
+        "x1": 1719.12,
+        "x2": 1760.88,
+        "y1": 944.46,
+        "y2": 944.46
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1713.0,
-        "x2": 1767.0,
-        "y1": 973.7,
-        "y2": 973.7
+        "x1": 1705.2,
+        "x2": 1774.8,
+        "y1": 955.8,
+        "y2": 955.8
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1723.8,
-        "x2": 1756.2,
-        "y1": 982.61,
-        "y2": 982.61
+        "x1": 1719.12,
+        "x2": 1760.88,
+        "y1": 967.14,
+        "y2": 967.14
       },
       {
         "class": "label",
         "tag": "text",
         "text": "+",
         "text-anchor": "start",
-        "x": 1705.8,
-        "y": 953.24
+        "x": 1695.92,
+        "y": 929.76
       },
       {
         "class": "label",
         "tag": "text",
         "text": "-",
         "text-anchor": "start",
-        "x": 1705.8,
-        "y": 996.8
+        "x": 1695.92,
+        "y": 985.2
       },
       {
         "class": "label",
@@ -2803,7 +2821,7 @@
         "text": "DC Block #4",
         "text-anchor": "middle",
         "x": 1740.0,
-        "y": 1022.0
+        "y": 1014.0
       },
       {
         "class": "label",
@@ -2811,15 +2829,15 @@
         "text": "0.836 MWh",
         "text-anchor": "middle",
         "x": 1740.0,
-        "y": 1034.0
+        "y": 1026.0
       },
       {
         "class": "tag",
         "tag": "text",
         "text": "BESS-04",
         "text-anchor": "start",
-        "x": 1791.0,
-        "y": 956.0
+        "x": 1804.0,
+        "y": 930.0
       },
       {
         "class": "outline",
@@ -2964,7 +2982,7 @@
       "width": "2000px"
     },
     "text_nodes": [
-      "svg { font-family: Arial, 'DejaVu Sans', sans-serif; font-size: 11px; } .bg { fill: #ffffff; } .wire { stroke: #1a1a1a; stroke-width: 1.8; fill: none; stroke-linecap: square; stroke-linejoin: miter; } .thin { stroke: #1a1a1a; stroke-width: 1.2; fill: none; stroke-linecap: round; stroke-linejoin: round; } .busbar { stroke: #1a1a1a; stroke-width: 3.2; fill: none; stroke-linecap: square; } .outline { stroke: #1a1a1a; stroke-width: 1.6; fill: none; } .sfill { stroke: #1a1a1a; stroke-width: 1.6; fill: #ffffff; } .text { fill: #1a1a1a; } .title { fill: #1a1a1a; font-size: 12px; font-weight: bold; } .label { fill: #1a1a1a; font-size: 10px; } .tag { fill: #1a1a1a; font-size: 9px; font-style: italic; } .notes { fill: #1a1a1a; font-size: 10.5px; font-family: Consolas, 'Courier New', monospace; } .ntitle { fill: #1a1a1a; font-size: 11px; font-weight: bold; } .tb { fill: #1a1a1a; font-size: 10px; } .tbh { fill: #1a1a1a; font-size: 11px; font-weight: bold; } .tbtitle { fill: #1a1a1a; font-size: 13px; font-weight: bold; } .dot { fill: #1a1a1a; stroke: none; } .warn { stroke: #b00020; stroke-width: 1.8; fill: none; stroke-dasharray: 6 4; } .warntx { fill: #b00020; font-size: 10px; font-weight: bold; }",
+      "svg { font-family: Arial, 'DejaVu Sans', sans-serif; font-size: 11px; } .bg { fill: #ffffff; } .wire { stroke: #1a1a1a; stroke-width: 1.8; fill: none; stroke-linecap: square; stroke-linejoin: miter; } .thin { stroke: #1a1a1a; stroke-width: 1.2; fill: none; stroke-linecap: round; stroke-linejoin: round; } .busbar { stroke: #1a1a1a; stroke-width: 3.2; fill: none; stroke-linecap: square; } .outline { stroke: #1a1a1a; stroke-width: 1.6; fill: none; } .sfill { stroke: #1a1a1a; stroke-width: 1.6; fill: #ffffff; } .text { fill: #1a1a1a; } .title { fill: #1a1a1a; font-size: 12px; font-weight: bold; } .label { fill: #1a1a1a; font-size: 10px; } .tag { fill: #1a1a1a; font-size: 9px; font-style: italic; } .notes { fill: #1a1a1a; font-size: 10.5px; font-family: Consolas, 'Courier New', monospace; } .ntitle { fill: #1a1a1a; font-size: 11px; font-weight: bold; } .tb { fill: #1a1a1a; font-size: 10px; } .tbh { fill: #1a1a1a; font-size: 11px; font-weight: bold; } .tbtitle { fill: #1a1a1a; font-size: 13px; font-weight: bold; } .dot { fill: #1a1a1a; stroke: none; } .warn { stroke: #b00020; stroke-width: 1.8; fill: none; stroke-dasharray: 6 4; } .warntx { fill: #b00020; font-size: 10px; font-weight: bold; } .acblock { stroke: #1a56b8; stroke-width: 2.0; fill: none; stroke-dasharray: 10 5; } .acblocktx { fill: #1a56b8; font-size: 12px; font-weight: bold; }",
       "EQUIPMENT LIST",
       "Cable Connection Vault",
       "CB: 33 kV, 630 A, 25.0 kA/3s",
@@ -3013,6 +3031,7 @@
       "ONAN",
       "Secondaries: 2 x yn11 (LV-A, LV-B)",
       "T-01",
+      "AC BLOCK BOUNDARY",
       "LV-A DISTRIBUTION SECTION",
       "Secondary LV-A \u2022 Feeders F1\u2013F2",
       "LV-A BUS / 690 V",

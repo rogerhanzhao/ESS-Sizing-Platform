@@ -83,6 +83,8 @@ svg {{ font-family: {SLD_FONT_FAMILY}; font-size: 11px; }}
 .dot     {{ fill: #1a1a1a; stroke: none; }}
 .warn    {{ stroke: #b00020; stroke-width: 1.8; fill: none; stroke-dasharray: 6 4; }}
 .warntx  {{ fill: #b00020; font-size: 10px; font-weight: bold; }}
+.acblock {{ stroke: #1a56b8; stroke-width: 2.0; fill: none; stroke-dasharray: 10 5; }}
+.acblocktx {{ fill: #1a56b8; font-size: 12px; font-weight: bold; }}
 """))
     dwg.add(dwg.rect(insert=(0, 0), size=(plan.width, plan.height), class_="bg"))
     return dwg
@@ -786,7 +788,10 @@ def _draw_mv_rmu_and_transformer(
             "wire",
             id=f"transformer-lv-winding-{winding_index}",
         )
-        _junction(dwg, target_x, mv.lv_bus_y)
+        # Junction dot only where the secondary lands on a real busbar (≥2 PCS);
+        # a single-PCS winding continues straight into the one feeder.
+        if len(pcs_boxes) > 1:
+            _junction(dwg, target_x, mv.lv_bus_y)
 
     return mv.center_x, mv.lv_bus_y
 
@@ -851,6 +856,20 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
             _bx2 = min(_bx2, (_right_center + _next_left) / 2.0 - _bus_gap_margin)
         _clamped_bus_extents[_wi] = (_bx1, _bx2)
 
+    # AC Block boundary — the RMU/MV switchgear, the step-up transformer and the
+    # PCS all belong to ONE AC Block; draw an explicit boundary around them (down
+    # to just above the DC Blocks, which are separate) so the single-line reads
+    # as a physical AC Block skid, not loose symbols.
+    _panel_lefts = [bx1 - 20.0 for bx1, _bx2 in _clamped_bus_extents.values()]
+    _panel_rights = [bx2 + 20.0 for _bx1, bx2 in _clamped_bus_extents.values()]
+    ac_x1 = min(min(_panel_lefts), mv.ring_in_x - 110.0) - 16.0
+    ac_x2 = max(max(_panel_rights), mv.ring_out_x + 110.0) + 16.0
+    ac_y1 = 30.0
+    ac_y2 = lvdc.pcs_y + lvdc.converter_height + 34.0
+    dwg.add(dwg.rect(insert=(ac_x1, ac_y1), size=(ac_x2 - ac_x1, ac_y2 - ac_y1),
+                     class_="acblock", id="ac-block-boundary"))
+    _text(dwg, "AC BLOCK BOUNDARY", ac_x1 + 12.0, ac_y1 + 20.0, "acblocktx", anchor="start")
+
     for winding_index, winding_pcs in pcs_by_winding.items():
         bus_x1, bus_x2 = _clamped_bus_extents[winding_index]
         bus_y = mv.lv_bus_y
@@ -877,15 +896,20 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
         )
         _text(dwg, section_label, panel_x + 12.0, bus_y - 20.0, "title")
         _text(dwg, secondary_label, panel_x + 12.0, bus_y - 6.0, "label")
-        _line(
-            dwg,
-            (bus_x1, bus_y),
-            (bus_x2, bus_y),
-            "busbar",
-            id=f"lv-winding-{winding_index}-busbar",
-        )
-        label = f"LV-{chr(64 + winding_index)} BUS / {lv_v} V" if split_secondary else f"LV BUS / {lv_v} V"
-        _text(dwg, label, bus_x2 - 8.0, bus_y - 6.0, "label", anchor="end")
+        # A busbar is only meaningful when it collects more than one feeder. When
+        # an LV winding serves a single PCS there is nothing to bus together, so
+        # the transformer secondary connects straight to that one PCS feeder — no
+        # redundant LV busbar line (and no "LV BUS" label) is drawn.
+        if len(winding_pcs) > 1:
+            _line(
+                dwg,
+                (bus_x1, bus_y),
+                (bus_x2, bus_y),
+                "busbar",
+                id=f"lv-winding-{winding_index}-busbar",
+            )
+            label = f"LV-{chr(64 + winding_index)} BUS / {lv_v} V" if split_secondary else f"LV BUS / {lv_v} V"
+            _text(dwg, label, bus_x2 - 8.0, bus_y - 6.0, "label", anchor="end")
 
     if split_secondary and len(winding_bus_extents) == 2:
         _, left_x1, left_x2 = winding_bus_extents[0]
@@ -916,7 +940,10 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
         pcs_sub   = pcs.text_lines[1] if len(pcs.text_lines) > 1 else ""
 
         # ── LV feeder — segmented conductor, DS open gap visible ─────────────
-        _junction(dwg, px, bus_y)
+        # Tap dot only where the feeder taps a real busbar (≥2 PCS on the
+        # winding); a single-PCS winding connects straight through, no tap.
+        if len(pcs_by_winding.get(winding_index, [])) > 1:
+            _junction(dwg, px, bus_y)
         ds_y = bus_y + 28.0
         cb_y = bus_y + 56.0
 

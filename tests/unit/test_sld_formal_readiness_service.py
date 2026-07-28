@@ -239,3 +239,57 @@ def test_missing_transformer_vector_group_is_never_formal(sample_excel_path):
     issue_ids = {issue.issue_id for issue in report.issues}
     assert report.ready is False
     assert "transformer_vector_group_unconfirmed" in issue_ids
+
+
+def test_assumed_standard_default_vector_group_is_never_formal(sample_excel_path):
+    # A syntactically valid vector group filled as a standard default (no OEM
+    # datasheet) must be refused for a formal SLD via its *_basis marker.
+    run_bundle = _build_run_bundle(sample_excel_path)
+    project_settings = _professional_project_settings()
+    project_settings["transformer"] = {"uk_percent": 7.0}  # vector group comes from the product
+    dc_total = int(run_bundle.snapshot.stage2.container_count + run_bundle.snapshot.stage2.cabinet_count)
+    base, remainder = dc_total // 4, dc_total % 4
+    feeders = [base + (1 if i < remainder else 0) for i in range(4)]
+    ac_snapshot = _consistent_ac_snapshot(
+        run_bundle, dc_total=dc_total, feeder_allocations=feeders,
+        extra={
+            "transformer_vector_group": "Dyn11yn11",
+            "transformer_vector_group_basis": "standard_default_pending_confirmation",
+        },
+    )
+    options = SldRenderOptions(group_index=1, renderer_mode="engineering_v2")
+    canonical = build_sld_canonical_input(
+        run_bundle=run_bundle, ac_snapshot=ac_snapshot, options=options,
+        project_settings=project_settings, validation_mode="strict",
+    )
+    report = assess_sld_formal_readiness(
+        run_bundle=run_bundle, ac_snapshot=ac_snapshot, canonical_input=canonical,
+        options=options, project_settings=project_settings,
+    )
+    issue_ids = {issue.issue_id for issue in report.issues}
+    assert report.ready is False
+    assert "transformer_vector_group_assumed_default" in issue_ids
+
+
+def test_datasheet_vector_group_basis_is_not_flagged_as_assumed(sample_excel_path):
+    run_bundle = _build_run_bundle(sample_excel_path)
+    project_settings = _professional_project_settings()
+    project_settings["transformer"] = {"uk_percent": 7.0}
+    dc_total = int(run_bundle.snapshot.stage2.container_count + run_bundle.snapshot.stage2.cabinet_count)
+    base, remainder = dc_total // 4, dc_total % 4
+    feeders = [base + (1 if i < remainder else 0) for i in range(4)]
+    ac_snapshot = _consistent_ac_snapshot(
+        run_bundle, dc_total=dc_total, feeder_allocations=feeders,
+        extra={"transformer_vector_group": "Dyn11yn11", "transformer_vector_group_basis": "datasheet"},
+    )
+    options = SldRenderOptions(group_index=1, renderer_mode="engineering_v2")
+    canonical = build_sld_canonical_input(
+        run_bundle=run_bundle, ac_snapshot=ac_snapshot, options=options,
+        project_settings=project_settings, validation_mode="strict",
+    )
+    report = assess_sld_formal_readiness(
+        run_bundle=run_bundle, ac_snapshot=ac_snapshot, canonical_input=canonical,
+        options=options, project_settings=project_settings,
+    )
+    issue_ids = {issue.issue_id for issue in report.issues}
+    assert "transformer_vector_group_assumed_default" not in issue_ids

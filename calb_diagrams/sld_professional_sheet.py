@@ -218,15 +218,24 @@ def build_professional_sld_sheet(plan: SldV2LayoutPlan) -> ProfessionalSldSheet:
         bus_x2=bus_x2,
         pcs_y=mv.lv_bus_y + 110.0,
         dc_device_y=mv.lv_bus_y + 220.0,
-        # block_y + battery_height + two label lines must stay above the
-        # title block top edge (plan.height - 120): 944 + 66 + 24 = 1034 < 1040.
-        block_y=mv.lv_bus_y + 274.0,
+        # block_y + battery_height + two label lines must stay above the title
+        # block top edge (plan.height - 120 = 1040). With the larger container
+        # box (84 high) the row is raised so the lower label clears the band:
+        # 918 + 84 + ~2 lines ≈ 1028 < 1040.
+        block_y=mv.lv_bus_y + 248.0,
         converter_width=80.0,
         converter_height=60.0,
-        battery_width=90.0,
-        battery_height=66.0,
-        multi_block_spacing_base=104.0,
-        multi_block_spacing_max=128.0,
+        # DC Block symbol is drawn as a substantial container-scale box — larger
+        # than the PCS inverter symbol so the DC Blocks read as real 20 ft
+        # containers and visually balance the AC Block boundary above, giving the
+        # sheet a coherent proportion. This is a visual-consistency choice only;
+        # an SLD is a single-line schematic, so symbol size is not a physical
+        # footprint. Spacing grows with the box so multiple DC Blocks per feeder
+        # never overlap.
+        battery_width=116.0,
+        battery_height=84.0,
+        multi_block_spacing_base=136.0,
+        multi_block_spacing_max=160.0,
     )
 
     # Title block: flush with outer-border bottom (border = plan.height − 20)
