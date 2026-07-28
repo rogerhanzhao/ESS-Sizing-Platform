@@ -528,7 +528,8 @@ def _render_project_picker(projects: list[dict], context: dict, auth_user) -> No
         with st.expander("Project List", expanded=False):
             for p in projects[:8]:
                 is_active = p["project_id"] == context.get("project_id")
-                c_name, c_btn = st.columns([3, 1])
+                # Wider button column so "Active"/"Use" never wrap to two lines.
+                c_name, c_btn = st.columns([2.0, 1.0])
                 c_name.write(("Active: " if is_active else "") + p["project_name"])
                 if is_active:
                     c_btn.button("Active", key=f"proj_act_{p['project_id']}", disabled=True, use_container_width=True)
@@ -623,7 +624,8 @@ def _render_case_picker(cases: list[dict], context: dict, auth_user) -> None:
         with st.expander("Case List", expanded=False):
             for c in cases[:10]:
                 is_active = c["sizing_case_id"] == context.get("case_id")
-                c_name, c_btn = st.columns([3, 1])
+                # Wider button column so "Active"/"Use" never wrap to two lines.
+                c_name, c_btn = st.columns([2.0, 1.0])
                 scen = SCENARIO_LABELS.get(c["scenario_mode"], "")
                 c_name.write(("Active: " if is_active else "") + c["case_name"])
                 c_name.caption(scen)

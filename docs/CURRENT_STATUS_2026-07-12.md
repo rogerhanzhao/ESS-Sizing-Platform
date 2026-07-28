@@ -331,6 +331,26 @@ unchanged):
   title block, visually balancing the AC Block boundary. Symbol size is a
   drawing convention, not a physical footprint. Regression baseline regenerated.
 
+### 2.12 Report rule — concept figures are ALWAYS NOT FOR CONSTRUCTION (2026-07-28)
+
+**Firm owner rule (record permanently):** every concept engineering figure in the
+exported report — the SLD (§7), the Typical AC Block Arrangement (§8) and the
+Concept Site Layout / Arrangement (§9) — is stamped
+**`DRAFT / OVERRIDE - NOT FOR CONSTRUCTION`** *unconditionally*, no matter how
+professional the SLD is drawn or how the typical arrangement / site layout
+resolves. The exported report is a concept / proposal document and is never a
+construction-issue drawing set.
+
+- `reporting/report_v2.py`: `_stamp_not_for_construction()` overlays the mark in
+  the same style/format as the SLD-pipeline watermark (`#B42318` @ 0.28 opacity,
+  bold, horizontal-centred). `_add_concept_figure()` routes every §7/§8/§9 figure
+  through the stamp before embedding, so the mark is present regardless of the
+  figure's own document status (even an "official" SLD is stamped in the report).
+  Figure captions also carry `NOT FOR CONSTRUCTION`. The stamp never raises — a
+  watermarking failure returns the original image rather than breaking the report.
+- Any new report figure that depicts an engineering drawing MUST be embedded via
+  `_add_concept_figure` (never a bare `doc.add_picture`).
+
 ## 3. Next boundary
 
 The package deliberately stops before a Concept Master Layout. Unlocking it

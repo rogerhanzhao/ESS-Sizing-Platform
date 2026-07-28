@@ -532,6 +532,79 @@ def _svg_bytes_to_png(svg_bytes: bytes, width_px: int = 900) -> Optional[bytes]:
         return None
 
 
+# Governance rule (owner decision, 2026-07-28): every concept engineering figure
+# in the exported report — the SLD (§7), the Typical AC Block Arrangement (§8)
+# and the Concept Site Layout / Arrangement (§9) — is stamped
+# "DRAFT / OVERRIDE - NOT FOR CONSTRUCTION" UNCONDITIONALLY, no matter how
+# professional the drawing is or how the layout resolves. The report is a
+# concept / proposal document and is never a construction-issue drawing set.
+# The text, colour and format match the existing SLD-pipeline watermark
+# (_concept_safe_svg): #B42318 at 0.28 opacity, bold, horizontal-centred.
+NOT_FOR_CONSTRUCTION_STAMP = "DRAFT / OVERRIDE - NOT FOR CONSTRUCTION"
+_STAMP_FILL = (180, 35, 24, 71)  # #B42318 @ ~0.28 opacity
+
+
+def _stamp_not_for_construction(png_bytes: Optional[bytes]) -> Optional[bytes]:
+    """Overlay the translucent red "DRAFT / OVERRIDE - NOT FOR CONSTRUCTION" mark.
+
+    Matches the SLD-pipeline watermark style (horizontal, centred, #B42318 @ 0.28)
+    and is applied to every concept figure before it is embedded, so the mark is
+    present regardless of the figure's own document status. Never raises — a
+    watermarking failure must not break the report; the original image is
+    returned instead.
+    """
+    if not png_bytes:
+        return png_bytes
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+
+        base = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
+        width, height = base.size
+        text = NOT_FOR_CONSTRUCTION_STAMP
+        layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(layer)
+
+        def _load(size: int):
+            for candidate in ("DejaVuSans-Bold.ttf", "DejaVuSans.ttf"):
+                try:
+                    return ImageFont.truetype(candidate, size)
+                except Exception:
+                    continue
+            return ImageFont.load_default()
+
+        # Scale the mark so the text spans ~82% of the figure width (matches the
+        # moderate SVG overlay) and always fits, regardless of source resolution.
+        ref_size = 100
+        ref_font = _load(ref_size)
+        ref_bbox = draw.textbbox((0, 0), text, font=ref_font)
+        ref_w = max(1, ref_bbox[2] - ref_bbox[0])
+        font_size = max(14, int(ref_size * (width * 0.82) / ref_w))
+        font = _load(font_size)
+
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        # Horizontal, centred at ~52% height — same placement as the SVG overlay.
+        draw.text(((width - tw) / 2.0 - bbox[0], height * 0.52 - th / 2.0 - bbox[1]),
+                  text, font=font, fill=_STAMP_FILL)
+        stamped = Image.alpha_composite(base, layer).convert("RGB")
+        out = io.BytesIO()
+        stamped.save(out, format="PNG")
+        return out.getvalue()
+    except Exception:
+        return png_bytes
+
+
+def _add_concept_figure(doc, png_bytes: bytes, *, width=None, height=None) -> None:
+    """Embed a concept figure with the mandatory NOT-FOR-CONSTRUCTION watermark."""
+    stamped = _stamp_not_for_construction(png_bytes)
+    if width is not None:
+        doc.add_picture(io.BytesIO(stamped), width=width)
+    elif height is not None:
+        doc.add_picture(io.BytesIO(stamped), height=height)
+    else:
+        doc.add_picture(io.BytesIO(stamped))
+
+
 def _validate_efficiency_chain(ctx: ReportContext) -> list[str]:
     """Validate efficiency chain completeness and internal consistency.
 
@@ -1215,17 +1288,17 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     figure_index = 3  # Figures 1-2 used by Stage 3 milestone + POI charts above
     sld_embedded = False
     if ctx.sld_pro_png_bytes:
-        doc.add_picture(io.BytesIO(ctx.sld_pro_png_bytes), width=Inches(6.7))
+        _add_concept_figure(doc, ctx.sld_pro_png_bytes, width=Inches(6.7))
         _keep_next_para(doc.paragraphs[-1])
-        doc.add_paragraph(f"Figure {figure_index}: Single Line Diagram – System Electrical Configuration")
+        doc.add_paragraph(f"Figure {figure_index}: Single Line Diagram – System Electrical Configuration — NOT FOR CONSTRUCTION")
         figure_index += 1
         sld_embedded = True
     elif ctx.sld_preview_svg_bytes:
         png_bytes = _svg_bytes_to_png(ctx.sld_preview_svg_bytes)
         if png_bytes:
-            doc.add_picture(io.BytesIO(png_bytes), width=Inches(6.7))
+            _add_concept_figure(doc, png_bytes, width=Inches(6.7))
             _keep_next_para(doc.paragraphs[-1])
-            doc.add_paragraph(f"Figure {figure_index}: Single Line Diagram – System Electrical Configuration")
+            doc.add_paragraph(f"Figure {figure_index}: Single Line Diagram – System Electrical Configuration — NOT FOR CONSTRUCTION")
             figure_index += 1
             sld_embedded = True
     if not sld_embedded:
@@ -1275,7 +1348,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             f"40 ft AC Block with west 4-DC and east 4-DC mirrored fields "
             f"(4 + 4 arrangement, one DC Block per PCS):"
         ))
-        doc.add_picture(io.BytesIO(plan_png), width=Inches(6.7))
+        _add_concept_figure(doc, plan_png, width=Inches(6.7))
         _keep_next_para(doc.paragraphs[-1])
         _keep_next_para(doc.add_paragraph(
             f"Figure {figure_index}: Typical AC Block Arrangement — equipment envelope ≈ "
@@ -1296,7 +1369,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             f"Rule-based typical arrangement ({dc_per_ac} × DC per block, "
             f"mirrored back-to-back pairs, doors facing outward aisles):"
         ))
-        doc.add_picture(io.BytesIO(plan_png), width=Inches(6.7))
+        _add_concept_figure(doc, plan_png, width=Inches(6.7))
         _keep_next_para(doc.paragraphs[-1])
         _keep_next_para(doc.add_paragraph(
             f"Figure {figure_index}: Typical AC Block Arrangement (rule-based) — "
@@ -1314,10 +1387,10 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         if not layout_png_bytes and ctx.layout_svg_bytes:
             layout_png_bytes = _svg_bytes_to_png(ctx.layout_svg_bytes)
         if layout_png_bytes:
-            doc.add_picture(io.BytesIO(layout_png_bytes), width=Inches(6.7))
+            _add_concept_figure(doc, layout_png_bytes, width=Inches(6.7))
             _keep_next_para(doc.paragraphs[-1])
             doc.add_paragraph(
-                f"Figure {figure_index}: Typical AC Block Arrangement — Concept Only")
+                f"Figure {figure_index}: Typical AC Block Arrangement — Concept Only · NOT FOR CONSTRUCTION")
         else:
             doc.add_paragraph(
                 "Typical AC Block Arrangement not generated. "
@@ -1349,7 +1422,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 f"total. Blocks are placed at their actual product footprint; this is a concept "
                 f"arrangement, not a construction site layout against a project boundary."
             ))
-            doc.add_picture(io.BytesIO(site_png), width=Inches(6.7))
+            _add_concept_figure(doc, site_png, width=Inches(6.7))
             _keep_next_para(doc.paragraphs[-1])
             _keep_next_para(doc.add_paragraph(
                 f"Figure {figure_index}: Concept Site Layout (actual product footprints) — Concept Only"
@@ -1460,9 +1533,9 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             # A single group is compact; cap by height only if it is deeper
             # than it is wide, otherwise fit to the text column width.
             if group_layout.envelope_d_m > group_layout.envelope_w_m:
-                doc.add_picture(io.BytesIO(site_png), height=Inches(5.5))
+                _add_concept_figure(doc, site_png, height=Inches(5.5))
             else:
-                doc.add_picture(io.BytesIO(site_png), width=Inches(6.2))
+                _add_concept_figure(doc, site_png, width=Inches(6.2))
             _keep_next_para(doc.paragraphs[-1])
             _keep_next_para(doc.add_paragraph(
                 f"Figure {figure_index}: Concept Site Arrangement — one "
