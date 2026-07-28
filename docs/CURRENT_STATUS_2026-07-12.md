@@ -214,10 +214,11 @@ The bilateral 4+4 1:8 configuration handed off in §2.3 is now implemented as a
   that the SLD shows the representative head fleet and that tails live in the
   report. Uniform stations (including single-model, uneven-DC ones) are
   unaffected — the projection is an identity for them.
-- A true per-model mixed SLD (drawing head *and* tail blocks) is deferred as an
-  SLD V2 enhancement; it requires extending the versioned uniform invariant plus
-  the topology builder and renderer, out of scope for this manual-adjustment
-  layer.
+- A true **per-model mixed SLD** (drawing head *and* tail blocks) is a deferred
+  enhancement; it requires extending the versioned uniform invariant plus the
+  topology builder and renderer, out of scope for this manual-adjustment layer.
+  (Note: "per-model mixed SLD" is a *data-contract* feature and is unrelated to
+  the "Engineering V2" renderer mode in the SLD dropdown.)
 
 ### 2.8 Mixed AC Block station → report §8/§9 head-representative (2026-07-28)
 

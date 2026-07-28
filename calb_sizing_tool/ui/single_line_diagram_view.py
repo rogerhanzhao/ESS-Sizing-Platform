@@ -436,8 +436,8 @@ def show() -> None:
                 f"🔀 **Mixed AC Block station** — the SLD renders the representative "
                 f"**head AC Block fleet** ({head_count} × {head_mw:.2f} MW, "
                 f"{head_pcs}×{head_kw:.0f} kW). Tail AC Block model(s) differ and are "
-                f"listed in the report's AC Block schedule (§6.1). A per-model SLD is a "
-                f"planned SLD V2 enhancement.",
+                f"listed in the report's AC Block schedule (§6.1). A per-model mixed SLD "
+                f"(drawing every AC Block model) is a planned enhancement.",
                 icon=None,
             )
         else:

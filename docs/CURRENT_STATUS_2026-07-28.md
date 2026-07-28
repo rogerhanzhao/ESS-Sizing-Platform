@@ -80,12 +80,16 @@ mismatched vector group, or an assumed standard-default vector group; and the
 3. **Assumed values are never formal** — any `*_basis =
    standard_default_pending_confirmation` is refused by the formal-readiness gate.
 4. **SLD V1 is uniform-only** — a mixed station renders via the head-fleet
-   projection; a true per-model mixed SLD is deferred SLD V2.
+   projection; a true **per-model mixed SLD** (draws every AC Block model) is a
+   deferred *data-contract* enhancement — NOT the same as the "Engineering V2"
+   renderer mode in the SLD dropdown.
 
 ## 5. Residuals / deferred (none blocking)
 
-- **SLD V2 (per-model mixed SLD)** — draw head *and* tail blocks; needs the
-  versioned uniform invariant + topology builder + renderer extended.
+- **Per-model mixed SLD** — draw head *and* tail blocks; needs the versioned
+  uniform invariant + topology builder + renderer extended. (Data-contract
+  feature; not the "Engineering V2" renderer mode. Formerly nicknamed "SLD V2"
+  — renamed to avoid colliding with the renderer's "V2" name.)
 - **Manual-mixed vs governed** — a run carrying both `configuration_code` and
   `ac_block_mixed` is an untested combination; low-priority edge case.
 - **Cosmetic** — in a multi-DC-per-feeder layout the `BESS-0x` tag can slightly

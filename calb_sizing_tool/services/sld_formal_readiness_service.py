@@ -138,7 +138,7 @@ def assess_sld_formal_readiness(
                 "error",
                 "This SLD is the representative Head AC-Block fleet of a mixed AC Block "
                 "station, not a full-site drawing. Tail AC Block model(s) are described in "
-                "the report AC Block schedule; a per-model mixed SLD (SLD V2) is required "
+                "the report AC Block schedule; a per-model mixed SLD is required "
                 "for a formal whole-station SLD.",
             )
         )
