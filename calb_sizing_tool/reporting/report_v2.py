@@ -1114,6 +1114,50 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     ]
     _add_table(doc, s4_rows, ["Parameter", "Value"])
 
+    # Mixed AC Block station: a head AC Block model plus smaller tail model(s).
+    # This is the AC-side counterpart of the DC container + cabinet tail, driven
+    # off the manual per-AC-Block adjustment in AC Sizing. Uniform stations carry
+    # a single-entry breakdown, so the schedule is shown only when it adds
+    # information (more than one distinct AC Block model).
+    ac_breakdown = (
+        ctx.ac_output.get("ac_block_breakdown") if isinstance(ctx.ac_output, dict) else None
+    )
+    if (
+        isinstance(ctx.ac_output, dict)
+        and ctx.ac_output.get("ac_block_mixed")
+        and isinstance(ac_breakdown, list)
+        and len(ac_breakdown) > 1
+    ):
+        doc.add_heading("6.1  Mixed AC Block Station Schedule", level=3)
+        _keep_next_para(doc.add_paragraph(
+            "This station mixes AC Block models: a head model covers most DC Blocks "
+            "and smaller tail model(s) cover the remainder — the AC-side counterpart "
+            "of the DC container + cabinet tail in Section 4."
+        ))
+        pf = ctx.grid_power_factor if (ctx.grid_power_factor and ctx.grid_power_factor > 0) else None
+        schedule_rows = []
+        for entry in ac_breakdown:
+            block_mw = float(entry.get("block_mw") or 0.0)
+            dc_each = entry.get("dc_blocks_each")
+            if dc_each is None:
+                dc_text = f"{entry.get('dc_blocks_min')}–{entry.get('dc_blocks_max')} per block"
+            else:
+                dc_text = f"{int(dc_each)} per block"
+            xf = f"{block_mw / pf:.2f} MVA (est.)" if pf else "TBD"
+            schedule_rows.append((
+                str(entry.get("role") or "—"),
+                f"{int(entry.get('count') or 0)}",
+                f"{int(entry.get('pcs_count') or 0)} × {float(entry.get('pcs_kw') or 0):.0f} kW",
+                f"{block_mw:.2f} MW",
+                dc_text,
+                xf,
+            ))
+        _add_table(
+            doc,
+            schedule_rows,
+            ["Role", "Qty", "PCS", "AC Block Size", "DC Blocks", "Transformer (per block)"],
+        )
+
     # --- Section 7: Single Line Diagram ---
     doc.add_page_break()
     doc.add_heading("7.  Single Line Diagram", level=2)

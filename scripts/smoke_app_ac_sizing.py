@@ -121,11 +121,27 @@ def main() -> int:
                 "grouping computed": "AC Blocks" in ac and "DC Block" in ac,
                 "single run button present": "Run AC Sizing" in ac and "Run AC Sizing (Governed)" not in ac,
                 "no fabricated duration steer": "currently covers 4 h systems" not in ac,
+                "mixed station toggle present": "Enable mixed AC Block station" in ac,
+                "mixed station off by default": "DC Blocks assigned" not in ac,
             }
             for name, ok in checks.items():
                 print(f"  [{'PASS' if ok else 'FAIL'}] {name}")
                 if not ok:
                     failures.append(name)
+
+            # Enable the mixed AC Block station and confirm the per-block editor
+            # renders (no st.data_editor / PyArrow crash) with its live ledger.
+            try:
+                pg.get_by_text("Enable mixed AC Block station", exact=False).first.click()
+                pg.wait_for_timeout(3000)
+                ac2 = pg.inner_text('[data-testid="stApp"]')
+                mixed_ok = "DC Blocks assigned" in ac2 and "PCS rating (kW)" in ac2
+            except Exception as exc:  # pragma: no cover - smoke diagnostics
+                mixed_ok = False
+                print(f"    (mixed toggle interaction error: {exc})")
+            print(f"  [{'PASS' if mixed_ok else 'FAIL'}] mixed station editor renders on toggle")
+            if not mixed_ok:
+                failures.append("mixed station editor renders on toggle")
             b.close()
     finally:
         if proc:
