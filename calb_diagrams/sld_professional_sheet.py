@@ -154,7 +154,13 @@ def build_professional_sld_sheet(plan: SldV2LayoutPlan) -> ProfessionalSldSheet:
             (rows.get("MV Cable", "MISSING: MV cable spec"),),
             60.0,
         ),
-        ProfessionalNotesSection("Step-up Transformer (OIL)", transformer_lines, 92.0),
+        ProfessionalNotesSection(
+            "Step-up Transformer (OIL)",
+            transformer_lines,
+            # Grow with the number of spec lines (title + 16 px per line + padding)
+            # so a 3-winding transformer's extra lines are never clipped.
+            max(92.0, 16.0 * len(transformer_lines) + 30.0),
+        ),
         ProfessionalNotesSection(
             "LV Connecting Cable",
             (rows.get("LV Cable", "MISSING: LV cable spec"),),

@@ -147,7 +147,7 @@
       },
       {
         "class": "sfill",
-        "height": 672.0,
+        "height": 690.0,
         "tag": "rect",
         "width": 424.0,
         "x": 38.0,
@@ -155,7 +155,7 @@
       },
       {
         "class": "outline",
-        "height": 672.0,
+        "height": 690.0,
         "tag": "rect",
         "width": 424.0,
         "x": 38.0,
@@ -267,7 +267,7 @@
       },
       {
         "class": "sfill",
-        "height": 92.0,
+        "height": 110.0,
         "tag": "rect",
         "width": 424.0,
         "x": 38.0,
@@ -275,7 +275,7 @@
       },
       {
         "class": "outline",
-        "height": 92.0,
+        "height": 110.0,
         "tag": "rect",
         "width": 424.0,
         "x": 38.0,
@@ -335,7 +335,7 @@
         "tag": "rect",
         "width": 424.0,
         "x": 38.0,
-        "y": 384.0
+        "y": 402.0
       },
       {
         "class": "outline",
@@ -343,7 +343,7 @@
         "tag": "rect",
         "width": 424.0,
         "x": 38.0,
-        "y": 384.0
+        "y": 402.0
       },
       {
         "class": "ntitle",
@@ -351,7 +351,7 @@
         "text": "LV Connecting Cable",
         "text-anchor": "start",
         "x": 46.0,
-        "y": 402.0
+        "y": 420.0
       },
       {
         "class": "notes",
@@ -359,7 +359,7 @@
         "text": "MISSING: LV cable spec",
         "text-anchor": "start",
         "x": 48.0,
-        "y": 418.0
+        "y": 436.0
       },
       {
         "class": "sfill",
@@ -367,7 +367,7 @@
         "tag": "rect",
         "width": 424.0,
         "x": 38.0,
-        "y": 444.0
+        "y": 462.0
       },
       {
         "class": "outline",
@@ -375,7 +375,7 @@
         "tag": "rect",
         "width": 424.0,
         "x": 38.0,
-        "y": 444.0
+        "y": 462.0
       },
       {
         "class": "ntitle",
@@ -383,7 +383,7 @@
         "text": "Power Converter System (PCS)",
         "text-anchor": "start",
         "x": 46.0,
-        "y": 462.0
+        "y": 480.0
       },
       {
         "class": "notes",
@@ -391,7 +391,7 @@
         "text": "PCS \u2014 1250 kW \u00d7 4",
         "text-anchor": "start",
         "x": 48.0,
-        "y": 478.0
+        "y": 496.0
       },
       {
         "class": "notes",
@@ -399,7 +399,7 @@
         "text": "AC 690 V 50 Hz DC 1500 V",
         "text-anchor": "start",
         "x": 48.0,
-        "y": 494.0
+        "y": 512.0
       },
       {
         "class": "sfill",
@@ -407,7 +407,7 @@
         "tag": "rect",
         "width": 424.0,
         "x": 38.0,
-        "y": 540.0
+        "y": 558.0
       },
       {
         "class": "outline",
@@ -415,7 +415,7 @@
         "tag": "rect",
         "width": 424.0,
         "x": 38.0,
-        "y": 540.0
+        "y": 558.0
       },
       {
         "class": "ntitle",
@@ -423,7 +423,7 @@
         "text": "DC Power Cable",
         "text-anchor": "start",
         "x": 46.0,
-        "y": 558.0
+        "y": 576.0
       },
       {
         "class": "notes",
@@ -431,7 +431,7 @@
         "text": "MISSING: DC cable spec",
         "text-anchor": "start",
         "x": 48.0,
-        "y": 574.0
+        "y": 592.0
       },
       {
         "class": "sfill",
@@ -439,7 +439,7 @@
         "tag": "rect",
         "width": 424.0,
         "x": 38.0,
-        "y": 600.0
+        "y": 618.0
       },
       {
         "class": "outline",
@@ -447,7 +447,7 @@
         "tag": "rect",
         "width": 424.0,
         "x": 38.0,
-        "y": 600.0
+        "y": 618.0
       },
       {
         "class": "ntitle",
@@ -455,7 +455,7 @@
         "text": "Battery Energy Storage System",
         "text-anchor": "start",
         "x": 46.0,
-        "y": 618.0
+        "y": 636.0
       },
       {
         "class": "notes",
@@ -463,7 +463,7 @@
         "text": "4 BESS containers (0.836 MWh \u00d7 4)",
         "text-anchor": "start",
         "x": 48.0,
-        "y": 634.0
+        "y": 652.0
       },
       {
         "class": "notes",
@@ -471,7 +471,7 @@
         "text": "Cell: MISSING: BESS cell spec",
         "text-anchor": "start",
         "x": 48.0,
-        "y": 650.0
+        "y": 668.0
       },
       {
         "class": "title",

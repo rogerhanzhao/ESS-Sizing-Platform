@@ -27,7 +27,11 @@ def test_professional_sheet_builds_reference_note_panel(sample_excel_path):
         "DC Power Cable",
         "Battery Energy Storage System",
     ]
-    assert sheet.notes.height == 646.0
+    # Transformer section height grows with its spec-line count (so a 3-winding
+    # transformer's lines aren't clipped): 6 fixed sections + adaptive transformer.
+    tx_section = sheet.notes.sections[2]
+    assert tx_section.height >= 16.0 * len(tx_section.lines) + 26.0  # no clipping
+    assert sheet.notes.height == 646.0 - 92.0 + tx_section.height
 
     pcs_section = sheet.notes.sections[4]
     assert "1250" in pcs_section.lines[0]
