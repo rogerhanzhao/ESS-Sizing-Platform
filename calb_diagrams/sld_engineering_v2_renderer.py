@@ -503,10 +503,13 @@ def _shared_bess_container(dwg, cx: float, y: float, width: float, height: float
     # box rather than hugging the side walls.
     inset = [cx + (gx - cx) * 0.58 for gx in ordered]
     if len(inset) > 1:
-        min_gap = min(inset[i + 1] - inset[i] for i in range(len(inset) - 1))
+        cell = min(inset[i + 1] - inset[i] for i in range(len(inset) - 1))
     else:
-        min_gap = width * 0.6
-    sym_w = max(36.0, min(min_gap * 0.72, 92.0))
+        cell = width
+    # One consistent battery-glyph size across every DC container (single- or
+    # multi-circuit), shrinking only if the cells are genuinely too tight — so all
+    # DC Blocks read as the same symbol regardless of PCS:DC ratio.
+    sym_w = max(34.0, min(54.0, cell * 0.66))
     for gx in inset:
         _battery_symbol(dwg, gx, y, sym_w, height)
     _text(dwg, title, cx, y + height + 12.0, "label", anchor="middle")
@@ -521,25 +524,13 @@ def _shared_bess_container(dwg, cx: float, y: float, width: float, height: float
 def _bess_block(dwg, x: float, y: float, width: float, height: float,
                 title: str, subtitle: str, tag: str = "",
                 symbol_span: float | None = None) -> None:
-    """BESS container block — rectangle with ANSI battery symbol inside.
+    """Single-circuit DC container.
 
-    ANSI IEEE 315 Fig 2.18.1: alternating long/short horizontal lines. ``width``
-    sizes the container outline; ``symbol_span`` (default = ``width``) sizes the
-    battery glyph and polarity marks, so a wide multi-port shared container keeps
-    a normal-sized centred battery symbol instead of a stretched one.
+    Delegates to the same drawer as the shared multi-circuit container so EVERY
+    DC Block reads identically (same box, battery glyph, tag placement) regardless
+    of the PCS:DC ratio — a single-circuit block is just a one-cell container.
     """
-    lx = x - width / 2.0
-    _rect(dwg, lx, y, width, height, "sfill")
-
-    sym_w = width if symbol_span is None else min(width, symbol_span)
-    _battery_symbol(dwg, x, y, sym_w, height)
-
-    # Labels below box
-    _text(dwg, title, x, y + height + 12.0, "label", anchor="middle")
-    if subtitle:
-        _text(dwg, subtitle, x, y + height + 24.0, "label", anchor="middle")
-    if tag:
-        _text(dwg, tag, x + width / 2.0 - 5.0, y + 12.0, "tag", anchor="end")
+    _shared_bess_container(dwg, x, y, width, height, [x], title, subtitle, tag=tag)
 
 
 def _open_triangle_terminal(dwg, x: float, y: float, size: float = 13.0) -> None:
