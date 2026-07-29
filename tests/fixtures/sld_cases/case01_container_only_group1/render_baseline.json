@@ -4,12 +4,12 @@
     "engineering_v2_connector_count": 24,
     "engineering_v2_edge_count": 24,
     "engineering_v2_graph_hash": "3c951d2165efd26bf152d27bd0a3c42eee87a52cedcbb52f616d05da7ac1ce62",
-    "engineering_v2_layout_hash": "6eef2e49ee634820cd72cfb702fbad79a4df549e628fc5c3bd28d626ba999d3c",
+    "engineering_v2_layout_hash": "1cecec7f0857b60bca1f4afd2aeb0ac59163008514e3403e32a0e883001880ff",
     "engineering_v2_layout_issue_count": 0,
     "engineering_v2_layout_warning_count": 4,
     "engineering_v2_node_count": 25,
     "engineering_v2_png_height": 1160,
-    "engineering_v2_png_width": 1518,
+    "engineering_v2_png_width": 1558,
     "engineering_v2_template": "professional_electrical_reference_v1",
     "group_index": 1,
     "input_hash": "7daead7449c06b67612f640bf2bfb87836c50677efee0391cd47c6b16592d6d7",
@@ -114,7 +114,7 @@
       "tbh": 3,
       "tbtitle": 1,
       "thin": 124,
-      "title": 5,
+      "title": 4,
       "wire": 51
     },
     "element_counts": {
@@ -126,14 +126,14 @@
       "rect": 43,
       "style": 1,
       "svg": 1,
-      "text": 113
+      "text": 112
     },
     "geometry": [
       {
         "class": "bg",
         "height": 1160.0,
         "tag": "rect",
-        "width": 1518.0,
+        "width": 1558.0,
         "x": 0.0,
         "y": 0.0
       },
@@ -141,7 +141,7 @@
         "class": "outline",
         "height": 1120.0,
         "tag": "rect",
-        "width": 1478.0,
+        "width": 1518.0,
         "x": 20.0,
         "y": 20.0
       },
@@ -1352,14 +1352,6 @@
         "y": 730.0
       },
       {
-        "class": "title",
-        "tag": "text",
-        "text": "BATTERY STORAGE BANK",
-        "text-anchor": "middle",
-        "x": 1004.0,
-        "y": 906.0
-      },
-      {
         "class": "dot",
         "cx": 614.0,
         "cy": 670.0,
@@ -1725,8 +1717,8 @@
         "class": "tag",
         "tag": "text",
         "text": "BESS-01",
-        "text-anchor": "start",
-        "x": 678.0,
+        "text-anchor": "end",
+        "x": 667.0,
         "y": 930.0
       },
       {
@@ -2095,8 +2087,8 @@
         "class": "tag",
         "tag": "text",
         "text": "BESS-02",
-        "text-anchor": "start",
-        "x": 938.0,
+        "text-anchor": "end",
+        "x": 927.0,
         "y": 930.0
       },
       {
@@ -2465,8 +2457,8 @@
         "class": "tag",
         "tag": "text",
         "text": "BESS-03",
-        "text-anchor": "start",
-        "x": 1198.0,
+        "text-anchor": "end",
+        "x": 1187.0,
         "y": 930.0
       },
       {
@@ -2835,39 +2827,39 @@
         "class": "tag",
         "tag": "text",
         "text": "BESS-04",
-        "text-anchor": "start",
-        "x": 1458.0,
+        "text-anchor": "end",
+        "x": 1447.0,
         "y": 930.0
       },
       {
         "class": "outline",
         "height": 100.0,
         "tag": "rect",
-        "width": 1438.0,
+        "width": 1478.0,
         "x": 40.0,
         "y": 1040.0
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 845.28,
-        "x2": 845.28,
+        "x1": 867.68,
+        "x2": 867.68,
         "y1": 1040.0,
         "y2": 1140.0
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1075.36,
-        "x2": 1075.36,
+        "x1": 1104.16,
+        "x2": 1104.16,
         "y1": 1040.0,
         "y2": 1140.0
       },
       {
         "class": "thin",
         "tag": "line",
-        "x1": 1219.16,
-        "x2": 1219.16,
+        "x1": 1251.96,
+        "x2": 1251.96,
         "y1": 1040.0,
         "y2": 1140.0
       },
@@ -2875,7 +2867,7 @@
         "class": "thin",
         "tag": "line",
         "x1": 40.0,
-        "x2": 1478.0,
+        "x2": 1518.0,
         "y1": 1090.0,
         "y2": 1090.0
       },
@@ -2890,7 +2882,7 @@
       {
         "class": "tb",
         "tag": "text",
-        "text": "33kV MV Grid Connection | 33.0/0.690 kV, 6.0 MVA, Dyn11yn11, Uk=7.0%, 3-winding transformer (1 MV primary + 2 independent LV secondaries), ONAN",
+        "text": "33kV MV Grid Connection | 33.0/0.690 kV, 6.0 MVA, Dyn11yn11, Uk=7.0%, ONAN",
         "text-anchor": "start",
         "x": 50.0,
         "y": 1105.0
@@ -2900,7 +2892,7 @@
         "tag": "text",
         "text": "DRG NO.",
         "text-anchor": "start",
-        "x": 853.28,
+        "x": 875.68,
         "y": 1054.0
       },
       {
@@ -2908,7 +2900,7 @@
         "tag": "text",
         "text": "SLD-BESS-001",
         "text-anchor": "start",
-        "x": 853.28,
+        "x": 875.68,
         "y": 1084.0
       },
       {
@@ -2916,7 +2908,7 @@
         "tag": "text",
         "text": "DATE",
         "text-anchor": "start",
-        "x": 853.28,
+        "x": 875.68,
         "y": 1104.0
       },
       {
@@ -2924,7 +2916,7 @@
         "tag": "text",
         "text": "<DATE>",
         "text-anchor": "start",
-        "x": 853.28,
+        "x": 875.68,
         "y": 1132.0
       },
       {
@@ -2932,7 +2924,7 @@
         "tag": "text",
         "text": "REV",
         "text-anchor": "start",
-        "x": 1083.36,
+        "x": 1112.16,
         "y": 1054.0
       },
       {
@@ -2940,7 +2932,7 @@
         "tag": "text",
         "text": "A",
         "text-anchor": "start",
-        "x": 1083.36,
+        "x": 1112.16,
         "y": 1084.0
       },
       {
@@ -2948,7 +2940,7 @@
         "tag": "text",
         "text": "SCALE",
         "text-anchor": "start",
-        "x": 1227.16,
+        "x": 1259.96,
         "y": 1054.0
       },
       {
@@ -2956,7 +2948,7 @@
         "tag": "text",
         "text": "NTS",
         "text-anchor": "start",
-        "x": 1227.16,
+        "x": 1259.96,
         "y": 1084.0
       },
       {
@@ -2964,7 +2956,7 @@
         "tag": "text",
         "text": "UNITS: mm",
         "text-anchor": "start",
-        "x": 1227.16,
+        "x": 1259.96,
         "y": 1104.0
       },
       {
@@ -2972,14 +2964,14 @@
         "tag": "text",
         "text": "ANSI / IEEE 315",
         "text-anchor": "start",
-        "x": 1227.16,
+        "x": 1259.96,
         "y": 1132.0
       }
     ],
     "svg": {
       "height": "1160px",
-      "viewBox": "0 0 1518 1160",
-      "width": "1518px"
+      "viewBox": "0 0 1558 1160",
+      "width": "1558px"
     },
     "text_nodes": [
       "svg { font-family: Arial, 'DejaVu Sans', sans-serif; font-size: 11px; } .bg { fill: #ffffff; } .wire { stroke: #1a1a1a; stroke-width: 1.8; fill: none; stroke-linecap: square; stroke-linejoin: miter; } .thin { stroke: #1a1a1a; stroke-width: 1.2; fill: none; stroke-linecap: round; stroke-linejoin: round; } .busbar { stroke: #1a1a1a; stroke-width: 3.2; fill: none; stroke-linecap: square; } .outline { stroke: #1a1a1a; stroke-width: 1.6; fill: none; } .sfill { stroke: #1a1a1a; stroke-width: 1.6; fill: #ffffff; } .text { fill: #1a1a1a; } .title { fill: #1a1a1a; font-size: 12px; font-weight: bold; } .label { fill: #1a1a1a; font-size: 10px; } .tag { fill: #1a1a1a; font-size: 9px; font-style: italic; } .notes { fill: #1a1a1a; font-size: 10.5px; font-family: Consolas, 'Courier New', monospace; } .ntitle { fill: #1a1a1a; font-size: 11px; font-weight: bold; } .tb { fill: #1a1a1a; font-size: 10px; } .tbh { fill: #1a1a1a; font-size: 11px; font-weight: bold; } .tbtitle { fill: #1a1a1a; font-size: 13px; font-weight: bold; } .dot { fill: #1a1a1a; stroke: none; } .warn { stroke: #b00020; stroke-width: 1.8; fill: none; stroke-dasharray: 6 4; } .warntx { fill: #b00020; font-size: 10px; font-weight: bold; } .acblock { stroke: #1a56b8; stroke-width: 2.0; fill: none; stroke-dasharray: 10 5; } .acblocktx { fill: #1a56b8; font-size: 12px; font-weight: bold; }",
@@ -3039,7 +3031,6 @@
       "Secondary LV-B \u2022 Feeders F3\u2013F4",
       "LV-B BUS / 690 V",
       "NO LV BUS TIE",
-      "BATTERY STORAGE BANK",
       "DS-F01",
       "52-F01",
       "PCS-1",
@@ -3085,7 +3076,7 @@
       "0.836 MWh",
       "BESS-04",
       "SINGLE LINE DIAGRAM \u2014 BATTERY ENERGY STORAGE SYSTEM (BESS)",
-      "33kV MV Grid Connection | 33.0/0.690 kV, 6.0 MVA, Dyn11yn11, Uk=7.0%, 3-winding transformer (1 MV primary + 2 independent LV secondaries), ONAN",
+      "33kV MV Grid Connection | 33.0/0.690 kV, 6.0 MVA, Dyn11yn11, Uk=7.0%, ONAN",
       "DRG NO.",
       "SLD-BESS-001",
       "DATE",

@@ -246,9 +246,15 @@ def build_professional_sld_sheet(plan: SldV2LayoutPlan) -> ProfessionalSldSheet:
     tb_w = float(plan.width) - 80.0  # leave margins
     tb_x = 40.0
     mv_sys = compact_voltage_label(rows.get("MV System", ""))
-    tx_mva = rows.get("Transformer", "")
+    # Concise transformer descriptor for the title block: keep the ratings/vector
+    # group but drop the verbose winding sentence (already in the equipment list),
+    # so the subtitle does not overrun the description column on a compact sheet.
+    _concise_tx = ", ".join(
+        line for line in transformer_lines
+        if "winding:" not in line and "Secondaries" not in line
+    ) or rows.get("Transformer", "")
     drawing_title = "SINGLE LINE DIAGRAM — BATTERY ENERGY STORAGE SYSTEM (BESS)"
-    drawing_subtitle = f"{mv_sys} MV Grid Connection  |  {tx_mva}" if mv_sys else tx_mva
+    drawing_subtitle = f"{mv_sys} MV Grid Connection  |  {_concise_tx}" if mv_sys else _concise_tx
 
     title_block = ProfessionalTitleBlock(
         x=tb_x,

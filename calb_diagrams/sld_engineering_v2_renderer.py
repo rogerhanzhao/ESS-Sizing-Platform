@@ -499,21 +499,23 @@ def _shared_bess_container(dwg, cx: float, y: float, width: float, height: float
     lx = cx - width / 2.0
     _rect(dwg, lx, y, width, height, "sfill")
     ordered = sorted(group_xs)
-    if len(ordered) > 1:
-        min_gap = min(ordered[i + 1] - ordered[i] for i in range(len(ordered) - 1))
+    # Pull the battery groups toward the container centre so they sit inside the
+    # box rather than hugging the side walls.
+    inset = [cx + (gx - cx) * 0.58 for gx in ordered]
+    if len(inset) > 1:
+        min_gap = min(inset[i + 1] - inset[i] for i in range(len(inset) - 1))
     else:
-        min_gap = width
-    sym_w = max(38.0, min(min_gap * 0.66, 96.0))
-    for gx in ordered:
+        min_gap = width * 0.6
+    sym_w = max(36.0, min(min_gap * 0.72, 92.0))
+    for gx in inset:
         _battery_symbol(dwg, gx, y, sym_w, height)
-    for i in range(len(ordered) - 1):
-        mid = (ordered[i] + ordered[i + 1]) / 2.0
-        _line(dwg, (mid, y + 6.0), (mid, y + height - 6.0), "thin")
     _text(dwg, title, cx, y + height + 12.0, "label", anchor="middle")
     if subtitle:
         _text(dwg, subtitle, cx, y + height + 24.0, "label", anchor="middle")
     if tag:
-        _text(dwg, tag, cx + width / 2.0 + 6.0, y + 12.0, "tag", anchor="start")
+        # Bottom-right, below the battery groups (the top edge is occupied by the
+        # per-circuit glyphs).
+        _text(dwg, tag, cx + width / 2.0 - 5.0, y + height - 6.0, "tag", anchor="end")
 
 
 def _bess_block(dwg, x: float, y: float, width: float, height: float,
@@ -537,7 +539,7 @@ def _bess_block(dwg, x: float, y: float, width: float, height: float,
     if subtitle:
         _text(dwg, subtitle, x, y + height + 24.0, "label", anchor="middle")
     if tag:
-        _text(dwg, tag, x + width / 2.0 + 6.0, y + 12.0, "tag", anchor="start")
+        _text(dwg, tag, x + width / 2.0 - 5.0, y + 12.0, "tag", anchor="end")
 
 
 def _open_triangle_terminal(dwg, x: float, y: float, size: float = 13.0) -> None:
@@ -943,10 +945,10 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
             _text(dwg, "NO LV BUS TIE", tie_x, tie_y, "tag", anchor="middle",
                   transform=f"rotate(-90 {tie_x:.1f} {tie_y:.1f})")
 
-    # Battery bank heading — centred in the clear gap between fuse bottom and BESS box top
-    _text(dwg, "BATTERY STORAGE BANK",
-          (lvdc.bus_x1 + lvdc.bus_x2) / 2.0,
-          lvdc.block_y - 12.0, "title", anchor="middle")
+    # (No floating "BATTERY STORAGE BANK" heading: the battery band is fully
+    # occupied by vertical feeder drops at every feeder_x, so a centred title
+    # unavoidably lands on a conductor. The section is already identified by the
+    # equipment list and each block's "DC Block #N / BESS-0N" label.)
 
     dc_bottom_by_feeder: dict[int, float] = {}
     pcs_x_by_feeder: dict[int, float] = {}
@@ -1096,6 +1098,16 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
 # Title block (ANSI Y14.1 style, no company/logo)
 # ---------------------------------------------------------------------------
 
+def _clip_text(text: str, avail_px: float, char_px: float) -> str:
+    """Truncate *text* with an ellipsis so its estimated width fits *avail_px*."""
+    if avail_px <= 0 or not text:
+        return text
+    max_chars = int(avail_px / max(1.0, char_px))
+    if len(text) <= max_chars:
+        return text
+    return text[: max(1, max_chars - 1)].rstrip() + "…"
+
+
 def _draw_title_block(dwg, tb: ProfessionalTitleBlock, plan: SldV2LayoutPlan) -> None:
     x, y, w, h = tb.x, tb.y, tb.width, tb.height
 
@@ -1111,9 +1123,12 @@ def _draw_title_block(dwg, tb: ProfessionalTitleBlock, plan: SldV2LayoutPlan) ->
     _line(dwg, (x, mid_y), (x + w, mid_y), "thin")
 
     # --- Main description column (left) ---
-    _text(dwg, tb.drawing_title,
+    # Defensive clip so neither line can overrun into the DRG-NO column on a
+    # compact sheet (title is 13 px bold, subtitle 10 px).
+    desc_avail = tb.desc_col_right - (x + 10.0) - 10.0
+    _text(dwg, _clip_text(tb.drawing_title, desc_avail, 8.0),
           x + 10.0, y + h * 0.30, "tbtitle")
-    _text(dwg, tb.drawing_subtitle,
+    _text(dwg, _clip_text(tb.drawing_subtitle, desc_avail, 5.9),
           x + 10.0, y + h * 0.65, "tb")
 
     # --- DRG No column ---

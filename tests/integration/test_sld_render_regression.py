@@ -50,9 +50,8 @@ def test_sld_render_regression():
     assert "Ring In" in text_nodes
     assert "Transformer Feeder" in text_nodes
     assert "Ring Out" in text_nodes
-    assert "BATTERY STORAGE BANK" in text_nodes
     assert "INV-01" in text_nodes
-    assert "BESS-01" in text_nodes
+    assert "BESS-01" in text_nodes  # battery bank identified by per-block tags
     assert "T-01" in text_nodes
     assert any("SINGLE LINE DIAGRAM" in t for t in text_nodes)
     assert "TBD" not in text_nodes

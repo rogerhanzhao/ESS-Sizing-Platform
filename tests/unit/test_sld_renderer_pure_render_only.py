@@ -47,7 +47,7 @@ def test_renderer_only_consumes_topology_contract(sample_excel_path, tmp_path):
     assert warning is None
     svg_text = svg_path.read_text(encoding="utf-8")
     assert "PCS &amp; MVT SKID (AC BLOCK)" in svg_text
-    assert "BATTERY STORAGE BANK" in svg_text
+    assert "BESS-01" in svg_text  # battery bank identified by per-block tags
     assert "RMU-01  /  MV Switchgear" in svg_text
     assert "Transformer Feeder" in svg_text
     assert "F-01" in svg_text

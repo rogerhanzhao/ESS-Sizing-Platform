@@ -331,11 +331,13 @@ def build_sld_engineering_v2_layout_plan(
     tx_bay_x = rmu_x + bay_w
     ring_out_x = rmu_x + bay_w * 2.0
 
-    # Size the canvas to the content (RMU/ring-out envelope or the feeder field).
+    # Size the canvas to the content. The AC-BLOCK boundary drawn by the renderer
+    # reaches max(rightmost feeder, ring-out centre) + ~126 (bus pad 90 + panel 20
+    # + boundary 16), so the canvas must clear that or the dashed box gets clipped.
     ring_out_center = ring_out_x + bay_w / 2.0
     max_feeder_x = max(feeder_center_by_index.values(), default=tx_center_x)
-    content_right = max(ring_out_center + 126.0, max_feeder_x + 80.0)
-    width = int(round(content_right + 44.0))
+    content_right = max(ring_out_center, max_feeder_x) + 140.0
+    width = int(round(content_right + 24.0))
 
     ac_left = 470.0
     ac_span = width - ac_left - 12.0
