@@ -98,6 +98,61 @@ def _slot_centers(x1: float, x2: float, count: int) -> list[float]:
     return [x1 + index * step for index in range(count)]
 
 
+def _feeder_groups(graph, feeder_count: int) -> list[list[int]]:
+    """Group feeders that share one DC Block into a tight cluster.
+
+    Feeders wired to the same shared DC Block are drawn as an adjacent pair/cluster
+    (so the shared container sits compactly beneath them); every other feeder is
+    its own singleton group. Order is preserved left-to-right by first feeder.
+    """
+    assigned: set[int] = set()
+    groups: list[list[int]] = []
+    for node in _nodes_by_type(graph, "dc_block"):
+        span = sorted(
+            int(feeder) for feeder in (node.attributes.get("feeder_span") or [])
+            if 1 <= int(feeder) <= feeder_count
+        )
+        if len(span) > 1 and not (set(span) & assigned):
+            groups.append(span)
+            assigned.update(span)
+    for feeder_index in range(1, feeder_count + 1):
+        if feeder_index not in assigned:
+            groups.append([feeder_index])
+            assigned.add(feeder_index)
+    groups.sort(key=lambda group: group[0])
+    return groups
+
+
+def _grouped_feeder_centers(
+    groups: list[list[int]],
+    center_x: float,
+    available_width: float,
+    *,
+    intra_pitch: float = 150.0,
+    inter_pitch: float = 260.0,
+) -> dict[int, float]:
+    """Lay feeders out as tight clusters: ``intra_pitch`` within a group,
+    ``inter_pitch`` between groups, the whole field centred on ``center_x`` and
+    scaled down to fit ``available_width`` (so a many-feeder 1:1 station never
+    overflows the sheet)."""
+    positions: dict[int, float] = {}
+    cursor = 0.0
+    for group_index, group in enumerate(groups):
+        if group_index > 0:
+            cursor += inter_pitch
+        for member_index, feeder_index in enumerate(group):
+            if member_index > 0:
+                cursor += intra_pitch
+            positions[feeder_index] = cursor
+    raw_total = cursor
+    if raw_total > available_width and raw_total > 0:
+        scale = available_width / raw_total
+        positions = {feeder: value * scale for feeder, value in positions.items()}
+        raw_total = available_width
+    offset = center_x - raw_total / 2.0
+    return {feeder: value + offset for feeder, value in positions.items()}
+
+
 def _local_dc_block_position(
     center_x: float,
     local_block_index: int,
@@ -248,8 +303,17 @@ def build_sld_engineering_v2_layout_plan(
 
     summary = graph.summary
     feeder_count = summary.feeder_count
-    feeder_centers = _slot_centers(ac_section.x + 220.0, ac_section.x + ac_section.width - 220.0, feeder_count)
-    feeder_center_by_index = {index: center for index, center in enumerate(feeder_centers, start=1)}
+    # Compact feeder field: cluster feeders that share a DC Block, centre the whole
+    # field under the transformer, and scale to fit — instead of stretching every
+    # feeder evenly across the full sheet width (which sprawled the PCS/DC rows and
+    # forced either a tiny dumbbell or an over-wide shared DC container).
+    feeder_field_center = ac_section.x + 312.0 + 620.0 / 2.0  # = transformer centre
+    feeder_available_width = ac_section.width - 440.0
+    feeder_center_by_index = _grouped_feeder_centers(
+        _feeder_groups(graph, feeder_count),
+        feeder_field_center,
+        feeder_available_width,
+    )
 
     ring_in_terminal = _node_by_type(graph, "mv_ring_in_terminal")
     ring_out_terminal = _node_by_type(graph, "mv_ring_out_terminal")

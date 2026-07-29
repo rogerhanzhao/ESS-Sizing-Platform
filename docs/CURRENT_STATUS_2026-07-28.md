@@ -57,6 +57,15 @@ rationale and the module map. Read that doc's module map before scanning code.
   in the existing watermark style. Plus a Workspace-Setup button-wrap fix.
 
 ### 2c. Landed directly on ops (2026-07-29)
+- **Compact SLD feeder layout** — feeders were previously stretched evenly across
+  the whole sheet width (sprawling the PCS/DC rows). They are now placed as tight
+  clusters: feeders sharing one DC Block form an adjacent pair, the whole field is
+  centred under the transformer and scaled to fit (`_feeder_groups` +
+  `_grouped_feeder_centers`). The two LV secondary sections stay clearly separated,
+  each PCS pair sits over a right-sized shared container with straight vertical
+  drops, and a many-feeder 1:1 station still scales to fit. Geometry only — the
+  electrical topology, feeder spans, ratings and AC-sizing are unchanged; the
+  render regression baseline was regenerated.
 - **Shared DC Block drawing redesigned** — when several PCS share one DC Block,
   the renderer no longer converges the feeders left/right onto a small centred
   block (which read as one block fed from both sides). It now draws ONE wide
