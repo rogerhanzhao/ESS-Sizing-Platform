@@ -56,6 +56,26 @@ rationale and the module map. Read that doc's module map before scanning code.
   site §9) is stamped `DRAFT / OVERRIDE - NOT FOR CONSTRUCTION` unconditionally,
   in the existing watermark style. Plus a Workspace-Setup button-wrap fix.
 
+### 2c. Landed directly on ops (2026-07-29)
+- **Report watermark fail-closed** — `_stamp_not_for_construction` no longer
+  returns the original image on error; it substitutes a visibly-marked red
+  placeholder (`_watermark_failure_placeholder`) or raises `WatermarkError` to
+  abort export (never an unmarked drawing). All §7/§8/§9 captions carry
+  NOT FOR CONSTRUCTION; a full-report regression
+  (`tests/test_report_watermark_fullreport.py`) unpacks the DOCX for the
+  non-governed, governed-bilateral and governed-mixed paths and asserts every
+  concept figure is watermarked.
+- **Transformer winding drawn for unconfirmed vector group (owner decision)** —
+  the engineering_v2 renderer no longer draws the red "NOT A DRAWING" placeholder
+  box. An unconfirmed vector group is now drawn with the real interlocked-circle
+  symbol using the standard default (`Dyn11` / `Dyn11yn11`, via
+  `_default_vector_group`) and annotated `assumed (standard default - to be
+  confirmed)`. The neutral point is no longer drawn as a lead, and no earthing is
+  fabricated. The **formal-readiness gate is unchanged** — an unconfirmed or
+  assumed-default group still marks the sheet non-official (CONCEPT watermark),
+  so the drawing is readable without over-claiming. Regression baseline
+  regenerated (two neutral-leg stubs removed).
+
 Detailed rationale: `CURRENT_STATUS_2026-07-12.md` §2.7 (SLD head-fleet), §2.8
 (report head-representative), §2.9 (Codex round 1), §2.10 (dropdown + vector
 gate + placeholder), §2.11 (sheet redesign), §2.12 (NOT-FOR-CONSTRUCTION rule).

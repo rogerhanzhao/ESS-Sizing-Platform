@@ -198,12 +198,13 @@ def _wye_mark(dwg, x: float, y: float, size: float = 14.0, *, id_prefix: str | N
     ``y``/``z`` declare a winding connection and ``yn``/``zn`` additionally
     declare an available neutral terminal.  Neither declaration says that the
     neutral terminal is earthed.  Grounding is a separate project protection
-    design and must not be fabricated from a transformer vector group.
+    design and must not be fabricated from a transformer vector group. The
+    neutral point is not drawn as a lead either (owner decision, 2026-07-29):
+    only the two winding arms of the Y are shown.
     """
     arm = size * 0.60
     _line(dwg, (x, y), (x - arm * 0.87, y - arm * 0.50), "thin", **({"id": f"{id_prefix}-wye-left"} if id_prefix else {}))
     _line(dwg, (x, y), (x + arm * 0.87, y - arm * 0.50), "thin", **({"id": f"{id_prefix}-wye-right"} if id_prefix else {}))
-    _line(dwg, (x, y), (x, y + arm), "thin", **({"id": f"{id_prefix}-neutral-leg"} if id_prefix else {}))
 
 
 def _parse_vector_group(vector_group: str, secondary_count: int) -> tuple[str, list[str]]:
@@ -354,40 +355,18 @@ def _transformer_vector_group_confirmed(vector_group: str, winding_count: int) -
     return bool(hv_token) and len(lv_tokens) == winding_count
 
 
-def _transformer_unconfirmed_placeholder(
-    dwg, x: float, y: float, winding_count: int, text_lines: tuple[str, ...],
-) -> tuple[float, list[tuple[float, float]]]:
-    """Explicit placeholder for an unconfirmed transformer vector group.
+def _default_vector_group(winding_count: int) -> str:
+    """Standard MV step-up default used when the OEM value is unconfirmed.
 
-    A transformer whose vector group is not a valid IEC token set (e.g. TBD)
-    must NOT be drawn as winding circles annotated ``TBD`` — that reads as a real
-    engineering drawing. Draw a dashed box stating the drawing is unavailable
-    until the vector group is confirmed, and still return the HV connection y and
-    one LV terminal per winding so surrounding conductors resolve.
+    ``Dyn11`` for a single LV secondary; ``Dyn11yn11`` for a split (two-LV)
+    secondary. Every SLD this tool emits is a watermarked concept document, so an
+    unconfirmed transformer is drawn with the industry-standard default and
+    annotated as assumed rather than suppressed behind a placeholder box
+    (owner decision, 2026-07-29).
     """
-    box_h = 96.0
-    half_w = 46.0 if winding_count > 1 else 34.0
-    top, bot = y, y + box_h
-    dwg.add(dwg.rect(insert=(x - half_w, top), size=(2 * half_w, box_h), class_="warn"))
-    _text(dwg, "TRANSFORMER", x, top + 24.0, "warntx", anchor="middle")
-    _text(dwg, "VECTOR GROUP", x, top + 40.0, "warntx", anchor="middle")
-    _text(dwg, "UNCONFIRMED", x, top + 56.0, "warntx", anchor="middle")
-    _text(dwg, "NOT A DRAWING", x, top + 76.0, "warntx", anchor="middle")
-    for idx, line in enumerate(text_lines):
-        _text(dwg, line, x + half_w + 12.0, top + 8.0 + idx * 13.0, "label")
-    hint = ("confirm Dyn11yn11 (two LV secondaries)" if winding_count > 1 else "confirm Dyn11")
-    _text(dwg, hint, x + half_w + 12.0, top + 8.0 + max(1, len(text_lines)) * 13.0, "tag")
-    terminals: list[tuple[float, float]] = []
-    for winding_index in range(1, winding_count + 1):
-        if winding_count == 1:
-            cx = x
-        else:
-            sign = -1.0 if winding_index == 1 else 1.0
-            cx = x + sign * (half_w * 0.5)
-        terminals.append((cx, bot))
-        if winding_count > 1:
-            _text(dwg, f"LV-{chr(64 + winding_index)}", cx, bot + 12.0, "tag", anchor="middle")
-    return top, terminals
+    if winding_count <= 1:
+        return "Dyn11"
+    return "Dyn11" + "yn11" * (winding_count - 1)
 
 
 def _pcs_by_lv_winding(plan: SldV2LayoutPlan) -> dict[int, list[SldV2LayoutBox]]:
@@ -748,27 +727,34 @@ def _draw_mv_rmu_and_transformer(
     # Filter standalone vector-group token from text lines (already drawn as winding marks)
     raw_lines = transformer.text_lines[1:] if transformer else ()
     filtered_lines = tuple(ln for ln in raw_lines if ln.strip() != (vg_token or "TBD"))
-    if not _transformer_vector_group_confirmed(vg_token, winding_count):
-        # Unconfirmed vector group: draw an explicit placeholder instead of
-        # winding circles filled with TBD, so the sheet cannot be mistaken for a
-        # real drawing. The formal-readiness gate independently keeps it
-        # non-official.
-        tx_top, tx_lv_terminals = _transformer_unconfirmed_placeholder(
-            dwg, mv.center_x, mv.transformer_y, winding_count, filtered_lines,
+    # Concept SLD rule (owner decision, 2026-07-29): an unconfirmed vector group
+    # no longer suppresses the winding symbol. Draw the real interlocked-circle
+    # transformer with the standard default (Dyn11 / Dyn11yn11) and annotate the
+    # nameplate as an assumed default. The formal-readiness gate independently
+    # keeps the sheet a watermarked concept until a real vector group is
+    # confirmed, so the drawing stays readable without over-claiming.
+    if _transformer_vector_group_confirmed(vg_token, winding_count):
+        vg_effective = vg_token
+        tx_lines = filtered_lines
+    else:
+        vg_effective = _default_vector_group(winding_count)
+        tx_lines = filtered_lines + (
+            f"Vector group {vg_effective} assumed (standard default - to be confirmed)",
         )
-    elif winding_count > 1:
+
+    if winding_count > 1:
         tx_top, tx_lv_terminals = _transformer_split_secondary(
             dwg,
             mv.center_x,
             mv.transformer_y,
-            vg_token or "TBD",
-            filtered_lines,
+            vg_effective,
+            tx_lines,
             winding_count,
         )
     else:
         tx_top, tx_bot = _transformer_2w(
             dwg, mv.center_x, mv.transformer_y,
-            vg_token or "TBD", filtered_lines,
+            vg_effective, tx_lines,
         )
         tx_lv_terminals = [(mv.center_x, tx_bot)]
     _text(dwg, "T-01", mv.center_x - 62.0, mv.transformer_y + 18.0, "tag", anchor="end")

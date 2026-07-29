@@ -195,7 +195,9 @@ def test_three_winding_product_dy_marks_both_lvs_as_ungrounded_wye(sample_excel_
         prefix = f'tx-lv-winding-{winding}'
         assert f'id="{prefix}-wye-left"' in svg_text
         assert f'id="{prefix}-wye-right"' in svg_text
-        assert f'id="{prefix}-neutral-leg"' in svg_text
+        # Neutral point is no longer drawn as a lead (owner decision 2026-07-29):
+        # only the two winding arms of the Y are shown, never an earth bar.
+        assert f'id="{prefix}-neutral-leg"' not in svg_text
         assert f'id="{prefix}-earth-bar-1"' not in svg_text
         assert f'id="{prefix}-earth-bar-2"' not in svg_text
         assert f'id="{prefix}-earth-bar-3"' not in svg_text
@@ -218,7 +220,8 @@ def test_two_winding_dyn_marks_the_single_lv_as_plain_wye(sample_excel_path, tmp
     prefix = "tx-lv-winding-1"
     assert f'id="{prefix}-wye-left"' in svg_text
     assert f'id="{prefix}-wye-right"' in svg_text
-    assert f'id="{prefix}-neutral-leg"' in svg_text
+    # Neutral point is not drawn as a lead (owner decision 2026-07-29).
+    assert f'id="{prefix}-neutral-leg"' not in svg_text
     assert f'id="{prefix}-earth-bar-1"' not in svg_text
     assert f'id="{prefix}-earth-bar-2"' not in svg_text
     assert f'id="{prefix}-earth-bar-3"' not in svg_text
@@ -243,7 +246,8 @@ def test_all_wye_family_tokens_never_infer_an_earth_connection(token, tmp_path):
 
     assert 'id="test-winding-wye-left"' in svg_text
     assert 'id="test-winding-wye-right"' in svg_text
-    assert 'id="test-winding-neutral-leg"' in svg_text
+    # Neutral point is not drawn as a lead (owner decision 2026-07-29).
+    assert 'id="test-winding-neutral-leg"' not in svg_text
     assert 'id="test-winding-earth-bar-1"' not in svg_text
     assert 'id="test-winding-earth-bar-2"' not in svg_text
     assert 'id="test-winding-earth-bar-3"' not in svg_text
@@ -346,19 +350,27 @@ def _build_plan_unconfirmed(sample_excel_path):
     return build_sld_engineering_v2_layout_plan(graph)
 
 
-def test_unconfirmed_vector_group_draws_placeholder_not_tbd_windings(sample_excel_path, tmp_path):
+def test_unconfirmed_vector_group_draws_default_windings_annotated_assumed(sample_excel_path, tmp_path):
+    """Owner decision 2026-07-29: an unconfirmed vector group is drawn with the
+    real winding symbol using the standard default (Dyn11 / Dyn11yn11) and
+    annotated as assumed — no red 'NOT A DRAWING' placeholder box. The
+    formal-readiness gate independently keeps the sheet a watermarked concept."""
     plan = _build_plan_unconfirmed(sample_excel_path)
     svg_path = tmp_path / "sld_tbd.svg"
     render_sld_engineering_v2_svg(plan, svg_path)
     svg = svg_path.read_text(encoding="utf-8")
-    # Explicit placeholder text instead of TBD-filled winding circles.
-    assert "VECTOR GROUP" in svg
-    assert "UNCONFIRMED" in svg
-    assert "NOT A DRAWING" in svg
-    # The transformer winding circles must NOT be drawn for an unconfirmed group.
-    assert 'id="tx-hv-winding"' not in svg
-    assert 'id="tx-lv-winding-1"' not in svg
-    # And no earth/ground bar is fabricated onto the (absent) LV windings.
+    # The old red placeholder box is gone.
+    assert "UNCONFIRMED" not in svg
+    assert "NOT A DRAWING" not in svg
+    # Real winding circles are drawn with a default vector group…
+    assert 'id="tx-hv-winding"' in svg
+    assert 'id="tx-lv-winding-1"' in svg
+    # …and the drawing honestly states the group is an assumed default.
+    assert "assumed (standard default" in svg
+    assert "Dyn11" in svg
+    # No neutral lead or earth bar is fabricated onto the LV windings.
+    assert 'id="tx-lv-winding-1-neutral-leg"' not in svg
+    assert 'id="tx-lv-winding-1-earth-bar-1"' not in svg
 
 
 def _build_two_winding_dyn11(sample_excel_path):
