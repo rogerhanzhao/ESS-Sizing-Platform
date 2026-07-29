@@ -113,14 +113,14 @@
       "tb": 8,
       "tbh": 3,
       "tbtitle": 1,
-      "thin": 122,
+      "thin": 124,
       "title": 5,
       "wire": 51
     },
     "element_counts": {
       "circle": 26,
       "defs": 1,
-      "line": 170,
+      "line": 172,
       "polygon": 2,
       "polyline": 6,
       "rect": 43,
@@ -1105,6 +1105,14 @@
         "y2": 539.48
       },
       {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1087.8,
+        "x2": 1087.8,
+        "y1": 544.16,
+        "y2": 553.52
+      },
+      {
         "class": "tag",
         "tag": "text",
         "text": "LV-A",
@@ -1134,6 +1142,14 @@
         "x2": 1154.3432,
         "y1": 544.16,
         "y2": 539.48
+      },
+      {
+        "class": "thin",
+        "tag": "line",
+        "x1": 1146.2,
+        "x2": 1146.2,
+        "y1": 544.16,
+        "y2": 553.52
       },
       {
         "class": "tag",

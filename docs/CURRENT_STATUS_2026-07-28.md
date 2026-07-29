@@ -70,11 +70,12 @@ rationale and the module map. Read that doc's module map before scanning code.
   box. An unconfirmed vector group is now drawn with the real interlocked-circle
   symbol using the standard default (`Dyn11` / `Dyn11yn11`, via
   `_default_vector_group`) and annotated `assumed (standard default - to be
-  confirmed)`. The neutral point is no longer drawn as a lead, and no earthing is
-  fabricated. The **formal-readiness gate is unchanged** — an unconfirmed or
-  assumed-default group still marks the sheet non-official (CONCEPT watermark),
-  so the drawing is readable without over-claiming. Regression baseline
-  regenerated (two neutral-leg stubs removed).
+  confirmed)`. The wye (star) symbol keeps all three arms — the lower
+  star-point / neutral arm is intrinsic to the symbol, not grounding — and no ANSI
+  earth symbol is ever fabricated from a vector group. The **formal-readiness gate
+  is unchanged** — an unconfirmed or assumed-default group still marks the sheet
+  non-official (CONCEPT watermark), so the drawing is readable without
+  over-claiming.
 
 Detailed rationale: `CURRENT_STATUS_2026-07-12.md` §2.7 (SLD head-fleet), §2.8
 (report head-representative), §2.9 (Codex round 1), §2.10 (dropdown + vector

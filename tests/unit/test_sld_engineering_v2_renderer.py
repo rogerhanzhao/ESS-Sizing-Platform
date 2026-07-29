@@ -195,9 +195,9 @@ def test_three_winding_product_dy_marks_both_lvs_as_ungrounded_wye(sample_excel_
         prefix = f'tx-lv-winding-{winding}'
         assert f'id="{prefix}-wye-left"' in svg_text
         assert f'id="{prefix}-wye-right"' in svg_text
-        # Neutral point is no longer drawn as a lead (owner decision 2026-07-29):
-        # only the two winding arms of the Y are shown, never an earth bar.
-        assert f'id="{prefix}-neutral-leg"' not in svg_text
+        # The wye is a three-arm star: all three arms (incl. the neutral/star-point
+        # arm) are drawn — but never an ANSI earth bar.
+        assert f'id="{prefix}-neutral-leg"' in svg_text
         assert f'id="{prefix}-earth-bar-1"' not in svg_text
         assert f'id="{prefix}-earth-bar-2"' not in svg_text
         assert f'id="{prefix}-earth-bar-3"' not in svg_text
@@ -220,8 +220,8 @@ def test_two_winding_dyn_marks_the_single_lv_as_plain_wye(sample_excel_path, tmp
     prefix = "tx-lv-winding-1"
     assert f'id="{prefix}-wye-left"' in svg_text
     assert f'id="{prefix}-wye-right"' in svg_text
-    # Neutral point is not drawn as a lead (owner decision 2026-07-29).
-    assert f'id="{prefix}-neutral-leg"' not in svg_text
+    # Three-arm wye star (neutral/star-point arm included), but no earth bar.
+    assert f'id="{prefix}-neutral-leg"' in svg_text
     assert f'id="{prefix}-earth-bar-1"' not in svg_text
     assert f'id="{prefix}-earth-bar-2"' not in svg_text
     assert f'id="{prefix}-earth-bar-3"' not in svg_text
@@ -246,8 +246,8 @@ def test_all_wye_family_tokens_never_infer_an_earth_connection(token, tmp_path):
 
     assert 'id="test-winding-wye-left"' in svg_text
     assert 'id="test-winding-wye-right"' in svg_text
-    # Neutral point is not drawn as a lead (owner decision 2026-07-29).
-    assert 'id="test-winding-neutral-leg"' not in svg_text
+    # Three-arm wye star (neutral/star-point arm included), but no earth bar.
+    assert 'id="test-winding-neutral-leg"' in svg_text
     assert 'id="test-winding-earth-bar-1"' not in svg_text
     assert 'id="test-winding-earth-bar-2"' not in svg_text
     assert 'id="test-winding-earth-bar-3"' not in svg_text
@@ -368,8 +368,9 @@ def test_unconfirmed_vector_group_draws_default_windings_annotated_assumed(sampl
     # …and the drawing honestly states the group is an assumed default.
     assert "assumed (standard default" in svg
     assert "Dyn11" in svg
-    # No neutral lead or earth bar is fabricated onto the LV windings.
-    assert 'id="tx-lv-winding-1-neutral-leg"' not in svg
+    # The wye is a full three-arm star; still no fabricated earth bar.
+    assert 'id="tx-lv-winding-1-wye-left"' in svg
+    assert 'id="tx-lv-winding-1-neutral-leg"' in svg
     assert 'id="tx-lv-winding-1-earth-bar-1"' not in svg
 
 

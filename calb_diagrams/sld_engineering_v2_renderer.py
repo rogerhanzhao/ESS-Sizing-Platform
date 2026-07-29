@@ -193,18 +193,20 @@ def _delta_mark(dwg, x: float, y: float, size: float = 14.0, *, id_prefix: str |
 
 
 def _wye_mark(dwg, x: float, y: float, size: float = 14.0, *, id_prefix: str | None = None) -> None:
-    """Wye winding mark — plain Y, never an inferred earth connection.
+    """Wye winding mark — a three-arm star (Y), never an inferred earth connection.
 
-    ``y``/``z`` declare a winding connection and ``yn``/``zn`` additionally
-    declare an available neutral terminal.  Neither declaration says that the
-    neutral terminal is earthed.  Grounding is a separate project protection
-    design and must not be fabricated from a transformer vector group. The
-    neutral point is not drawn as a lead either (owner decision, 2026-07-29):
-    only the two winding arms of the Y are shown.
+    A star/wye winding symbol is three conductors meeting at one star point, so
+    all THREE arms must be drawn (two upper arms plus the lower star-point / neutral
+    arm) — they are the symbol itself, not a removable stub. ``y``/``z`` declare a
+    winding connection and ``yn``/``zn`` additionally declare an available neutral
+    terminal. Neither declaration says the neutral terminal is earthed: grounding is
+    a separate protection design (the ANSI earth symbol) and is deliberately never
+    drawn here — only the plain three-arm Y.
     """
     arm = size * 0.60
     _line(dwg, (x, y), (x - arm * 0.87, y - arm * 0.50), "thin", **({"id": f"{id_prefix}-wye-left"} if id_prefix else {}))
     _line(dwg, (x, y), (x + arm * 0.87, y - arm * 0.50), "thin", **({"id": f"{id_prefix}-wye-right"} if id_prefix else {}))
+    _line(dwg, (x, y), (x, y + arm), "thin", **({"id": f"{id_prefix}-neutral-leg"} if id_prefix else {}))
 
 
 def _parse_vector_group(vector_group: str, secondary_count: int) -> tuple[str, list[str]]:
