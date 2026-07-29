@@ -57,6 +57,14 @@ rationale and the module map. Read that doc's module map before scanning code.
   in the existing watermark style. Plus a Workspace-Setup button-wrap fix.
 
 ### 2c. Landed directly on ops (2026-07-29)
+- **Shared DC Block drawing redesigned** — when several PCS share one DC Block,
+  the renderer no longer converges the feeders left/right onto a small centred
+  block (which read as one block fed from both sides). It now draws ONE wide
+  multi-port container spanning under the feeders it serves, and each PCS drops
+  STRAIGHT DOWN into its own output terminal directly beneath that PCS. The
+  electrical rule is unchanged (independent output circuit per PCS, common bus
+  inside the block; no external branch bus). `_bess_block` gained `symbol_span`
+  so the wide container keeps a normal-sized centred battery glyph.
 - **Report watermark fail-closed** — `_stamp_not_for_construction` no longer
   returns the original image on error; it substitutes a visibly-marked red
   placeholder (`_watermark_failure_placeholder`) or raises `WatermarkError` to

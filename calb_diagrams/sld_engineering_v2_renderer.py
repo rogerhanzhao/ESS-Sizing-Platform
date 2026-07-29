@@ -477,13 +477,19 @@ def _dc_isolator_fuse(dwg, x: float, y: float, height: float = 72.0,
 
 
 def _bess_block(dwg, x: float, y: float, width: float, height: float,
-                title: str, subtitle: str, tag: str = "") -> None:
+                title: str, subtitle: str, tag: str = "",
+                symbol_span: float | None = None) -> None:
     """BESS container block — rectangle with ANSI battery symbol inside.
 
-    ANSI IEEE 315 Fig 2.18.1: alternating long/short horizontal lines.
+    ANSI IEEE 315 Fig 2.18.1: alternating long/short horizontal lines. ``width``
+    sizes the container outline; ``symbol_span`` (default = ``width``) sizes the
+    battery glyph and polarity marks, so a wide multi-port shared container keeps
+    a normal-sized centred battery symbol instead of a stretched one.
     """
     lx = x - width / 2.0
     _rect(dwg, lx, y, width, height, "sfill")
+
+    sym_w = width if symbol_span is None else min(width, symbol_span)
 
     # Battery symbol (alternating long/short lines) centred in box
     batt_cx = x
@@ -494,12 +500,12 @@ def _bess_block(dwg, x: float, y: float, width: float, height: float,
     for i in range(n_cells):
         ly = batt_top + i * step
         is_long = (i % 2 == 0)
-        half = (width * 0.30) if is_long else (width * 0.18)
+        half = (sym_w * 0.30) if is_long else (sym_w * 0.18)
         _line(dwg, (batt_cx - half, ly), (batt_cx + half, ly), "thin")
 
     # Polarity marks
-    _text(dwg, "+", x - width * 0.38, y + height * 0.14, "label")
-    _text(dwg, "-", x - width * 0.38, y + height * 0.80, "label")
+    _text(dwg, "+", x - sym_w * 0.38, y + height * 0.14, "label")
+    _text(dwg, "-", x - sym_w * 0.38, y + height * 0.80, "label")
 
     # Labels below box
     _text(dwg, title, x, y + height + 12.0, "label", anchor="middle")
@@ -1001,11 +1007,17 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
                         b_title, b_sub, tag=f"BESS-{gi:02d}")
 
     # ELECTRICAL RULE (owner decision, 2026-07-13 session): a PCS DC input must
-    # NEVER share a DC busbar with another PCS. A shared DC Block exposes
-    # independent output circuits (its common bus lives INSIDE the block), so
-    # each PCS feeder is routed as its own branch to its own output terminal
-    # on the block — there is deliberately no common conductor, junction dot or
-    # horizontal "branch bus" joining two PCS DC sides outside the block.
+    # NEVER share a DC busbar with another PCS. A shared DC Block exposes one
+    # INDEPENDENT output circuit per PCS (its common bus lives INSIDE the block),
+    # so each PCS feeder is routed as its own branch to its own output terminal on
+    # the block — no common conductor, junction dot or horizontal "branch bus"
+    # joining two PCS DC sides outside the block.
+    #
+    # LAYOUT (owner decision, 2026-07-29): do NOT converge the feeders left/right
+    # onto a small centred block — that reads as one block fed from both sides.
+    # Instead draw ONE WIDE multi-port container that spans under the feeders it
+    # serves, and drop each PCS STRAIGHT DOWN into its own output terminal
+    # directly beneath that PCS. No horizontal elbows.
     for block in sorted(shared_dc_boxes, key=lambda item: int(item.dc_block_index or 0)):
         feeder_span = [int(feeder) for feeder in (block.attributes.get("feeder_span") or [])]
         if not feeder_span or any(feeder not in dc_bottom_by_feeder for feeder in feeder_span):
@@ -1016,47 +1028,41 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
                 f"DC block {block.node_id} feeds {len(feeder_span)} PCS but exposes "
                 f"only {output_circuits} output circuit(s)"
             )
-        block_x = block.x + block.width / 2.0
         prefix = f"shared-dc-{block.node_id}"
-        # Independent branch elbows sit below every participating fuse outlet.
-        elbow_y = max(
-            lvdc.block_y - 10.0,
-            max(dc_bottom_by_feeder[feeder] for feeder in feeder_span) + 8.0,
-        )
-        # One discrete output terminal per connected PCS, spread on the block top.
-        terminal_xs = [
-            block_x + (index - (len(feeder_span) - 1) / 2.0) * 44.0
-            for index in range(len(feeder_span))
-        ]
-        for circuit_index, (feeder_index, terminal_x) in enumerate(
-            zip(feeder_span, terminal_xs), start=1
-        ):
-            feeder_x = pcs_x_by_feeder[feeder_index]
+        # The container spans from under the first PCS to under the last PCS so
+        # each output terminal sits directly beneath its own feeder.
+        feeder_xs = [pcs_x_by_feeder[feeder] for feeder in feeder_span]
+        left_x, right_x = min(feeder_xs), max(feeder_xs)
+        block_cx = (left_x + right_x) / 2.0
+        edge_pad = 36.0
+        block_w = max(lvdc.battery_width, (right_x - left_x) + 2 * edge_pad)
+        for circuit_index, feeder_index in enumerate(feeder_span, start=1):
+            terminal_x = pcs_x_by_feeder[feeder_index]
+            # Straight vertical drop: fuse outlet → its own terminal on block top.
             _poly(
                 dwg,
                 [
-                    (feeder_x, dc_bottom_by_feeder[feeder_index]),
-                    (feeder_x, elbow_y),
-                    (terminal_x, elbow_y),
+                    (terminal_x, dc_bottom_by_feeder[feeder_index]),
                     (terminal_x, lvdc.block_y),
                 ],
                 "wire",
                 id=f"{prefix}-F{feeder_index:02d}",
             )
-            _text(dwg, f"OUT-{circuit_index}", terminal_x, elbow_y - 5.0,
-                  "tag", anchor="middle")
+            _text(dwg, f"OUT-{circuit_index}", terminal_x + 8.0, lvdc.block_y - 6.0,
+                  "tag", anchor="start")
         b_title = block.text_lines[0] if block.text_lines else "BESS"
         b_sub = block.text_lines[1] if len(block.text_lines) > 1 else ""
         dc_block_index = int(block.dc_block_index or 0)
         _bess_block(
             dwg,
-            block_x,
+            block_cx,
             lvdc.block_y,
-            lvdc.battery_width,
+            block_w,
             lvdc.battery_height,
             b_title,
             b_sub,
             tag=f"BESS-{dc_block_index:02d}",
+            symbol_span=lvdc.battery_width,
         )
 
 

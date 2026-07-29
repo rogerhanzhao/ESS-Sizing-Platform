@@ -187,6 +187,13 @@ def test_pcs_dc_sides_never_share_a_dc_busbar(sample_excel_path, tmp_path):
     assert f01[-1][0] != f02[-1][0]              # ...at different terminals
     # The two branches never touch: no shared vertex between the polylines.
     assert not (set(f01) & set(f02)), "PCS DC branches must not share any conductor point"
+    # LAYOUT RULE (owner, 2026-07-29): each PCS drops STRAIGHT DOWN into its own
+    # output terminal (no left/right converging elbow), so every branch is a
+    # single vertical segment whose terminal sits directly under its own PCS.
+    for feeder_id in ("shared-dc-G01-DC-BLOCK-01-F01", "shared-dc-G01-DC-BLOCK-01-F02"):
+        pts = _shared_branch_points(svg_text, feeder_id)
+        xs = {round(px, 3) for px, _py in pts}
+        assert len(xs) == 1, f"{feeder_id} must be a straight vertical drop, got xs={xs}"
     # Discrete output circuits are labelled.
     assert ">OUT-1<" in svg_text
     assert ">OUT-2<" in svg_text
