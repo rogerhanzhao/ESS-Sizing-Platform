@@ -123,18 +123,17 @@ def _feeder_groups(graph, feeder_count: int) -> list[list[int]]:
     return groups
 
 
-def _grouped_feeder_centers(
+def _grouped_feeder_positions(
     groups: list[list[int]],
-    center_x: float,
-    available_width: float,
     *,
-    intra_pitch: float = 150.0,
+    intra_pitch: float = 130.0,
     inter_pitch: float = 260.0,
-) -> dict[int, float]:
-    """Lay feeders out as tight clusters: ``intra_pitch`` within a group,
-    ``inter_pitch`` between groups, the whole field centred on ``center_x`` and
-    scaled down to fit ``available_width`` (so a many-feeder 1:1 station never
-    overflows the sheet)."""
+    max_field_width: float = 1080.0,
+) -> tuple[dict[int, float], float]:
+    """Raw feeder positions (first feeder at 0): ``intra_pitch`` within a group,
+    ``inter_pitch`` between groups, the whole field capped to ``max_field_width``
+    so a many-feeder 1:1 station never grows without bound. Returns
+    ``(positions, field_width)``; the caller anchors the field on the sheet."""
     positions: dict[int, float] = {}
     cursor = 0.0
     for group_index, group in enumerate(groups):
@@ -144,13 +143,12 @@ def _grouped_feeder_centers(
             if member_index > 0:
                 cursor += intra_pitch
             positions[feeder_index] = cursor
-    raw_total = cursor
-    if raw_total > available_width and raw_total > 0:
-        scale = available_width / raw_total
+    field_width = cursor
+    if field_width > max_field_width and field_width > 0:
+        scale = max_field_width / field_width
         positions = {feeder: value * scale for feeder, value in positions.items()}
-        raw_total = available_width
-    offset = center_x - raw_total / 2.0
-    return {feeder: value + offset for feeder, value in positions.items()}
+        field_width = max_field_width
+    return positions, field_width
 
 
 def _local_dc_block_position(
@@ -291,29 +289,60 @@ def build_sld_engineering_v2_layout_plan(
     *,
     theme: str | None = None,
 ) -> SldV2LayoutPlan:
-    width = 2000
     height = 1160
     theme = theme or graph.summary.theme
 
     equipment_section = SldV2LayoutSection("equipment_list", "Equipment List", 40.0, 40.0, 424.0, 860.0)
-    ac_section = SldV2LayoutSection("ac_block", "PCS&MVT SKID (AC Block)", 495.0, 40.0, 1465.0, 570.0)
-    battery_section = SldV2LayoutSection("battery_bank", "Battery Storage Bank", 495.0, 630.0, 1465.0, 360.0)
-    sections = (equipment_section, ac_section, battery_section)
-    section_lookup = {section.section_id: section for section in sections}
+    equipment_right = equipment_section.x + equipment_section.width  # 464
 
     summary = graph.summary
     feeder_count = summary.feeder_count
-    # Compact feeder field: cluster feeders that share a DC Block, centre the whole
-    # field under the transformer, and scale to fit — instead of stretching every
-    # feeder evenly across the full sheet width (which sprawled the PCS/DC rows and
-    # forced either a tiny dumbbell or an over-wide shared DC container).
-    feeder_field_center = ac_section.x + 312.0 + 620.0 / 2.0  # = transformer centre
-    feeder_available_width = ac_section.width - 440.0
-    feeder_center_by_index = _grouped_feeder_centers(
-        _feeder_groups(graph, feeder_count),
-        feeder_field_center,
-        feeder_available_width,
+
+    # --- Compact adaptive feeder field + canvas ---------------------------------
+    # Feeders that share a DC Block cluster into a tight pair; groups are separated;
+    # the whole field is placed just to the right of the equipment list, centred
+    # under the transformer, and the sheet is sized to the content (a small station
+    # is not padded out to a fixed huge canvas). Geometry only — the electrical
+    # topology, feeder spans, ratings and AC sizing are unchanged.
+    rmu_w = 620.0
+    rmu_h = 96.0
+    bay_w = rmu_w / 3.0
+    raw_positions, field_width = _grouped_feeder_positions(_feeder_groups(graph, feeder_count))
+    # tx centre must keep the feeder field (incl. its ±100 LV-busbar overhang),
+    # and the RMU (1.5 bays to its left), clear of the equipment-list panel.
+    tx_center_x = max(field_width / 2.0 + equipment_right + 150.0,
+                      equipment_right + 30.0 + 1.5 * bay_w)
+    field_offset = tx_center_x - field_width / 2.0
+    feeder_center_by_index = {fi: pos + field_offset for fi, pos in raw_positions.items()}
+
+    # Narrowest gap between adjacent feeders — per-feeder boxes (DC interface,
+    # fuse) must stay within it so they never overlap at tight cluster spacing.
+    _sorted_centers = sorted(feeder_center_by_index.values())
+    min_feeder_gap = min(
+        (_sorted_centers[i + 1] - _sorted_centers[i] for i in range(len(_sorted_centers) - 1)),
+        default=200.0,
     )
+
+    rmu_x = tx_center_x - 1.5 * bay_w
+    rmu_y = 40.0 + 54.0
+    bay_y = rmu_y + 28.0
+    bay_h = 58.0
+    ring_in_x = rmu_x
+    tx_bay_x = rmu_x + bay_w
+    ring_out_x = rmu_x + bay_w * 2.0
+
+    # Size the canvas to the content (RMU/ring-out envelope or the feeder field).
+    ring_out_center = ring_out_x + bay_w / 2.0
+    max_feeder_x = max(feeder_center_by_index.values(), default=tx_center_x)
+    content_right = max(ring_out_center + 126.0, max_feeder_x + 80.0)
+    width = int(round(content_right + 44.0))
+
+    ac_left = 470.0
+    ac_span = width - ac_left - 12.0
+    ac_section = SldV2LayoutSection("ac_block", "PCS&MVT SKID (AC Block)", ac_left, 40.0, ac_span, 570.0)
+    battery_section = SldV2LayoutSection("battery_bank", "Battery Storage Bank", ac_left, 630.0, ac_span, 360.0)
+    sections = (equipment_section, ac_section, battery_section)
+    section_lookup = {section.section_id: section for section in sections}
 
     ring_in_terminal = _node_by_type(graph, "mv_ring_in_terminal")
     ring_out_terminal = _node_by_type(graph, "mv_ring_out_terminal")
@@ -323,18 +352,6 @@ def build_sld_engineering_v2_layout_plan(
     ring_out_bay = _node_by_type(graph, "rmu_ring_out_bay")
     transformer = _node_by_type(graph, "transformer")
     lv_busbars = _nodes_by_type(graph, "lv_busbar")
-
-    rmu_x = ac_section.x + 312.0
-    rmu_y = ac_section.y + 54.0
-    rmu_w = 620.0
-    rmu_h = 96.0
-    bay_w = rmu_w / 3.0
-    bay_y = rmu_y + 28.0
-    bay_h = 58.0
-    ring_in_x = rmu_x
-    tx_bay_x = rmu_x + bay_w
-    ring_out_x = rmu_x + bay_w * 2.0
-    tx_center_x = tx_bay_x + bay_w / 2.0
 
     boxes: list[SldV2LayoutBox] = [
         SldV2LayoutBox(
@@ -501,6 +518,7 @@ def build_sld_engineering_v2_layout_plan(
             )
         )
 
+    dc_interface_w = min(136.0, max(60.0, min_feeder_gap - 14.0))
     for node in _nodes_by_type(graph, "dc_interface"):
         center_x = feeder_center_by_index[int(node.feeder_index or 0)]
         boxes.append(
@@ -508,9 +526,9 @@ def build_sld_engineering_v2_layout_plan(
                 node_id=node.node_id,
                 node_type=node.node_type,
                 section_id="battery_bank",
-                x=center_x - 68.0,
+                x=center_x - dc_interface_w / 2.0,
                 y=battery_section.y + 60.0,
-                width=136.0,
+                width=dc_interface_w,
                 height=42.0,
                 text_lines=("DC Isolator/Fuse", f"F{node.feeder_index}"),
                 feeder_index=node.feeder_index,

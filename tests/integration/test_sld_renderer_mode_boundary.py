@@ -85,7 +85,7 @@ def test_engineering_v2_renderer_mode_uses_port_bay_preview_path():
     assert output["metadata"]["engineering_v2_connector_count"] == output["metadata"]["engineering_v2_edge_count"]
     assert output["metadata"]["engineering_v2_layout_issue_count"] == 0
     assert output["metadata"]["engineering_v2_layout_warning_count"] == 4
-    assert output["metadata"]["engineering_v2_png_width"] == 2000
+    assert 1100 <= output["metadata"]["engineering_v2_png_width"] <= 2000  # content-adaptive width
     assert output["metadata"]["engineering_v2_png_height"] == 1160
     assert output["metadata"]["engineering_v2_template"] == "professional_electrical_reference_v1"
     assert [issue["issue_id"] for issue in output["engineering_v2_layout_issues"]] == [
@@ -122,7 +122,7 @@ def test_engineering_v2_renderer_mode_handles_multi_dc_block_feeders():
     assert output["metadata"]["engineering_v2_layout_issue_count"] == 0
     assert output["metadata"]["engineering_v2_layout_warning_count"] == 4
     assert output["metadata"]["engineering_v2_node_count"] == 27
-    assert output["metadata"]["engineering_v2_png_width"] == 2000
+    assert 1100 <= output["metadata"]["engineering_v2_png_width"] <= 2000  # content-adaptive width
     assert output["metadata"]["engineering_v2_png_height"] == 1160
     assert output["metadata"]["engineering_v2_template"] == "professional_electrical_reference_v1"
     assert len(dc_block_boxes) == 6

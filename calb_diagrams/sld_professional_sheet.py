@@ -181,21 +181,24 @@ def build_professional_sld_sheet(plan: SldV2LayoutPlan) -> ProfessionalSldSheet:
         ),
     )
 
-    # MV geometry — calibrated to layout box positions:
-    # rmu_x = ac_section.x(495) + 312 = 807
-    # bay_w = 620/3 = 206.67
-    # ring_in center_x  = 807 + 103.33 = 910.33
-    # tx_center_x       = 807 + 206.67 + 103.33 = 1117
-    # ring_out center_x = 807 + 413.33 + 103.33 = 1323.67
-    main_left = 495.0
-    main_right = 1960.0
-    center_x = 1117.0
+    # MV geometry — DERIVED from the RMU switchgear layout box (not hardcoded), so
+    # the MV drawing always tracks the adaptive feeder/RMU placement chosen by the
+    # layout engine. The three bay centres are ring-in, transformer, ring-out.
+    rmu_box = first_box(plan, "rmu_switchgear")
+    if rmu_box is not None:
+        rmu_x0 = rmu_box.x
+        rmu_w0 = rmu_box.width
+    else:  # defensive fallback to the historical fixed placement
+        rmu_x0 = 807.0
+        rmu_w0 = 620.0
+    bay_w0 = rmu_w0 / 3.0
+    center_x = rmu_x0 + 1.5 * bay_w0
     mv = ProfessionalMvGeometry(
-        main_left=main_left,
-        main_right=main_right,
+        main_left=40.0,
+        main_right=float(plan.width) - 40.0,
         center_x=center_x,
-        ring_in_x=910.0,
-        ring_out_x=1324.0,
+        ring_in_x=rmu_x0 + bay_w0 / 2.0,
+        ring_out_x=rmu_x0 + 2.5 * bay_w0,
         top_y=62.0,
         bus_y=290.0,
         transformer_y=480.0,

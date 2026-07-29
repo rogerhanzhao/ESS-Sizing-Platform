@@ -62,7 +62,10 @@ def test_engineering_v2_layout_is_stable(sample_excel_path):
     plan_b = build_sld_engineering_v2_layout_plan(graph)
 
     assert asdict(plan_a) == asdict(plan_b)
-    assert plan_a.width == 2000
+    # Canvas width is content-adaptive (compact); it stays deterministic and within
+    # sane bounds rather than a fixed 2000.
+    assert plan_a.width == plan_b.width
+    assert 1100 <= plan_a.width <= 2000
     assert plan_a.height == 1160
 
 

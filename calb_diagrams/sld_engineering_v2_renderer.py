@@ -476,6 +476,46 @@ def _dc_isolator_fuse(dwg, x: float, y: float, height: float = 72.0,
     return top_y, bottom_y
 
 
+def _battery_symbol(dwg, cx: float, y: float, sym_w: float, height: float) -> None:
+    """ANSI battery glyph (alternating long/short lines) + polarity, centred at cx."""
+    batt_top = y + height * 0.18
+    batt_bot = y + height * 0.72
+    n_cells = 4
+    step = (batt_bot - batt_top) / n_cells
+    for i in range(n_cells):
+        ly = batt_top + i * step
+        half = (sym_w * 0.30) if (i % 2 == 0) else (sym_w * 0.18)
+        _line(dwg, (cx - half, ly), (cx + half, ly), "thin")
+    _text(dwg, "+", cx - sym_w * 0.38, y + height * 0.14, "label")
+    _text(dwg, "-", cx - sym_w * 0.38, y + height * 0.80, "label")
+
+
+def _shared_bess_container(dwg, cx: float, y: float, width: float, height: float,
+                           group_xs: list[float], title: str, subtitle: str,
+                           tag: str = "") -> None:
+    """One DC container holding an INDEPENDENT battery group per PCS output
+    circuit: a battery glyph centred under each output terminal, thin dividers
+    between groups, drawn compactly (not one stretched glyph)."""
+    lx = cx - width / 2.0
+    _rect(dwg, lx, y, width, height, "sfill")
+    ordered = sorted(group_xs)
+    if len(ordered) > 1:
+        min_gap = min(ordered[i + 1] - ordered[i] for i in range(len(ordered) - 1))
+    else:
+        min_gap = width
+    sym_w = max(38.0, min(min_gap * 0.66, 96.0))
+    for gx in ordered:
+        _battery_symbol(dwg, gx, y, sym_w, height)
+    for i in range(len(ordered) - 1):
+        mid = (ordered[i] + ordered[i + 1]) / 2.0
+        _line(dwg, (mid, y + 6.0), (mid, y + height - 6.0), "thin")
+    _text(dwg, title, cx, y + height + 12.0, "label", anchor="middle")
+    if subtitle:
+        _text(dwg, subtitle, cx, y + height + 24.0, "label", anchor="middle")
+    if tag:
+        _text(dwg, tag, cx + width / 2.0 + 6.0, y + 12.0, "tag", anchor="start")
+
+
 def _bess_block(dwg, x: float, y: float, width: float, height: float,
                 title: str, subtitle: str, tag: str = "",
                 symbol_span: float | None = None) -> None:
@@ -490,22 +530,7 @@ def _bess_block(dwg, x: float, y: float, width: float, height: float,
     _rect(dwg, lx, y, width, height, "sfill")
 
     sym_w = width if symbol_span is None else min(width, symbol_span)
-
-    # Battery symbol (alternating long/short lines) centred in box
-    batt_cx = x
-    batt_top = y + height * 0.18
-    batt_bot = y + height * 0.72
-    n_cells = 4
-    step = (batt_bot - batt_top) / n_cells
-    for i in range(n_cells):
-        ly = batt_top + i * step
-        is_long = (i % 2 == 0)
-        half = (sym_w * 0.30) if is_long else (sym_w * 0.18)
-        _line(dwg, (batt_cx - half, ly), (batt_cx + half, ly), "thin")
-
-    # Polarity marks
-    _text(dwg, "+", x - sym_w * 0.38, y + height * 0.14, "label")
-    _text(dwg, "-", x - sym_w * 0.38, y + height * 0.80, "label")
+    _battery_symbol(dwg, x, y, sym_w, height)
 
     # Labels below box
     _text(dwg, title, x, y + height + 12.0, "label", anchor="middle")
@@ -1029,13 +1054,14 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
                 f"only {output_circuits} output circuit(s)"
             )
         prefix = f"shared-dc-{block.node_id}"
-        # The container spans from under the first PCS to under the last PCS so
-        # each output terminal sits directly beneath its own feeder.
+        # The container spans just under the feeders it serves (compact — not a
+        # full-width slab), with one INDEPENDENT battery group per PCS output
+        # circuit drawn inside, directly beneath its own straight-drop terminal.
         feeder_xs = [pcs_x_by_feeder[feeder] for feeder in feeder_span]
         left_x, right_x = min(feeder_xs), max(feeder_xs)
         block_cx = (left_x + right_x) / 2.0
-        edge_pad = 36.0
-        block_w = max(lvdc.battery_width, (right_x - left_x) + 2 * edge_pad)
+        edge_pad = 26.0
+        block_w = (right_x - left_x) + 2 * edge_pad
         for circuit_index, feeder_index in enumerate(feeder_span, start=1):
             terminal_x = pcs_x_by_feeder[feeder_index]
             # Straight vertical drop: fuse outlet → its own terminal on block top.
@@ -1053,16 +1079,16 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
         b_title = block.text_lines[0] if block.text_lines else "BESS"
         b_sub = block.text_lines[1] if len(block.text_lines) > 1 else ""
         dc_block_index = int(block.dc_block_index or 0)
-        _bess_block(
+        _shared_bess_container(
             dwg,
             block_cx,
             lvdc.block_y,
             block_w,
             lvdc.battery_height,
+            feeder_xs,
             b_title,
             b_sub,
             tag=f"BESS-{dc_block_index:02d}",
-            symbol_span=lvdc.battery_width,
         )
 
 

@@ -57,15 +57,24 @@ rationale and the module map. Read that doc's module map before scanning code.
   in the existing watermark style. Plus a Workspace-Setup button-wrap fix.
 
 ### 2c. Landed directly on ops (2026-07-29)
-- **Compact SLD feeder layout** — feeders were previously stretched evenly across
-  the whole sheet width (sprawling the PCS/DC rows). They are now placed as tight
-  clusters: feeders sharing one DC Block form an adjacent pair, the whole field is
-  centred under the transformer and scaled to fit (`_feeder_groups` +
-  `_grouped_feeder_centers`). The two LV secondary sections stay clearly separated,
-  each PCS pair sits over a right-sized shared container with straight vertical
-  drops, and a many-feeder 1:1 station still scales to fit. Geometry only — the
-  electrical topology, feeder spans, ratings and AC-sizing are unchanged; the
-  render regression baseline was regenerated.
+- **Compact adaptive SLD sheet** — feeders were stretched evenly across a fixed
+  2000 px canvas (sprawling PCS/DC rows, huge side margins). Now:
+  (1) feeders that share a DC Block cluster into a tight pair, groups are
+  separated, and the field is placed just right of the equipment list, centred
+  under the transformer (`_feeder_groups` + `_grouped_feeder_positions`);
+  (2) the **canvas width is content-adaptive** — the sheet is sized to the drawing
+  (e.g. ~1260 px for a 4-PCS shared station, ~1820 px for 8-PCS 1:1) instead of a
+  fixed 2000, so side whitespace is minimal; (3) the MV geometry is now **derived
+  from the RMU layout box** in `sld_professional_sheet` (no more hardcoded centres
+  that drift from the layout); (4) per-feeder boxes (DC interface) size to the
+  actual feeder gap so they never overlap at tight spacing.
+- **Shared DC container shows one battery group per PCS circuit** — a DC Block
+  shared by N PCS is drawn compactly (spanning just its feeders) with N
+  independent battery glyphs inside, one under each output terminal, separated by
+  thin dividers (`_shared_bess_container` / `_battery_symbol`) — instead of one
+  stretched glyph in an over-wide slab.
+  Geometry only — the electrical topology, feeder spans, ratings and AC-sizing are
+  unchanged; the render regression baseline was regenerated.
 - **Shared DC Block drawing redesigned** — when several PCS share one DC Block,
   the renderer no longer converges the feeders left/right onto a small centred
   block (which read as one block fed from both sides). It now draws ONE wide
