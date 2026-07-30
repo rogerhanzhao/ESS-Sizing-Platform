@@ -126,9 +126,9 @@ def _feeder_groups(graph, feeder_count: int) -> list[list[int]]:
 def _grouped_feeder_positions(
     groups: list[list[int]],
     *,
-    intra_pitch: float = 130.0,
-    inter_pitch: float = 260.0,
-    max_field_width: float = 1080.0,
+    intra_pitch: float = 120.0,
+    inter_pitch: float = 264.0,
+    max_field_width: float = 1180.0,
 ) -> tuple[dict[int, float], float]:
     """Raw feeder positions (first feeder at 0): ``intra_pitch`` within a group,
     ``inter_pitch`` between groups, the whole field capped to ``max_field_width``

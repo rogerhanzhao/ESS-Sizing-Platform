@@ -241,10 +241,10 @@ def build_professional_sld_sheet(plan: SldV2LayoutPlan) -> ProfessionalSldSheet:
         # an SLD is a single-line schematic, so symbol size is not a physical
         # footprint. Spacing grows with the box so multiple DC Blocks per feeder
         # never overlap.
-        battery_width=116.0,
+        battery_width=140.0,
         battery_height=84.0,
-        multi_block_spacing_base=136.0,
-        multi_block_spacing_max=160.0,
+        multi_block_spacing_base=158.0,
+        multi_block_spacing_max=184.0,
     )
 
     # Title block: flush with outer-border bottom (border = plan.height − 20)

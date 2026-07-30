@@ -490,34 +490,31 @@ def _battery_symbol(dwg, cx: float, y: float, sym_w: float, height: float) -> No
     _text(dwg, "-", cx - sym_w * 0.38, y + height * 0.80, "label")
 
 
-def _shared_bess_container(dwg, cx: float, y: float, width: float, height: float,
-                           group_xs: list[float], title: str, subtitle: str,
-                           tag: str = "") -> None:
-    """One DC container holding an INDEPENDENT battery group per PCS output
-    circuit: a battery glyph centred under each output terminal, thin dividers
-    between groups, drawn compactly (not one stretched glyph)."""
+def _dc_container(dwg, cx: float, y: float, width: float, height: float,
+                  title: str, subtitle: str, tag: str = "",
+                  n_groups: int = 2) -> None:
+    """Standard DC Block container — a box holding ``n_groups`` battery racks
+    (default 2) drawn side-by-side and centred, so EVERY DC Block (dedicated or
+    shared, any PCS:DC ratio) reads as the same symbol with the same proportions.
+    """
     lx = cx - width / 2.0
     _rect(dwg, lx, y, width, height, "sfill")
-    ordered = sorted(group_xs)
-    # Pull the battery groups toward the container centre so they sit inside the
-    # box rather than hugging the side walls.
-    inset = [cx + (gx - cx) * 0.58 for gx in ordered]
-    if len(inset) > 1:
-        cell = min(inset[i + 1] - inset[i] for i in range(len(inset) - 1))
+    n = max(1, n_groups)
+    if n == 1:
+        centers = [cx]
+        cell = width * 0.5
     else:
-        cell = width
-    # One consistent battery-glyph size across every DC container (single- or
-    # multi-circuit), shrinking only if the cells are genuinely too tight — so all
-    # DC Blocks read as the same symbol regardless of PCS:DC ratio.
-    sym_w = max(34.0, min(54.0, cell * 0.66))
-    for gx in inset:
+        inner = width * 0.5           # racks occupy the central half of the box
+        step = inner / (n - 1)
+        centers = [cx - inner / 2.0 + step * i for i in range(n)]
+        cell = step
+    sym_w = max(30.0, min(48.0, cell * 0.74))
+    for gx in centers:
         _battery_symbol(dwg, gx, y, sym_w, height)
     _text(dwg, title, cx, y + height + 12.0, "label", anchor="middle")
     if subtitle:
         _text(dwg, subtitle, cx, y + height + 24.0, "label", anchor="middle")
     if tag:
-        # Bottom-right, below the battery groups (the top edge is occupied by the
-        # per-circuit glyphs).
         _text(dwg, tag, cx + width / 2.0 - 5.0, y + height - 6.0, "tag", anchor="end")
 
 
@@ -527,10 +524,10 @@ def _bess_block(dwg, x: float, y: float, width: float, height: float,
     """Single-circuit DC container.
 
     Delegates to the same drawer as the shared multi-circuit container so EVERY
-    DC Block reads identically (same box, battery glyph, tag placement) regardless
-    of the PCS:DC ratio — a single-circuit block is just a one-cell container.
+    DC Block reads identically (same box, battery glyphs, tag placement) — a
+    standard DC container shows two battery racks regardless of PCS:DC ratio.
     """
-    _shared_bess_container(dwg, x, y, width, height, [x], title, subtitle, tag=tag)
+    _dc_container(dwg, x, y, width, height, title, subtitle, tag=tag, n_groups=2)
 
 
 def _open_triangle_terminal(dwg, x: float, y: float, size: float = 13.0) -> None:
@@ -1047,14 +1044,13 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
                 f"only {output_circuits} output circuit(s)"
             )
         prefix = f"shared-dc-{block.node_id}"
-        # The container spans just under the feeders it serves (compact — not a
-        # full-width slab), with one INDEPENDENT battery group per PCS output
-        # circuit drawn inside, directly beneath its own straight-drop terminal.
+        # Same standard container as a dedicated block (two battery racks, identical
+        # box/proportions); it is centred between its feeders and just wide enough
+        # that each PCS drops STRAIGHT DOWN into its own output terminal on the top.
         feeder_xs = [pcs_x_by_feeder[feeder] for feeder in feeder_span]
         left_x, right_x = min(feeder_xs), max(feeder_xs)
         block_cx = (left_x + right_x) / 2.0
-        edge_pad = 26.0
-        block_w = (right_x - left_x) + 2 * edge_pad
+        block_w = max(lvdc.battery_width, (right_x - left_x) + 20.0)
         for circuit_index, feeder_index in enumerate(feeder_span, start=1):
             terminal_x = pcs_x_by_feeder[feeder_index]
             # Straight vertical drop: fuse outlet → its own terminal on block top.
@@ -1072,16 +1068,16 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
         b_title = block.text_lines[0] if block.text_lines else "BESS"
         b_sub = block.text_lines[1] if len(block.text_lines) > 1 else ""
         dc_block_index = int(block.dc_block_index or 0)
-        _shared_bess_container(
+        _dc_container(
             dwg,
             block_cx,
             lvdc.block_y,
             block_w,
             lvdc.battery_height,
-            feeder_xs,
             b_title,
             b_sub,
             tag=f"BESS-{dc_block_index:02d}",
+            n_groups=2,
         )
 
 
