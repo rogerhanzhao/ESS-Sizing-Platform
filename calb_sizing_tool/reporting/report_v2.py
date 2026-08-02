@@ -560,12 +560,29 @@ def _load_stamp_font(draw, text: str, width: int) -> "object":
     from PIL import ImageFont
 
     def _load(size: int):
-        for candidate in ("DejaVuSans-Bold.ttf", "DejaVuSans.ttf"):
+        for candidate in (
+            "DejaVuSans-Bold.ttf",
+            "DejaVuSans.ttf",
+            # Explicit paths + common alternatives: a bare name only resolves when
+            # the font is on Pillow's search path, which is not guaranteed.
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "LiberationSans-Bold.ttf",
+            "arialbd.ttf",
+            "Arial Bold.ttf",
+        ):
             try:
                 return ImageFont.truetype(candidate, size)
             except Exception:
                 continue
-        return ImageFont.load_default()
+        # Last resort: the built-in font. Pillow >= 10.1 can SCALE it; without a
+        # size it is a ~11 px bitmap that would silently shrink the mandatory
+        # stamp to near-invisible, so always ask for the size we need.
+        try:
+            return ImageFont.load_default(size=size)
+        except TypeError:
+            return ImageFont.load_default()
 
     ref_size = 100
     ref_font = _load(ref_size)

@@ -56,6 +56,30 @@ rationale and the module map. Read that doc's module map before scanning code.
   site §9) is stamped `DRAFT / OVERRIDE - NOT FOR CONSTRUCTION` unconditionally,
   in the existing watermark style. Plus a Workspace-Setup button-wrap fix.
 
+### 2d. Multi-DC per PCS + watermark hardening (2026-08-02)
+
+**Firm rule (owner decision):** when several dedicated DC Blocks sit under ONE
+PCS, the split belongs to the **PCS's own internal DC busbar**. Each DC Block is
+fed by its **own protected vertical branch** (its own isolator/fuse `F-nnA` /
+`F-nnB`) straight down into its own container. There is **no external combiner /
+"DC branch box" enclosure** and **no V-shaped (diagonal) conductor**. The earlier
+external `DC BRANCH BOX` rendering was an unapproved intermediate attempt and has
+been removed (`_pcs_internal_dc_bus` replaces `_dc_branch_box`).
+
+- Multi-DC feeders get a wider feeder pitch and renderer-safe container spacing
+  (`_local_dc_block_counts` / `_local_dc_half_span`), so the containers never
+  overlap; the compact single-DC field (incl. the approved 8-PCS sheet) is
+  unchanged.
+- The PCS-internal busbar is drawn INSIDE the PCS outline, so the split is never
+  mistaken for external switchgear.
+- **Watermark**: `_load_stamp_font` previously fell back to
+  `ImageFont.load_default()` with no size — a ~11 px bitmap font — so on hosts
+  without DejaVu the mandatory NOT-FOR-CONSTRUCTION stamp silently shrank to
+  near-invisible (~527 red px vs ~6500). It now tries explicit font paths and asks
+  Pillow's embedded fallback for the size it needs (>= 4800 red px with no system
+  fonts), so the regression threshold stays high (2000) instead of being lowered
+  to accommodate a degraded stamp. Pixel access is Pillow 11/12 agnostic.
+
 ### 2c. Landed directly on ops (2026-07-29)
 - **Compact adaptive SLD sheet** — feeders were stretched evenly across a fixed
   2000 px canvas (sprawling PCS/DC rows, huge side margins). Now:

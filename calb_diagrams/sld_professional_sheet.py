@@ -243,8 +243,8 @@ def build_professional_sld_sheet(plan: SldV2LayoutPlan) -> ProfessionalSldSheet:
         battery_width=140.0,
         multi_block_battery_width=120.0,
         battery_height=84.0,
-        multi_block_spacing_base=158.0,
-        multi_block_spacing_max=184.0,
+        multi_block_spacing_base=130.0,
+        multi_block_spacing_max=150.0,
     )
 
     # Title block: flush with outer-border bottom (border = plan.height − 20)

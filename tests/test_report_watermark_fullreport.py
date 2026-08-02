@@ -44,12 +44,13 @@ _CONCEPT_CAPTION_MARKERS = (
     "Site Arrangement",
     "Site Layout",
 )
-# The shared 900x500 white-source fixture carries 527 translucent-red stamp
-# pixels with the current Pillow/font fallback.  Non-concept report media tops
-# out at 275 incidental red pixels, so 400 keeps the test above that noise
-# floor while accepting the mandatory visible stamp across supported Pillow
-# versions.
-_WATERMARK_PIXEL_MIN = 400
+# A stamped concept figure carries thousands of translucent-red mark pixels; a
+# brand logo or a blue/grey data chart carries only incidental red (observed
+# <= 275). The stamp stays large even when no system TrueType font resolves,
+# because _load_stamp_font asks Pillow's embedded fallback for the size it needs
+# (observed >= 4800 on the 900x500 fixture with system fonts unavailable), so a
+# high threshold is what actually proves the mark is VISIBLE.
+_WATERMARK_PIXEL_MIN = 2000
 
 
 def _white_png(w: int, h: int) -> bytes:
@@ -58,10 +59,18 @@ def _white_png(w: int, h: int) -> bytes:
     return buf.getvalue()
 
 
+def _image_pixels(img):
+    """Pillow >= 12 renames getdata() to get_flattened_data(); support both."""
+    try:
+        return img.get_flattened_data()
+    except AttributeError:
+        return img.getdata()
+
+
 def _red_pixels(png: bytes) -> int:
     img = Image.open(io.BytesIO(png)).convert("RGB")
     return sum(
-        1 for r, g, b in img.getdata()
+        1 for r, g, b in _image_pixels(img)
         if r > g + 20 and r > b + 20 and r < 250
     )
 

@@ -476,33 +476,31 @@ def _dc_isolator_fuse(dwg, x: float, y: float, height: float = 72.0,
     return top_y, bottom_y
 
 
-def _dc_branch_box(
+def _pcs_internal_dc_bus(
     dwg,
     cx: float,
-    y: float,
-    width: float,
-    height: float,
-    output_xs: list[float],
+    pcs_y: float,
+    converter_width: float,
+    converter_height: float,
+    branch_xs: list[float],
     *,
     element_id: str,
-) -> tuple[float, float]:
-    """DC distribution enclosure with one input and discrete branch outputs.
+) -> float:
+    """DC busbar drawn INSIDE the PCS outline, feeding one branch per DC Block.
 
-    The internal split is intentionally contained in the labelled enclosure.
-    Outside the box every output is an independent vertical DC branch, avoiding
-    an ambiguous external horizontal conductor between DC Blocks.
+    ELECTRICAL RULE (owner decision, 2026-08-02): when several dedicated DC Blocks
+    sit under one PCS, the split belongs to the PCS's own internal DC busbar —
+    there is NO external combiner/branch enclosure and NO V-shaped (diagonal)
+    conductor. Each branch leaves the PCS bottom edge as its own protected
+    vertical conductor. Returns the y at which the branches leave the PCS.
     """
-    left_x = cx - width / 2.0
-    split_y = y + height * 0.48
-    output_y = y + height
-    _rect(dwg, left_x, y, width, height, "sfill", id=element_id)
-    _line(dwg, (cx, y), (cx, split_y), "thin")
-    _line(dwg, (min(output_xs), split_y), (max(output_xs), split_y), "thin")
-    for output_x in output_xs:
-        _line(dwg, (output_x, split_y), (output_x, output_y), "thin")
-        dwg.add(dwg.circle(center=(output_x, output_y), r=1.8, class_="sfill"))
-    _text(dwg, "DC BRANCH BOX", cx, y + height * 0.76, "tag", anchor="middle")
-    return y, output_y
+    bus_y = pcs_y + converter_height - 6.0          # inside the box, below its DC glyph
+    exit_y = pcs_y + converter_height               # PCS bottom edge
+    half = max(6.0, converter_width / 2.0 - 10.0)
+    _line(dwg, (cx - half, bus_y), (cx + half, bus_y), "busbar", id=element_id)
+    for branch_x in branch_xs:
+        _line(dwg, (branch_x, bus_y), (branch_x, exit_y), "wire")
+    return exit_y
 
 
 def _battery_symbol(dwg, cx: float, y: float, sym_w: float, height: float) -> None:
@@ -1017,39 +1015,37 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
                       lvdc.multi_block_spacing_base + max(0, len(blocks) - 2) * 18.0)
             start = px - spc * (len(blocks) - 1) / 2.0
             bx_list = [start + spc * i for i in range(len(blocks))]
-            # Dedicated DC Blocks below one PCS are independent branches, not a
-            # shared horizontal bus. The split is contained in a labelled DC
-            # distribution enclosure; each external A/B branch then has its own
-            # isolator/fuse and a vertical drop into its container.
-            branch_fuse_height = 42.0
-            branch_fuse_y = lvdc.block_y - branch_fuse_height / 2.0 - 10.0
-            branch_fuse_top = branch_fuse_y - branch_fuse_height / 2.0
-            branch_box_height = 18.0
-            branch_box_y = lvdc.pcs_y + lvdc.converter_height + 6.0
-            branch_box_width = max(94.0, max(bx_list) - min(bx_list) + 28.0)
-            branch_box_top, branch_box_bottom = _dc_branch_box(
-                dwg,
-                px,
-                branch_box_y,
-                branch_box_width,
-                branch_box_height,
-                bx_list,
-                element_id=f"dc-branch-box-F{fi:02d}",
+            # APPROVED multi-DC rendering (owner decision, 2026-08-02): the split
+            # lives on the PCS's own INTERNAL DC busbar. Each DC Block is fed by
+            # its own protected VERTICAL branch straight down from that busbar —
+            # no external combiner/branch box and no V-shaped diagonal.
+            # The branches leave the PCS within its own footprint, so each drop is
+            # a single vertical conductor landing on its container's top edge.
+            branch_dx = max(10.0, lvdc.converter_width / 2.0 - 12.0)
+            branch_xs = [
+                px + (2.0 * i / (len(blocks) - 1) - 1.0) * branch_dx
+                for i in range(len(blocks))
+            ]
+            exit_y = _pcs_internal_dc_bus(
+                dwg, px, lvdc.pcs_y, lvdc.converter_width, lvdc.converter_height,
+                branch_xs, element_id=f"pcs-dc-bus-F{fi:02d}",
             )
-            _line(dwg, (px, lvdc.pcs_y + lvdc.converter_height), (px, branch_box_top), "wire")
-            for branch_index, (blk, bx) in enumerate(zip(blocks, bx_list), start=1):
+            for branch_index, (blk, bx, branch_x) in enumerate(
+                zip(blocks, bx_list, branch_xs), start=1
+            ):
                 branch_suffix = chr(ord("A") + branch_index - 1)
+                # One protected vertical branch: PCS bottom → its own isolator/fuse
+                # → its own DC container. Strictly vertical at a constant x.
+                _, branch_fuse_bottom = _dc_isolator_fuse(
+                    dwg, branch_x, lvdc.dc_device_y, tag=f"F-{fi:02d}{branch_suffix}",
+                )
                 _poly(
                     dwg,
-                    [(bx, branch_box_bottom), (bx, branch_fuse_top)],
+                    [(branch_x, exit_y), (branch_x, lvdc.dc_device_y - 36.0)],
                     "wire",
                     id=f"dedicated-dc-branch-F{fi:02d}-{branch_suffix}",
                 )
-                _, branch_fuse_bottom = _dc_isolator_fuse(
-                    dwg, bx, branch_fuse_y, height=branch_fuse_height,
-                    tag=f"F-{fi:02d}{branch_suffix}",
-                )
-                _line(dwg, (bx, branch_fuse_bottom), (bx, lvdc.block_y), "wire")
+                _line(dwg, (branch_x, branch_fuse_bottom), (branch_x, lvdc.block_y), "wire")
                 b_title = blk.text_lines[0] if blk.text_lines else "BESS"
                 b_sub = blk.text_lines[1] if len(blk.text_lines) > 1 else ""
                 gi = int(blk.dc_block_index or 0)

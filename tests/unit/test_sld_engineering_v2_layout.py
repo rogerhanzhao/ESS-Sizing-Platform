@@ -217,19 +217,21 @@ def test_engineering_v2_layout_keeps_four_two_dc_feeders_clear_in_rendered_svg(s
     pcs_centers = sorted(
         box.x + box.width / 2.0 for box in plan.boxes if box.node_type == "pcs"
     )
-    assert [pcs_centers[index + 1] - pcs_centers[index] for index in range(3)] == [300.0] * 3
+    pitches = [pcs_centers[index + 1] - pcs_centers[index] for index in range(3)]
+    # A dedicated multi-DC feeder must not reuse the compact single-DC pitch.
+    assert len(set(pitches)) == 1 and pitches[0] > 200.0
 
     svg_path = tmp_path / "four_pcs_eight_dc.svg"
     render_sld_engineering_v2_svg(plan, svg_path)
     containers = []
     branch_wires = {}
-    branch_boxes = set()
+    pcs_dc_buses = set()
     for element in ElementTree.parse(svg_path).getroot().iter():
         element_id = element.attrib.get("id", "")
         if element_id.startswith("dc-container-"):
             containers.append((float(element.attrib["x"]), float(element.attrib["width"])))
-        if element_id.startswith("dc-branch-box-"):
-            branch_boxes.add(element_id)
+        if element_id.startswith("pcs-dc-bus-"):
+            pcs_dc_buses.add(element_id)
         if element_id.startswith("dedicated-dc-branch-"):
             points = [
                 tuple(float(value) for value in point.split(","))
@@ -250,16 +252,17 @@ def test_engineering_v2_layout_keeps_four_two_dc_feeders_clear_in_rendered_svg(s
         for feeder in range(1, 5)
         for suffix in ("A", "B")
     }
-    assert branch_boxes == {f"dc-branch-box-F{feeder:02d}" for feeder in range(1, 5)}
-    # Each dedicated DC Block leaves the labelled distribution enclosure as an
-    # individual vertical branch; no diagonal or external horizontal bus joins
-    # the A/B containers together.
+    # APPROVED design: the split lives on the PCS's own internal DC busbar — one
+    # per multi-DC feeder — and there is NO external combiner / branch enclosure.
+    assert pcs_dc_buses == {f"pcs-dc-bus-F{feeder:02d}" for feeder in range(1, 5)}
+    # Every DC Block is fed by its own strictly VERTICAL protected branch; no
+    # diagonal (V-shaped) or external horizontal bus joins the A/B containers.
     assert all(
         len(points) == 2 and points[0][0] == points[1][0] and points[0][1] < points[1][1]
         for points in branch_wires.values()
     )
     svg_text = svg_path.read_text(encoding="utf-8")
-    assert svg_text.count("DC BRANCH BOX") == 4
+    assert "DC BRANCH BOX" not in svg_text
     assert all(f"F-{feeder:02d}{suffix}" in svg_text for feeder in range(1, 5) for suffix in ("A", "B"))
 
 
