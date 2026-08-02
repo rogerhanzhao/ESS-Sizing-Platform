@@ -21,7 +21,7 @@ from calb_sizing_tool.reporting.report_v2 import (
 def _red_pixel_count(png: bytes) -> int:
     img = Image.open(io.BytesIO(png)).convert("RGB")
     return sum(
-        1 for r, g, b in img.get_flattened_data()
+        1 for r, g, b in img.getdata()
         if r > g + 20 and r > b + 20 and r < 250
     )
 

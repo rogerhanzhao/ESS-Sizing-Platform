@@ -103,8 +103,8 @@ def _poly(dwg, pts: Iterable[tuple[float, float]], cls: str = "wire", **kw) -> N
     dwg.add(dwg.polyline(points=list(pts), class_=cls, fill="none", **kw))
 
 
-def _rect(dwg, x: float, y: float, w: float, h: float, cls: str = "sfill") -> None:
-    dwg.add(dwg.rect(insert=(x, y), size=(w, h), class_=cls))
+def _rect(dwg, x: float, y: float, w: float, h: float, cls: str = "sfill", **kw) -> None:
+    dwg.add(dwg.rect(insert=(x, y), size=(w, h), class_=cls, **kw))
 
 
 def _text(dwg, s: str, x: float, y: float, cls: str = "text",
@@ -476,6 +476,35 @@ def _dc_isolator_fuse(dwg, x: float, y: float, height: float = 72.0,
     return top_y, bottom_y
 
 
+def _dc_branch_box(
+    dwg,
+    cx: float,
+    y: float,
+    width: float,
+    height: float,
+    output_xs: list[float],
+    *,
+    element_id: str,
+) -> tuple[float, float]:
+    """DC distribution enclosure with one input and discrete branch outputs.
+
+    The internal split is intentionally contained in the labelled enclosure.
+    Outside the box every output is an independent vertical DC branch, avoiding
+    an ambiguous external horizontal conductor between DC Blocks.
+    """
+    left_x = cx - width / 2.0
+    split_y = y + height * 0.48
+    output_y = y + height
+    _rect(dwg, left_x, y, width, height, "sfill", id=element_id)
+    _line(dwg, (cx, y), (cx, split_y), "thin")
+    _line(dwg, (min(output_xs), split_y), (max(output_xs), split_y), "thin")
+    for output_x in output_xs:
+        _line(dwg, (output_x, split_y), (output_x, output_y), "thin")
+        dwg.add(dwg.circle(center=(output_x, output_y), r=1.8, class_="sfill"))
+    _text(dwg, "DC BRANCH BOX", cx, y + height * 0.76, "tag", anchor="middle")
+    return y, output_y
+
+
 def _battery_symbol(dwg, cx: float, y: float, sym_w: float, height: float) -> None:
     """ANSI battery glyph (alternating long/short lines) + polarity, centred at cx."""
     batt_top = y + height * 0.18
@@ -492,13 +521,14 @@ def _battery_symbol(dwg, cx: float, y: float, sym_w: float, height: float) -> No
 
 def _dc_container(dwg, cx: float, y: float, width: float, height: float,
                   title: str, subtitle: str, tag: str = "",
-                  n_groups: int = 2) -> None:
+                  n_groups: int = 2, element_id: str | None = None) -> None:
     """Standard DC Block container — a box holding ``n_groups`` battery racks
     (default 2) drawn side-by-side and centred, so EVERY DC Block (dedicated or
     shared, any PCS:DC ratio) reads as the same symbol with the same proportions.
     """
     lx = cx - width / 2.0
-    _rect(dwg, lx, y, width, height, "sfill")
+    attributes = {"id": element_id} if element_id else {}
+    _rect(dwg, lx, y, width, height, "sfill", **attributes)
     n = max(1, n_groups)
     if n == 1:
         centers = [cx]
@@ -520,14 +550,17 @@ def _dc_container(dwg, cx: float, y: float, width: float, height: float,
 
 def _bess_block(dwg, x: float, y: float, width: float, height: float,
                 title: str, subtitle: str, tag: str = "",
-                symbol_span: float | None = None) -> None:
+                symbol_span: float | None = None, element_id: str | None = None) -> None:
     """Single-circuit DC container.
 
     Delegates to the same drawer as the shared multi-circuit container so EVERY
     DC Block reads identically (same box, battery glyphs, tag placement) — a
     standard DC container shows two battery racks regardless of PCS:DC ratio.
     """
-    _dc_container(dwg, x, y, width, height, title, subtitle, tag=tag, n_groups=2)
+    _dc_container(
+        dwg, x, y, width, height, title, subtitle,
+        tag=tag, n_groups=2, element_id=element_id,
+    )
 
 
 def _open_triangle_terminal(dwg, x: float, y: float, size: float = 13.0) -> None:
@@ -974,52 +1007,83 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
                     lvdc.converter_width, lvdc.converter_height,
                     pcs_label, pcs_sub, tag=f"INV-{fi:02d}")
 
-        # Wire: PCS bottom → DC isolator/fuse
-        _line(dwg, (px, lvdc.pcs_y + lvdc.converter_height),
-                   (px, lvdc.dc_device_y - lvdc.converter_height * 0.5), "wire")
-
-        dc_top, dc_bot = _dc_isolator_fuse(
-            dwg, px, lvdc.dc_device_y, tag=f"F-{fi:02d}"
-        )
-        dc_bottom_by_feeder[fi] = dc_bot
         pcs_x_by_feeder[fi] = px
-
-        # Per-feeder DC blocks retain the previous 1:1 / multi-block drawing.
         blocks = sorted(local_dc_by_feeder.get(fi, []),
                         key=lambda b: b.dc_block_index or 0)
-        if not blocks:
-            continue
-
         multi = len(blocks) > 1
-        # The horizontal branch must sit BELOW the fuse outlet (dc_bot),
-        # otherwise the drop wire would double back up across the fuse stub.
-        branch_y = max(lvdc.block_y - (30.0 if multi else 10.0), dc_bot + 8.0)
 
         if multi:
             spc = min(lvdc.multi_block_spacing_max,
                       lvdc.multi_block_spacing_base + max(0, len(blocks) - 2) * 18.0)
             start = px - spc * (len(blocks) - 1) / 2.0
             bx_list = [start + spc * i for i in range(len(blocks))]
-            # Horizontal branch bus + T-junction at feeder centre
-            _line(dwg, (min(bx_list), branch_y), (max(bx_list), branch_y), "wire")
-            _junction(dwg, px, branch_y)
-        else:
-            bx_list = [px]
+            # Dedicated DC Blocks below one PCS are independent branches, not a
+            # shared horizontal bus. The split is contained in a labelled DC
+            # distribution enclosure; each external A/B branch then has its own
+            # isolator/fuse and a vertical drop into its container.
+            branch_fuse_height = 42.0
+            branch_fuse_y = lvdc.block_y - branch_fuse_height / 2.0 - 10.0
+            branch_fuse_top = branch_fuse_y - branch_fuse_height / 2.0
+            branch_box_height = 18.0
+            branch_box_y = lvdc.pcs_y + lvdc.converter_height + 6.0
+            branch_box_width = max(94.0, max(bx_list) - min(bx_list) + 28.0)
+            branch_box_top, branch_box_bottom = _dc_branch_box(
+                dwg,
+                px,
+                branch_box_y,
+                branch_box_width,
+                branch_box_height,
+                bx_list,
+                element_id=f"dc-branch-box-F{fi:02d}",
+            )
+            _line(dwg, (px, lvdc.pcs_y + lvdc.converter_height), (px, branch_box_top), "wire")
+            for branch_index, (blk, bx) in enumerate(zip(blocks, bx_list), start=1):
+                branch_suffix = chr(ord("A") + branch_index - 1)
+                _poly(
+                    dwg,
+                    [(bx, branch_box_bottom), (bx, branch_fuse_top)],
+                    "wire",
+                    id=f"dedicated-dc-branch-F{fi:02d}-{branch_suffix}",
+                )
+                _, branch_fuse_bottom = _dc_isolator_fuse(
+                    dwg, bx, branch_fuse_y, height=branch_fuse_height,
+                    tag=f"F-{fi:02d}{branch_suffix}",
+                )
+                _line(dwg, (bx, branch_fuse_bottom), (bx, lvdc.block_y), "wire")
+                b_title = blk.text_lines[0] if blk.text_lines else "BESS"
+                b_sub = blk.text_lines[1] if len(blk.text_lines) > 1 else ""
+                gi = int(blk.dc_block_index or 0)
+                _bess_block(
+                    dwg, bx, lvdc.block_y,
+                    lvdc.multi_block_battery_width, lvdc.battery_height,
+                    b_title, b_sub, tag=f"BESS-{gi:02d}",
+                    element_id=f"dc-container-{gi:02d}",
+                )
+            continue
 
-        # Wire: DC fuse bottom → branch point
+        # A one-DC feeder retains its existing single direct circuit. Feeders
+        # with only shared DC Blocks also keep this central fuse for their own
+        # independent output circuit below the PCS.
+        _line(dwg, (px, lvdc.pcs_y + lvdc.converter_height),
+                   (px, lvdc.dc_device_y - lvdc.converter_height * 0.5), "wire")
+        _, dc_bot = _dc_isolator_fuse(dwg, px, lvdc.dc_device_y, tag=f"F-{fi:02d}")
+        dc_bottom_by_feeder[fi] = dc_bot
+        if not blocks:
+            continue
+
+        branch_y = max(lvdc.block_y - 10.0, dc_bot + 8.0)
+        blk = blocks[0]
         _line(dwg, (px, dc_bot), (px, branch_y), "wire")
-
-        for blk, bx in zip(blocks, bx_list):
-            _line(dwg, (bx, branch_y), (bx, lvdc.block_y), "wire")
-            # Junction only where a vertical drop meets the horizontal branch bus
-            if multi:
-                _junction(dwg, bx, branch_y)
-            b_title = blk.text_lines[0] if blk.text_lines else "BESS"
-            b_sub   = blk.text_lines[1] if len(blk.text_lines) > 1 else ""
-            gi      = int(blk.dc_block_index or 0)
-            _bess_block(dwg, bx, lvdc.block_y,
-                        lvdc.battery_width, lvdc.battery_height,
-                        b_title, b_sub, tag=f"BESS-{gi:02d}")
+        _line(dwg, (px, branch_y), (px, lvdc.block_y), "wire")
+        b_title = blk.text_lines[0] if blk.text_lines else "BESS"
+        b_sub = blk.text_lines[1] if len(blk.text_lines) > 1 else ""
+        gi = int(blk.dc_block_index or 0)
+        _bess_block(
+            dwg, px, lvdc.block_y,
+            lvdc.battery_width, lvdc.battery_height,
+            b_title, b_sub, tag=f"BESS-{gi:02d}",
+            element_id=f"dc-container-{gi:02d}",
+        )
 
     # ELECTRICAL RULE (owner decision, 2026-07-13 session): a PCS DC input must
     # NEVER share a DC busbar with another PCS. A shared DC Block exposes one

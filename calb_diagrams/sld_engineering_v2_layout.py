@@ -151,6 +151,47 @@ def _grouped_feeder_positions(
     return positions, field_width
 
 
+_DEFAULT_INTER_FEEDER_PITCH = 264.0
+_RENDERED_SINGLE_DC_CONTAINER_WIDTH = 140.0
+_RENDERED_MULTI_DC_CONTAINER_WIDTH = 120.0
+_RENDERED_MULTI_DC_SPACING_BASE = 158.0
+_RENDERED_MULTI_DC_SPACING_MAX = 184.0
+_MULTI_DC_CLEAR_GAP = 22.0
+
+
+def _local_dc_block_counts(graph, feeder_count: int) -> dict[int, int]:
+    """Return dedicated DC Block counts by feeder for renderer-safe spacing.
+
+    Shared DC Blocks span more than one feeder and are rendered as their own
+    wide multi-port container, so they must not widen the dedicated per-feeder
+    DC Block footprint calculated here.
+    """
+    counts = {feeder_index: 0 for feeder_index in range(1, feeder_count + 1)}
+    for node in _nodes_by_type(graph, "dc_block"):
+        feeder_span = [
+            int(feeder)
+            for feeder in (node.attributes.get("feeder_span") or [])
+            if 1 <= int(feeder) <= feeder_count
+        ]
+        if len(feeder_span) > 1:
+            continue
+        feeder_index = feeder_span[0] if feeder_span else int(node.feeder_index or 0)
+        if feeder_index in counts:
+            counts[feeder_index] += 1
+    return counts
+
+
+def _local_dc_half_span(block_count: int) -> float:
+    """Half-width of the rendered dedicated-DC footprint about its feeder."""
+    if block_count <= 1:
+        return _RENDERED_SINGLE_DC_CONTAINER_WIDTH / 2.0
+    spacing = min(
+        _RENDERED_MULTI_DC_SPACING_MAX,
+        _RENDERED_MULTI_DC_SPACING_BASE + max(0, block_count - 2) * 18.0,
+    )
+    return spacing * (block_count - 1) / 2.0 + _RENDERED_MULTI_DC_CONTAINER_WIDTH / 2.0
+
+
 def _local_dc_block_position(
     center_x: float,
     local_block_index: int,
@@ -307,7 +348,29 @@ def build_sld_engineering_v2_layout_plan(
     rmu_w = 620.0
     rmu_h = 96.0
     bay_w = rmu_w / 3.0
-    raw_positions, field_width = _grouped_feeder_positions(_feeder_groups(graph, feeder_count))
+    feeder_groups = _feeder_groups(graph, feeder_count)
+    local_dc_counts = _local_dc_block_counts(graph, feeder_count)
+    max_local_dc_count = max(local_dc_counts.values(), default=0)
+    local_dc_half_span = _local_dc_half_span(max_local_dc_count)
+    inter_feeder_pitch = max(
+        _DEFAULT_INTER_FEEDER_PITCH,
+        2.0 * local_dc_half_span + _MULTI_DC_CLEAR_GAP,
+    )
+    # Preserve the compact, established single-DC layout (including the 8 PCS
+    # sheet). Dedicated multi-DC feeders need a wider field so the renderer's
+    # two-rack containers cannot be squeezed back into overlap by the cap.
+    max_field_width = 1180.0
+    if max_local_dc_count > 1:
+        max_field_width = max(
+            max_field_width,
+            inter_feeder_pitch * max(0, len(feeder_groups) - 1)
+            + 120.0 * sum(max(0, len(group) - 1) for group in feeder_groups),
+        )
+    raw_positions, field_width = _grouped_feeder_positions(
+        feeder_groups,
+        inter_pitch=inter_feeder_pitch,
+        max_field_width=max_field_width,
+    )
     # tx centre must keep the feeder field (incl. its ±100 LV-busbar overhang),
     # and the RMU (1.5 bays to its left), clear of the equipment-list panel.
     tx_center_x = max(field_width / 2.0 + equipment_right + 150.0,
@@ -336,7 +399,9 @@ def build_sld_engineering_v2_layout_plan(
     # + boundary 16), so the canvas must clear that or the dashed box gets clipped.
     ring_out_center = ring_out_x + bay_w / 2.0
     max_feeder_x = max(feeder_center_by_index.values(), default=tx_center_x)
-    content_right = max(ring_out_center, max_feeder_x) + 140.0
+    # A multi-DC feeder extends beyond the PCS centre by more than a single
+    # container width. Keep the full rendered footprint inside the canvas.
+    content_right = max(ring_out_center, max_feeder_x) + max(140.0, local_dc_half_span + 10.0)
     width = int(round(content_right + 24.0))
 
     ac_left = 470.0

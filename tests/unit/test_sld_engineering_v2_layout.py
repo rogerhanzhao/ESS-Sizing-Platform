@@ -1,10 +1,12 @@
 from dataclasses import asdict
+from xml.etree import ElementTree
 
 from calb_diagrams.sld_engineering_v2_validation import (
     assert_sld_engineering_v2_layout_acceptance,
     validate_sld_engineering_v2_layout,
 )
 from calb_diagrams.sld_engineering_v2_layout import build_sld_engineering_v2_layout_plan
+from calb_diagrams.sld_engineering_v2_renderer import render_sld_engineering_v2_svg
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot, SldRenderOptions
 from calb_sizing_tool.schemas.sld_render_input import SldInputOverride, legacy_sld_override_preset
 from calb_sizing_tool.services.sld_input_builder import build_sld_canonical_input
@@ -20,26 +22,42 @@ def _build_v2_plan(sample_excel_path):
     return graph, build_sld_engineering_v2_layout_plan(graph)
 
 
-def _build_v2_plan_with_dc_allocation(sample_excel_path, allocation):
+def _build_v2_plan_with_dc_allocation(
+    sample_excel_path,
+    allocation,
+    *,
+    pcs_per_block: int = 4,
+    pcs_kw: float = 1250.0,
+    block_size_mw: float = 5.0,
+    transformer_mva: float = 6.0,
+    lv_winding_count: int | None = None,
+    transformer_topology: str | None = None,
+):
     run_bundle = _build_run_bundle(sample_excel_path)
     override_payload = legacy_sld_override_preset()
     override_payload["transformer_vector_group"] = "Dyn11yn11"
     override_payload["dc_block_voltage_v"] = 1500.0
     override_payload["dc_blocks_per_feeder"] = list(allocation)
+    ac_output = {
+        "num_blocks": 1,
+        "pcs_per_block": pcs_per_block,
+        "pcs_kw": pcs_kw,
+        "block_size_mw": block_size_mw,
+        "transformer_mva": transformer_mva,
+        "dc_allocation_plan": [
+            {"ac_block_index": 1, "dc_blocks_total": sum(allocation), "feeder_allocations": list(allocation)}
+        ],
+    }
+    if lv_winding_count is not None:
+        ac_output["lv_winding_count"] = lv_winding_count
+    if transformer_topology is not None:
+        ac_output["transformer_topology"] = transformer_topology
+
     canonical = build_sld_canonical_input(
         run_bundle=run_bundle,
         ac_snapshot=AcSnapshot(
             inputs={"grid_kv": 33.0, "lv_voltage_v": 690.0},
-            output={
-                "num_blocks": 1,
-                "pcs_per_block": 4,
-                "pcs_kw": 1250.0,
-                "block_size_mw": 5.0,
-                "transformer_mva": 6.0,
-                "dc_allocation_plan": [
-                    {"ac_block_index": 1, "dc_blocks_total": sum(allocation), "feeder_allocations": list(allocation)}
-                ],
-            },
+            output=ac_output,
             results={},
         ),
         options=SldRenderOptions(
@@ -182,6 +200,88 @@ def test_engineering_v2_layout_distributes_multiple_dc_blocks_per_feeder(sample_
 
     issues = validate_sld_engineering_v2_layout(plan)
     assert not [issue for issue in issues if issue.severity == "error"]
+
+
+def test_engineering_v2_layout_keeps_four_two_dc_feeders_clear_in_rendered_svg(sample_excel_path, tmp_path):
+    """4 PCS x 2 DC Blocks must not reuse the single-DC feeder pitch."""
+    graph, plan = _build_v2_plan_with_dc_allocation(
+        sample_excel_path,
+        [2, 2, 2, 2],
+        pcs_kw=2500.0,
+        block_size_mw=10.0,
+        transformer_mva=11.1,
+    )
+    assert graph.summary.pcs_count == 4
+    assert graph.summary.dc_blocks_total_in_group == 8
+
+    pcs_centers = sorted(
+        box.x + box.width / 2.0 for box in plan.boxes if box.node_type == "pcs"
+    )
+    assert [pcs_centers[index + 1] - pcs_centers[index] for index in range(3)] == [300.0] * 3
+
+    svg_path = tmp_path / "four_pcs_eight_dc.svg"
+    render_sld_engineering_v2_svg(plan, svg_path)
+    containers = []
+    branch_wires = {}
+    branch_boxes = set()
+    for element in ElementTree.parse(svg_path).getroot().iter():
+        element_id = element.attrib.get("id", "")
+        if element_id.startswith("dc-container-"):
+            containers.append((float(element.attrib["x"]), float(element.attrib["width"])))
+        if element_id.startswith("dc-branch-box-"):
+            branch_boxes.add(element_id)
+        if element_id.startswith("dedicated-dc-branch-"):
+            points = [
+                tuple(float(value) for value in point.split(","))
+                for point in element.attrib["points"].split()
+            ]
+            branch_wires[element_id] = points
+
+    assert len(containers) == 8
+    assert {width for _, width in containers} == {120.0}
+    containers.sort()
+    assert max(x + width for x, width in containers) <= plan.width
+    assert all(
+        left_x + left_width <= right_x
+        for (left_x, left_width), (right_x, _) in zip(containers, containers[1:])
+    )
+    assert set(branch_wires) == {
+        f"dedicated-dc-branch-F{feeder:02d}-{suffix}"
+        for feeder in range(1, 5)
+        for suffix in ("A", "B")
+    }
+    assert branch_boxes == {f"dc-branch-box-F{feeder:02d}" for feeder in range(1, 5)}
+    # Each dedicated DC Block leaves the labelled distribution enclosure as an
+    # individual vertical branch; no diagonal or external horizontal bus joins
+    # the A/B containers together.
+    assert all(
+        len(points) == 2 and points[0][0] == points[1][0] and points[0][1] < points[1][1]
+        for points in branch_wires.values()
+    )
+    svg_text = svg_path.read_text(encoding="utf-8")
+    assert svg_text.count("DC BRANCH BOX") == 4
+    assert all(f"F-{feeder:02d}{suffix}" in svg_text for feeder in range(1, 5) for suffix in ("A", "B"))
+
+
+def test_engineering_v2_layout_preserves_compact_eight_pcs_single_dc_field(sample_excel_path):
+    """The approved 8 PCS x 1 DC drawing must not enter the multi-DC spacing path."""
+    _, plan = _build_v2_plan_with_dc_allocation(
+        sample_excel_path,
+        [1] * 8,
+        pcs_per_block=8,
+        pcs_kw=1250.0,
+        block_size_mw=10.0,
+        transformer_mva=11.1,
+        lv_winding_count=2,
+        transformer_topology="three_winding",
+    )
+    pcs_centers = sorted(
+        box.x + box.width / 2.0 for box in plan.boxes if box.node_type == "pcs"
+    )
+    assert len(pcs_centers) == 8
+    assert max(
+        pcs_centers[index + 1] - pcs_centers[index] for index in range(len(pcs_centers) - 1)
+    ) < 200.0
 
 
 def test_engineering_v2_layout_acceptance_checks_core_readability(sample_excel_path):

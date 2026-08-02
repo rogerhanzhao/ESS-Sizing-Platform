@@ -48,6 +48,7 @@ class ProfessionalLvDcGeometry:
     converter_width: float
     converter_height: float
     battery_width: float
+    multi_block_battery_width: float
     battery_height: float
     multi_block_spacing_base: float
     multi_block_spacing_max: float
@@ -234,14 +235,13 @@ def build_professional_sld_sheet(plan: SldV2LayoutPlan) -> ProfessionalSldSheet:
         block_y=mv.lv_bus_y + 248.0,
         converter_width=80.0,
         converter_height=60.0,
-        # DC Block symbol is drawn as a substantial container-scale box — larger
+        # A single DC Block is drawn as a substantial container-scale box — larger
         # than the PCS inverter symbol so the DC Blocks read as real 20 ft
         # containers and visually balance the AC Block boundary above, giving the
-        # sheet a coherent proportion. This is a visual-consistency choice only;
-        # an SLD is a single-line schematic, so symbol size is not a physical
-        # footprint. Spacing grows with the box so multiple DC Blocks per feeder
-        # never overlap.
+        # sheet a coherent proportion. Two dedicated DC Blocks below one PCS use a
+        # slimmer symbol so their individual branch circuits remain distinct.
         battery_width=140.0,
+        multi_block_battery_width=120.0,
         battery_height=84.0,
         multi_block_spacing_base=158.0,
         multi_block_spacing_max=184.0,

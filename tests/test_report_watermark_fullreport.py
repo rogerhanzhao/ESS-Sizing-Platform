@@ -44,10 +44,12 @@ _CONCEPT_CAPTION_MARKERS = (
     "Site Arrangement",
     "Site Layout",
 )
-# A stamped concept figure carries thousands of translucent-red mark pixels; a
-# brand logo or a blue/grey data chart carries only incidental red. The gap is
-# ~3 orders of magnitude (observed logo/chart <= ~300, concept figures > 6000).
-_WATERMARK_PIXEL_MIN = 2000
+# The shared 900x500 white-source fixture carries 527 translucent-red stamp
+# pixels with the current Pillow/font fallback.  Non-concept report media tops
+# out at 275 incidental red pixels, so 400 keeps the test above that noise
+# floor while accepting the mandatory visible stamp across supported Pillow
+# versions.
+_WATERMARK_PIXEL_MIN = 400
 
 
 def _white_png(w: int, h: int) -> bytes:
@@ -59,7 +61,7 @@ def _white_png(w: int, h: int) -> bytes:
 def _red_pixels(png: bytes) -> int:
     img = Image.open(io.BytesIO(png)).convert("RGB")
     return sum(
-        1 for r, g, b in img.get_flattened_data()
+        1 for r, g, b in img.getdata()
         if r > g + 20 and r > b + 20 and r < 250
     )
 
