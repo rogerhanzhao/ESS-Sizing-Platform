@@ -296,3 +296,41 @@ def test_engineering_v2_layout_acceptance_checks_core_readability(sample_excel_p
     joined_transformer_label = " ".join(transformer.text_lines)
     assert "Dyn11" in joined_transformer_label
     assert "Uk=7.0%" in joined_transformer_label
+
+
+def test_feeder_pitch_never_squeezes_pcs_boxes_into_overlap(sample_excel_path):
+    """Clustering + the field-width cap must never overlap the PCS symbols.
+
+    Feeders sharing a DC Block are clustered tightly, and the whole field is
+    capped to a maximum width. With 8 PCS on 4 shared DC Blocks that cap used to
+    scale the intra-group pitch below the 120 px PCS box width, so adjacent PCS
+    symbols overlapped. The pitch must stay >= the box width plus a gap; the
+    sheet grows instead (the canvas is content-adaptive).
+    """
+    from calb_diagrams.sld_engineering_v2_validation import validate_sld_engineering_v2_layout
+
+    cases = (
+        ([1] * 8, 8, dict(lv_winding_count=2, transformer_topology="three_winding")),
+        ([2] * 4, 4, {}),
+        ([1] * 4, 4, {}),
+        ([2] * 8, 8, dict(lv_winding_count=2, transformer_topology="three_winding")),
+    )
+    for allocation, pcs_per_block, extra in cases:
+        _, plan = _build_v2_plan_with_dc_allocation(
+            sample_excel_path,
+            allocation,
+            pcs_per_block=pcs_per_block,
+            pcs_kw=1250.0,
+            block_size_mw=1.25 * pcs_per_block,
+            transformer_mva=1.4 * pcs_per_block,
+            **extra,
+        )
+        pcs_boxes = sorted(
+            (box for box in plan.boxes if box.node_type == "pcs"), key=lambda box: box.x
+        )
+        for left, right in zip(pcs_boxes, pcs_boxes[1:]):
+            assert left.x + left.width <= right.x, (
+                f"PCS boxes overlap for allocation {allocation}: "
+                f"{left.node_id} ends {left.x + left.width}, {right.node_id} starts {right.x}"
+            )
+        assert not [i for i in validate_sld_engineering_v2_layout(plan) if i.severity == "error"]

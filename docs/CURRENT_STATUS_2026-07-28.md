@@ -72,6 +72,26 @@ been removed (`_pcs_internal_dc_bus` replaces `_dc_branch_box`).
   unchanged.
 - The PCS-internal busbar is drawn INSIDE the PCS outline, so the split is never
   mistaken for external switchgear.
+### 2f. Configuration-matrix sweep of the SLD chain (2026-08-02)
+
+Swept `(DC Blocks x PCS per block x LV windings)` end-to-end (canonical input ->
+topology -> graph -> layout -> rendered SVG) and validated every result.
+
+- **PCS symbols could overlap (fixed).** The PCS *layout box* is 120 px wide, but
+  the clustered feeder pitch defaulted to 120 (zero gap) and the `max_field_width`
+  cap then scaled it **below** the box width — e.g. 8 PCS on 4 shared DC Blocks
+  scaled the intra-group pitch to 111 px, overlapping adjacent PCS by ~9 px.
+  The pitch is now floored at `_MIN_FEEDER_PITCH` (box width + 20), and the cap's
+  down-scaling is clamped by the **smallest gap actually used** so it can never
+  push symbols into overlap — the content-adaptive canvas grows instead.
+- Known boundary (unchanged, raises explicitly): the layout supports at most
+  **4 dedicated DC Blocks per feeder**; beyond that it refuses rather than draw
+  an unreadable sheet.
+- Governed production path verified consistent for 4/7/8/16/92/100 DC Blocks:
+  `sum(group DC) == site DC`, the power identity holds, and every group satisfies
+  the feeder-capacity rule. Report §9 schedule sums back to `ac_blocks_total`
+  (92 -> 11x8 + 1x4).
+
 ### 2e. DC busbar model CORRECTED (owner, 2026-08-02)
 
 The earlier model was **wrong** and is corrected here. Record permanently:

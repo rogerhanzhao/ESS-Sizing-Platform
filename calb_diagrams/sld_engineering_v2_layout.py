@@ -123,10 +123,17 @@ def _feeder_groups(graph, feeder_count: int) -> list[list[int]]:
     return groups
 
 
+# The PCS layout box is 120 wide (see the "pcs" boxes below), so two adjacent
+# feeders must never be pitched closer than that plus a visible gap — otherwise
+# the PCS symbols overlap.
+_PCS_BOX_WIDTH = 120.0
+_MIN_FEEDER_PITCH = _PCS_BOX_WIDTH + 20.0
+
+
 def _grouped_feeder_positions(
     groups: list[list[int]],
     *,
-    intra_pitch: float = 120.0,
+    intra_pitch: float = _MIN_FEEDER_PITCH,
     inter_pitch: float = 264.0,
     max_field_width: float = 1180.0,
 ) -> tuple[dict[int, float], float]:
@@ -134,6 +141,8 @@ def _grouped_feeder_positions(
     ``inter_pitch`` between groups, the whole field capped to ``max_field_width``
     so a many-feeder 1:1 station never grows without bound. Returns
     ``(positions, field_width)``; the caller anchors the field on the sheet."""
+    intra_pitch = max(float(intra_pitch), _MIN_FEEDER_PITCH)
+    inter_pitch = max(float(inter_pitch), _MIN_FEEDER_PITCH)
     positions: dict[int, float] = {}
     cursor = 0.0
     for group_index, group in enumerate(groups):
@@ -145,9 +154,18 @@ def _grouped_feeder_positions(
             positions[feeder_index] = cursor
     field_width = cursor
     if field_width > max_field_width and field_width > 0:
+        # Never scale a pitch below the PCS box width + gap: shrinking the field
+        # to fit a cap must not make the PCS symbols overlap. The sheet grows
+        # instead (the canvas is content-adaptive). The floor is set by the
+        # SMALLEST gap actually used, not by the default pitch constants.
+        ordered = sorted(positions.values())
+        gaps = [b - a for a, b in zip(ordered, ordered[1:]) if b - a > 0]
         scale = max_field_width / field_width
-        positions = {feeder: value * scale for feeder, value in positions.items()}
-        field_width = max_field_width
+        if gaps:
+            scale = max(scale, _MIN_FEEDER_PITCH / min(gaps))
+        if scale < 1.0:
+            positions = {feeder: value * scale for feeder, value in positions.items()}
+            field_width *= scale
     return positions, field_width
 
 
