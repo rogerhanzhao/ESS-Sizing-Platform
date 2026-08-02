@@ -72,6 +72,18 @@ been removed (`_pcs_internal_dc_bus` replaces `_dc_branch_box`).
   unchanged.
 - The PCS-internal busbar is drawn INSIDE the PCS outline, so the split is never
   mistaken for external switchgear.
+- **DC-side drawing conventions (2026-08-02, second pass):**
+  - A conductor tapping the PCS-internal DC busbar is a T-connection and carries a
+    solid junction dot (IEC 60617) — a crossing without a dot means *no* connection.
+  - `_dc_isolator_fuse` internals are **proportional** to the declared height. They
+    were absolute offsets, so the device overran its own envelope and the fuse
+    overlapped the DC container by 8 px.
+  - The DC protection height is explicit (`dc_device_height`) and the battery row
+    sits low enough (`lv_bus_y + 256`) that the device's full envelope clears the
+    container top while the lower label still stays above the title block.
+  - The **AC Block boundary closes in the clear gap below the PCS and above the DC
+    protection** — it previously bisected the DC isolator/fuse symbols. The DC
+    isolator, fuse and containers belong to the DC side, outside the AC Block.
 - **Watermark**: `_load_stamp_font` previously fell back to
   `ImageFont.load_default()` with no size — a ~11 px bitmap font — so on hosts
   without DejaVu the mandatory NOT-FOR-CONSTRUCTION stamp silently shrank to

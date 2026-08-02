@@ -44,6 +44,7 @@ class ProfessionalLvDcGeometry:
     bus_x2: float
     pcs_y: float
     dc_device_y: float
+    dc_device_height: float
     block_y: float
     converter_width: float
     converter_height: float
@@ -232,7 +233,11 @@ def build_professional_sld_sheet(plan: SldV2LayoutPlan) -> ProfessionalSldSheet:
         # block top edge (plan.height - 120 = 1040). With the larger container
         # box (84 high) the row is raised so the lower label clears the band:
         # 918 + 84 + ~2 lines ≈ 1028 < 1040.
-        block_y=mv.lv_bus_y + 248.0,
+        # DC protection device height, and a battery row low enough that the
+        # device never overruns the container top (its full envelope must clear
+        # it) while the lower label still stays above the title block.
+        dc_device_height=46.0,
+        block_y=mv.lv_bus_y + 256.0,
         converter_width=80.0,
         converter_height=60.0,
         # A single DC Block is drawn as a substantial container-scale box — larger

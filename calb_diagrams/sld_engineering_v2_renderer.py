@@ -452,10 +452,13 @@ def _dc_isolator_fuse(dwg, x: float, y: float, height: float = 72.0,
     """
     top_y = y - height / 2.0
     bottom_y = y + height / 2.0
-    sw_top = top_y + 4.0
-    sw_bot = top_y + 26.0
-    fuse_top = top_y + 34.0
-    fuse_bot = fuse_top + 20.0
+    # Proportional internals: the switch, the gap and the fuse must always fit
+    # INSIDE the declared height, otherwise a shorter device overruns its own
+    # envelope and collides with whatever is drawn below it.
+    sw_top = top_y + height * 0.06
+    sw_bot = top_y + height * 0.36
+    fuse_top = top_y + height * 0.47
+    fuse_bot = top_y + height * 0.75
 
     # Wire stub in
     _line(dwg, (x, top_y), (x, sw_top), "wire")
@@ -499,6 +502,9 @@ def _pcs_internal_dc_bus(
     half = max(6.0, converter_width / 2.0 - 10.0)
     _line(dwg, (cx - half, bus_y), (cx + half, bus_y), "busbar", id=element_id)
     for branch_x in branch_xs:
+        # IEC 60617: a conductor tapping a busbar is a T-connection and must carry
+        # a solid junction dot, otherwise it reads as a crossing (no connection).
+        _junction(dwg, branch_x, bus_y, r=2.6)
         _line(dwg, (branch_x, bus_y), (branch_x, exit_y), "wire")
     return exit_y
 
@@ -905,7 +911,14 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
     ac_x1 = min(min(_panel_lefts), mv.ring_in_x - 110.0) - 16.0
     ac_x2 = max(max(_panel_rights), mv.ring_out_x + 110.0) + 16.0
     ac_y1 = 30.0
-    ac_y2 = lvdc.pcs_y + lvdc.converter_height + 34.0
+    # The AC Block boundary must close in the clear conductor gap BELOW the PCS
+    # and ABOVE the DC protection devices — a boundary that bisects a device
+    # symbol (as +34 did) is not a readable engineering drawing, and the DC
+    # isolator/fuse belongs to the DC side, outside the AC Block.
+    ac_y2 = min(
+        lvdc.pcs_y + lvdc.converter_height + 34.0,
+        lvdc.dc_device_y - lvdc.dc_device_height / 2.0 - 7.0,
+    )
     dwg.add(dwg.rect(insert=(ac_x1, ac_y1), size=(ac_x2 - ac_x1, ac_y2 - ac_y1),
                      class_="acblock", id="ac-block-boundary"))
     _text(dwg, "AC BLOCK BOUNDARY", ac_x1 + 12.0, ac_y1 + 20.0, "acblocktx", anchor="start")
@@ -1037,11 +1050,13 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
                 # One protected vertical branch: PCS bottom → its own isolator/fuse
                 # → its own DC container. Strictly vertical at a constant x.
                 _, branch_fuse_bottom = _dc_isolator_fuse(
-                    dwg, branch_x, lvdc.dc_device_y, tag=f"F-{fi:02d}{branch_suffix}",
+                    dwg, branch_x, lvdc.dc_device_y, height=lvdc.dc_device_height,
+                    tag=f"F-{fi:02d}{branch_suffix}",
                 )
+                _branch_dev_top = lvdc.dc_device_y - lvdc.dc_device_height / 2.0
                 _poly(
                     dwg,
-                    [(branch_x, exit_y), (branch_x, lvdc.dc_device_y - 36.0)],
+                    [(branch_x, exit_y), (branch_x, _branch_dev_top)],
                     "wire",
                     id=f"dedicated-dc-branch-F{fi:02d}-{branch_suffix}",
                 )
@@ -1060,9 +1075,11 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
         # A one-DC feeder retains its existing single direct circuit. Feeders
         # with only shared DC Blocks also keep this central fuse for their own
         # independent output circuit below the PCS.
-        _line(dwg, (px, lvdc.pcs_y + lvdc.converter_height),
-                   (px, lvdc.dc_device_y - lvdc.converter_height * 0.5), "wire")
-        _, dc_bot = _dc_isolator_fuse(dwg, px, lvdc.dc_device_y, tag=f"F-{fi:02d}")
+        _dc_run_top = lvdc.pcs_y + lvdc.converter_height
+        _dc_run_bot = lvdc.dc_device_y - lvdc.dc_device_height / 2.0
+        _line(dwg, (px, _dc_run_top), (px, _dc_run_bot), "wire")
+        _, dc_bot = _dc_isolator_fuse(dwg, px, lvdc.dc_device_y,
+                                     height=lvdc.dc_device_height, tag=f"F-{fi:02d}")
         dc_bottom_by_feeder[fi] = dc_bot
         if not blocks:
             continue
