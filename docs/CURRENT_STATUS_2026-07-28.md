@@ -72,6 +72,22 @@ been removed (`_pcs_internal_dc_bus` replaces `_dc_branch_box`).
   unchanged.
 - The PCS-internal busbar is drawn INSIDE the PCS outline, so the split is never
   mistaken for external switchgear.
+### 2h. Fail-open sweep of the formal-readiness gate (2026-08-02)
+
+Swept the governance paths for "swallow the error and carry on" patterns — the
+class of defect already found twice (watermark fail-open, shared-DC miscount).
+
+- **An unresolvable group allocation silently skipped its check (fixed).**
+  `_ac_group_total` returns `None` for a malformed allocation entry, and the gate
+  read `if ac_group_total is not None and ...`, so the group check was skipped
+  entirely and a formal SLD could be issued **without ever verifying the drawn
+  group's DC allocation**. It now raises `sld_group_not_in_ac_allocation`
+  whenever the group cannot be resolved while an allocation plan exists.
+- Related, verified already safe: an out-of-range `group_index` never reaches the
+  gate — `build_sld_canonical_input` rejects it upstream
+  ("group_index cannot exceed ac_blocks_total"). The fix above is the
+  defence-in-depth for the malformed-entry path that *does* reach it.
+
 ### 2g. Mixed-station + report chain audit (2026-08-02)
 
 - **A mixed station's head-fleet SLD could pass as a FORMAL full-site drawing

@@ -261,7 +261,24 @@ def assess_sld_formal_readiness(
         )
 
     ac_group_total = _ac_group_total(ac_snapshot, canonical_input.group_index)
-    if ac_group_total is not None and ac_group_total != canonical_input.dc_blocks_total_in_group:
+    _allocation_plan = ac_snapshot.output.get("dc_allocation_plan")
+    _has_allocation_plan = isinstance(_allocation_plan, list) and bool(_allocation_plan)
+    if ac_group_total is None:
+        # FAIL CLOSED: an unresolvable group must not silently skip the check.
+        # The drawn group index can point past the end of the AC allocation (e.g.
+        # SLD group 3 while the allocation has 2 AC Blocks), which would otherwise
+        # let a formal SLD be issued for an AC Block that does not exist.
+        if _has_allocation_plan:
+            issues.append(
+                _issue(
+                    "sld_group_not_in_ac_allocation",
+                    "error",
+                    f"SLD group {canonical_input.group_index} cannot be resolved in the AC "
+                    f"allocation plan ({len(_allocation_plan)} AC Block group(s)); the drawn "
+                    f"group must exist in the AC allocation.",
+                )
+            )
+    elif ac_group_total != canonical_input.dc_blocks_total_in_group:
         issues.append(
             _issue(
                 "sld_group_allocation_mismatch",

@@ -323,3 +323,43 @@ def test_shared_dc_blocks_are_not_double_counted_in_allocation_totals():
             f"{dc_blocks_total} DC Blocks over {pcs_per_block} feeders miscounted"
         )
         assert _ac_group_total(snapshot, 1) == plan[0]["dc_blocks_total"]
+
+
+def test_unresolvable_group_allocation_is_never_formal(sample_excel_path):
+    """FAIL CLOSED: if the drawn group cannot be resolved in the AC allocation,
+    the gate must raise an issue rather than silently skip the check.
+
+    An out-of-range group index is already rejected upstream by the canonical
+    input builder, but a MALFORMED allocation entry still reaches the gate:
+    ``_ac_group_total`` returns None and the check used to be skipped, so a
+    formal SLD could be issued without ever verifying the group's DC allocation.
+    """
+    run_bundle = _build_run_bundle(sample_excel_path)
+    project_settings = _professional_project_settings()
+    dc_total = int(run_bundle.snapshot.stage2.container_count + run_bundle.snapshot.stage2.cabinet_count)
+    base, remainder = dc_total // 4, dc_total % 4
+    feeders = [base + (1 if i < remainder else 0) for i in range(4)]
+    ac_snapshot = _consistent_ac_snapshot(
+        run_bundle, dc_total=dc_total, feeder_allocations=feeders
+    )
+    options = SldRenderOptions(group_index=1, renderer_mode="engineering_v2")
+    canonical = build_sld_canonical_input(
+        run_bundle=run_bundle, ac_snapshot=ac_snapshot, options=options,
+        project_settings=project_settings, validation_mode="strict",
+    )
+    # Corrupt the group entry AFTER the canonical input is built: no explicit
+    # total, no connection plan, and an unusable feeder list.
+    broken_output = dict(ac_snapshot.output)
+    broken_output["dc_allocation_plan"] = [
+        {"ac_block_index": 1, "feeder_allocations": ["not-a-number"]}
+    ]
+    broken_snapshot = AcSnapshot(
+        inputs=ac_snapshot.inputs, output=broken_output, results=ac_snapshot.results
+    )
+
+    report = assess_sld_formal_readiness(
+        run_bundle=run_bundle, ac_snapshot=broken_snapshot, canonical_input=canonical,
+        options=options, project_settings=project_settings,
+    )
+    assert "sld_group_not_in_ac_allocation" in {issue.issue_id for issue in report.issues}
+    assert report.ready is False
