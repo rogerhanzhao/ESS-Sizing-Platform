@@ -293,3 +293,33 @@ def test_datasheet_vector_group_basis_is_not_flagged_as_assumed(sample_excel_pat
     )
     issue_ids = {issue.issue_id for issue in report.issues}
     assert "transformer_vector_group_assumed_default" not in issue_ids
+
+
+def test_shared_dc_blocks_are_not_double_counted_in_allocation_totals():
+    """A DC Block shared across N feeders must count ONCE, not N times.
+
+    ``feeder_allocations`` is a per-feeder connection count, so summing it counts
+    a shared DC Block once per feeder it serves. That inflated total used to
+    raise a false ``dc_ac_block_total_mismatch`` and block a formal SLD for any
+    shared-DC station whose plan entries carry no explicit ``dc_blocks_total``.
+    """
+    from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot
+    from calb_sizing_tool.services.ac_sizing_service import build_dc_allocation_plan
+    from calb_sizing_tool.services.sld_formal_readiness_service import (
+        _ac_allocation_total,
+        _ac_group_total,
+    )
+
+    for dc_blocks_total, ac_blocks, pcs_per_block in ((2, 1, 4), (3, 1, 4), (4, 1, 8), (12, 2, 8)):
+        plan = build_dc_allocation_plan(dc_blocks_total, ac_blocks, pcs_per_block)
+        # Drop the explicit per-entry total to force the derivation path.
+        entries = [
+            {key: value for key, value in entry.items() if key != "dc_blocks_total"}
+            for entry in plan
+        ]
+        snapshot = AcSnapshot(inputs={}, output={"dc_allocation_plan": entries}, results={})
+
+        assert _ac_allocation_total(snapshot) == dc_blocks_total, (
+            f"{dc_blocks_total} DC Blocks over {pcs_per_block} feeders miscounted"
+        )
+        assert _ac_group_total(snapshot, 1) == plan[0]["dc_blocks_total"]

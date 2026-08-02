@@ -62,6 +62,39 @@ def _issue(issue_id: str, severity: str, message: str) -> SldFormalReadinessIssu
     return SldFormalReadinessIssue(issue_id=issue_id, severity=severity, message=message)
 
 
+def _entry_dc_block_total(entry: dict) -> int | None:
+    """DC Block count for one AC-Block allocation entry.
+
+    ``feeder_allocations`` counts DC Blocks *per feeder*, so a DC Block shared
+    across N feeders appears N times — summing it double-counts shared blocks
+    (2 shared blocks over 4 feeders would read as 4). Prefer the explicit total,
+    then the distinct blocks in the connection plan, and only fall back to the
+    feeder sum when no block is shared.
+    """
+    block_total = _safe_int(entry.get("dc_blocks_total"))
+    if block_total is not None:
+        return block_total
+
+    connections = entry.get("dc_block_connections")
+    if isinstance(connections, list) and connections:
+        block_indices = {
+            _safe_int(connection.get("dc_block_index"))
+            for connection in connections
+            if isinstance(connection, dict)
+        }
+        block_indices.discard(None)
+        if block_indices:
+            return len(block_indices)
+
+    feeder_allocations = entry.get("feeder_allocations")
+    if not isinstance(feeder_allocations, list):
+        return None
+    parsed = [_safe_int(item) for item in feeder_allocations]
+    if not all(item is not None and item >= 0 for item in parsed):
+        return None
+    return sum(int(item) for item in parsed if item is not None)
+
+
 def _ac_allocation_total(ac_snapshot: AcSnapshot) -> int | None:
     direct = _safe_int(ac_snapshot.output.get("dc_blocks_total"))
     if direct is not None:
@@ -73,15 +106,9 @@ def _ac_allocation_total(ac_snapshot: AcSnapshot) -> int | None:
     for entry in plan:
         if not isinstance(entry, dict):
             return None
-        block_total = _safe_int(entry.get("dc_blocks_total"))
+        block_total = _entry_dc_block_total(entry)
         if block_total is None:
-            feeder_allocations = entry.get("feeder_allocations")
-            if not isinstance(feeder_allocations, list):
-                return None
-            parsed = [_safe_int(item) for item in feeder_allocations]
-            if not all(item is not None and item >= 0 for item in parsed):
-                return None
-            block_total = sum(int(item) for item in parsed if item is not None)
+            return None
         total += int(block_total)
     return total
 
@@ -96,16 +123,7 @@ def _ac_group_total(ac_snapshot: AcSnapshot, group_index: int) -> int | None:
     entry = plan[zero_based]
     if not isinstance(entry, dict):
         return None
-    block_total = _safe_int(entry.get("dc_blocks_total"))
-    if block_total is not None:
-        return block_total
-    feeder_allocations = entry.get("feeder_allocations")
-    if not isinstance(feeder_allocations, list):
-        return None
-    parsed = [_safe_int(item) for item in feeder_allocations]
-    if not all(item is not None and item >= 0 for item in parsed):
-        return None
-    return sum(int(item) for item in parsed if item is not None)
+    return _entry_dc_block_total(entry)
 
 
 def assess_sld_formal_readiness(

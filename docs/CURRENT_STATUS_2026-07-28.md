@@ -72,6 +72,15 @@ been removed (`_pcs_internal_dc_bus` replaces `_dc_branch_box`).
   unchanged.
 - The PCS-internal busbar is drawn INSIDE the PCS outline, so the split is never
   mistaken for external switchgear.
+- **AC Sizing -> SLD chain audit (2026-08-02):** `feeder_allocations` is a
+  **per-feeder connection count**, so a DC Block shared across N feeders appears
+  N times. `sld_formal_readiness_service` summed it as a DC-Block count whenever
+  a plan entry carried no explicit `dc_blocks_total` — 2 shared blocks over 4
+  feeders read as **4**, raising a false `dc_ac_block_total_mismatch` /
+  `sld_group_allocation_mismatch` and wrongly blocking a formal SLD. The count is
+  now derived from the distinct `dc_block_index` values in `dc_block_connections`,
+  with the feeder sum only as a last resort (`_entry_dc_block_total`). Verified
+  against 1:1, shared, mixed and multi-DC groupings.
 - **DC-side drawing conventions (2026-08-02, second pass):**
   - A conductor tapping the PCS-internal DC busbar is a T-connection and carries a
     solid junction dot (IEC 60617) — a crossing without a dot means *no* connection.
