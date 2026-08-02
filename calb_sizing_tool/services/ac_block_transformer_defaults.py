@@ -58,8 +58,19 @@ BASIS_UNCONFIRMED = "unconfirmed"
 
 
 def standard_default_vector_group(lv_winding_count: int) -> str:
-    """Standard IEC vector group for an already-decided LV winding count."""
-    return STANDARD_DEFAULT_VECTOR_GROUP.get(max(1, int(lv_winding_count)), "Dyn11yn11")
+    """Standard IEC vector group for an already-decided LV winding count.
+
+    The group must declare exactly ONE LV token per independent LV winding — the
+    formal-readiness gate parses it against ``lv_winding_count``. The authoritative
+    input only admits 1 or 2 windings, but do NOT fall back to a fixed two-LV
+    string for anything else: that returns a group whose arity silently
+    contradicts the topology. Generate the matching arity instead.
+    """
+    count = max(1, int(lv_winding_count))
+    known = STANDARD_DEFAULT_VECTOR_GROUP.get(count)
+    if known is not None:
+        return known
+    return "Dyn11" + "yn11" * (count - 1)
 
 
 def standard_lv_arrangement(lv_winding_count: int) -> str:

@@ -76,3 +76,38 @@ def test_normalization_is_idempotent():
     once = normalize_ac_product_transformer_fields({"transformer_vector_group": "Dy11y11"})
     twice = normalize_ac_product_transformer_fields(once)
     assert once == twice
+
+
+def test_standard_default_vector_group_always_matches_its_winding_count():
+    """The default group must declare ONE LV token per independent LV winding.
+
+    The formal-readiness gate parses the vector group against lv_winding_count,
+    so a default whose arity contradicts the topology would raise a bogus
+    `transformer_vector_group_topology_mismatch`. The authoritative input only
+    admits 1 or 2 windings, but the helper must not fall back to a fixed
+    two-LV string for anything else.
+    """
+    from calb_sizing_tool.services.ac_block_transformer_defaults import (
+        standard_default_vector_group,
+    )
+    from calb_sizing_tool.sld.transformer_vector_group import parse_transformer_vector_group
+
+    for lv_winding_count in (1, 2, 3, 4):
+        vector_group = standard_default_vector_group(lv_winding_count)
+        parsed = parse_transformer_vector_group(
+            vector_group, lv_winding_count=lv_winding_count
+        )
+        assert len(parsed.lv_tokens) == lv_winding_count, vector_group
+
+
+def test_service_and_renderer_default_vector_groups_agree():
+    """The SLD renderer's assumed default must not drift from the service's."""
+    from calb_diagrams.sld_engineering_v2_renderer import _default_vector_group
+    from calb_sizing_tool.services.ac_block_transformer_defaults import (
+        standard_default_vector_group,
+    )
+
+    for lv_winding_count in (1, 2, 3):
+        assert _default_vector_group(lv_winding_count) == standard_default_vector_group(
+            lv_winding_count
+        )

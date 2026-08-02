@@ -72,6 +72,27 @@ been removed (`_pcs_internal_dc_bus` replaces `_dc_branch_box`).
   unchanged.
 - The PCS-internal busbar is drawn INSIDE the PCS outline, so the split is never
   mistaken for external switchgear.
+### 2i. Second AC-Sizing pass — adapter, defaults, product binding (2026-08-02)
+
+- **`standard_default_vector_group` could return a wrong-arity group (fixed).**
+  It fell back to a fixed `"Dyn11yn11"` (2 LV tokens) for any winding count it
+  did not know, so a 3-winding count silently produced a group whose arity
+  contradicts the topology — and the formal gate parses the group against
+  `lv_winding_count`, so it would raise a bogus
+  `transformer_vector_group_topology_mismatch`. It now GENERATES the matching
+  arity. (`lv_winding_count` is bounded to 1..2 upstream by
+  `sld_authoritative_input`, so this was latent, not live.)
+  The renderer's `_default_vector_group` and the service default are now pinned
+  equal by test, so the two cannot drift.
+- Verified consistent (no change): the **AC->SLD adapter preserves the DC Block
+  count** across all payload shapes — full plan, plan without `dc_blocks_total`
+  (derived from the connection list), the historic `[1,1,0,0]` shared mirror
+  (correctly translated to 2 shared blocks spanning F1-F2 / F3-F4), and a legacy
+  feeder-only list (read as dedicated blocks).
+- Verified consistent (no change): governed product binding never fabricates —
+  with no seeded catalogue every group reports `bound_product_code=None` and
+  lists its `provisional_unresolved` fields instead.
+
 ### 2h. Fail-open sweep of the formal-readiness gate (2026-08-02)
 
 Swept the governance paths for "swallow the error and carry on" patterns — the
