@@ -313,7 +313,16 @@ def head_fleet_ac_output_for_sld(ac_output: Dict) -> Dict | None:
             # This projection is a uniform station in its own right; clear the
             # mixed markers so downstream reads it as such, but keep a trail.
             "ac_block_mixed": False,
-            "sld_representative_of_mixed": bool(ac_output.get("ac_block_mixed")),
+            # Derive "this SLD is only the head fleet" from the ACTUAL rows, not
+            # solely from the caller's ``ac_block_mixed`` marker. That marker is
+            # written by the AC Sizing page, but ``_rows_from_ac_output`` also
+            # reconstructs rows for runs persisted BEFORE the mixed table existed —
+            # those carry no marker, so trusting it alone would let a genuinely
+            # mixed station's head-fleet-only drawing pass the formal-readiness
+            # gate as a full-site SLD (the tail AC Blocks are not on it).
+            "sld_representative_of_mixed": bool(
+                ac_output.get("ac_block_mixed") or is_mixed_station(rows)
+            ),
             "sld_head_fleet_block_count": num_blocks,
         }
     )

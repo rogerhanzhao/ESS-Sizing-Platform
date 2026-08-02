@@ -72,6 +72,22 @@ been removed (`_pcs_internal_dc_bus` replaces `_dc_branch_box`).
   unchanged.
 - The PCS-internal busbar is drawn INSIDE the PCS outline, so the split is never
   mistaken for external switchgear.
+### 2g. Mixed-station + report chain audit (2026-08-02)
+
+- **A mixed station's head-fleet SLD could pass as a FORMAL full-site drawing
+  (fixed).** `head_fleet_ac_output_for_sld` set `sld_representative_of_mixed`
+  from the caller's `ac_block_mixed` marker alone. That marker is written by the
+  AC Sizing page, but `_rows_from_ac_output` also **reconstructs rows for runs
+  persisted before the mixed table existed** — those carry no marker, so a
+  genuinely mixed legacy station projected to its head fleet was **not** flagged,
+  and the formal-readiness gate would accept a head-fleet-only drawing as a full
+  whole-station SLD (the tail AC Blocks are not on it). The flag is now derived
+  from the ACTUAL rows (`is_mixed_station(rows)`) OR-ed with the marker, so it
+  holds on the legacy reconstruction path too. This restores the §2.7 guarantee.
+- Verified consistent (no change): mixed composition 11x8 + 1x4 = 92 DC Blocks,
+  115.0 MW, 12 allocation groups; head fleet = 11 blocks / 88 DC; and the report
+  efficiency chain product equals the stated one-way chain exactly (0 % error).
+
 ### 2f. Configuration-matrix sweep of the SLD chain (2026-08-02)
 
 Swept `(DC Blocks x PCS per block x LV windings)` end-to-end (canonical input ->

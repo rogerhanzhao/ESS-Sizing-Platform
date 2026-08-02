@@ -196,3 +196,30 @@ def test_head_fleet_projection_is_identity_for_uniform_station():
 def test_head_fleet_projection_returns_none_without_rows():
     assert head_fleet_ac_output_for_sld({}) is None
     assert head_fleet_ac_output_for_sld({"pcs_count_by_block": []}) is None
+
+
+def test_head_fleet_flags_representative_even_without_the_mixed_marker():
+    """The head-fleet SLD must be marked representative-only from the ROWS.
+
+    ``ac_block_mixed`` is written by the AC Sizing page, but rows are also
+    RECONSTRUCTED for runs persisted before the mixed table existed — those carry
+    no marker. Trusting the marker alone let a genuinely mixed station's
+    head-fleet-only drawing pass the formal-readiness gate as a full-site SLD,
+    even though the tail AC Blocks are not on it.
+    """
+    mixed_rows = [{"pcs_count": 8, "pcs_kw": 1250, "dc_blocks": 8} for _ in range(11)]
+    mixed_rows.append({"pcs_count": 4, "pcs_kw": 1250, "dc_blocks": 4})
+    uniform_rows = [{"pcs_count": 8, "pcs_kw": 1250, "dc_blocks": 8} for _ in range(3)]
+
+    # Mixed rows, marker absent (legacy run) -> still representative-only.
+    assert head_fleet_ac_output_for_sld(
+        {"ac_block_rows": mixed_rows}
+    )["sld_representative_of_mixed"] is True
+    # Same via the legacy reconstruction path (no ac_block_rows at all).
+    assert head_fleet_ac_output_for_sld(
+        {"pcs_count_by_block": [8] * 11 + [4], "dc_blocks_per_ac": [8] * 11 + [4], "pcs_kw": 1250}
+    )["sld_representative_of_mixed"] is True
+    # A genuinely uniform station is NOT representative-only.
+    assert head_fleet_ac_output_for_sld(
+        {"ac_block_rows": uniform_rows}
+    )["sld_representative_of_mixed"] is False
