@@ -6,7 +6,10 @@ from pydantic import ValidationError
 
 from calb_sizing_tool.adapters.ac_to_sld_adapter import AcToSldAdapterError, normalize_ac_output_for_sld
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot, SldRenderOptions
-from calb_sizing_tool.schemas.ac_electrical_topology import DcBlockConnection
+from calb_sizing_tool.schemas.ac_electrical_topology import (
+    DEFAULT_DC_BLOCK_INTERNAL_MODE,
+    DcBlockConnection,
+)
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
 from calb_sizing_tool.schemas.sld_render_input import (
     SldCanonicalInput,
@@ -491,7 +494,7 @@ class SldInputBuilder:
                         dc_block_index=dc_block_index,
                         feeder_indices=[feeder_index],
                         output_circuit_count=1,
-                        internal_dc_busbar_mode="common",
+                        internal_dc_busbar_mode=DEFAULT_DC_BLOCK_INTERNAL_MODE,
                     )
                 )
                 dc_block_index += 1

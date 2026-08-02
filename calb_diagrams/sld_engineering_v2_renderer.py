@@ -1098,12 +1098,16 @@ def _draw_lv_pcs_dc(dwg, plan: SldV2LayoutPlan, sheet: ProfessionalSldSheet) -> 
             element_id=f"dc-container-{gi:02d}",
         )
 
-    # ELECTRICAL RULE (owner decision, 2026-07-13 session): a PCS DC input must
-    # NEVER share a DC busbar with another PCS. A shared DC Block exposes one
-    # INDEPENDENT output circuit per PCS (its common bus lives INSIDE the block),
-    # so each PCS feeder is routed as its own branch to its own output terminal on
+    # ELECTRICAL RULE (owner decision 2026-07-13, corrected 2026-08-02): a PCS DC
+    # input must NEVER share a DC busbar with another PCS — NOT outside the block
+    # and NOT inside it either. A DC Block is built with TWO INDEPENDENT
+    # ("segregated") DC circuits; when it feeds two PCS, each PCS gets one of those
+    # independent circuits, and those PCS must belong to the SAME AC Block.
+    # So each PCS feeder is routed as its own branch to its own output terminal on
     # the block — no common conductor, junction dot or horizontal "branch bus"
-    # joining two PCS DC sides outside the block.
+    # joining two PCS DC sides anywhere. (The earlier note that "the common bus
+    # lives INSIDE the block" was wrong: the multi-port common busbar belongs to
+    # the PCS, letting ONE PCS take SEVERAL DC Blocks.)
     #
     # LAYOUT (owner decision, 2026-07-29): do NOT converge the feeders left/right
     # onto a small centred block — that reads as one block fed from both sides.

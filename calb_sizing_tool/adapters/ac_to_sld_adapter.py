@@ -4,7 +4,10 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from calb_sizing_tool.schemas.ac_electrical_topology import build_dc_block_connection_plan
+from calb_sizing_tool.schemas.ac_electrical_topology import (
+    DEFAULT_DC_BLOCK_INTERNAL_MODE,
+    build_dc_block_connection_plan,
+)
 from calb_sizing_tool.schemas.sld_authoritative_input import SldAcBlockAllocation, SldAuthoritativeAcOutput
 
 
@@ -208,7 +211,7 @@ def _build_dedicated_connections_from_legacy_allocation(
                     "dc_block_index": dc_block_index,
                     "feeder_indices": [feeder_index],
                     "output_circuit_count": output_circuit_count,
-                    "internal_dc_busbar_mode": "common",
+                    "internal_dc_busbar_mode": DEFAULT_DC_BLOCK_INTERNAL_MODE,
                 }
             )
             dc_block_index += 1

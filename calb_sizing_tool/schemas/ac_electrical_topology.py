@@ -9,7 +9,18 @@ from calb_sizing_tool.schemas.common import CanonicalBaseModel
 
 
 TransformerTopology = Literal["two_winding", "three_winding"]
+
+# ELECTRICAL RULE (owner correction, 2026-08-02): different PCS must NEVER share a
+# DC busbar. A DC Block is by design built with TWO INDEPENDENT DC circuits
+# ("segregated"); those two circuits may feed two different PCS, but only PCS
+# inside the SAME AC Block. "common" therefore means one internal DC busbar and is
+# only admissible when the block serves a single PCS.
+#
+# The "common busbar" wording never described the DC Block: it describes the DC
+# BUSBAR UNDER ONE PCS, which has several ports so that ONE PCS can take SEVERAL
+# DC Blocks. That is a PCS-side busbar, not a DC-Block-side one.
 DcInternalBusbarMode = Literal["common", "segregated"]
+DEFAULT_DC_BLOCK_INTERNAL_MODE: DcInternalBusbarMode = "segregated"
 DEFAULT_DC_BLOCK_OUTPUT_CIRCUITS = 2
 
 
@@ -24,6 +35,12 @@ def build_dc_block_connection_plan(
     This remains deliberately independent of the AC sizing service, so the
     adapter and SLD layers can consume the same topology contract without
     importing service-package side effects.
+
+    The plan is built for ONE AC Block, and ``pcs_count`` is that AC Block's own
+    feeder count — so every connection returned here necessarily references only
+    PCS inside this AC Block. That is the rule a DC Block's two independent DC
+    circuits must respect: they may feed two different PCS, but never PCS in a
+    different AC Block, and never through a shared DC busbar.
     """
     blocks = int(dc_blocks_total or 0)
     feeders = int(pcs_count or 0)
@@ -38,6 +55,18 @@ def build_dc_block_connection_plan(
             f"all {feeders} PCS feeders"
         )
 
+    def _guard_same_ac_block(built: list[dict]) -> list[dict]:
+        """Every referenced feeder must belong to THIS AC Block's feeder range."""
+        for connection in built:
+            outside = [f for f in connection["feeder_indices"] if not 1 <= int(f) <= feeders]
+            if outside:
+                raise ValueError(
+                    f"DC Block {connection['dc_block_index']} feeds PCS feeder(s) {outside} "
+                    f"outside this AC Block (1..{feeders}); a DC Block may only feed PCS "
+                    f"within the same AC Block"
+                )
+        return built
+
     connections: list[dict] = []
     if blocks <= feeders:
         cursor = 1
@@ -49,10 +78,10 @@ def build_dc_block_connection_plan(
                     "dc_block_index": block_index,
                     "feeder_indices": feeder_indices,
                     "output_circuit_count": outputs,
-                    "internal_dc_busbar_mode": "common",
+                    "internal_dc_busbar_mode": DEFAULT_DC_BLOCK_INTERNAL_MODE,
                 }
             )
-        return connections
+        return _guard_same_ac_block(connections)
 
     block_index = 1
     for feeder_index, count in enumerate(evenly_distribute(blocks, feeders), start=1):
@@ -62,24 +91,27 @@ def build_dc_block_connection_plan(
                     "dc_block_index": block_index,
                     "feeder_indices": [feeder_index],
                     "output_circuit_count": outputs,
-                    "internal_dc_busbar_mode": "common",
+                    "internal_dc_busbar_mode": DEFAULT_DC_BLOCK_INTERNAL_MODE,
                 }
             )
             block_index += 1
-    return connections
+    return _guard_same_ac_block(connections)
 
 
 class DcBlockConnection(CanonicalBaseModel):
     """Physical DC Block output circuits connected to PCS feeder(s).
 
-    A DC Block may expose one or two protected outputs from one common internal
-    DC busbar.  The outputs remain separate once they leave the DC Block.
+    A DC Block is built with TWO INDEPENDENT DC circuits ("segregated"). Those two
+    circuits may feed two different PCS — but only PCS inside the SAME AC Block,
+    and never through a shared DC busbar: different PCS must never be tied
+    together on the DC side. A "common" internal busbar is therefore only
+    admissible when the block serves a single PCS.
     """
 
     dc_block_index: int
     feeder_indices: list[int]
     output_circuit_count: int
-    internal_dc_busbar_mode: DcInternalBusbarMode = "common"
+    internal_dc_busbar_mode: DcInternalBusbarMode = DEFAULT_DC_BLOCK_INTERNAL_MODE
 
     @field_validator("dc_block_index", "output_circuit_count")
     @classmethod
@@ -104,4 +136,11 @@ class DcBlockConnection(CanonicalBaseModel):
     def _validate_output_capacity(self) -> "DcBlockConnection":
         if len(self.feeder_indices) > self.output_circuit_count:
             raise ValueError("connected PCS feeders exceed DC Block output_circuit_count")
+        # Different PCS must NEVER share a DC busbar. A block that feeds more than
+        # one PCS must therefore keep its DC circuits segregated.
+        if len(self.feeder_indices) > 1 and self.internal_dc_busbar_mode == "common":
+            raise ValueError(
+                "a DC Block feeding several PCS must be 'segregated': different PCS "
+                "must never share a DC busbar"
+            )
         return self

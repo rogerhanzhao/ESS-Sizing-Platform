@@ -72,6 +72,30 @@ been removed (`_pcs_internal_dc_bus` replaces `_dc_branch_box`).
   unchanged.
 - The PCS-internal busbar is drawn INSIDE the PCS outline, so the split is never
   mistaken for external switchgear.
+### 2e. DC busbar model CORRECTED (owner, 2026-08-02)
+
+The earlier model was **wrong** and is corrected here. Record permanently:
+
+1. **Different PCS must NEVER share a DC busbar** — not outside the DC Block and
+   **not inside it either**. The old note "a shared DC Block's common bus lives
+   INSIDE the block" was an incorrect justification.
+2. **"The common busbar is inside the PCS"** describes the **PCS side**: the DC
+   BUSBAR under ONE PCS has **several ports**, so **one PCS can take several DC
+   Blocks**. It never described the DC Block.
+3. **A DC Block is built with TWO INDEPENDENT DC circuits** ("segregated").
+4. Those two circuits **may feed two different PCS**, but **only PCS inside the
+   SAME AC Block**.
+
+Enforcement (contract layer — `schemas/ac_electrical_topology.py`; the sizing
+service itself is FROZEN canon and was not touched):
+- `DEFAULT_DC_BLOCK_INTERNAL_MODE = "segregated"` is what every producer emits.
+- `DcBlockConnection` **rejects** `internal_dc_busbar_mode="common"` whenever the
+  block feeds more than one PCS; `common` stays admissible for a single-PCS block.
+- `build_dc_block_connection_plan` guards that every emitted feeder index lies in
+  the AC Block's own `1..pcs_count` range (same-AC-Block rule).
+- Capacity rule `⌈PCS / 2⌉` is **unchanged** — a block's two circuits can still
+  serve two PCS, so DC-Block-count < PCS-count stays valid.
+
 - **AC Sizing -> SLD chain audit (2026-08-02):** `feeder_allocations` is a
   **per-feeder connection count**, so a DC Block shared across N feeders appears
   N times. `sld_formal_readiness_service` summed it as a DC-Block count whenever

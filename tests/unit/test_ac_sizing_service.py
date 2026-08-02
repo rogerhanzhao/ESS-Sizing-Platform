@@ -112,17 +112,20 @@ def test_ac_sizing_service_builds_authoritative_dc_allocation_plan():
         for item in allocation_plan
     ] == [(1, 4, [1, 1, 1, 1]), (2, 4, [1, 1, 1, 1]), (3, 4, [1, 1, 1, 1])]
     assert allocation_plan[0]["dc_block_connections"] == [
-        {"dc_block_index": 1, "feeder_indices": [1], "output_circuit_count": 2, "internal_dc_busbar_mode": "common"},
-        {"dc_block_index": 2, "feeder_indices": [2], "output_circuit_count": 2, "internal_dc_busbar_mode": "common"},
-        {"dc_block_index": 3, "feeder_indices": [3], "output_circuit_count": 2, "internal_dc_busbar_mode": "common"},
-        {"dc_block_index": 4, "feeder_indices": [4], "output_circuit_count": 2, "internal_dc_busbar_mode": "common"},
+        {"dc_block_index": 1, "feeder_indices": [1], "output_circuit_count": 2, "internal_dc_busbar_mode": "segregated"},
+        {"dc_block_index": 2, "feeder_indices": [2], "output_circuit_count": 2, "internal_dc_busbar_mode": "segregated"},
+        {"dc_block_index": 3, "feeder_indices": [3], "output_circuit_count": 2, "internal_dc_busbar_mode": "segregated"},
+        {"dc_block_index": 4, "feeder_indices": [4], "output_circuit_count": 2, "internal_dc_busbar_mode": "segregated"},
     ]
 
 
-def test_dc_block_connection_plan_models_two_protected_outputs_from_one_common_bus():
+def test_dc_block_connection_plan_models_two_segregated_outputs_per_block():
+    """A DC Block has TWO INDEPENDENT DC circuits; when they feed two different
+    PCS (always inside the same AC Block) they must stay segregated — different
+    PCS must never share a DC busbar."""
     assert build_dc_block_connection_plan(2, 4) == [
-        {"dc_block_index": 1, "feeder_indices": [1, 2], "output_circuit_count": 2, "internal_dc_busbar_mode": "common"},
-        {"dc_block_index": 2, "feeder_indices": [3, 4], "output_circuit_count": 2, "internal_dc_busbar_mode": "common"},
+        {"dc_block_index": 1, "feeder_indices": [1, 2], "output_circuit_count": 2, "internal_dc_busbar_mode": "segregated"},
+        {"dc_block_index": 2, "feeder_indices": [3, 4], "output_circuit_count": 2, "internal_dc_busbar_mode": "segregated"},
     ]
 
 
@@ -233,3 +236,42 @@ def test_derive_ac_template_fields_freezes_template_and_pf_resolution():
     assert template_fields["pcs_per_block"] == 4
     assert template_fields["feeders_per_block"] == 4
     assert round(template_fields["grid_power_factor"], 3) == 0.9
+
+
+def test_dc_block_feeding_several_pcs_must_be_segregated_never_common():
+    """Different PCS must NEVER share a DC busbar — not even inside the DC Block.
+
+    The DC Block's two DC circuits are independent, so a block feeding two PCS is
+    'segregated'. A 'common' internal busbar ties those PCS together on the DC
+    side and is only admissible when the block serves a single PCS.
+    """
+    import pytest
+
+    from calb_sizing_tool.schemas.ac_electrical_topology import DcBlockConnection
+
+    # One PCS -> a single internal busbar is fine.
+    DcBlockConnection(
+        dc_block_index=1, feeder_indices=[1],
+        output_circuit_count=2, internal_dc_busbar_mode="common",
+    )
+    # Two PCS on one common busbar -> rejected.
+    with pytest.raises(ValueError, match="segregated"):
+        DcBlockConnection(
+            dc_block_index=1, feeder_indices=[1, 2],
+            output_circuit_count=2, internal_dc_busbar_mode="common",
+        )
+    # Two PCS on the block's two independent circuits -> allowed.
+    connection = DcBlockConnection(
+        dc_block_index=1, feeder_indices=[1, 2],
+        output_circuit_count=2, internal_dc_busbar_mode="segregated",
+    )
+    assert connection.internal_dc_busbar_mode == "segregated"
+
+
+def test_dc_block_may_only_feed_pcs_inside_its_own_ac_block():
+    """A DC Block's two circuits may feed two PCS, but only within ONE AC Block."""
+    # Every feeder the plan emits is inside this AC Block's own 1..pcs_count range.
+    for dc_blocks, pcs_count in ((2, 4), (3, 4), (4, 8), (8, 4)):
+        plan = build_dc_block_connection_plan(dc_blocks, pcs_count)
+        for connection in plan:
+            assert all(1 <= feeder <= pcs_count for feeder in connection["feeder_indices"])
