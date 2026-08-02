@@ -11,6 +11,7 @@ from calb_sizing_tool.schemas.sld_engineering_v2 import (
     SldV2Node,
     SldV2Port,
 )
+from calb_sizing_tool.schemas.ac_electrical_topology import DEFAULT_DC_BLOCK_INTERNAL_MODE
 from calb_sizing_tool.schemas.sld_topology import SldTopology
 
 
@@ -502,7 +503,7 @@ def build_sld_engineering_v2_graph(topology: SldTopology) -> SldEngineeringV2Gra
                         ),
                         "internal_dc_busbar_mode": (
                             explicit_dc_connections[connection_index - 1].internal_dc_busbar_mode
-                            if explicit_dc_connections else "common"
+                            if explicit_dc_connections else DEFAULT_DC_BLOCK_INTERNAL_MODE
                         ),
                     },
                 )
