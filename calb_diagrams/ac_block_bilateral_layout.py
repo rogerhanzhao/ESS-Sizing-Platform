@@ -148,7 +148,11 @@ def _dc_field_placements(
     col_w = DC_WIDTH_M                     # east-west footprint of one container
     row_h = DC_LENGTH_M                    # north-south footprint of one container
     col_x = (0.0, col_w + profile.dc_pair_gap_m)
-    row_y = (0.0, row_h + profile.pair_to_pair_gap_m)
+    # Two pairs stack north-south, so the touching faces are the DC Block END
+    # faces; one of them is always the EQUIPMENT END (liquid-cooling + fan
+    # grilles), which takes the AC-Block-aisle clearance (owner, 2026-08-03).
+    _end_gap = max(profile.pair_to_pair_gap_m, profile.dc_equipment_end_gap_m)
+    row_y = (0.0, row_h + _end_gap)
 
     # (col, row, pair_label, feeder-order-within-field)
     slots = [
@@ -216,7 +220,7 @@ def compute_bilateral_layout(
 
     # One 4-DC field footprint.
     field_w = 2 * DC_WIDTH_M + profile.dc_pair_gap_m          # east-west
-    field_d = 2 * DC_LENGTH_M + profile.pair_to_pair_gap_m    # north-south
+    field_d = 2 * DC_LENGTH_M + max(profile.pair_to_pair_gap_m, profile.dc_equipment_end_gap_m)  # north-south
 
     envelope_w = field_w + aisle_m + station_wid + aisle_m + field_w
     envelope_d = max(field_d, station_len)
@@ -378,7 +382,9 @@ def render_bilateral_plan_svg(
     title = str(block_label)
     subtitle = (
         f"{layout.envelope_w_m:.2f} m x {layout.envelope_d_m:.2f} m equipment envelope"
-        "  ·  west 4-DC | center 40 ft | east 4-DC"
+        + ("  ·  N/W/E/S 2-DC each | center 40 ft"
+           if layout.layout_variant == QUAD_LAYOUT_VARIANT
+           else "  ·  west 4-DC | center 40 ft | east 4-DC")
     )
     footer = "CONCEPT ONLY — NOT FOR CONSTRUCTION · provisional spacing, not a site layout"
 
@@ -434,6 +440,10 @@ def render_bilateral_plan_svg(
                 _rect(parts, px, py + ph * 0.3, 2.5, ph * 0.4, _DOOR, rx=0)
             elif p.door_orientation == "east":
                 _rect(parts, px + pw - 2.5, py + ph * 0.3, 2.5, ph * 0.4, _DOOR, rx=0)
+            elif p.door_orientation == "north":
+                _rect(parts, px + pw * 0.3, py, pw * 0.4, 2.5, _DOOR, rx=0)
+            elif p.door_orientation == "south":
+                _rect(parts, px + pw * 0.3, py + ph - 2.5, pw * 0.4, 2.5, _DOOR, rx=0)
 
     # labels
     _text(parts, margin_l + 4, 30, title, size=13, anchor="start")
@@ -444,3 +454,116 @@ def render_bilateral_plan_svg(
 
     parts.append("</svg>")
     return "".join(parts)
+
+
+QUAD_LAYOUT_VARIANT = "central_40ft_quad_2plus2plus2plus2"
+
+
+def compute_quad_layout(
+    dc_count: int = 8,
+    profile: ArrangementRuleProfile = US_NFPA_OIL,
+    *,
+    dc_field_to_station_aisle_m: Optional[float] = None,
+    station_length_m: Optional[float] = None,
+    station_width_m: Optional[float] = None,
+) -> BilateralLayout:
+    """8 DC Blocks placed on ALL FOUR sides of the central 40 ft AC Block.
+
+    Owner instruction (2026-08-03): with eight DC Blocks the field need not be
+    restricted to the two lateral sides. Each side carries ONE mirrored pair, so
+    every DC Block still presents its door face to a 3.0 m aisle and shares only
+    its door-free wide face (0.30 m) with its partner.
+
+    Trade-off, stated plainly: this costs a third and fourth 3.0 m aisle, so the
+    footprint grows from ~284 m2 (bilateral 4+4) to ~536 m2. Cable runs to the
+    north/south pairs also route around the station.
+    """
+    if dc_count != 8:
+        raise ValueError(
+            f"{QUAD_LAYOUT_VARIANT} is a fixed 2+2+2+2 field; dc_count must be 8, got {dc_count}"
+        )
+    aisle = profile.dc_to_mv_aisle_m if dc_field_to_station_aisle_m is None else float(dc_field_to_station_aisle_m)
+    st_len = AC40_STATION_LENGTH_M if station_length_m is None else float(station_length_m)
+    st_wid = AC40_STATION_WIDTH_M if station_width_m is None else float(station_width_m)
+
+    pair_long = 2 * DC_WIDTH_M + profile.dc_pair_gap_m   # across the pair (5.176)
+    prov = (f"rule_profile={profile.key}; owner 2026-08-03 four-side field; "
+            f"pair_gap={profile.dc_pair_gap_m} m, aisle={aisle} m")
+
+    envelope_w = pair_long + aisle + st_wid + aisle + pair_long
+    envelope_d = pair_long + aisle + st_len + aisle + pair_long
+
+    station_x = pair_long + aisle
+    station_y = pair_long + aisle
+    lateral_y = station_y + (st_len - DC_LENGTH_M) / 2.0     # centre on the station
+    vertical_x = (envelope_w - DC_LENGTH_M) / 2.0            # centre horizontally
+
+    placements: List[EquipmentPlacement] = []
+
+    def _add(dc_id, x, y, w, h, side, door, rot):
+        placements.append(EquipmentPlacement(
+            equipment_id=f"DC-{dc_id}", equipment_type="dc_block",
+            x_m=round(x, 3), y_m=round(y, 3), width_m=round(w, 3), height_m=round(h, 3),
+            rotation_deg=rot, side=side, pair_id=f"{side}-pair",
+            door_orientation=door,
+            service_orientation="station_aisle" if door in ("east", "west", "north", "south") else "perimeter",
+            feeder_index=dc_id, provenance=prov, provisional=True,
+        ))
+
+    # West pair: containers upright, side by side, backs facing each other.
+    _add(1, 0.0, lateral_y, DC_WIDTH_M, DC_LENGTH_M, "west", "west", 0.0)
+    _add(2, DC_WIDTH_M + profile.dc_pair_gap_m, lateral_y, DC_WIDTH_M, DC_LENGTH_M, "west", "east", 0.0)
+    # East pair.
+    east_x = station_x + st_wid + aisle
+    _add(3, east_x, lateral_y, DC_WIDTH_M, DC_LENGTH_M, "east", "west", 0.0)
+    _add(4, east_x + DC_WIDTH_M + profile.dc_pair_gap_m, lateral_y, DC_WIDTH_M, DC_LENGTH_M, "east", "east", 0.0)
+    # North pair: containers laid on their side, stacked, backs facing each other.
+    _add(5, vertical_x, 0.0, DC_LENGTH_M, DC_WIDTH_M, "north", "north", 90.0)
+    _add(6, vertical_x, DC_WIDTH_M + profile.dc_pair_gap_m, DC_LENGTH_M, DC_WIDTH_M, "north", "south", 90.0)
+    # South pair.
+    south_y = station_y + st_len + aisle
+    _add(7, vertical_x, south_y, DC_LENGTH_M, DC_WIDTH_M, "south", "north", 90.0)
+    _add(8, vertical_x, south_y + DC_WIDTH_M + profile.dc_pair_gap_m, DC_LENGTH_M, DC_WIDTH_M, "south", "south", 90.0)
+
+    placements.append(EquipmentPlacement(
+        equipment_id="AC-STATION-40FT", equipment_type="ac_station",
+        x_m=round(station_x, 3), y_m=round(station_y, 3),
+        width_m=round(st_wid, 3), height_m=round(st_len, 3),
+        rotation_deg=90.0, side="center", pair_id=None,
+        door_orientation="east", service_orientation="station_aisle",
+        feeder_index=None,
+        provenance="nominal ISO 40 ft station",
+        provisional=station_length_m is None or station_width_m is None,
+    ))
+
+    aisles = (
+        AislePolygon(aisle_id="AISLE-WEST", x_m=round(pair_long, 3), y_m=0.0,
+                     width_m=round(aisle, 3), height_m=round(envelope_d, 3),
+                     role="dc_field_to_station"),
+        AislePolygon(aisle_id="AISLE-EAST", x_m=round(station_x + st_wid, 3), y_m=0.0,
+                     width_m=round(aisle, 3), height_m=round(envelope_d, 3),
+                     role="dc_field_to_station"),
+        AislePolygon(aisle_id="AISLE-NORTH", x_m=0.0, y_m=round(pair_long, 3),
+                     width_m=round(envelope_w, 3), height_m=round(aisle, 3),
+                     role="dc_field_to_station"),
+        AislePolygon(aisle_id="AISLE-SOUTH", x_m=0.0, y_m=round(station_y + st_len, 3),
+                     width_m=round(envelope_w, 3), height_m=round(aisle, 3),
+                     role="dc_field_to_station"),
+    )
+
+    return BilateralLayout(
+        dc_count=8,
+        dc_field_split=(4, 4),   # 2 per side x 4 sides
+        layout_variant=QUAD_LAYOUT_VARIANT,
+        envelope_w_m=round(envelope_w, 3),
+        envelope_d_m=round(envelope_d, 3),
+        placements=tuple(placements),
+        aisles=aisles,
+        cable_trenches=(),
+        profile_key=profile.key,
+        provisional_notes=(
+            "four-side DC field is an owner concept variant (2026-08-03)",
+            f"DC-field-to-station aisle {aisle} m is a rule-profile assumption",
+            "40 ft station 12.192x2.438 m uses nominal ISO dimensions",
+        ),
+    )

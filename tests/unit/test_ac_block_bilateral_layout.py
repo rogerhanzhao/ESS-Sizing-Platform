@@ -2,7 +2,8 @@
 
 Owner-confirmed concept (docs/CLAUDE_HANDOFF_10MW_8PCS_8DC_2026-07-24.md §1-§2):
 central vertical 40 ft AC Block, west 4-DC field + east 4-DC field, each a 2x2
-``田`` of two mirrored back-to-back pairs; ~18.79 m x 13.02 m equipment envelope.
+``田`` of two mirrored back-to-back pairs; ~18.79 m x 15.12 m equipment envelope
+(the north-south pair gap is the DC EQUIPMENT-END clearance, owner 2026-08-03).
 The removed single-row eight-DC draft must not reappear.
 """
 from __future__ import annotations
@@ -29,9 +30,13 @@ def _overlap(a, b) -> bool:
 def test_envelope_matches_recorded_concept():
     layout = compute_bilateral_layout(8)
     assert layout.layout_variant == LAYOUT_VARIANT
-    # Recorded concept envelope ~ 18.79 m x 13.02 m (handoff §2).
+    # Recorded concept envelope ~ 18.79 m x 15.12 m (handoff §2 + owner 2026-08-03).
     assert layout.envelope_w_m == pytest.approx(18.790, abs=0.001)
-    assert layout.envelope_d_m == pytest.approx(13.016, abs=0.001)
+    # Owner ruling 2026-08-03: the two pairs stack north-south, so the touching
+    # faces are DC END faces and one of them is always the EQUIPMENT END
+    # (liquid-cooling + fan grilles) -> 3.0 m, not the 0.9 m plain-end gap.
+    # 2 x 6.058 + 3.0 = 15.116 (was 13.016 under the old uniform 0.9 m).
+    assert layout.envelope_d_m == pytest.approx(15.116, abs=0.001)
     assert layout.dc_field_split == (4, 4)
 
 
@@ -137,3 +142,75 @@ def test_plan_svg_renders_concept_markers():
     assert "40FT AC BLOCK" in svg
     assert "DC-1" in svg and "DC-8" in svg
     assert "18.79 m" in svg
+
+
+def test_four_side_field_places_two_dc_on_every_side():
+    """Owner 2026-08-03: with 8 DC Blocks the field is not limited to two sides.
+
+    Each of N/W/E/S carries one mirrored pair, so every DC Block still shows its
+    door face to a 3.0 m aisle and shares only its door-free wide face (0.30 m).
+    """
+    from calb_diagrams.ac_block_bilateral_layout import (
+        QUAD_LAYOUT_VARIANT,
+        compute_quad_layout,
+    )
+
+    layout = compute_quad_layout(8)
+    assert layout.layout_variant == QUAD_LAYOUT_VARIANT
+    assert layout.dc_count == 8
+
+    dc = layout.by_type("dc_block")
+    assert len(dc) == 8
+    by_side = {}
+    for placement in dc:
+        by_side.setdefault(placement.side, []).append(placement)
+    assert set(by_side) == {"north", "south", "east", "west"}
+    assert all(len(items) == 2 for items in by_side.values())
+
+    # One central 40 ft station, and every DC door faces an aisle direction.
+    station = layout.by_type("ac_station")
+    assert len(station) == 1
+    assert station[0].height_m == pytest.approx(12.192, abs=0.001)
+    assert {p.door_orientation for p in dc} <= {"north", "south", "east", "west"}
+
+    # 5.176 + 3.0 + 2.438 + 3.0 + 5.176 wide; 5.176 + 3.0 + 12.192 + 3.0 + 5.176 deep
+    assert layout.envelope_w_m == pytest.approx(18.790, abs=0.001)
+    assert layout.envelope_d_m == pytest.approx(28.544, abs=0.001)
+
+
+def test_eight_pcs_eight_dc_report_uses_a_multi_side_field_not_a_linear_strip():
+    """P1-3: engine choice follows the block SHAPE, not only layout_variant."""
+    import io as _io
+
+    from docx import Document as _Document
+
+    from calb_sizing_tool.reporting.report_context import build_report_context
+    from calb_sizing_tool.reporting.report_v2 import export_report_v2_1
+
+    ctx = build_report_context(
+        session_state={},
+        stage_outputs={
+            "stage13_output": {
+                "project_name": "P13", "poi_power_req_mw": 115.0,
+                "poi_energy_req_mwh": 400.0, "project_life_years": 20,
+                "poi_guarantee_year": 4, "cycles_per_year": 365,
+            },
+            "ac_output": {
+                "num_blocks": 13, "pcs_per_block": 8, "pcs_kw": 1250.0,
+                "block_size_mw": 10.0, "transformer_mva": 11.111,
+                "total_ac_mw": 130.0, "lv_winding_count": 2,
+                "transformer_topology": "three_winding", "dc_blocks_total": 104,
+            },
+            "stage2": {"container_count": 104, "dc_nameplate_bol_mwh": 521.6},
+        },
+        project_inputs={},
+    )
+    doc = _Document(_io.BytesIO(export_report_v2_1(ctx)))
+    caption = next(
+        (p.text for p in doc.paragraphs if "Typical AC Block Arrangement" in p.text
+         and p.text.startswith("Figure")), "",
+    )
+    assert caption, "§8 arrangement caption not found"
+    # The four-side field, not the ~48 m linear strip.
+    assert "18.79" in caption and "28.54" in caption, caption
+    assert "48.42" not in caption, caption

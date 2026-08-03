@@ -39,7 +39,9 @@ from calb_diagrams.ac_block_arrangement_v2 import (
 )
 from calb_diagrams.ac_block_bilateral_layout import (
     LAYOUT_VARIANT as BILATERAL_LAYOUT_VARIANT,
+    QUAD_LAYOUT_VARIANT,
     compute_bilateral_layout,
+    compute_quad_layout,
     render_bilateral_plan_svg,
 )
 from calb_diagrams.governed_site_layout_concept import render_governed_site_layout_concept_svg
@@ -1437,14 +1439,28 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     doc.add_page_break()
     doc.add_heading("8.  Typical AC Block Arrangement (Concept Only)", level=2)
     plan_png, plan_layout, dc_per_ac = None, None, 0
-    is_bilateral = ctx.layout_variant == BILATERAL_LAYOUT_VARIANT
+    # P1-3: choose the arrangement engine from the ACTUAL block shape, not only
+    # from layout_variant. A generic (non-governed) 8-PCS / 8-DC run is
+    # physically the same 10 MW product, and drawing it as one 48 m linear strip
+    # misrepresents it. Owner instruction (2026-08-03): with eight DC Blocks the
+    # field is NOT restricted to the two lateral sides — use the four-side field.
+    _dc_per_ac_shape = ctx.dc_blocks_total // max(1, ctx.ac_blocks_total)
+    _is_8pcs_8dc = int(ctx.pcs_per_block or 0) == 8 and _dc_per_ac_shape == 8
+    is_bilateral = ctx.layout_variant == BILATERAL_LAYOUT_VARIANT or _is_8pcs_8dc
     if is_bilateral:
-        # Governed configuration: route by layout_variant to the confirmed
-        # bilateral 4+4 engine so the drawing matches the SLD topology and the
-        # confirmed physical layout — never rebuilt from an average DC-per-AC.
+        # A governed bilateral run keeps its CONFIRMED 4+4 field; a generic
+        # 8-PCS/8-DC run uses the owner's four-side concept field.
         try:
-            bilateral = compute_bilateral_layout(ctx.dc_blocks_total // max(1, ctx.ac_blocks_total))
-            plan_svg = render_bilateral_plan_svg(bilateral, block_label=str(ctx.configuration_code or ""))
+            if ctx.layout_variant == BILATERAL_LAYOUT_VARIANT:
+                bilateral = compute_bilateral_layout(_dc_per_ac_shape)
+                _label = str(ctx.configuration_code or "")
+            else:
+                bilateral = compute_quad_layout(_dc_per_ac_shape)
+                _label = (
+                    f"TYPICAL AC BLOCK · {ctx.pcs_per_block} PCS / "
+                    f"{_dc_per_ac_shape} DC · FOUR-SIDE FIELD"
+                )
+            plan_svg = render_bilateral_plan_svg(bilateral, block_label=_label)
             plan_png = _svg_bytes_to_png(plan_svg.encode("utf-8"))
             plan_layout = bilateral
         except Exception:
