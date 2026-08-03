@@ -1455,8 +1455,13 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         # fleet); tail AC Block(s) are described in §6.1.
         dc_per_ac = _representative_dc_per_ac(ctx)
         try:
+            # Size the PCS & MV Station from THIS AC Block's class — a 10 MW /
+            # 8-PCS block is a 40 ft station, never the 20 ft cabin.
+            _block_power_mw, _ = _site_nameplate_from_ctx(ctx)
             plan_svg, plan_layout = render_ac_block_plan_svg(
-                dc_per_ac, ARRANGEMENT_PROFILE
+                dc_per_ac, ARRANGEMENT_PROFILE,
+                pcs_count=ctx.pcs_per_block,
+                block_power_mw=_block_power_mw,
             )
             plan_png = _svg_bytes_to_png(plan_svg.encode("utf-8"))
         except Exception:

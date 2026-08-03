@@ -47,6 +47,8 @@ from xml.sax.saxutils import escape as _xml_escape
 
 from calb_diagrams.ac_block_arrangement_v2 import (
     ArrangementRuleProfile,
+    AC_STATION_40FT_LENGTH_M,
+    AC_STATION_WIDTH_M,
     DC_LENGTH_M,
     DC_WIDTH_M,
     US_NFPA_OIL,
@@ -56,8 +58,9 @@ LAYOUT_VARIANT = "central_40ft_bilateral_4plus4"
 
 # Nominal ISO 40 ft station (vertical). PROVISIONAL — owner confirmation of the
 # actual 40 ft product dimensions is pending (handoff §10.5).
-AC40_STATION_LENGTH_M = 12.192
-AC40_STATION_WIDTH_M = 2.438
+# Shared with the linear engine so the two can never drift apart.
+AC40_STATION_LENGTH_M = AC_STATION_40FT_LENGTH_M
+AC40_STATION_WIDTH_M = AC_STATION_WIDTH_M
 
 
 @dataclass(frozen=True)

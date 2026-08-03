@@ -40,8 +40,44 @@ from xml.sax.saxutils import escape as _xml_escape
 DC_LENGTH_M = 6.058
 DC_WIDTH_M = 2.438
 DC_HEIGHT_M = 2.896
-MV_LENGTH_M = 6.058
-MV_WIDTH_M = 2.438
+
+# SHARED ISO station dimensions — the single source of truth for BOTH this linear
+# engine and calb_diagrams/ac_block_bilateral_layout.py. They used to be written
+# separately in each module, which is exactly how a 10 MW / 8-PCS AC Block ended
+# up drawn with a 20 ft station in the 2026-08-03 report.
+AC_STATION_20FT_LENGTH_M = 6.058
+AC_STATION_40FT_LENGTH_M = 12.192
+AC_STATION_WIDTH_M = 2.438
+
+# A 5 MW / <=4 PCS AC Block is a 20 ft integrated cabin; the 8-PCS / 10 MW class
+# is the 40 ft flagship (docs/AC_BLOCK_PRODUCT_KNOWLEDGE_2026-07-18.md §4, and the
+# governed configuration code ACBLK-10MW-8PCS-8DC-40FT-BILATERAL).
+AC_STATION_40FT_MIN_PCS = 8
+AC_STATION_40FT_MIN_MW = 10.0
+
+# Back-compat aliases (the 20 ft cabin remains the default station).
+MV_LENGTH_M = AC_STATION_20FT_LENGTH_M
+MV_WIDTH_M = AC_STATION_WIDTH_M
+
+
+def resolve_station_length_m(pcs_count: int | None = None,
+                             block_power_mw: float | None = None) -> float:
+    """PCS & MV Station length from the AC Block class — never a fixed constant.
+
+    >= 8 PCS or >= 10 MW resolves to the 40 ft station; anything smaller (and the
+    unknown case) keeps the 20 ft integrated cabin.
+    """
+    try:
+        pcs = int(pcs_count or 0)
+    except (TypeError, ValueError):
+        pcs = 0
+    try:
+        power = float(block_power_mw or 0.0)
+    except (TypeError, ValueError):
+        power = 0.0
+    if pcs >= AC_STATION_40FT_MIN_PCS or power >= AC_STATION_40FT_MIN_MW:
+        return AC_STATION_40FT_LENGTH_M
+    return AC_STATION_20FT_LENGTH_M
 
 
 @dataclass(frozen=True)
@@ -52,7 +88,11 @@ class ArrangementRuleProfile:
     market_label: str
     dc_pair_gap_m: float        # mirrored back-to-back adjacency
     dc_to_mv_aisle_m: float     # DC row to PCS & MV station
-    pair_to_pair_gap_m: float   # between adjacent mirrored pairs
+    pair_to_pair_gap_m: float   # between adjacent mirrored pairs (plain END faces)
+    # The DC Block's EQUIPMENT END (liquid-cooling unit + fan grilles) needs the
+    # same clearance as the AC Block aisle; only the opposite plain end may take
+    # the reduced pair-to-pair gap (owner ruling, 2026-08-03).
+    dc_equipment_end_gap_m: float
     mvt_type: str               # "oil" | "dry"
     basis: Tuple[Tuple[str, str, str], ...]  # (parameter, value, code basis)
 
@@ -63,13 +103,17 @@ US_NFPA_OIL = ArrangementRuleProfile(
     dc_pair_gap_m=0.30,
     dc_to_mv_aisle_m=3.0,
     pair_to_pair_gap_m=0.9,
+    dc_equipment_end_gap_m=3.0,
     mvt_type="oil",
     basis=(
         ("DC pair adjacency (back-to-back)", "0.30 m",
          "UL 9540A large-scale fire-test exemption (NFPA 855 default 3 ft)"),
         ("DC to PCS & MV station aisle", "3.0 m (10 ft)",
          "NFPA 850 — oil-insulated equipment (< 500 gal) to BESS"),
-        ("Pair-to-pair gap", "0.9 m (3 ft)", "NFPA 855 §9.5 unit separation"),
+        ("Pair-to-pair gap (plain end)", "0.9 m (3 ft)",
+         "NFPA 855 §9.5 unit separation — owner: 0.9 m preferred over 0.3 m"),
+        ("DC Block equipment end (liquid-cooling + fan grilles)", "3.0 m (10 ft)",
+         "Owner ruling 2026-08-03 — same clearance as the AC Block aisle"),
         ("Maintenance access", "Door sides face outward aisles",
          "Owner rule / mirrored pairing"),
     ),
@@ -86,17 +130,37 @@ class ArrangementLayout:
     envelope_w_m: float
     envelope_d_m: float
     profile_key: str
+    station_length_m: float = MV_LENGTH_M   # 20 ft cabin or 40 ft flagship
+    end_gap_m: float = 0.9                  # governing DC END-face clearance
 
 
-def compute_layout(dc_count: int, profile: ArrangementRuleProfile) -> ArrangementLayout:
-    """Envelope of one AC block: mirrored DC pairs + aisle + MV station."""
+def compute_layout(dc_count: int, profile: ArrangementRuleProfile,
+                   *, pcs_count: int | None = None,
+                   block_power_mw: float | None = None,
+                   station_length_m: float | None = None) -> ArrangementLayout:
+    """Envelope of one AC block: mirrored DC pairs + aisle + PCS & MV station.
+
+    ``station_length_m`` overrides the station size; otherwise it is resolved from
+    the AC Block class (``pcs_count`` / ``block_power_mw``) — a 10 MW / 8-PCS block
+    is a 40 ft station, never the 20 ft cabin.
+
+    The gap between adjacent mirrored pairs is the DC Block's END-face clearance.
+    With a uniform container orientation one of the two facing ends is always the
+    EQUIPMENT END (liquid-cooling unit + fan grilles), so that larger clearance
+    governs (owner ruling, 2026-08-03).
+    """
     if dc_count < 1:
         raise ValueError(f"dc_count must be >= 1, got {dc_count}")
     pairs = dc_count // 2
     tail = dc_count % 2
     units = pairs + tail
-    dc_span = units * DC_LENGTH_M + (units - 1) * profile.pair_to_pair_gap_m
-    envelope_w = dc_span + profile.dc_to_mv_aisle_m + MV_LENGTH_M
+    station_len = (
+        float(station_length_m) if station_length_m
+        else resolve_station_length_m(pcs_count, block_power_mw)
+    )
+    end_gap = max(profile.pair_to_pair_gap_m, profile.dc_equipment_end_gap_m)
+    dc_span = units * DC_LENGTH_M + (units - 1) * end_gap
+    envelope_w = dc_span + profile.dc_to_mv_aisle_m + station_len
     envelope_d = (DC_WIDTH_M * 2 + profile.dc_pair_gap_m) if dc_count >= 2 else DC_WIDTH_M
     return ArrangementLayout(
         dc_count=dc_count,
@@ -105,6 +169,8 @@ def compute_layout(dc_count: int, profile: ArrangementRuleProfile) -> Arrangemen
         envelope_w_m=round(envelope_w, 3),
         envelope_d_m=round(envelope_d, 3),
         profile_key=profile.key,
+        station_length_m=round(station_len, 3),
+        end_gap_m=round(end_gap, 3),
     )
 
 
@@ -191,22 +257,37 @@ def _single_dc(parts: List[str], s: float, ox: float, oy: float) -> None:
               _VENT, _VENT_EDGE, 0.8, rx=1.5)
 
 
-def _mv_station(parts: List[str], s: float, ox: float, oy: float) -> None:
-    _rect(parts, ox + 3, oy + 3, MV_LENGTH_M * s, MV_WIDTH_M * s, _SHADOW, opacity=0.15)
-    _rect(parts, ox, oy, MV_LENGTH_M * s, MV_WIDTH_M * s, "#f0f2f1", _BOX_EDGE, 1.0)
-    for i in range(2):
+def _mv_station(parts: List[str], s: float, ox: float, oy: float,
+                station_len_m: float = MV_LENGTH_M) -> None:
+    """PCS & MV Station — 20 ft cabin or 40 ft flagship, per station_len_m."""
+    _rect(parts, ox + 3, oy + 3, station_len_m * s, MV_WIDTH_M * s, _SHADOW, opacity=0.15)
+    _rect(parts, ox, oy, station_len_m * s, MV_WIDTH_M * s, "#f0f2f1", _BOX_EDGE, 1.0)
+    # Louvred PCS door bays scale with the cabin length (a 40 ft station carries
+    # roughly twice the string-PCS bays of a 20 ft one).
+    bays = max(2, int(round(station_len_m / 3.0)))
+    for i in range(bays):
         _rect(parts, ox + (1.05 + i * 1.8) * s, oy + 0.55 * s, 0.85 * s, 0.55 * s,
               _VENT, _VENT_EDGE, 0.8)
     for i in range(6):
-        _rect(parts, ox + (MV_LENGTH_M - 1.05 + i * 0.13) * s, oy + 0.55 * s,
+        _rect(parts, ox + (station_len_m - 1.05 + i * 0.13) * s, oy + 0.55 * s,
               0.05 * s, 1.35 * s, _LOUVER, rx=0)
 
 
 def render_plan_svg(dc_count: int,
                     profile: ArrangementRuleProfile = US_NFPA_OIL,
-                    block_label: str = "TYPICAL AC BLOCK") -> Tuple[str, ArrangementLayout]:
-    """Top-down typical AC block arrangement drawing (concept)."""
-    layout = compute_layout(dc_count, profile)
+                    block_label: str = "TYPICAL AC BLOCK",
+                    *, pcs_count: int | None = None,
+                    block_power_mw: float | None = None,
+                    station_length_m: float | None = None) -> Tuple[str, ArrangementLayout]:
+    """Top-down typical AC block arrangement drawing (concept).
+
+    The PCS & MV Station is sized from the AC Block class: a 10 MW / 8-PCS block
+    draws the 40 ft station, not the 20 ft cabin.
+    """
+    layout = compute_layout(
+        dc_count, profile, pcs_count=pcs_count,
+        block_power_mw=block_power_mw, station_length_m=station_length_m,
+    )
     s = 44.0  # px per metre
     margin_l, margin_r = 70.0, 40.0
     margin_t, margin_b = 64.0, 96.0
@@ -231,17 +312,17 @@ def render_plan_svg(dc_count: int,
     # DC units west, MV station east
     units = layout.pair_count + (1 if layout.has_single_tail else 0)
     for u in range(layout.pair_count):
-        ux = ox0 + u * (DC_LENGTH_M + profile.pair_to_pair_gap_m) * s
+        ux = ox0 + u * (DC_LENGTH_M + layout.end_gap_m) * s
         _dc_pair_at(parts, s, ux, oy0, profile.dc_pair_gap_m)
     if layout.has_single_tail:
-        ux = ox0 + layout.pair_count * (DC_LENGTH_M + profile.pair_to_pair_gap_m) * s
+        ux = ox0 + layout.pair_count * (DC_LENGTH_M + layout.end_gap_m) * s
         _single_dc(parts, s, ux, oy0)
 
-    dc_span_m = units * DC_LENGTH_M + (units - 1) * profile.pair_to_pair_gap_m
+    dc_span_m = units * DC_LENGTH_M + (units - 1) * layout.end_gap_m
     aisle_x0 = ox0 + dc_span_m * s
     mv_x = aisle_x0 + profile.dc_to_mv_aisle_m * s
     mv_y = oy0 + max(0.0, (depth_m - MV_WIDTH_M) / 2) * s
-    _mv_station(parts, s, mv_x, mv_y)
+    _mv_station(parts, s, mv_x, mv_y, layout.station_length_m)
 
     # cable trench covers across the aisle (bottom cable entries per spec)
     for i in range(4):
@@ -273,8 +354,8 @@ def render_plan_svg(dc_count: int,
              f"{profile.dc_pair_gap_m:.2f} m", size=10.5)
     if units > 1:
         px0 = ox0 + DC_LENGTH_M * s
-        _dim(parts, px0, oy0 - 0.30 * s, px0 + profile.pair_to_pair_gap_m * s,
-             oy0 - 0.30 * s, f"{profile.pair_to_pair_gap_m:.1f} m", size=10.5)
+        _dim(parts, px0, oy0 - 0.30 * s, px0 + layout.end_gap_m * s,
+             oy0 - 0.30 * s, f"{layout.end_gap_m:.1f} m", size=10.5)
 
     parts.append("</svg>")
     return "".join(parts), layout

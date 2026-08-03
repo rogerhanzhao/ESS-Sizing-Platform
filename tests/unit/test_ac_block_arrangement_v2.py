@@ -20,8 +20,12 @@
 
 Owner rules under test (docs/LAYOUT_ROADMAP_V1_2026-07-18.md §1.1):
 - spacing comes only from the ArrangementRuleProfile (US/NFPA default);
-- mirrored pairs with 0.30 m adjacency; 3.0 m DC-to-MV aisle; 0.9 m
-  pair-to-pair gap; envelopes 15.12 m (2xDC) and 22.07 m (4xDC).
+- mirrored pairs with 0.30 m adjacency (the DC Block's door-free wide face);
+  3.0 m DC-to-MV aisle; and — per the owner ruling of 2026-08-03 — 3.0 m between
+  adjacent pairs, because one of the two facing END faces is always the EQUIPMENT
+  END (liquid-cooling unit + fan grilles), which takes the same clearance as the
+  AC Block aisle. Only the opposite plain end could take the reduced 0.9 m.
+  Envelopes: 15.12 m (2xDC) and 24.17 m (4xDC, 20 ft station).
 """
 
 import pytest
@@ -58,8 +62,8 @@ def test_envelope_2dc():
 def test_envelope_4dc():
     layout = compute_layout(4, US_NFPA_OIL)
     assert layout.pair_count == 2 and not layout.has_single_tail
-    # 2 pairs: 6.058*2 + 0.9 = 13.016; + 3.0 + 6.058 = 22.074
-    assert layout.envelope_w_m == pytest.approx(22.074, abs=0.001)
+    # 2 pairs: 6.058*2 + 3.0 (equipment end) = 15.116; + 3.0 aisle + 6.058 station
+    assert layout.envelope_w_m == pytest.approx(24.174, abs=0.001)
     assert layout.envelope_d_m == pytest.approx(5.176, abs=0.001)
 
 
@@ -67,7 +71,7 @@ def test_envelope_odd_count_has_single_tail():
     layout = compute_layout(5, US_NFPA_OIL)
     assert layout.pair_count == 2 and layout.has_single_tail
     # 3 DC units along the row: 3*6.058 + 2*0.9 = 19.974; + 3.0 + 6.058
-    assert layout.envelope_w_m == pytest.approx(29.032, abs=0.001)
+    assert layout.envelope_w_m == pytest.approx(33.232, abs=0.001)
 
 
 def test_envelope_single_dc():
@@ -97,8 +101,8 @@ def test_plan_svg_markers_2dc():
 
 def test_plan_svg_markers_4dc():
     svg, layout = render_plan_svg(4, US_NFPA_OIL)
-    assert "22.07 m envelope" in svg
-    assert "0.9 m" in svg                  # pair-to-pair dim present
+    assert "24.17 m envelope" in svg
+    assert "3.0 m" in svg                  # equipment-end dim present
     assert svg.count('fill="#e2e5e4"') == 18   # 4x4 container vents + 2 MV vents
 
 
@@ -116,3 +120,42 @@ def test_vents_face_the_pair_gap():
     # the two vent rows must be closer to each other (the 0.30 m gap) than the
     # container width apart: row pitch < DC width in px (2.438 * 44 = 107.3)
     assert (ys[1] - ys[0]) < 107.3
+
+def test_station_size_follows_the_ac_block_class_not_a_constant():
+    """A 10 MW / 8-PCS AC Block is a 40 ft station, never the 20 ft cabin.
+
+    MV_LENGTH_M used to be a fixed 6.058 m, so the 2026-08-03 report drew a
+    10 MW / 8-PCS block with a 20 ft station (envelope 35.99 m).
+    """
+    from calb_diagrams.ac_block_arrangement_v2 import (
+        AC_STATION_20FT_LENGTH_M,
+        AC_STATION_40FT_LENGTH_M,
+        US_NFPA_OIL,
+        compute_layout,
+        resolve_station_length_m,
+    )
+
+    assert resolve_station_length_m(4, 5.0) == AC_STATION_20FT_LENGTH_M
+    assert resolve_station_length_m(8, 10.0) == AC_STATION_40FT_LENGTH_M
+    # 8 PCS alone, or 10 MW alone, is enough to resolve the 40 ft station.
+    assert resolve_station_length_m(8, None) == AC_STATION_40FT_LENGTH_M
+    assert resolve_station_length_m(None, 10.0) == AC_STATION_40FT_LENGTH_M
+
+    big = compute_layout(8, US_NFPA_OIL, pcs_count=8, block_power_mw=10.0)
+    assert big.station_length_m == AC_STATION_40FT_LENGTH_M
+    # 4 pairs: 4*6.058 + 3*3.0 = 33.232; + 3.0 aisle + 12.192 station = 48.424
+    assert big.envelope_w_m == pytest.approx(48.424, abs=0.001)
+
+    small = compute_layout(4, US_NFPA_OIL, pcs_count=4, block_power_mw=5.0)
+    assert small.station_length_m == AC_STATION_20FT_LENGTH_M
+
+
+def test_linear_and_bilateral_engines_share_the_same_iso_station_length():
+    """The two engines must not each carry their own 40 ft constant.
+
+    They did, which is how one path stayed at 20 ft while the other was correct.
+    """
+    from calb_diagrams import ac_block_bilateral_layout as bilateral
+    from calb_diagrams.ac_block_arrangement_v2 import AC_STATION_40FT_LENGTH_M
+
+    assert bilateral.AC40_STATION_LENGTH_M == AC_STATION_40FT_LENGTH_M
