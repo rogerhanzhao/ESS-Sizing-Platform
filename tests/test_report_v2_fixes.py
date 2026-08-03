@@ -166,3 +166,48 @@ def test_report_consistency_validation():
     # Valid context should have no critical errors
     # (May have warnings, but should not fail completely)
     assert isinstance(warnings, list)
+
+
+def test_site_array_power_and_energy_match_the_ac_sizing_tables():
+    """§9 must never contradict §6: the site figure's MW/MWh come from the run.
+
+    The site-array engine used to hardcode a 5 MW / 5.015 MWh unit, so a 10 MW
+    station was reported at HALF its power (65 MW vs 130 MW) and energy was
+    computed from n_blocks x dc_per_block (104) instead of the real DC Block
+    count (100) — the report contradicted its own AC Sizing tables.
+    """
+    import io as _io
+
+    from docx import Document as _Document
+
+    from calb_sizing_tool.reporting.report_context import build_report_context
+    from calb_sizing_tool.reporting.report_v2 import export_report_v2_1
+
+    ac_output = {
+        "num_blocks": 13, "pcs_per_block": 8, "pcs_kw": 1250.0,
+        "block_size_mw": 10.0, "transformer_mva": 11.111, "total_ac_mw": 130.0,
+        "lv_winding_count": 2, "transformer_topology": "three_winding",
+        "dc_blocks_total": 100,
+    }
+    ctx = build_report_context(
+        session_state={},
+        stage_outputs={
+            "stage13_output": {
+                "project_name": "Consistency", "poi_power_req_mw": 115.0,
+                "poi_energy_req_mwh": 400.0, "project_life_years": 20,
+                "poi_guarantee_year": 4, "cycles_per_year": 365,
+            },
+            "ac_output": ac_output,
+            "stage2": {"container_count": 100, "dc_nameplate_bol_mwh": 501.5},
+        },
+        project_inputs={},
+    )
+    doc = _Document(_io.BytesIO(export_report_v2_1(ctx)))
+    caption = next(
+        (p.text for p in doc.paragraphs if "Concept Site Arrangement —" in p.text), ""
+    )
+    assert caption, "§9 site arrangement caption not found"
+    # 13 AC Blocks x 10.00 MW = 130 MW (was 65), and the REAL 100 DC Blocks.
+    assert "10 MW\nper block" in caption or "10 MW per block" in caption, caption
+    assert "130 MW" in caption, caption
+    assert "65 MW" not in caption, caption

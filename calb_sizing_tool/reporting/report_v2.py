@@ -333,6 +333,38 @@ def _representative_dc_per_ac(ctx: ReportContext) -> int:
     return max(1, int(round(ctx.dc_blocks_total / ctx.ac_blocks_total)))
 
 
+def _site_nameplate_from_ctx(ctx: ReportContext) -> tuple[float | None, float | None]:
+    """Per-AC-Block power (MW) and per-DC-Block energy (MWh) from the REAL run.
+
+    The site-array engine must never assume a 5 MW / 5.015 MWh unit: doing so made
+    the §9 figure state half the power of the §6 AC Sizing tables on a 10 MW
+    station. Returns (None, None) components when a value is unavailable, and the
+    engine then falls back — but for any real run both resolve.
+    """
+    ac_out = ctx.ac_output if isinstance(ctx.ac_output, dict) else {}
+    block_power_mw = None
+    for key in ("block_size_mw", "ac_block_size_mw"):
+        try:
+            value = float(ac_out.get(key) or 0.0)
+        except (TypeError, ValueError):
+            value = 0.0
+        if value > 0:
+            block_power_mw = value
+            break
+    if block_power_mw is None and ctx.ac_block_size_mw:
+        try:
+            block_power_mw = float(ctx.ac_block_size_mw) or None
+        except (TypeError, ValueError):
+            block_power_mw = None
+    dc_block_energy_mwh = None
+    if ctx.dc_block_unit_mwh:
+        try:
+            dc_block_energy_mwh = float(ctx.dc_block_unit_mwh) or None
+        except (TypeError, ValueError):
+            dc_block_energy_mwh = None
+    return block_power_mw, dc_block_energy_mwh
+
+
 def _compute_site_layout(ctx: ReportContext):
     """Concept site-array layout from the sizing result (None if not sizeable)."""
     if ctx.ac_blocks_total <= 0 or ctx.dc_blocks_total <= 0:
@@ -347,8 +379,12 @@ def _compute_site_layout(ctx: ReportContext):
     if dc_per_ac <= 0:
         return None
     try:
+        block_power_mw, dc_block_energy_mwh = _site_nameplate_from_ctx(ctx)
         return compute_site_array(
-            ctx.ac_blocks_total, dc_per_ac, ARRANGEMENT_PROFILE, SITE_PROFILE
+            ctx.ac_blocks_total, dc_per_ac, ARRANGEMENT_PROFILE, SITE_PROFILE,
+            block_power_mw=block_power_mw,
+            dc_block_energy_mwh=dc_block_energy_mwh,
+            dc_blocks_total=ctx.dc_blocks_total,
         )
     except Exception:
         return None
@@ -373,8 +409,13 @@ def _compute_typical_group_layout(ctx: ReportContext):
         return None
     group_blocks = min(SITE_PROFILE.default_blocks_per_group, ctx.ac_blocks_total)
     try:
+        block_power_mw, dc_block_energy_mwh = _site_nameplate_from_ctx(ctx)
         return compute_site_array(
-            group_blocks, dc_per_ac, ARRANGEMENT_PROFILE, SITE_PROFILE
+            group_blocks, dc_per_ac, ARRANGEMENT_PROFILE, SITE_PROFILE,
+            block_power_mw=block_power_mw,
+            dc_block_energy_mwh=dc_block_energy_mwh,
+            # A GROUP holds group_blocks x dc_per_ac DC Blocks, not the whole site.
+            dc_blocks_total=min(ctx.dc_blocks_total, group_blocks * dc_per_ac),
         )
     except Exception:
         return None

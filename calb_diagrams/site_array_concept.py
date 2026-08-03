@@ -107,9 +107,15 @@ class SiteArrayLayout:
     site_profile_key: str
 
 
-# Nameplate assumptions per AC block (5 MW PCS & MV station; 5.015 MWh DC).
-_BLOCK_POWER_MW = 5.0
-_DC_ENERGY_MWH = 5.015
+# NO NAMEPLATE MAY BE HARDCODED HERE (owner, 2026-08-03).
+# Per-block power and per-DC-Block energy previously defaulted to a 5 MW / 5.015
+# MWh unit regardless of the actual run, so a 10 MW station was reported at half
+# its power and the site figure contradicted the report's own AC Sizing tables.
+# Both now come from the run; these constants remain only as the LAST-RESORT
+# fallback for a caller that supplies nothing, and callers in the report always
+# supply real values.
+_FALLBACK_BLOCK_POWER_MW = 5.0
+_FALLBACK_DC_ENERGY_MWH = 5.015
 
 
 def compute_site_array(
@@ -118,6 +124,9 @@ def compute_site_array(
     profile: ArrangementRuleProfile = US_NFPA_OIL,
     site_profile: SiteRuleProfile = US_NFPA_SITE,
     blocks_per_group: Optional[int] = None,
+    block_power_mw: Optional[float] = None,
+    dc_block_energy_mwh: Optional[float] = None,
+    dc_blocks_total: Optional[int] = None,
 ) -> SiteArrayLayout:
     """Blocks grouped by project; fire roads only between groups, not per row.
 
@@ -128,6 +137,18 @@ def compute_site_array(
     """
     if n_blocks < 1:
         raise ValueError(f"n_blocks must be >= 1, got {n_blocks}")
+    _resolved_block_power_mw = (
+        float(block_power_mw) if block_power_mw and float(block_power_mw) > 0
+        else _FALLBACK_BLOCK_POWER_MW
+    )
+    _resolved_dc_energy_mwh = (
+        float(dc_block_energy_mwh) if dc_block_energy_mwh and float(dc_block_energy_mwh) > 0
+        else _FALLBACK_DC_ENERGY_MWH
+    )
+    _resolved_dc_blocks = (
+        int(dc_blocks_total) if dc_blocks_total and int(dc_blocks_total) > 0
+        else n_blocks * dc_per_block
+    )
     bpg = blocks_per_group or site_profile.default_blocks_per_group
     if bpg < 2:
         raise ValueError(f"blocks_per_group must be >= 2, got {bpg}")
@@ -187,8 +208,10 @@ def compute_site_array(
         block_d_m=round(block_d, 3),
         envelope_w_m=round(env_w, 2),
         envelope_d_m=round(env_d, 2),
-        total_power_mw=round(n_blocks * _BLOCK_POWER_MW, 2),
-        total_energy_mwh=round(n_blocks * dc_per_block * _DC_ENERGY_MWH, 2),
+        total_power_mw=round(n_blocks * _resolved_block_power_mw, 2),
+        # Energy uses the REAL DC Block count when the caller knows it; a station
+        # whose blocks fill unevenly has fewer DC Blocks than n_blocks x dc_per_block.
+        total_energy_mwh=round(_resolved_dc_blocks * _resolved_dc_energy_mwh, 2),
         profile_key=profile.key,
         site_profile_key=site_profile.key,
     )
