@@ -1,6 +1,7 @@
 """Geometry tests for the bilateral 4+4 AC Block layout engine.
 
-Owner-confirmed concept (docs/CLAUDE_HANDOFF_10MW_8PCS_8DC_2026-07-24.md §1-§2):
+Owner-confirmed concept (docs/CLAUDE_HANDOFF_10MW_8PCS_8DC_2026-07-24.md §1-§2,
+reaffirmed 2026-08-03 as the single-axis / 一字型 arrangement):
 central vertical 40 ft AC Block, west 4-DC field + east 4-DC field, each a 2x2
 ``田`` of two mirrored back-to-back pairs; ~18.79 m x 15.12 m equipment envelope
 (the north-south pair gap is the DC EQUIPMENT-END clearance, owner 2026-08-03).
@@ -139,47 +140,57 @@ def test_plan_svg_renders_concept_markers():
     svg = render_bilateral_plan_svg(layout)
     assert svg.startswith("<svg") and svg.endswith("</svg>")
     assert "CONCEPT ONLY" in svg
-    assert "40FT AC BLOCK" in svg
+    assert "PCS &amp; MV STATION (40 FT)" in svg
     assert "DC-1" in svg and "DC-8" in svg
     assert "18.79 m" in svg
+    # No CJK in the drawing: the report rasterises it with a monospace face that
+    # has no CJK coverage, so a Chinese glyph prints as tofu boxes.
+    cjk = [ch for ch in svg if "一" <= ch <= "鿿"]
+    assert not cjk, f"arrangement SVG has CJK the report font cannot draw: {cjk}"
 
 
-def test_four_side_field_places_two_dc_on_every_side():
-    """Owner 2026-08-03: with 8 DC Blocks the field is not limited to two sides.
+def test_perimeter_field_is_gone_and_must_not_come_back():
+    """Owner ruling 2026-08-03: '不能搞环绕布置 … 按一字型排'.
 
-    Each of N/W/E/S carries one mirrored pair, so every DC Block still shows its
-    door face to a 3.0 m aisle and shares only its door-free wide face (0.30 m).
+    A four-side / perimeter field (DC Blocks wrapped around all four sides of the
+    station) was built, reviewed and rejected: it needs a third and fourth 3.0 m
+    aisle (~536 m2 vs ~284 m2), routes the north/south DC cables around the
+    station, and breaks the site row model. This test is the lock — the module
+    must expose exactly ONE 8-DC geometry.
     """
-    from calb_diagrams.ac_block_bilateral_layout import (
-        QUAD_LAYOUT_VARIANT,
-        compute_quad_layout,
-    )
+    import calb_diagrams.ac_block_bilateral_layout as mod
 
-    layout = compute_quad_layout(8)
-    assert layout.layout_variant == QUAD_LAYOUT_VARIANT
-    assert layout.dc_count == 8
-
-    dc = layout.by_type("dc_block")
-    assert len(dc) == 8
-    by_side = {}
-    for placement in dc:
-        by_side.setdefault(placement.side, []).append(placement)
-    assert set(by_side) == {"north", "south", "east", "west"}
-    assert all(len(items) == 2 for items in by_side.values())
-
-    # One central 40 ft station, and every DC door faces an aisle direction.
-    station = layout.by_type("ac_station")
-    assert len(station) == 1
-    assert station[0].height_m == pytest.approx(12.192, abs=0.001)
-    assert {p.door_orientation for p in dc} <= {"north", "south", "east", "west"}
-
-    # 5.176 + 3.0 + 2.438 + 3.0 + 5.176 wide; 5.176 + 3.0 + 12.192 + 3.0 + 5.176 deep
-    assert layout.envelope_w_m == pytest.approx(18.790, abs=0.001)
-    assert layout.envelope_d_m == pytest.approx(28.544, abs=0.001)
+    assert not hasattr(mod, "compute_quad_layout")
+    assert not hasattr(mod, "QUAD_LAYOUT_VARIANT")
+    assert compute_bilateral_layout(8).layout_variant == LAYOUT_VARIANT
 
 
-def test_eight_pcs_eight_dc_report_uses_a_multi_side_field_not_a_linear_strip():
-    """P1-3: engine choice follows the block SHAPE, not only layout_variant."""
+def test_the_field_stays_on_one_axis():
+    """一字型: both DC fields and the station sit on a single east-west axis.
+
+    Nothing is placed north or south of the station, and every DC Block overlaps
+    the station's north-south band — that is what makes the block tileable into a
+    site row.
+    """
+    layout = compute_bilateral_layout(8)
+    station = layout.by_type("ac_station")[0]
+    st_x0, st_x1 = station.x_m, station.x_m + station.width_m
+    for p in layout.by_type("dc_block"):
+        # strictly west or strictly east of the station — never above/below it
+        assert p.x_m + p.width_m <= st_x0 + 1e-6 or p.x_m >= st_x1 - 1e-6
+    assert {p.side for p in layout.by_type("dc_block")} == {"west", "east"}
+    # Single-axis means the block is wider than it is deep once the station and
+    # both fields are laid out along that axis.
+    assert layout.envelope_w_m > layout.envelope_d_m
+
+
+def test_eight_pcs_eight_dc_report_uses_the_same_engine_as_a_governed_run():
+    """P1-3: engine choice follows the block SHAPE, not only layout_variant.
+
+    A generic 8-PCS / 8-DC run is physically the same 10 MW product as the
+    governed one, so §8 must draw the SAME arrangement — one product, one
+    geometry — not the ~48 m linear strip and not the rejected perimeter field.
+    """
     import io as _io
 
     from docx import Document as _Document
@@ -211,6 +222,9 @@ def test_eight_pcs_eight_dc_report_uses_a_multi_side_field_not_a_linear_strip():
          and p.text.startswith("Figure")), "",
     )
     assert caption, "§8 arrangement caption not found"
-    # The four-side field, not the ~48 m linear strip.
-    assert "18.79" in caption and "28.54" in caption, caption
-    assert "48.42" not in caption, caption
+    # The single-axis bilateral unit — identical to what a governed run draws.
+    governed = compute_bilateral_layout(8)
+    assert f"{governed.envelope_w_m:.2f}" in caption, caption
+    assert f"{governed.envelope_d_m:.2f}" in caption, caption
+    assert "48.42" not in caption, caption   # not the linear strip
+    assert "28.54" not in caption, caption   # not the rejected perimeter field

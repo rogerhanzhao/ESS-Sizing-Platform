@@ -19,6 +19,7 @@
 import base64
 import io
 import json
+import pytest
 import re
 from pathlib import Path
 
@@ -211,3 +212,78 @@ def test_site_array_power_and_energy_match_the_ac_sizing_tables():
     assert "10 MW\nper block" in caption or "10 MW per block" in caption, caption
     assert "130 MW" in caption, caption
     assert "65 MW" not in caption, caption
+
+
+def _ctx_for(pcs_per_block: int, num_blocks: int, dc_blocks_total: int,
+             block_size_mw: float, total_ac_mw: float):
+    from calb_sizing_tool.reporting.report_context import build_report_context
+
+    return build_report_context(
+        session_state={},
+        stage_outputs={
+            "stage13_output": {
+                "project_name": "XSec", "poi_power_req_mw": 115.0,
+                "poi_energy_req_mwh": 400.0, "project_life_years": 20,
+                "poi_guarantee_year": 4, "cycles_per_year": 365,
+            },
+            "ac_output": {
+                "num_blocks": num_blocks, "pcs_per_block": pcs_per_block,
+                "pcs_kw": 1250.0, "block_size_mw": block_size_mw,
+                "transformer_mva": 11.111, "total_ac_mw": total_ac_mw,
+                "lv_winding_count": 2, "transformer_topology": "three_winding",
+                "dc_blocks_total": dc_blocks_total,
+            },
+            "stage2": {"container_count": dc_blocks_total,
+                       "dc_nameplate_bol_mwh": dc_blocks_total * 5.015},
+        },
+        project_inputs={},
+    )
+
+
+def test_ten_mw_block_is_drawn_with_the_forty_foot_station_not_the_twenty():
+    """P1-4 lock for F1: station size follows the AC Block class, not a constant.
+
+    A 10 MW / 8-PCS block that does not hit the 8-DC bilateral shape still draws
+    the linear arrangement — but with the 40 ft station (12.192 m), so its
+    envelope is 6.13 m longer than the old hardcoded 20 ft cabin produced.
+    """
+    from calb_diagrams.ac_block_arrangement_v2 import US_NFPA_OIL, compute_layout
+
+    ctx = _ctx_for(pcs_per_block=8, num_blocks=13, dc_blocks_total=91,
+                   block_size_mw=10.0, total_ac_mw=130.0)
+    doc = Document(io.BytesIO(export_report_v2_1(ctx)))
+    caption = next(
+        (p.text for p in doc.paragraphs
+         if p.text.startswith("Figure") and "Typical AC Block Arrangement" in p.text),
+        "",
+    )
+    assert caption, "§8 arrangement caption not found"
+
+    dc_per_ac = 91 // 13
+    forty = compute_layout(dc_per_ac, US_NFPA_OIL, pcs_count=8, block_power_mw=10.0)
+    twenty = compute_layout(dc_per_ac, US_NFPA_OIL, pcs_count=4, block_power_mw=5.0)
+    assert forty.station_length_m == pytest.approx(12.192, abs=0.001)
+    assert f"{forty.envelope_w_m:.2f}" in caption, caption
+    assert f"{twenty.envelope_w_m:.2f}" not in caption, caption
+
+
+def test_eight_by_eight_report_states_site_composition_instead_of_wrong_geometry():
+    """§8 and §9 may never publish two different footprints for one AC Block.
+
+    The 8-PCS / 8-DC block has its station in the CENTRE, which the L2 row model
+    (station at the row end facing a shared MV corridor) cannot tile. §9 must
+    therefore state the composition in words rather than draw a second, different
+    block — and must not silently vanish either.
+    """
+    ctx = _ctx_for(pcs_per_block=8, num_blocks=13, dc_blocks_total=104,
+                   block_size_mw=10.0, total_ac_mw=130.0)
+    doc = Document(io.BytesIO(export_report_v2_1(ctx)))
+    text = "\n".join(p.text for p in doc.paragraphs)
+
+    assert "9.  Concept Site Arrangement (Concept Only)" in text
+    assert "single-axis unit" in text
+    assert "Master Layout scope" in text
+    # No site-array figure caption -> no second footprint for the same block.
+    assert "Concept Site Arrangement —" not in text
+    # And the rejected perimeter field never appears.
+    assert "28.54" not in text

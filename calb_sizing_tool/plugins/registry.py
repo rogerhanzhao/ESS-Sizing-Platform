@@ -33,11 +33,17 @@ def get_plugin_registry() -> PluginRegistry:
     global _REGISTRY
     if _REGISTRY is None:
         from calb_sizing_tool.plugins.sld_engineering_plugin import SldEngineeringPlugin
+        from calb_sizing_tool.plugins.layout_arrangement_v2_plugin import LayoutArrangementV2Plugin
         from calb_sizing_tool.plugins.layout_engineering_plugin import LayoutEngineeringPlugin
         from calb_sizing_tool.plugins.prompt_layout_plugin import PromptLayoutPlugin
 
         registry = PluginRegistry()
         registry.register(SldEngineeringPlugin())
+        # Registration order is the page's default order: the rule-based engine —
+        # the one the exported report uses — comes FIRST so the page and the
+        # report cannot show the same AC Block two different ways. The legacy
+        # grid renderer stays available but is no longer the default.
+        registry.register(LayoutArrangementV2Plugin())
         registry.register(LayoutEngineeringPlugin())
         registry.register(PromptLayoutPlugin())
         _REGISTRY = registry

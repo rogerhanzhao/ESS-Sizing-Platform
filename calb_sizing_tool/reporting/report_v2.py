@@ -39,9 +39,7 @@ from calb_diagrams.ac_block_arrangement_v2 import (
 )
 from calb_diagrams.ac_block_bilateral_layout import (
     LAYOUT_VARIANT as BILATERAL_LAYOUT_VARIANT,
-    QUAD_LAYOUT_VARIANT,
     compute_bilateral_layout,
-    compute_quad_layout,
     render_bilateral_plan_svg,
 )
 from calb_diagrams.governed_site_layout_concept import render_governed_site_layout_concept_svg
@@ -367,15 +365,31 @@ def _site_nameplate_from_ctx(ctx: ReportContext) -> tuple[float | None, float | 
     return block_power_mw, dc_block_energy_mwh
 
 
+def _uses_central_station_block(ctx: ReportContext) -> bool:
+    """True when §8 draws the central-40 ft, single-axis bilateral AC Block.
+
+    This is the SAME test §8 applies, deliberately: §8 and §9 must never describe
+    the same AC Block with two different footprints. It keys off the block SHAPE
+    (8 PCS with 8 DC Blocks) as well as the governed layout_variant, because a
+    generic run of the 10 MW product is physically that same product.
+    """
+    if ctx.layout_variant == BILATERAL_LAYOUT_VARIANT:
+        return True
+    dc_per_ac = ctx.dc_blocks_total // max(1, ctx.ac_blocks_total)
+    return int(ctx.pcs_per_block or 0) == 8 and dc_per_ac == 8
+
+
 def _compute_site_layout(ctx: ReportContext):
     """Concept site-array layout from the sizing result (None if not sizeable)."""
     if ctx.ac_blocks_total <= 0 or ctx.dc_blocks_total <= 0:
         return None
-    # The linear L2 site-array engine would draw single-row DC fields, which
-    # contradicts a governed bilateral 4+4 unit and its SLD. Whole-site
-    # composition of bilateral units is Master Layout (L3) scope, so suppress
-    # the linear site figure here rather than render inconsistent geometry.
-    if ctx.layout_variant == BILATERAL_LAYOUT_VARIANT:
+    # The L2 site-array engine tiles blocks whose PCS & MV Station sits at the
+    # ROW END and faces a shared MV corridor. A central-station bilateral block
+    # does not satisfy that row model, so tiling it here would print a second,
+    # contradictory footprint for the block §8 just drew. Whole-site composition
+    # of the central-station block is Master Layout (L3) scope; the report states
+    # that in words instead of drawing wrong geometry.
+    if _uses_central_station_block(ctx):
         return None
     dc_per_ac = _representative_dc_per_ac(ctx)
     if dc_per_ac <= 0:
@@ -387,6 +401,7 @@ def _compute_site_layout(ctx: ReportContext):
             block_power_mw=block_power_mw,
             dc_block_energy_mwh=dc_block_energy_mwh,
             dc_blocks_total=ctx.dc_blocks_total,
+            pcs_per_block=ctx.pcs_per_block,
         )
     except Exception:
         return None
@@ -404,7 +419,7 @@ def _compute_typical_group_layout(ctx: ReportContext):
     """
     if ctx.ac_blocks_total <= 0 or ctx.dc_blocks_total <= 0:
         return None
-    if ctx.layout_variant == BILATERAL_LAYOUT_VARIANT:
+    if _uses_central_station_block(ctx):
         return None
     dc_per_ac = _representative_dc_per_ac(ctx)
     if dc_per_ac <= 0:
@@ -418,6 +433,7 @@ def _compute_typical_group_layout(ctx: ReportContext):
             dc_block_energy_mwh=dc_block_energy_mwh,
             # A GROUP holds group_blocks x dc_per_ac DC Blocks, not the whole site.
             dc_blocks_total=min(ctx.dc_blocks_total, group_blocks * dc_per_ac),
+            pcs_per_block=ctx.pcs_per_block,
         )
     except Exception:
         return None
@@ -1441,25 +1457,23 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     plan_png, plan_layout, dc_per_ac = None, None, 0
     # P1-3: choose the arrangement engine from the ACTUAL block shape, not only
     # from layout_variant. A generic (non-governed) 8-PCS / 8-DC run is
-    # physically the same 10 MW product, and drawing it as one 48 m linear strip
-    # misrepresents it. Owner instruction (2026-08-03): with eight DC Blocks the
-    # field is NOT restricted to the two lateral sides — use the four-side field.
+    # physically the same 10 MW product, so it must draw the SAME arrangement as
+    # the governed one — one product, one geometry.
+    #
+    # Owner ruling 2026-08-03: the DC field stays on ONE axis ("不能搞环绕布置 …
+    # 按一字型排"). The four-side / perimeter field that briefly lived here was
+    # reviewed and rejected; do not reintroduce an engine switch that draws the
+    # same product two different ways.
     _dc_per_ac_shape = ctx.dc_blocks_total // max(1, ctx.ac_blocks_total)
     _is_8pcs_8dc = int(ctx.pcs_per_block or 0) == 8 and _dc_per_ac_shape == 8
     is_bilateral = ctx.layout_variant == BILATERAL_LAYOUT_VARIANT or _is_8pcs_8dc
     if is_bilateral:
-        # A governed bilateral run keeps its CONFIRMED 4+4 field; a generic
-        # 8-PCS/8-DC run uses the owner's four-side concept field.
         try:
-            if ctx.layout_variant == BILATERAL_LAYOUT_VARIANT:
-                bilateral = compute_bilateral_layout(_dc_per_ac_shape)
-                _label = str(ctx.configuration_code or "")
-            else:
-                bilateral = compute_quad_layout(_dc_per_ac_shape)
-                _label = (
-                    f"TYPICAL AC BLOCK · {ctx.pcs_per_block} PCS / "
-                    f"{_dc_per_ac_shape} DC · FOUR-SIDE FIELD"
-                )
+            bilateral = compute_bilateral_layout(_dc_per_ac_shape)
+            _label = str(ctx.configuration_code or "") or (
+                f"TYPICAL AC BLOCK · {ctx.pcs_per_block} PCS / "
+                f"{_dc_per_ac_shape} DC · 40 FT CENTRAL STATION"
+            )
             plan_svg = render_bilateral_plan_svg(bilateral, block_label=_label)
             plan_png = _svg_bytes_to_png(plan_svg.encode("utf-8"))
             plan_layout = bilateral
@@ -1716,6 +1730,37 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 for item, value, basis in SITE_PROFILE.basis
             )
             _add_table(doc, site_rows, ["Site parameter", "Value & code basis"])
+    elif not ctx.configuration_code and _uses_central_station_block(ctx):
+        # The block §8 drew has its PCS & MV Station in the CENTRE, so it does not
+        # fit the L2 row model (station at the row end, facing a shared MV
+        # corridor). Rather than silently drop §9 — or print a second, different
+        # footprint for the same block — state the site composition rule that the
+        # single-axis arrangement was chosen to satisfy.
+        doc.add_page_break()
+        doc.add_heading("9.  Concept Site Arrangement (Concept Only)", level=2)
+        _keep_next_para(doc.add_paragraph(
+            f"The AC Block in Section 8 is a single-axis unit: west DC field, "
+            f"central 40 ft PCS & MV Station, east DC field, all on one east-west "
+            f"axis. Blocks of this form repeat along that axis to build a site row, "
+            f"and rows repeat north-south, so the whole-site composition follows the "
+            f"same spacing rules stated below."
+        ))
+        _add_table(
+            doc,
+            [
+                ("AC Blocks", f"{ctx.ac_blocks_total}"),
+                ("DC Blocks", f"{ctx.dc_blocks_total}"),
+                ("Block arrangement", "single-axis · central 40 ft station · "
+                                      "west/east mirrored DC fields"),
+            ]
+            + [(item, f"{value} — {basis}") for item, value, basis in SITE_PROFILE.basis],
+            ["Site parameter", "Value & code basis"],
+        )
+        doc.add_paragraph(
+            "A geometric site plan for this block form — block pitch, MV collection "
+            "route and fire-road placement against a real site boundary — is Master "
+            "Layout scope and is not drawn here. — NOT FOR CONSTRUCTION"
+        )
 
     return _doc_to_bytes(doc)
 

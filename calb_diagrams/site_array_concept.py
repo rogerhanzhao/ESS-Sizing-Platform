@@ -29,6 +29,24 @@ owner-approved rule (docs/AC_BLOCK_PRODUCT_KNOWLEDGE_2026-07-18.md §5):
 
 This is a CONCEPT estimate (envelope + arrangement), NOT a Master Layout: it
 does not place equipment against a real site boundary. That remains L3 / P2.
+
+NOTHING DIMENSIONAL MAY BE HARDCODED HERE (owner, 2026-08-03)
+-------------------------------------------------------------
+Station size, per-block power and per-DC-Block energy all come from the run:
+
+- the per-block envelope is taken from compute_layout() with the run's PCS count
+  and block power, so a 10 MW / 8-PCS block tiles as a 40 ft station — the same
+  footprint the Typical AC Block Arrangement figure draws;
+- block power and DC-Block energy are caller-supplied; the module constants that
+  remain are a LAST-RESORT fallback only, never a design default.
+
+Both rules exist because the 2026-08-03 report printed a 130 MW project as 65 MW
+and drew its 10 MW blocks with the 20 ft cabin.
+
+ROW MODEL LIMIT: this engine tiles blocks whose PCS & MV Station sits at the ROW
+END and faces the shared MV corridor. The central-station bilateral block
+(ac_block_bilateral_layout) does not satisfy that model — do not tile it here;
+the report states its site composition in words until Master Layout (L3) lands.
 """
 
 from __future__ import annotations
@@ -105,6 +123,11 @@ class SiteArrayLayout:
     total_energy_mwh: float
     profile_key: str
     site_profile_key: str
+    # Resolved from the AC Block class, never assumed: the site glyph has to draw
+    # the same PCS & MV Station and the same DC end-face gap that the Typical AC
+    # Block Arrangement figure draws.
+    station_length_m: float = 6.058
+    end_gap_m: float = 0.9
 
 
 # NO NAMEPLATE MAY BE HARDCODED HERE (owner, 2026-08-03).
@@ -127,6 +150,7 @@ def compute_site_array(
     block_power_mw: Optional[float] = None,
     dc_block_energy_mwh: Optional[float] = None,
     dc_blocks_total: Optional[int] = None,
+    pcs_per_block: Optional[int] = None,
 ) -> SiteArrayLayout:
     """Blocks grouped by project; fire roads only between groups, not per row.
 
@@ -153,8 +177,17 @@ def compute_site_array(
     if bpg < 2:
         raise ValueError(f"blocks_per_group must be >= 2, got {bpg}")
 
-    block = compute_layout(dc_per_block, profile)
+    # The per-block envelope MUST come from the same AC Block class the report
+    # states in its sizing tables. Tiling a 10 MW / 8-PCS block with the 20 ft
+    # cabin (the old call, which passed neither PCS count nor power) understated
+    # every row width by 6.13 m and contradicted the arrangement figure that sits
+    # one section earlier in the same report.
+    block = compute_layout(
+        dc_per_block, profile,
+        pcs_count=pcs_per_block, block_power_mw=_resolved_block_power_mw,
+    )
     block_w, block_d = block.envelope_w_m, block.envelope_d_m
+    station_len_m = block.station_length_m
 
     # rows across the whole site (2 blocks per row)
     per_row: List[int] = []
@@ -214,6 +247,8 @@ def compute_site_array(
         total_energy_mwh=round(_resolved_dc_blocks * _resolved_dc_energy_mwh, 2),
         profile_key=profile.key,
         site_profile_key=site_profile.key,
+        station_length_m=block.station_length_m,
+        end_gap_m=block.end_gap_m,
     )
 
 
@@ -262,7 +297,7 @@ def _block_glyph(parts, s, x0, y0, layout: SiteArrayLayout, mv_left: bool):
     """Top-down AC block: DC pairs + MV station, MV toward the corridor side."""
     bw, bd = layout.block_w_m, layout.block_d_m
     _r(parts, x0, y0, bw * s, bd * s, _BLOCK, _BLOCK_EDGE, 1.0)
-    mv_w = 6.058
+    mv_w = layout.station_length_m   # 20 ft cabin or 40 ft flagship — never fixed
     if mv_left:
         _r(parts, x0 + 3, y0 + 0.5 * s, mv_w * s, (bd - 1.0) * s, _MV, _BLOCK_EDGE, 0.8)
         for i in range(5):
@@ -277,7 +312,7 @@ def _block_glyph(parts, s, x0, y0, layout: SiteArrayLayout, mv_left: bool):
     # DC containers as two stacked rows
     units = (layout.dc_per_block + 1) // 2
     for u in range(units):
-        ux = dc_x0 + u * (6.058 + 0.9) * s
+        ux = dc_x0 + u * (6.058 + layout.end_gap_m) * s
         _r(parts, ux, y0 + 0.15 * s, 6.058 * s, 2.438 * s, _DC, _BLOCK_EDGE, 0.7)
         _r(parts, ux, y0 + (0.15 + 2.438 + 0.3) * s, 6.058 * s, 2.438 * s, _DC, _BLOCK_EDGE, 0.7)
 

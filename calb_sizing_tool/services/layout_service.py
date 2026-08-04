@@ -14,7 +14,10 @@ def render_layout_from_run_bundle(
     options: LayoutRenderOptions,
     topology_snapshot: TopologySnapshot | None = None,
     layout_rules: LayoutRuleSnapshot | None = None,
-    plugin_id: str = "layout_engineering_v1",
+    # Default to the RULE-BASED engine — the same one the exported report draws
+    # with. A caller that wants the legacy grid renderer must ask for
+    # "layout_engineering_v1" by name.
+    plugin_id: str = "layout_arrangement_v2",
     actor: str | None = None,
     db_url: str | None = None,
 ) -> LayoutArtifactBundle:

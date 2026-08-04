@@ -26,6 +26,7 @@ all spacing comes from the rule profiles.
 
 import pytest
 
+from calb_diagrams.ac_block_arrangement_v2 import US_NFPA_OIL
 from calb_diagrams.site_array_concept import (
     SITE_RULE_PROFILES,
     US_NFPA_SITE,
@@ -148,3 +149,53 @@ def test_render_site_svg_markers():
     # no ampersand-unescaped raw text that would break XML
     import xml.dom.minidom
     xml.dom.minidom.parseString(svg)   # raises on malformed XML
+
+
+# ---------------------------------------------------------------------------
+# P1-4 regression lock — the site array may never assume a station size or a
+# nameplate. Both come from the run, exactly as they do in the arrangement
+# figure one section earlier in the same report.
+# ---------------------------------------------------------------------------
+
+
+def test_station_length_follows_the_ac_block_class_not_a_constant():
+    """A 10 MW / 8-PCS block tiles with the 40 ft station, not the 20 ft cabin.
+
+    The old call passed neither PCS count nor block power, so every 10 MW row was
+    drawn 6.13 m short and contradicted the Typical AC Block Arrangement figure.
+    """
+    small = compute_site_array(4, 4, US_NFPA_OIL, US_NFPA_SITE,
+                               block_power_mw=5.0, pcs_per_block=4)
+    assert small.station_length_m == pytest.approx(6.058, abs=0.001)
+
+    big = compute_site_array(4, 8, US_NFPA_OIL, US_NFPA_SITE,
+                             block_power_mw=10.0, pcs_per_block=8)
+    assert big.station_length_m == pytest.approx(12.192, abs=0.001)
+    # 4 mirrored pairs + 3 x 3.0 m equipment-end gaps + 3.0 m aisle + 40 ft station
+    assert big.block_w_m == pytest.approx(4 * 6.058 + 3 * 3.0 + 3.0 + 12.192, abs=0.001)
+    assert big.block_w_m - small.block_w_m > 6.0
+
+
+def test_site_block_width_equals_the_arrangement_engine_envelope():
+    """§9 must tile the SAME block §8 draws — one product, one footprint."""
+    from calb_diagrams.ac_block_arrangement_v2 import compute_layout
+
+    for dc, pcs, mw in ((4, 4, 5.0), (6, 6, 7.5), (8, 8, 10.0)):
+        site = compute_site_array(6, dc, US_NFPA_OIL, US_NFPA_SITE,
+                                  block_power_mw=mw, pcs_per_block=pcs)
+        block = compute_layout(dc, US_NFPA_OIL, pcs_count=pcs, block_power_mw=mw)
+        assert site.block_w_m == pytest.approx(block.envelope_w_m, abs=0.001)
+        assert site.block_d_m == pytest.approx(block.envelope_d_m, abs=0.001)
+        assert site.end_gap_m == pytest.approx(block.end_gap_m, abs=0.001)
+
+
+def test_site_glyph_draws_the_resolved_station_not_a_hardcoded_one():
+    layout = compute_site_array(4, 8, US_NFPA_OIL, US_NFPA_SITE,
+                                block_power_mw=10.0, pcs_per_block=8)
+    svg = render_site_svg(layout, US_NFPA_SITE)
+    assert svg.startswith("<svg") and svg.endswith("</svg>")
+    # The MV glyph is drawn at station_length_m px-scaled; a 40 ft station is
+    # twice the 20 ft one, so the two renders cannot be byte-identical.
+    small = compute_site_array(4, 8, US_NFPA_OIL, US_NFPA_SITE,
+                               block_power_mw=5.0, pcs_per_block=4)
+    assert render_site_svg(small, US_NFPA_SITE) != svg

@@ -27,8 +27,23 @@ Owner rules encoded here:
   NO-DOOR edge, i.e. toward the pair gap.
 - Every spacing value comes from an ArrangementRuleProfile — no hardcoded
   aisles. The US/international profile is the default design basis.
-- The PCS & MV station is a 20 ft containerized turnkey unit drawn
-  brand-neutral.
+- The PCS & MV station is a containerized turnkey unit drawn brand-neutral; its
+  LENGTH is resolved from the AC Block class (see resolve_station_length_m).
+
+NOTHING DIMENSIONAL MAY BE HARDCODED IN A LAYOUT MODULE (owner, 2026-08-03)
+--------------------------------------------------------------------------
+Station size, per-block power and per-DC-Block energy must all be resolved from
+the run or from a rule profile — never written as a module constant that happens
+to match one product. Two defects in the 2026-08-03 report came from exactly
+that: a 10 MW / 8-PCS AC Block drawn with the 20 ft cabin (MV_LENGTH_M was a
+constant), and a site figure that reported half the project's power (the
+nameplate was a constant in site_array_concept). The ISO constants below are
+CATALOGUE dimensions selected by resolve_station_length_m; they are not defaults
+any caller may silently inherit.
+
+The equipment glyphs (draw_dc_container / draw_mv_station) are shared with
+calb_diagrams.ac_block_bilateral_layout so both engines draw the same product
+from the same viewpoint. Do not fork a private copy.
 """
 
 from __future__ import annotations
@@ -190,6 +205,8 @@ _TRENCH = "#9fa5a3"
 _TRENCH_EDGE = "#868c8a"
 _LOUVER = "#c2c8c7"
 _GROUND = "#c6cac5"
+_MV_BODY = "#f0f2f1"
+_DOOR = "#1f4e79"
 
 
 def _rect(parts: List[str], x: float, y: float, w: float, h: float, fill: str,
@@ -230,47 +247,127 @@ def _dim(parts: List[str], x1: float, y1: float, x2: float, y2: float,
     _text(parts, (x1 + x2) / 2, (y1 + y2) / 2 + off, label, size=size)
 
 
+# ---------------------------------------------------------------------------
+# Shared equipment glyphs
+#
+# BOTH arrangement engines — this linear one and
+# calb_diagrams/ac_block_bilateral_layout — draw their equipment through these
+# helpers, so a DC Block and a PCS & MV Station always read as the same product
+# whichever engine produced the plan. Two private copies of the same glyph is
+# exactly how the 2026-08-03 report ended up showing two "typical AC Block"
+# drawings that did not look like the same product.
+# ---------------------------------------------------------------------------
+
+_VENTS_PER_CONTAINER = 4
+_VENT_SIZE_M = 0.88
+_VENT_END_MARGIN_M = 0.62   # along the container's long axis
+_VENT_FACE_MARGIN_M = 0.20  # from the door-free edge
+
+
+def draw_dc_container(parts: List[str], s: float, x: float, y: float, *,
+                      width_m: float = DC_LENGTH_M,
+                      height_m: float = DC_WIDTH_M,
+                      door_orientation: str = "south") -> None:
+    """One DC Block in plan view, at pixel origin ``(x, y)``.
+
+    ``width_m`` / ``height_m`` are the AS-PLACED east-west / north-south
+    footprint, so the same helper draws a container laid along the row
+    (6.058 x 2.438) or standing across it (2.438 x 6.058).
+
+    The roof explosion-vent row always sits on the DOOR-FREE edge — that edge is
+    the corrugated back that faces the 0.30 m mirrored-pair gap — and the door
+    edge carries a solid marker.
+    """
+    w_px, h_px = width_m * s, height_m * s
+    _rect(parts, x + 3, y + 3, w_px, h_px, _SHADOW, opacity=0.15)
+    _rect(parts, x, y, w_px, h_px, _BOX, _BOX_EDGE, 1.0)
+
+    vent = _VENT_SIZE_M
+    n = _VENTS_PER_CONTAINER
+    horizontal = width_m >= height_m
+    span_m = width_m if horizontal else height_m
+    pitch = max(0.0, (span_m - 2 * _VENT_END_MARGIN_M - vent) / max(1, n - 1))
+    for i in range(n):
+        along = _VENT_END_MARGIN_M + i * pitch
+        if horizontal:
+            vy = (_VENT_FACE_MARGIN_M if door_orientation == "south"
+                  else height_m - vent - _VENT_FACE_MARGIN_M)
+            _rect(parts, x + along * s, y + vy * s, vent * s, vent * s,
+                  _VENT, _VENT_EDGE, 0.8, rx=1.5)
+        else:
+            vx = (_VENT_FACE_MARGIN_M if door_orientation == "east"
+                  else width_m - vent - _VENT_FACE_MARGIN_M)
+            _rect(parts, x + vx * s, y + along * s, vent * s, vent * s,
+                  _VENT, _VENT_EDGE, 0.8, rx=1.5)
+
+    bar = 2.5
+    if door_orientation == "north":
+        _rect(parts, x + w_px * 0.30, y, w_px * 0.40, bar, _DOOR, rx=0)
+    elif door_orientation == "south":
+        _rect(parts, x + w_px * 0.30, y + h_px - bar, w_px * 0.40, bar, _DOOR, rx=0)
+    elif door_orientation == "west":
+        _rect(parts, x, y + h_px * 0.30, bar, h_px * 0.40, _DOOR, rx=0)
+    elif door_orientation == "east":
+        _rect(parts, x + w_px - bar, y + h_px * 0.30, bar, h_px * 0.40, _DOOR, rx=0)
+
+
+def draw_mv_station(parts: List[str], s: float, x: float, y: float, *,
+                    length_m: float = MV_LENGTH_M,
+                    width_m: float = MV_WIDTH_M,
+                    vertical: bool = False) -> None:
+    """PCS & MV Station — 20 ft cabin or 40 ft flagship, per ``length_m``.
+
+    ``vertical=True`` stands the cabin on end (long axis north-south) for the
+    bilateral engine; the louvred PCS bays and the MV termination louvres follow
+    the long axis either way.
+    """
+    w_px = (width_m if vertical else length_m) * s
+    h_px = (length_m if vertical else width_m) * s
+    _rect(parts, x + 3, y + 3, w_px, h_px, _SHADOW, opacity=0.15)
+    _rect(parts, x, y, w_px, h_px, _MV_BODY, _BOX_EDGE, 1.0)
+
+    # Louvred PCS door bays scale with the cabin length (a 40 ft station carries
+    # roughly twice the string-PCS bays of a 20 ft one) and spread across the
+    # whole cabin instead of bunching at one end.
+    bays = max(2, int(round(length_m / 3.0)))
+    _bay_start, _mv_reserve = 1.05, 1.60
+    _pitch = max(0.0, (length_m - _bay_start - _mv_reserve)) / bays
+    for i in range(bays):
+        along = _bay_start + i * _pitch
+        if along + 0.85 > length_m:
+            break
+        if vertical:
+            _rect(parts, x + 0.55 * s, y + along * s, 0.55 * s, 0.85 * s,
+                  _VENT, _VENT_EDGE, 0.8)
+        else:
+            _rect(parts, x + along * s, y + 0.55 * s, 0.85 * s, 0.55 * s,
+                  _VENT, _VENT_EDGE, 0.8)
+    # MV termination louvres at the far end of the cabin
+    for i in range(6):
+        if vertical:
+            _rect(parts, x + 0.55 * s, y + (length_m - 1.05 + i * 0.13) * s,
+                  1.35 * s, 0.05 * s, _LOUVER, rx=0)
+        else:
+            _rect(parts, x + (length_m - 1.05 + i * 0.13) * s, y + 0.55 * s,
+                  0.05 * s, 1.35 * s, _LOUVER, rx=0)
+
+
 def _dc_pair_at(parts: List[str], s: float, ox: float, oy: float,
                 pair_gap_m: float) -> None:
     """One mirrored pair; roof vents on the NO-DOOR edges facing the pair gap."""
-    for row_m, vents_south in ((0.0, True), (DC_WIDTH_M + pair_gap_m, False)):
-        x = ox
-        y = oy + row_m * s
-        _rect(parts, x + 3, y + 3, DC_LENGTH_M * s, DC_WIDTH_M * s, _SHADOW, opacity=0.15)
-        _rect(parts, x, y, DC_LENGTH_M * s, DC_WIDTH_M * s, _BOX, _BOX_EDGE, 1.0)
-        vent = 0.88
-        vy_m = (DC_WIDTH_M - vent - 0.20) if vents_south else 0.20
-        for i in range(4):
-            vx = 0.62 + i * 1.32
-            _rect(parts, x + vx * s, y + vy_m * s, vent * s, vent * s,
-                  _VENT, _VENT_EDGE, 0.8, rx=1.5)
+    for row_m, door in ((0.0, "north"), (DC_WIDTH_M + pair_gap_m, "south")):
+        draw_dc_container(parts, s, ox, oy + row_m * s, door_orientation=door)
 
 
 def _single_dc(parts: List[str], s: float, ox: float, oy: float) -> None:
     """Unpaired tail container: doors outward (south), vents on the north edge."""
-    _rect(parts, ox + 3, oy + 3, DC_LENGTH_M * s, DC_WIDTH_M * s, _SHADOW, opacity=0.15)
-    _rect(parts, ox, oy, DC_LENGTH_M * s, DC_WIDTH_M * s, _BOX, _BOX_EDGE, 1.0)
-    vent = 0.88
-    for i in range(4):
-        vx = 0.62 + i * 1.32
-        _rect(parts, ox + vx * s, oy + 0.20 * s, vent * s, vent * s,
-              _VENT, _VENT_EDGE, 0.8, rx=1.5)
+    draw_dc_container(parts, s, ox, oy, door_orientation="south")
 
 
 def _mv_station(parts: List[str], s: float, ox: float, oy: float,
                 station_len_m: float = MV_LENGTH_M) -> None:
     """PCS & MV Station — 20 ft cabin or 40 ft flagship, per station_len_m."""
-    _rect(parts, ox + 3, oy + 3, station_len_m * s, MV_WIDTH_M * s, _SHADOW, opacity=0.15)
-    _rect(parts, ox, oy, station_len_m * s, MV_WIDTH_M * s, "#f0f2f1", _BOX_EDGE, 1.0)
-    # Louvred PCS door bays scale with the cabin length (a 40 ft station carries
-    # roughly twice the string-PCS bays of a 20 ft one).
-    bays = max(2, int(round(station_len_m / 3.0)))
-    for i in range(bays):
-        _rect(parts, ox + (1.05 + i * 1.8) * s, oy + 0.55 * s, 0.85 * s, 0.55 * s,
-              _VENT, _VENT_EDGE, 0.8)
-    for i in range(6):
-        _rect(parts, ox + (station_len_m - 1.05 + i * 0.13) * s, oy + 0.55 * s,
-              0.05 * s, 1.35 * s, _LOUVER, rx=0)
+    draw_mv_station(parts, s, ox, oy, length_m=station_len_m, width_m=MV_WIDTH_M)
 
 
 def render_plan_svg(dc_count: int,
@@ -332,9 +429,13 @@ def render_plan_svg(dc_count: int,
               _TRENCH, _TRENCH_EDGE, 0.8, rx=1)
 
     # labels
-    _text(parts, ox0 + dc_span_m * s / 2, oy0 - 0.52 * s - 6,
+    # Raised clear of the aisle / end-gap dimension line that runs at -0.30 m.
+    _text(parts, ox0 + dc_span_m * s / 2, oy0 - 0.52 * s - 22,
           f"{dc_count} × DC BLOCK (5.015 MWh, mirrored pairs)", size=12)
-    _text(parts, mv_x + MV_LENGTH_M * s / 2, mv_y - 10, "PCS & MV STATION", size=12)
+    # Centre on the ACTUAL station, not on the 20 ft constant — a 40 ft station
+    # would otherwise carry its label a full 3 m off centre.
+    _text(parts, mv_x + layout.station_length_m * s / 2, mv_y - 10,
+          "PCS & MV STATION", size=12)
     _text(parts, margin_l + 4, 30, block_label + f"  ·  {profile.market_label}",
           size=13, anchor="start")
     _text(parts, margin_l + 4, height - 16,

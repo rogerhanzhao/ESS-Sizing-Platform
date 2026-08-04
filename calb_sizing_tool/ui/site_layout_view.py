@@ -317,24 +317,10 @@ def show() -> None:
 
     section_header(
         "Concept Options",
-        "Select one representative AC Block, its DC Block arrangement, skid visibility, and renderer.",
+        "Select one representative AC Block and the renderer.",
         eyebrow="Step 1",
     )
     ac_blocks_total = _resolve_ac_blocks_total(ac_snapshot.output if ac_snapshot else {})
-    layout_col1, layout_col2 = st.columns(2)
-    block_index = layout_col1.selectbox(
-        "Typical AC Block",
-        list(range(1, ac_blocks_total + 1)),
-        index=0,
-        disabled=not ac_snapshot,
-    )
-    arrangement = layout_col2.selectbox(
-        "DC Block arrangement",
-        ["Auto", "2x2", "1x4", "4x1"],
-        index=0,
-        disabled=not ac_snapshot,
-    )
-    show_skid = st.checkbox("Show PCS&MVT SKID", value=True, disabled=not ac_snapshot)
 
     registry = get_plugin_registry()
     plugins = registry.list_by_artifact("layout_svg")
@@ -345,6 +331,38 @@ def show() -> None:
         index=0,
         format_func=lambda pid: registry.get(pid).metadata.plugin_name if registry.get(pid) else pid,
     )
+    # The rule-based engine is the one the exported report uses. It derives every
+    # dimension from the rule profile and the AC Block class, so the free-form
+    # grid controls below would have nothing to act on — showing them would only
+    # suggest the drawing can be nudged away from the report. They stay visible
+    # for the legacy grid renderer, which does honour them.
+    _rule_based = selected_plugin == "layout_arrangement_v2"
+
+    layout_col1, layout_col2 = st.columns(2)
+    block_index = layout_col1.selectbox(
+        "Typical AC Block",
+        list(range(1, ac_blocks_total + 1)),
+        index=0,
+        disabled=not ac_snapshot,
+    )
+    if _rule_based:
+        layout_col2.caption(
+            "DC Block arrangement, spacing and station size are resolved by the "
+            "rule profile (IFC / NFPA 855 / NFPA 850 / UL 9540A) and the AC Block "
+            "class — an 8-PCS / 8-DC block draws the 40 ft central station with "
+            "mirrored west and east DC fields. This is the same engine and the "
+            "same viewpoint the exported report uses."
+        )
+        arrangement = "Auto"
+        show_skid = True
+    else:
+        arrangement = layout_col2.selectbox(
+            "DC Block arrangement",
+            ["Auto", "2x2", "1x4", "4x1"],
+            index=0,
+            disabled=not ac_snapshot,
+        )
+        show_skid = st.checkbox("Show PCS&MVT SKID", value=True, disabled=not ac_snapshot)
 
     if st.button("Generate Typical AC Block Arrangement", disabled=not run_id or not ac_snapshot, use_container_width=True):
         if _is_guest:
