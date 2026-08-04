@@ -33,14 +33,11 @@ from calb_sizing_tool.reporting.export_docx import (
     _setup_header,
     _setup_margins,
 )
-from calb_diagrams.ac_block_arrangement_v2 import (
-    US_NFPA_OIL as ARRANGEMENT_PROFILE,
-    render_plan_svg as render_ac_block_plan_svg,
-)
-from calb_diagrams.ac_block_bilateral_layout import (
-    LAYOUT_VARIANT as BILATERAL_LAYOUT_VARIANT,
-    compute_bilateral_layout,
-    render_bilateral_plan_svg,
+from calb_diagrams.ac_block_arrangement_v2 import US_NFPA_OIL as ARRANGEMENT_PROFILE
+from calb_diagrams.typical_ac_block_arrangement import (
+    AcBlockShape,
+    render_typical_ac_block,
+    uses_central_station,
 )
 from calb_diagrams.governed_site_layout_concept import render_governed_site_layout_concept_svg
 from calb_diagrams.site_array_concept import (
@@ -366,45 +363,61 @@ def _site_nameplate_from_ctx(ctx: ReportContext) -> tuple[float | None, float | 
     return block_power_mw, dc_block_energy_mwh
 
 
+def _arrangement_shape(ctx: ReportContext) -> AcBlockShape:
+    """The AC Block §8 draws, as the shared arrangement wants it.
+
+    Built once and reused by §8 and §9 so the two sections can never describe the
+    same AC Block with two different footprints. The web page builds the same
+    object from its own AcSnapshot and calls the same renderer.
+    """
+    block_power_mw, _ = _site_nameplate_from_ctx(ctx)
+    return AcBlockShape(
+        dc_blocks=_representative_dc_per_ac(ctx),
+        pcs_count=int(ctx.pcs_per_block or 0),
+        block_power_mw=float(block_power_mw or 0.0),
+        block_index=1,
+        model_name=str(ctx.configuration_code or "").strip(),
+        layout_variant=str(ctx.layout_variant or "").strip(),
+    )
+
+
 def _uses_central_station_block(ctx: ReportContext) -> bool:
     """True when §8 draws the central-40 ft, single-axis bilateral AC Block.
 
-    This is the SAME test §8 applies, deliberately: §8 and §9 must never describe
-    the same AC Block with two different footprints. It keys off the block SHAPE
-    (8 PCS with 8 DC Blocks) as well as the governed layout_variant, because a
-    generic run of the 10 MW product is physically that same product.
+    Delegates to the ONE engine-selection rule, so §8, §9 and the web page can
+    never disagree about which engine this block belongs to.
     """
-    if ctx.layout_variant == BILATERAL_LAYOUT_VARIANT:
-        return True
-    dc_per_ac = ctx.dc_blocks_total // max(1, ctx.ac_blocks_total)
-    return int(ctx.pcs_per_block or 0) == 8 and dc_per_ac == 8
+    shape = _arrangement_shape(ctx)
+    return uses_central_station(shape.pcs_count, shape.dc_blocks, shape.layout_variant)
 
 
-def _central_station_block_form():
-    """The central-station bilateral block, described so the SITE can tile it.
+def _central_station_block_form(ctx: ReportContext):
+    """The central-station block, described so the SITE can tile it.
 
-    It is NOT mirrorable: its station is inside the block, so two neighbours
-    never put stations face to face and cannot share the narrow MV corridor —
-    every outward face is a DC door or a DC equipment end and takes the full
-    maintenance aisle. Real placements travel with it so the site glyph draws the
-    block that §8 drew instead of reconstructing a linear one.
+    Geometry and placements come from the SAME shared arrangement §8 draws — the
+    site therefore composes the very block the reader just looked at, instead of
+    a reconstruction that could disagree with it.
+
+    It is NOT mirrorable: its station is inside the block, so two neighbours never
+    put stations face to face and cannot share the narrow MV corridor — every
+    outward face is a DC door or a DC equipment end and takes the full
+    maintenance aisle.
     """
-    layout = compute_bilateral_layout(8)
-    station = layout.by_type("ac_station")[0]
+    arrangement = render_typical_ac_block(_arrangement_shape(ctx), ARRANGEMENT_PROFILE)
     return BlockForm(
-        w_m=layout.envelope_w_m,
-        d_m=layout.envelope_d_m,
-        label=layout.layout_variant,
-        dc_per_block=layout.dc_count,
-        station_length_m=station.height_m,
+        w_m=arrangement.envelope_w_m,
+        d_m=arrangement.envelope_d_m,
+        label=arrangement.layout_variant,
+        dc_per_block=arrangement.dc_blocks,
+        station_length_m=arrangement.station_length_m,
         mirrorable=False,
         placements=tuple(
             {
-                "equipment_type": p.equipment_type,
-                "x_m": p.x_m, "y_m": p.y_m,
-                "width_m": p.width_m, "height_m": p.height_m,
+                "equipment_type": p["equipment_type"],
+                "x_m": p["x_m"], "y_m": p["y_m"],
+                "width_m": p["width_m"], "height_m": p["height_m"],
             }
-            for p in layout.placements
+            for p in arrangement.placements
         ),
     )
 
@@ -420,7 +433,7 @@ def _compute_site_layout(ctx: ReportContext):
         block_power_mw, dc_block_energy_mwh = _site_nameplate_from_ctx(ctx)
         # The central-station block is tiled from its REAL placements, so §9
         # composes the very block §8 drew rather than a linear stand-in.
-        form = _central_station_block_form() if _uses_central_station_block(ctx) else None
+        form = _central_station_block_form(ctx) if _uses_central_station_block(ctx) else None
         return compute_site_array(
             ctx.ac_blocks_total, form.dc_per_block if form else dc_per_ac,
             ARRANGEMENT_PROFILE, SITE_PROFILE,
@@ -452,7 +465,7 @@ def _compute_typical_group_layout(ctx: ReportContext):
     group_blocks = min(SITE_PROFILE.default_blocks_per_group, ctx.ac_blocks_total)
     try:
         block_power_mw, dc_block_energy_mwh = _site_nameplate_from_ctx(ctx)
-        form = _central_station_block_form() if _uses_central_station_block(ctx) else None
+        form = _central_station_block_form(ctx) if _uses_central_station_block(ctx) else None
         _dc_per_ac = form.dc_per_block if form else dc_per_ac
         return compute_site_array(
             group_blocks, _dc_per_ac, ARRANGEMENT_PROFILE, SITE_PROFILE,
@@ -1482,66 +1495,41 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     # report never shows two contradictory aisle dimensions.
     doc.add_page_break()
     doc.add_heading("8.  Typical AC Block Arrangement (Concept Only)", level=2)
-    plan_png, plan_layout, dc_per_ac = None, None, 0
-    # P1-3: choose the arrangement engine from the ACTUAL block shape, not only
-    # from layout_variant. A generic (non-governed) 8-PCS / 8-DC run is
-    # physically the same 10 MW product, so it must draw the SAME arrangement as
-    # the governed one — one product, one geometry.
+    plan_png, arrangement = None, None
+    # ONE arrangement, shared with the web page. The engine choice, the title and
+    # the drawing all live in calb_diagrams.typical_ac_block_arrangement — the
+    # page calls the identical function, so the two surfaces cannot drift.
     #
-    # Owner ruling 2026-08-03: the DC field stays on ONE axis ("不能搞环绕布置 …
-    # 按一字型排"). The four-side / perimeter field that briefly lived here was
-    # reviewed and rejected; do not reintroduce an engine switch that draws the
-    # same product two different ways.
-    _dc_per_ac_shape = ctx.dc_blocks_total // max(1, ctx.ac_blocks_total)
-    _is_8pcs_8dc = int(ctx.pcs_per_block or 0) == 8 and _dc_per_ac_shape == 8
-    is_bilateral = ctx.layout_variant == BILATERAL_LAYOUT_VARIANT or _is_8pcs_8dc
-    if is_bilateral:
+    # For a mixed station the fractional average matches no real AC Block, so the
+    # representative block is the HEAD block (consistent with §6.1 and the SLD
+    # head fleet); tail AC Block(s) are described in §6.1.
+    dc_per_ac = _representative_dc_per_ac(ctx)
+    if dc_per_ac > 0:
         try:
-            bilateral = compute_bilateral_layout(_dc_per_ac_shape)
-            _label = str(ctx.configuration_code or "") or (
-                f"TYPICAL AC BLOCK · {ctx.pcs_per_block} PCS / "
-                f"{_dc_per_ac_shape} DC · 40 FT CENTRAL STATION"
-            )
-            plan_svg = render_bilateral_plan_svg(bilateral, block_label=_label)
-            plan_png = _svg_bytes_to_png(plan_svg.encode("utf-8"))
-            plan_layout = bilateral
-        except Exception:
-            plan_png, plan_layout = None, None
-    elif ctx.ac_blocks_total > 0 and ctx.dc_blocks_total > 0:
-        # For a mixed station the fractional average matches no real AC Block,
-        # so draw the Head AC Block (consistent with §6.1 and the SLD head
-        # fleet); tail AC Block(s) are described in §6.1.
-        dc_per_ac = _representative_dc_per_ac(ctx)
-        try:
-            # Size the PCS & MV Station from THIS AC Block's class — a 10 MW /
-            # 8-PCS block is a 40 ft station, never the 20 ft cabin.
             _block_power_mw, _ = _site_nameplate_from_ctx(ctx)
-            plan_svg, plan_layout = render_ac_block_plan_svg(
-                dc_per_ac, ARRANGEMENT_PROFILE,
-                pcs_count=ctx.pcs_per_block,
-                block_power_mw=_block_power_mw,
+            arrangement = render_typical_ac_block(
+                _arrangement_shape(ctx), ARRANGEMENT_PROFILE,
             )
-            plan_png = _svg_bytes_to_png(plan_svg.encode("utf-8"))
+            plan_png = _svg_bytes_to_png(arrangement.svg.encode("utf-8"))
         except Exception:
-            plan_png, plan_layout = None, None
+            plan_png, arrangement = None, None
+    is_bilateral = arrangement is not None and arrangement.uses_central_station
+    plan_layout = arrangement
 
     if plan_png and plan_layout is not None and is_bilateral:
-        _bilateral_model_label = (
-            (ctx.ac_output or {}).get("ac_block_model_name")
-            or ctx.configuration_code
-            or "1:8 / 8 x 1250 kW PCS concept"
-        )
+        # The SAME label the drawing carries and the page shows.
         _keep_next_para(doc.add_paragraph(
-            f"AC Block model {_bilateral_model_label}: central vertical "
-            f"40 ft AC Block with west 4-DC and east 4-DC mirrored fields "
-            f"(4 + 4 arrangement, one DC Block per PCS):"
+            f"{plan_layout.label} — central vertical 40 ft AC Block with west "
+            f"4-DC and east 4-DC mirrored fields (4 + 4 arrangement, one DC Block "
+            f"per PCS). The Typical AC Block Arrangement page renders this "
+            f"identical drawing:"
         ))
         _add_concept_figure(doc, plan_png, width=Inches(6.7))
         _keep_next_para(doc.paragraphs[-1])
         _keep_next_para(doc.add_paragraph(
             f"Figure {figure_index}: Typical AC Block Arrangement — equipment envelope ≈ "
             f"{plan_layout.envelope_w_m:.2f} × {plan_layout.envelope_d_m:.2f} m "
-            f"({plan_layout.envelope_w_m * plan_layout.envelope_d_m:,.0f} m²). "
+            f"({plan_layout.envelope_area_m2:,.0f} m²). "
             f"Concept only; spacing and 40 ft dimensions provisional. — NOT FOR CONSTRUCTION"
         ))
         figure_index += 1
@@ -1563,7 +1551,9 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         _keep_next_para(doc.add_paragraph(
             f"Figure {figure_index}: Typical AC Block Arrangement (rule-based) — "
             f"envelope ≈ {plan_layout.envelope_w_m:.2f} × "
-            f"{plan_layout.envelope_d_m:.2f} m. Concept only. — NOT FOR CONSTRUCTION"
+            f"{plan_layout.envelope_d_m:.2f} m "
+            f"({plan_layout.envelope_area_m2:,.0f} m²). "
+            f"Concept only. — NOT FOR CONSTRUCTION"
         ))
         figure_index += 1
         basis_rows = [(item, f"{value} — {basis}")

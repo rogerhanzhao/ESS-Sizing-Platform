@@ -6,6 +6,10 @@ from calb_sizing_tool.schemas.layout_inputs import LayoutArtifactBundle, LayoutR
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
 from calb_sizing_tool.services.artifact_service import persist_artifacts
 
+# The ONE Typical AC Block Arrangement renderer: the same engine the exported
+# report draws with. Named here so the page and the service cannot name two.
+ARRANGEMENT_PLUGIN_ID = "layout_arrangement_v2"
+
 
 def render_layout_from_run_bundle(
     run_bundle: DcRunBundle,
@@ -17,7 +21,7 @@ def render_layout_from_run_bundle(
     # Default to the RULE-BASED engine — the same one the exported report draws
     # with. A caller that wants the legacy grid renderer must ask for
     # "layout_engineering_v1" by name.
-    plugin_id: str = "layout_arrangement_v2",
+    plugin_id: str = ARRANGEMENT_PLUGIN_ID,
     actor: str | None = None,
     db_url: str | None = None,
 ) -> LayoutArtifactBundle:

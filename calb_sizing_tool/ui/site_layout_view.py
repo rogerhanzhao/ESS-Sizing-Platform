@@ -24,6 +24,7 @@ import streamlit as st
 
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.plugins.registry import get_plugin_registry
+from calb_sizing_tool.services.layout_service import ARRANGEMENT_PLUGIN_ID
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot
 from calb_sizing_tool.schemas.layout_inputs import LayoutRenderOptions
 from calb_sizing_tool.services.access_control_service import AccessControlService
@@ -317,52 +318,39 @@ def show() -> None:
 
     section_header(
         "Concept Options",
-        "Select one representative AC Block and the renderer.",
+        "Select the representative AC Block. The arrangement itself is not "
+        "adjustable here — it is the same drawing the exported report carries.",
         eyebrow="Step 1",
     )
     ac_blocks_total = _resolve_ac_blocks_total(ac_snapshot.output if ac_snapshot else {})
 
+    # ONE renderer is offered, deliberately. The legacy grid renderer stays
+    # registered for programmatic callers, but a picker that can produce a
+    # different footprint for the same AC Block is exactly what the report and
+    # the page were asked to stop doing. Engine, spacing and station size come
+    # from calb_diagrams.typical_ac_block_arrangement — the report's own call.
+    selected_plugin = ARRANGEMENT_PLUGIN_ID
     registry = get_plugin_registry()
-    plugins = registry.list_by_artifact("layout_svg")
-    plugin_ids = [plugin.metadata.plugin_id for plugin in plugins]
-    selected_plugin = st.selectbox(
-        "Renderer",
-        plugin_ids,
-        index=0,
-        format_func=lambda pid: registry.get(pid).metadata.plugin_name if registry.get(pid) else pid,
+    _renderer = registry.get(selected_plugin)
+    st.caption(
+        f"Renderer: **{_renderer.metadata.plugin_name if _renderer else selected_plugin}** — "
+        "DC Block arrangement, clearances and station size are resolved by the "
+        "rule profile (IFC / NFPA 855 / NFPA 850 / UL 9540A) and the AC Block "
+        "class. An 8-PCS / 8-DC block draws the 40 ft central station with "
+        "mirrored west and east DC fields. The exported report renders this "
+        "identical drawing."
     )
-    # The rule-based engine is the one the exported report uses. It derives every
-    # dimension from the rule profile and the AC Block class, so the free-form
-    # grid controls below would have nothing to act on — showing them would only
-    # suggest the drawing can be nudged away from the report. They stay visible
-    # for the legacy grid renderer, which does honour them.
-    _rule_based = selected_plugin == "layout_arrangement_v2"
 
-    layout_col1, layout_col2 = st.columns(2)
-    block_index = layout_col1.selectbox(
+    block_index = st.selectbox(
         "Typical AC Block",
         list(range(1, ac_blocks_total + 1)),
         index=0,
         disabled=not ac_snapshot,
     )
-    if _rule_based:
-        layout_col2.caption(
-            "DC Block arrangement, spacing and station size are resolved by the "
-            "rule profile (IFC / NFPA 855 / NFPA 850 / UL 9540A) and the AC Block "
-            "class — an 8-PCS / 8-DC block draws the 40 ft central station with "
-            "mirrored west and east DC fields. This is the same engine and the "
-            "same viewpoint the exported report uses."
-        )
-        arrangement = "Auto"
-        show_skid = True
-    else:
-        arrangement = layout_col2.selectbox(
-            "DC Block arrangement",
-            ["Auto", "2x2", "1x4", "4x1"],
-            index=0,
-            disabled=not ac_snapshot,
-        )
-        show_skid = st.checkbox("Show PCS&MVT SKID", value=True, disabled=not ac_snapshot)
+    # Retained only to satisfy LayoutRenderOptions; the rule-based engine ignores
+    # both, because neither has a code basis.
+    arrangement = "Auto"
+    show_skid = True
 
     if st.button("Generate Typical AC Block Arrangement", disabled=not run_id or not ac_snapshot, use_container_width=True):
         if _is_guest:

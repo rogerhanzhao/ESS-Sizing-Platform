@@ -177,7 +177,7 @@ def _governed_ctx(container_count: int, *, poi_power_mw: float, poi_energy_mwh: 
 
 def test_full_report_watermarks_every_concept_figure_governed_bilateral():
     """Governed pure-bilateral path: §7 SLD + §8 bilateral 4+4 AC block + §9 site."""
-    from calb_sizing_tool.reporting.report_v2 import BILATERAL_LAYOUT_VARIANT
+    from calb_diagrams.ac_block_bilateral_layout import LAYOUT_VARIANT as BILATERAL_LAYOUT_VARIANT
 
     sld_src = _white_png(900, 500)
     ctx = _governed_ctx(16, poi_power_mw=20.0, poi_energy_mwh=80.0, sld_src=sld_src)  # 2 x 8

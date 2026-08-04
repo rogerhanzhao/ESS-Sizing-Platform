@@ -281,6 +281,81 @@ L2 引擎只能从 `dc_per_block` **反推**一个线性块，所以 8PCS/8DC（
 **这是环形道以内的设备 + 通道用地，不含升压站、运维楼、堆场、雨水设施和退界。**
 图注和 §9 表格都加了这句。
 
+## 二之二之四、"报告与页面必须一致"的收口（owner 2026-08-03 四次指示）
+
+> "无论是导出的报告还是页面展示的 typical ac block arrangement 都要一致的
+> 逻辑排布和绘制"
+
+### 先取证，不先下结论
+
+把同一个 run 的两条路径各渲一张 SVG 逐行 diff。结果：**几何、图元、标注全部一致，
+只差 5 行** —— 标题文字（`TYPICAL AC BLOCK 1` vs `TYPICAL AC BLOCK`）和页面多打的
+一层水印 `<g id="calb-document-status">`。
+
+**但这不等于安全。** 真正的问题是**同一套规则被写了两遍**：
+
+| 决策 | 报告里的实现 | 页面里的实现 |
+|---|---|---|
+| 用哪个引擎 | `layout_variant == BILATERAL or (pcs==8 and dc==8)` | `pcs_count == 8 and dc_blocks_total == 8` |
+| 图怎么起标题 | `configuration_code or "TYPICAL AC BLOCK · …"` | `ac_block_model_name or "TYPICAL AC BLOCK {i} · …"` |
+| 本块功率/站体等级 | `_site_nameplate_from_ctx()` | `pcs_count × pcs_kw or block_size_mw` |
+| DC 台数怎么数 | `dc_blocks_total // ac_blocks_total` | `dc_allocation_plan[block_index]` |
+
+**四条规则各写两遍 = 四个漂移入口**，而"一个产品两个尺寸"正是本文档从头到尾在修的
+那条缺陷链。今天一样，不代表明天一样。
+
+### F15 — 排布规则被实现两遍 ❌
+
+**修复**：新增 `calb_diagrams/typical_ac_block_arrangement.py`，**唯一入口**
+`render_typical_ac_block(shape, profile)`，它拥有：
+
+- `uses_central_station()` —— **唯一**的引擎选择规则；
+- `block_label()` —— **唯一**的标题规则；
+- `resolve_dc_blocks_for_block()` / `resolve_pcs_for_block()` /
+  `resolve_block_power_mw()` —— **唯一**的取数规则（按块取，不取全场平均：
+  混合站里 tail 块 PCS 少、功率小、站体等级也可能不同）；
+- `apply_concept_watermark()` / `strip_document_status()` —— **唯一**的水印实现。
+
+报告 §8 和页面插件现在都**只做一件事**：从各自的数据源解析出 `AcBlockShape`，
+然后调这一个函数。`report_v2._uses_central_station_block()` 也改为委托同一条规则，
+所以 **§8 / §9 / 页面三处再也不可能对"这块该用哪个引擎"有分歧**。
+
+> **各自保留的部分**：从哪里读这块的形状。报告读 `ReportContext`，页面读用户选中
+> 那一块的 `AcSnapshot`。这个差异是**真实且应有的**——形状是输入，排布不是。
+
+### F16 — 页面的渲染器下拉框还能选到旧栅格引擎 ❌
+
+页面把 `layout_engineering_v1`（无规范出处的旧栅格）和规则引擎并列在下拉框里。
+**用户选前者，页面就又和报告不一致了** —— 一个能产生分歧的选择器，正是这次要消灭的。
+
+**修复**：页面只提供规则引擎（`ARRANGEMENT_PLUGIN_ID`，在 `layout_service` 里
+单点定义，页面和服务不可能各写一个）。旧插件仍注册着，供程序化调用和既有测试使用，
+但页面不再暴露。同时删掉 `2x2 / 1x4 / 4x1` 与手填净距控件——规则引擎不理它们。
+
+### 水印为什么允许不同
+
+页面**直接把 SVG 交出去**，所以水印打在 SVG 上；报告**先栅格化再打**，走的是
+fail-closed 的 `_stamp_not_for_construction`（本文件前面那条 P1 缺陷修的就是它）。
+**同一个标记，不同介质**，两边都不能少。一致性测试用
+`strip_document_status()` 把这层剥掉再比，比的是**图**，不是标记。
+
+### 回归锁 — `tests/unit/test_typical_ac_block_arrangement.py`
+
+- `test_report_and_page_emit_the_identical_drawing` —— 剥掉水印后
+  **逐字节相等**（8PCS/8DC 与 4PCS/4DC 两种形态各一条）；
+- `test_neither_surface_reimplements_the_engine_rule` —— 用 `inspect.getsource`
+  确认两边都走 `render_typical_ac_block`，且**旧的 `pcs==8 and dc==8` 硬判定
+  不会再出现在任何一侧**；
+- 另有引擎规则、标题规则、取数规则、水印可逆性、fail-closed 的独立断言。
+
+### 端到端核对（真实导出）
+
+| | 报告 §8 | 页面 |
+|---|---|---|
+| 标题 | `TYPICAL AC BLOCK 1 · 8 PCS / 8 DC · 40 FT CENTRAL STATION` | 同左 |
+| 包络 | 18.79 × 13.02 m（245 m²） | 18.79 × 13.016 m（244.6 m²） |
+| 引擎 | `central_40ft_bilateral_4plus4` | 同左 |
+
 ## 二之三、视角统一 + 网页引擎同步（owner 2026-08-03）
 
 > "网页上 TYPICAL AC BLOCK arrangement 时的排布引擎也要同步调整，当前版本似乎还是
@@ -416,6 +491,14 @@ L2 行模型的前提是**站体在行端、朝共用 MV 走廊**；一字型双
    `test_a_central_station_block_is_tiled_from_its_real_placements`、
    `test_the_reported_land_states_what_it_excludes`。
 
+### P1-8 报告与页面一致性收口（F15 / F16）✅
+1. `calb_diagrams/typical_ac_block_arrangement.py` —— 引擎选择、标题、取数、
+   水印的**唯一实现**；报告 §8 与页面插件都只调 `render_typical_ac_block()`。
+2. `report_v2._uses_central_station_block()` 委托同一条规则，§8/§9/页面同源。
+3. 页面只提供规则引擎（`ARRANGEMENT_PLUGIN_ID` 单点定义），旧栅格引擎不再暴露。
+4. 回归锁：`tests/unit/test_typical_ac_block_arrangement.py`
+   —— 剥水印后**逐字节相等** + `inspect.getsource` 防止规则被重新实现。
+
 ### 尚未做（明确记录，等 owner 决定）
 - **L3 / P2 真实场地几何**：§9 现在画的是**规整网格 + 环道**的概念铺排，
   仍然没有对着真实地块边界、进场道路、地形和退界排布。这一步还需要 owner 提供
@@ -438,9 +521,11 @@ L2 行模型的前提是**站体在行端、朝共用 MV 走廊**；一字型双
 | `calb_diagrams/ac_block_bilateral_layout.py` | 删除四面环绕；渲染改用共用图元与共用调色板（F5） |
 | `calb_diagrams/site_array_concept.py` | 删硬编码、改签名（F2）；按 AC Block 型号解析站体（F6） |
 | `calb_sizing_tool/reporting/report_v2.py` | 传真实功率/能量；引擎选择不再分叉（F3）；§9 抑制条件按形态判定 + 文字节（F7） |
-| `calb_sizing_tool/plugins/layout_arrangement_v2_plugin.py` | **新增** —— 网页走报告同款规则引擎（F4） |
+| `calb_diagrams/typical_ac_block_arrangement.py` | **新增** —— 排布的唯一入口：引擎选择 / 标题 / 取数 / 水印（F15） |
+| `calb_sizing_tool/plugins/layout_arrangement_v2_plugin.py` | **新增** —— 网页走报告同款规则引擎（F4）；现已收敛为薄壳，只解析形状（F15） |
 | `calb_sizing_tool/plugins/registry.py`、`services/layout_service.py` | 规则引擎注册为默认渲染器（F4） |
-| `calb_sizing_tool/ui/site_layout_view.py` | 规则引擎下隐藏无效的栅格/净距控件（F4） |
+| `calb_sizing_tool/ui/site_layout_view.py` | 规则引擎下隐藏无效的栅格/净距控件（F4）；只提供一个渲染器（F16） |
+| `calb_sizing_tool/services/layout_service.py` | `ARRANGEMENT_PLUGIN_ID` 单点定义（F16） |
 | `tests/` + SLD/报告基线 | 新增断言、重生成基线 |
 
 **不涉及**：DC/AC sizing 计算本身（`ac_sizing_service.py` 等冻结模块不动），
