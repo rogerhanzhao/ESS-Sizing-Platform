@@ -137,6 +137,40 @@ US_NFPA_OIL = ArrangementRuleProfile(
 ARRANGEMENT_RULE_PROFILES = {profile.key: profile for profile in (US_NFPA_OIL,)}
 
 
+def end_gap_sequence(units: int,
+                     profile: ArrangementRuleProfile) -> Tuple[float, ...]:
+    """Gaps between adjacent DC units along a row, in order.
+
+    LAND RULE (owner 2026-08-03, "综合整站占地面积最小"): the DC Block's EQUIPMENT
+    END (liquid-cooling unit + fan grilles) needs 3.0 m; the opposite plain end
+    needs only 0.9 m. Point every other unit the other way round, so the
+    3.0-demanding ends land on the BLOCK BOUNDARY — where the site already has to
+    provide a >= 3.0 m maintenance aisle for access — and the plain ends meet
+    INSIDE the block at 0.9 m.
+
+    Putting the equipment ends inward instead makes the block 2.1 m deeper per
+    pair of rows and buys nothing: the boundary aisle is required either way.
+    Measured over a 13-block site that costs about 10% of the total land.
+
+    Returns ``units - 1`` gaps alternating 0.9 / 3.0, starting at 0.9.
+    """
+    return tuple(
+        profile.pair_to_pair_gap_m if i % 2 == 0 else profile.dc_equipment_end_gap_m
+        for i in range(max(0, units - 1))
+    )
+
+
+def unit_offsets_m(units: int, profile: ArrangementRuleProfile) -> Tuple[float, ...]:
+    """Along-row offset of each DC unit's near edge, from the field origin."""
+    offsets, cursor = [], 0.0
+    for i in range(max(0, units)):
+        offsets.append(round(cursor, 3))
+        gaps = end_gap_sequence(units, profile)
+        if i < len(gaps):
+            cursor += DC_LENGTH_M + gaps[i]
+    return tuple(offsets)
+
+
 @dataclass(frozen=True)
 class ArrangementLayout:
     dc_count: int
@@ -146,7 +180,13 @@ class ArrangementLayout:
     envelope_d_m: float
     profile_key: str
     station_length_m: float = MV_LENGTH_M   # 20 ft cabin or 40 ft flagship
-    end_gap_m: float = 0.9                  # governing DC END-face clearance
+    # Alternating DC END-face clearances. ``end_gap_m`` is the SMALLEST gap used
+    # (plain end to plain end); ``boundary_end_gap_m`` is what the site must give
+    # the equipment ends that now face outward.
+    end_gap_m: float = 0.9
+    boundary_end_gap_m: float = 3.0
+    end_gaps_m: Tuple[float, ...] = ()
+    unit_offsets_m: Tuple[float, ...] = ()
 
 
 def compute_layout(dc_count: int, profile: ArrangementRuleProfile,
@@ -159,10 +199,10 @@ def compute_layout(dc_count: int, profile: ArrangementRuleProfile,
     the AC Block class (``pcs_count`` / ``block_power_mw``) — a 10 MW / 8-PCS block
     is a 40 ft station, never the 20 ft cabin.
 
-    The gap between adjacent mirrored pairs is the DC Block's END-face clearance.
-    With a uniform container orientation one of the two facing ends is always the
-    EQUIPMENT END (liquid-cooling unit + fan grilles), so that larger clearance
-    governs (owner ruling, 2026-08-03).
+    Gaps between adjacent mirrored pairs ALTERNATE 0.9 / 3.0 (see
+    end_gap_sequence): every other unit is turned end-for-end so the equipment
+    ends face the block boundary, where the site aisle already provides 3.0 m,
+    and the plain ends meet inside the block at 0.9 m.
     """
     if dc_count < 1:
         raise ValueError(f"dc_count must be >= 1, got {dc_count}")
@@ -173,8 +213,9 @@ def compute_layout(dc_count: int, profile: ArrangementRuleProfile,
         float(station_length_m) if station_length_m
         else resolve_station_length_m(pcs_count, block_power_mw)
     )
-    end_gap = max(profile.pair_to_pair_gap_m, profile.dc_equipment_end_gap_m)
-    dc_span = units * DC_LENGTH_M + (units - 1) * end_gap
+    gaps = end_gap_sequence(units, profile)
+    offsets = unit_offsets_m(units, profile)
+    dc_span = units * DC_LENGTH_M + sum(gaps)
     envelope_w = dc_span + profile.dc_to_mv_aisle_m + station_len
     envelope_d = (DC_WIDTH_M * 2 + profile.dc_pair_gap_m) if dc_count >= 2 else DC_WIDTH_M
     return ArrangementLayout(
@@ -185,7 +226,10 @@ def compute_layout(dc_count: int, profile: ArrangementRuleProfile,
         envelope_d_m=round(envelope_d, 3),
         profile_key=profile.key,
         station_length_m=round(station_len, 3),
-        end_gap_m=round(end_gap, 3),
+        end_gap_m=round(profile.pair_to_pair_gap_m, 3),
+        boundary_end_gap_m=round(profile.dc_equipment_end_gap_m, 3),
+        end_gaps_m=gaps,
+        unit_offsets_m=offsets,
     )
 
 
@@ -267,7 +311,8 @@ _VENT_FACE_MARGIN_M = 0.20  # from the door-free edge
 def draw_dc_container(parts: List[str], s: float, x: float, y: float, *,
                       width_m: float = DC_LENGTH_M,
                       height_m: float = DC_WIDTH_M,
-                      door_orientation: str = "south") -> None:
+                      door_orientation: str = "south",
+                      equipment_end: Optional[str] = None) -> None:
     """One DC Block in plan view, at pixel origin ``(x, y)``.
 
     ``width_m`` / ``height_m`` are the AS-PLACED east-west / north-south
@@ -277,6 +322,11 @@ def draw_dc_container(parts: List[str], s: float, x: float, y: float, *,
     The roof explosion-vent row always sits on the DOOR-FREE edge — that edge is
     the corrugated back that faces the 0.30 m mirrored-pair gap — and the door
     edge carries a solid marker.
+
+    ``equipment_end`` ("north"/"south"/"east"/"west") draws the liquid-cooling +
+    fan-grille end as a louvred band. Which end that is decides real land: it
+    demands 3.0 m while the opposite plain end needs 0.9 m, so the drawing has to
+    show it rather than leave the reader to assume the container is symmetric.
     """
     w_px, h_px = width_m * s, height_m * s
     _rect(parts, x + 3, y + 3, w_px, h_px, _SHADOW, opacity=0.15)
@@ -299,6 +349,20 @@ def draw_dc_container(parts: List[str], s: float, x: float, y: float, *,
                   else width_m - vent - _VENT_FACE_MARGIN_M)
             _rect(parts, x + vx * s, y + along * s, vent * s, vent * s,
                   _VENT, _VENT_EDGE, 0.8, rx=1.5)
+
+    # Liquid-cooling unit + fan grilles on the equipment end.
+    if equipment_end in ("north", "south"):
+        band_h = min(0.55, height_m * 0.18)
+        by = y if equipment_end == "north" else y + h_px - band_h * s
+        for i in range(5):
+            _rect(parts, x + (0.18 + i * (width_m - 0.5) / 5) * s, by + 2,
+                  (width_m - 0.5) / 5 * 0.7 * s, band_h * s - 4, _LOUVER, rx=0)
+    elif equipment_end in ("east", "west"):
+        band_w = min(0.55, width_m * 0.18)
+        bx = x if equipment_end == "west" else x + w_px - band_w * s
+        for i in range(5):
+            _rect(parts, bx + 2, y + (0.18 + i * (height_m - 0.5) / 5) * s,
+                  band_w * s - 4, (height_m - 0.5) / 5 * 0.7 * s, _LOUVER, rx=0)
 
     bar = 2.5
     if door_orientation == "north":
@@ -353,15 +417,18 @@ def draw_mv_station(parts: List[str], s: float, x: float, y: float, *,
 
 
 def _dc_pair_at(parts: List[str], s: float, ox: float, oy: float,
-                pair_gap_m: float) -> None:
+                pair_gap_m: float, equipment_end: str = "west") -> None:
     """One mirrored pair; roof vents on the NO-DOOR edges facing the pair gap."""
     for row_m, door in ((0.0, "north"), (DC_WIDTH_M + pair_gap_m, "south")):
-        draw_dc_container(parts, s, ox, oy + row_m * s, door_orientation=door)
+        draw_dc_container(parts, s, ox, oy + row_m * s, door_orientation=door,
+                          equipment_end=equipment_end)
 
 
-def _single_dc(parts: List[str], s: float, ox: float, oy: float) -> None:
+def _single_dc(parts: List[str], s: float, ox: float, oy: float,
+               equipment_end: str = "west") -> None:
     """Unpaired tail container: doors outward (south), vents on the north edge."""
-    draw_dc_container(parts, s, ox, oy, door_orientation="south")
+    draw_dc_container(parts, s, ox, oy, door_orientation="south",
+                      equipment_end=equipment_end)
 
 
 def _mv_station(parts: List[str], s: float, ox: float, oy: float,
@@ -406,16 +473,19 @@ def render_plan_svg(dc_count: int,
           (layout.envelope_w_m + 0.9) * s, (depth_m + 0.9) * s,
           _PAD, _PAD_EDGE, 1.0)
 
-    # DC units west, MV station east
+    # DC units west, MV station east. Units alternate end-for-end so the
+    # equipment ends face the block boundary (see end_gap_sequence).
     units = layout.pair_count + (1 if layout.has_single_tail else 0)
     for u in range(layout.pair_count):
-        ux = ox0 + u * (DC_LENGTH_M + layout.end_gap_m) * s
-        _dc_pair_at(parts, s, ux, oy0, profile.dc_pair_gap_m)
+        ux = ox0 + layout.unit_offsets_m[u] * s
+        _dc_pair_at(parts, s, ux, oy0, profile.dc_pair_gap_m,
+                    equipment_end="west" if u % 2 == 0 else "east")
     if layout.has_single_tail:
-        ux = ox0 + layout.pair_count * (DC_LENGTH_M + layout.end_gap_m) * s
-        _single_dc(parts, s, ux, oy0)
+        ux = ox0 + layout.unit_offsets_m[units - 1] * s
+        _single_dc(parts, s, ux, oy0,
+                   equipment_end="west" if (units - 1) % 2 == 0 else "east")
 
-    dc_span_m = units * DC_LENGTH_M + (units - 1) * layout.end_gap_m
+    dc_span_m = units * DC_LENGTH_M + sum(layout.end_gaps_m)
     aisle_x0 = ox0 + dc_span_m * s
     mv_x = aisle_x0 + profile.dc_to_mv_aisle_m * s
     mv_y = oy0 + max(0.0, (depth_m - MV_WIDTH_M) / 2) * s
@@ -455,8 +525,13 @@ def render_plan_svg(dc_count: int,
              f"{profile.dc_pair_gap_m:.2f} m", size=10.5)
     if units > 1:
         px0 = ox0 + DC_LENGTH_M * s
-        _dim(parts, px0, oy0 - 0.30 * s, px0 + layout.end_gap_m * s,
-             oy0 - 0.30 * s, f"{layout.end_gap_m:.1f} m", size=10.5)
+        _dim(parts, px0, oy0 - 0.30 * s, px0 + layout.end_gaps_m[0] * s,
+             oy0 - 0.30 * s, f"{layout.end_gaps_m[0]:.1f} m", size=10.5)
+        _text(parts, ox0 + dc_span_m * s / 2, oy0 + (depth_m + 0.22) * s,
+              f"DC end gaps alternate "
+              f"{layout.end_gap_m:.1f} / {layout.boundary_end_gap_m:.1f} m — "
+              f"equipment ends (cooling + fan grilles) face the block boundary",
+              size=9.5, weight=600, fill="#5b6367")
 
     parts.append("</svg>")
     return "".join(parts), layout

@@ -86,8 +86,8 @@ def test_smaller_block_uses_the_linear_engine_with_its_own_station_class():
     assert spec["layout_variant"] == "linear_mirrored_pairs"
     # 4 PCS / 5 MW is the 20 ft integrated cabin.
     assert spec["station_length_m"] == pytest.approx(6.058, abs=0.001)
-    # 2 mirrored pairs + 3.0 m equipment-end gap + 3.0 m aisle + 6.058 m cabin
-    assert spec["envelope_w_m"] == pytest.approx(24.174, abs=0.001)
+    # 2 mirrored pairs + 0.9 m plain-end gap + 3.0 m aisle + 6.058 m cabin
+    assert spec["envelope_w_m"] == pytest.approx(22.074, abs=0.001)
 
 
 def test_spacing_is_rule_profile_and_never_page_settable():

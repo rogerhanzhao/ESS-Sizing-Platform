@@ -1512,7 +1512,8 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         _keep_next_para(doc.paragraphs[-1])
         _keep_next_para(doc.add_paragraph(
             f"Figure {figure_index}: Typical AC Block Arrangement — equipment envelope ≈ "
-            f"{plan_layout.envelope_w_m:.2f} × {plan_layout.envelope_d_m:.2f} m. "
+            f"{plan_layout.envelope_w_m:.2f} × {plan_layout.envelope_d_m:.2f} m "
+            f"({plan_layout.envelope_w_m * plan_layout.envelope_d_m:,.0f} m²). "
             f"Concept only; spacing and 40 ft dimensions provisional. — NOT FOR CONSTRUCTION"
         ))
         figure_index += 1
@@ -1724,6 +1725,14 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 ("Rated power / energy (whole site)",
                  f"{ws_power_mw:.0f} MW / "
                  f"{ws_energy_mwh:.1f} MWh"),
+                # Footprint is an objective, so it is reported rather than left
+                # to be inferred from the envelope dimensions.
+                ("Site land area",
+                 f"{site_layout.land_area_m2:,.0f} m² "
+                 f"({site_layout.land_area_m2 / 10000.0:.2f} ha)"),
+                ("Land intensity",
+                 f"{site_layout.land_per_block_m2:,.0f} m² per AC Block · "
+                 f"{site_layout.land_per_mwh_m2:.1f} m² per MWh"),
             ]
             site_rows.extend(
                 (item, f"{value} — {basis}")

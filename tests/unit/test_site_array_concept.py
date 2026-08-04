@@ -171,8 +171,8 @@ def test_station_length_follows_the_ac_block_class_not_a_constant():
     big = compute_site_array(4, 8, US_NFPA_OIL, US_NFPA_SITE,
                              block_power_mw=10.0, pcs_per_block=8)
     assert big.station_length_m == pytest.approx(12.192, abs=0.001)
-    # 4 mirrored pairs + 3 x 3.0 m equipment-end gaps + 3.0 m aisle + 40 ft station
-    assert big.block_w_m == pytest.approx(4 * 6.058 + 3 * 3.0 + 3.0 + 12.192, abs=0.001)
+    # 4 mirrored pairs, end gaps alternating 0.9 / 3.0 / 0.9, + aisle + 40 ft
+    assert big.block_w_m == pytest.approx(4 * 6.058 + 4.8 + 3.0 + 12.192, abs=0.001)
     assert big.block_w_m - small.block_w_m > 6.0
 
 
@@ -199,3 +199,69 @@ def test_site_glyph_draws_the_resolved_station_not_a_hardcoded_one():
     small = compute_site_array(4, 8, US_NFPA_OIL, US_NFPA_SITE,
                                block_power_mw=5.0, pcs_per_block=4)
     assert render_site_svg(small, US_NFPA_SITE) != svg
+
+
+# ---------------------------------------------------------------------------
+# Footprint is the objective (owner 2026-08-03: "综合整站占地面积最小"), so the
+# site engine has to measure it and must not spend land the code does not demand.
+# ---------------------------------------------------------------------------
+
+
+def test_site_reports_its_land_and_land_intensity():
+    layout = compute_site_array(13, 8, US_NFPA_OIL, US_NFPA_SITE,
+                                block_power_mw=10.0, dc_block_energy_mwh=5.015,
+                                dc_blocks_total=104, pcs_per_block=8)
+    assert layout.land_area_m2 == pytest.approx(
+        layout.envelope_w_m * layout.envelope_d_m, abs=0.2)
+    assert layout.land_per_block_m2 == pytest.approx(
+        layout.land_area_m2 / 13, abs=0.2)
+    assert layout.land_per_mwh_m2 == pytest.approx(
+        layout.land_area_m2 / layout.total_energy_mwh, abs=0.02)
+
+
+def test_groups_are_filled_to_the_fire_access_limit_not_a_fixed_row_count():
+    """Every extra group costs a 6.0 m road across the whole site.
+
+    The old rule fixed rows-per-group at ceil(blocks_per_group / 2) regardless of
+    how deep a row actually is, so shallow blocks were cut into more groups — and
+    more roads — than IFC 503.1.1 requires.
+    """
+    layout = compute_site_array(14, 2, US_NFPA_OIL, US_NFPA_SITE)
+    assert layout.rows == 7
+    # A 5.176 m deep block: 7 rows reach only (7*5.176 + 6*3.0)/2 = 27.1 m,
+    # well inside the 45.7 m limit, so one group and NO internal fire road.
+    assert layout.groups == 1
+    assert layout.fire_roads == 0
+    assert layout.fire_access_ok is True
+
+
+def test_fire_access_limit_is_still_respected_when_groups_grow():
+    deep = compute_site_array(60, 8, US_NFPA_OIL, US_NFPA_SITE,
+                              block_power_mw=10.0, pcs_per_block=8)
+    assert deep.fire_access_reach_m <= US_NFPA_SITE.fire_access_limit_m
+    assert deep.fire_access_ok is True
+    assert deep.groups >= 2 and deep.fire_roads == deep.groups - 1
+
+
+def test_an_explicit_group_size_still_wins_when_it_is_smaller():
+    """An owner-imposed group size may only tighten the automatic one."""
+    auto = compute_site_array(8, 2, US_NFPA_OIL, US_NFPA_SITE)
+    forced = compute_site_array(8, 2, US_NFPA_OIL, US_NFPA_SITE, blocks_per_group=4)
+    assert forced.groups > auto.groups
+    assert forced.rows_per_group == (2, 2)
+
+
+def test_land_falls_when_the_plain_ends_face_inward():
+    """The end-orientation rule is worth ~10% of the site, not a rounding error.
+
+    Same site, same rules, only the DC end orientation differs: plain ends inward
+    (what the engine now does) against the old flat 3.0 m gap everywhere.
+    """
+    good = compute_site_array(13, 8, US_NFPA_OIL, US_NFPA_SITE,
+                              block_power_mw=10.0, pcs_per_block=8)
+    # Reconstruct the old behaviour: every DC end gap forced to 3.0 m.
+    flat_block_d = good.block_d_m           # depth is unchanged for a linear block
+    old_block_w = 4 * 6.058 + 3 * 3.0 + 3.0 + 12.192
+    assert good.block_w_m < old_block_w
+    assert (old_block_w - good.block_w_m) == pytest.approx(4.2, abs=0.001)
+    assert flat_block_d > 0

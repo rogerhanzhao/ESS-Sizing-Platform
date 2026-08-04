@@ -97,6 +97,10 @@ class EquipmentPlacement:
     feeder_index: Optional[int]  # DC-to-PCS dedicated feeder (1..8); None station
     provenance: str              # rule-profile / concept-status provenance
     provisional: bool            # True while any driving dimension is unconfirmed
+    # Which end carries the liquid-cooling unit + fan grilles. That end needs
+    # 3.0 m; the opposite plain end needs 0.9 m — so this field, not a symmetric
+    # assumption, is what decides the block's depth and the site's land.
+    equipment_end: Optional[str] = None
 
     @property
     def center_x_m(self) -> float:
@@ -159,10 +163,15 @@ def _dc_field_placements(
     col_w = DC_WIDTH_M                     # east-west footprint of one container
     row_h = DC_LENGTH_M                    # north-south footprint of one container
     col_x = (0.0, col_w + profile.dc_pair_gap_m)
-    # Two pairs stack north-south, so the touching faces are the DC Block END
-    # faces; one of them is always the EQUIPMENT END (liquid-cooling + fan
-    # grilles), which takes the AC-Block-aisle clearance (owner, 2026-08-03).
-    _end_gap = max(profile.pair_to_pair_gap_m, profile.dc_equipment_end_gap_m)
+    # Two pairs stack north-south, so the touching faces are DC END faces. Turn
+    # the two pairs end-for-end against each other: the north pair points its
+    # EQUIPMENT END north, the south pair points its equipment end south. The
+    # 3.0 m those ends need is then supplied by the site's row aisle — which has
+    # to be there for access anyway — and the two PLAIN ends meet inside the
+    # block at 0.9 m. The reverse (equipment ends inward) makes the block 2.1 m
+    # deeper and buys nothing; measured over a 13-block site that is ~10% of the
+    # total land (owner 2026-08-03: "综合整站占地面积最小").
+    _end_gap = profile.pair_to_pair_gap_m
     row_y = (0.0, row_h + _end_gap)
 
     # (col, row, pair_label, feeder-order-within-field)
@@ -195,6 +204,7 @@ def _dc_field_placements(
                 door_orientation=door,
                 service_orientation=service,
                 feeder_index=dc_id,
+                equipment_end="north" if row == 0 else "south",
                 provenance=provenance,
                 provisional=provisional,
             )
@@ -231,7 +241,9 @@ def compute_bilateral_layout(
 
     # One 4-DC field footprint.
     field_w = 2 * DC_WIDTH_M + profile.dc_pair_gap_m          # east-west
-    field_d = 2 * DC_LENGTH_M + max(profile.pair_to_pair_gap_m, profile.dc_equipment_end_gap_m)  # north-south
+    # Plain ends meet inside the field at 0.9 m; the equipment ends face the
+    # block boundary and take their 3.0 m from the site's row aisle.
+    field_d = 2 * DC_LENGTH_M + profile.pair_to_pair_gap_m                    # north-south
 
     envelope_w = field_w + aisle_m + station_wid + aisle_m + field_w
     envelope_d = max(field_d, station_len)
@@ -323,6 +335,10 @@ def compute_bilateral_layout(
         provisional_notes.append(
             f"pair-to-pair gap {profile.pair_to_pair_gap_m:g} m is a rule-profile assumption"
         )
+    provisional_notes.append(
+        f"the block's north and south faces are DC EQUIPMENT ENDS and require "
+        f"{profile.dc_equipment_end_gap_m:g} m — the site's row aisle must provide it"
+    )
     if aisle_is_provisional:
         provisional_notes.append(f"DC-field-to-station aisle {aisle_m:g} m is a rule-profile assumption")
     if station_is_provisional:
@@ -467,18 +483,28 @@ def render_bilateral_plan_svg(
                 parts, s, px, py,
                 width_m=p.width_m, height_m=p.height_m,
                 door_orientation=p.door_orientation,
+                equipment_end=p.equipment_end,
             )
-            # Container tag on the clear band past the last roof vent, so the
-            # text never sits on top of a vent square.
-            tag_y = (py + p.height_m * s - 0.30 * s
-                     if p.height_m > p.width_m
-                     else py + p.height_m * s / 2 + 4)
+            # Container tag on the clear band past the last roof vent, at the
+            # end AWAY from the cooling/fan-grille band so nothing overlaps.
+            if p.height_m > p.width_m:
+                tag_y = (py + p.height_m * s - 0.16 * s
+                         if p.equipment_end == "north"
+                         else py + 0.45 * s)
+            else:
+                tag_y = py + p.height_m * s / 2 + 4
             _text(parts, px + p.width_m * s / 2, tag_y, p.equipment_id, size=10)
 
     # labels
     _text(parts, margin_l + 4, 30, title, size=13, anchor="start")
     _text(parts, margin_l + 4, 48, subtitle, size=10.5, anchor="start",
           weight=600, fill="#5b6367")
+    _text(parts, margin_l + 4, height - 32,
+          f"North and south faces are DC EQUIPMENT ENDS (cooling + fan grilles) — "
+          f"site must provide {US_NFPA_OIL.dc_equipment_end_gap_m:.1f} m there; "
+          f"plain ends meet inside the block at "
+          f"{US_NFPA_OIL.pair_to_pair_gap_m:.1f} m",
+          size=9.5, anchor="start", weight=600, fill="#5b6367")
     _text(parts, margin_l + 4, height - 16, footer, size=10.5, anchor="start",
           weight=600, fill="#5b6367")
 

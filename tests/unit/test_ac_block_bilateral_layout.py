@@ -3,8 +3,9 @@
 Owner-confirmed concept (docs/CLAUDE_HANDOFF_10MW_8PCS_8DC_2026-07-24.md §1-§2,
 reaffirmed 2026-08-03 as the single-axis / 一字型 arrangement):
 central vertical 40 ft AC Block, west 4-DC field + east 4-DC field, each a 2x2
-``田`` of two mirrored back-to-back pairs; ~18.79 m x 15.12 m equipment envelope
-(the north-south pair gap is the DC EQUIPMENT-END clearance, owner 2026-08-03).
+``田`` of two mirrored back-to-back pairs; ~18.79 m x 13.02 m equipment envelope
+(plain ends inward at 0.9 m, equipment ends out to the site aisle, owner
+2026-08-03 "综合整站占地面积最小").
 The removed single-row eight-DC draft must not reappear.
 """
 from __future__ import annotations
@@ -31,13 +32,15 @@ def _overlap(a, b) -> bool:
 def test_envelope_matches_recorded_concept():
     layout = compute_bilateral_layout(8)
     assert layout.layout_variant == LAYOUT_VARIANT
-    # Recorded concept envelope ~ 18.79 m x 15.12 m (handoff §2 + owner 2026-08-03).
     assert layout.envelope_w_m == pytest.approx(18.790, abs=0.001)
-    # Owner ruling 2026-08-03: the two pairs stack north-south, so the touching
-    # faces are DC END faces and one of them is always the EQUIPMENT END
-    # (liquid-cooling + fan grilles) -> 3.0 m, not the 0.9 m plain-end gap.
-    # 2 x 6.058 + 3.0 = 15.116 (was 13.016 under the old uniform 0.9 m).
-    assert layout.envelope_d_m == pytest.approx(15.116, abs=0.001)
+    # LAND RULE (owner 2026-08-03, minimum total site footprint): the two pairs
+    # are turned end-for-end against each other, so their PLAIN ends meet inside
+    # the block at 0.9 m and the EQUIPMENT ends (liquid-cooling + fan grilles)
+    # face the block boundary, taking their 3.0 m from the site's row aisle —
+    # which has to be there for access regardless. 2 x 6.058 + 0.9 = 13.016.
+    # The reverse (equipment ends inward) gives 15.116 and buys nothing: about
+    # 10% of the total site land over a 13-block site.
+    assert layout.envelope_d_m == pytest.approx(13.016, abs=0.001)
     assert layout.dc_field_split == (4, 4)
 
 

@@ -25,7 +25,11 @@ Owner rules under test (docs/LAYOUT_ROADMAP_V1_2026-07-18.md §1.1):
   adjacent pairs, because one of the two facing END faces is always the EQUIPMENT
   END (liquid-cooling unit + fan grilles), which takes the same clearance as the
   AC Block aisle. Only the opposite plain end could take the reduced 0.9 m.
-  Envelopes: 15.12 m (2xDC) and 24.17 m (4xDC, 20 ft station).
+- DC end gaps ALTERNATE 0.9 / 3.0: every other unit is turned end-for-end so
+  the 3.0 m equipment ends face the block boundary (where the site aisle is
+  mandatory anyway) and the 0.9 m plain ends meet inside the block. That is
+  worth ~10% of the total site land.
+  Envelopes: 15.12 m (2xDC) and 22.07 m (4xDC, 20 ft station).
 """
 
 import pytest
@@ -62,16 +66,20 @@ def test_envelope_2dc():
 def test_envelope_4dc():
     layout = compute_layout(4, US_NFPA_OIL)
     assert layout.pair_count == 2 and not layout.has_single_tail
-    # 2 pairs: 6.058*2 + 3.0 (equipment end) = 15.116; + 3.0 aisle + 6.058 station
-    assert layout.envelope_w_m == pytest.approx(24.174, abs=0.001)
+    # 2 pairs, plain ends inward: 6.058*2 + 0.9 = 13.016; + 3.0 aisle + 6.058
+    assert layout.envelope_w_m == pytest.approx(22.074, abs=0.001)
+    assert layout.end_gaps_m == (0.9,)
+    assert layout.unit_offsets_m == (0.0, 6.958)
     assert layout.envelope_d_m == pytest.approx(5.176, abs=0.001)
 
 
 def test_envelope_odd_count_has_single_tail():
     layout = compute_layout(5, US_NFPA_OIL)
     assert layout.pair_count == 2 and layout.has_single_tail
-    # 3 DC units along the row: 3*6.058 + 2*0.9 = 19.974; + 3.0 + 6.058
-    assert layout.envelope_w_m == pytest.approx(33.232, abs=0.001)
+    # 3 DC units, gaps alternate 0.9 / 3.0: 3*6.058 + 0.9 + 3.0 = 22.074;
+    # + 3.0 aisle + 6.058 station
+    assert layout.end_gaps_m == (0.9, 3.0)
+    assert layout.envelope_w_m == pytest.approx(31.132, abs=0.001)
 
 
 def test_envelope_single_dc():
@@ -101,8 +109,9 @@ def test_plan_svg_markers_2dc():
 
 def test_plan_svg_markers_4dc():
     svg, layout = render_plan_svg(4, US_NFPA_OIL)
-    assert "24.17 m envelope" in svg
-    assert "3.0 m" in svg                  # equipment-end dim present
+    assert "22.07 m envelope" in svg
+    assert "0.9 m" in svg                  # plain-end gap dimensioned
+    assert "equipment ends" in svg          # and the reader is told why
     assert svg.count('fill="#e2e5e4"') == 18   # 4x4 container vents + 2 MV vents
 
 
@@ -143,8 +152,10 @@ def test_station_size_follows_the_ac_block_class_not_a_constant():
 
     big = compute_layout(8, US_NFPA_OIL, pcs_count=8, block_power_mw=10.0)
     assert big.station_length_m == AC_STATION_40FT_LENGTH_M
-    # 4 pairs: 4*6.058 + 3*3.0 = 33.232; + 3.0 aisle + 12.192 station = 48.424
-    assert big.envelope_w_m == pytest.approx(48.424, abs=0.001)
+    # 4 pairs, gaps 0.9 / 3.0 / 0.9 = 4.8: 4*6.058 + 4.8 = 29.032;
+    # + 3.0 aisle + 12.192 station = 44.224 (was 48.424 with a flat 3.0 gap)
+    assert big.end_gaps_m == (0.9, 3.0, 0.9)
+    assert big.envelope_w_m == pytest.approx(44.224, abs=0.001)
 
     small = compute_layout(4, US_NFPA_OIL, pcs_count=4, block_power_mw=5.0)
     assert small.station_length_m == AC_STATION_20FT_LENGTH_M
@@ -159,3 +170,56 @@ def test_linear_and_bilateral_engines_share_the_same_iso_station_length():
     from calb_diagrams.ac_block_arrangement_v2 import AC_STATION_40FT_LENGTH_M
 
     assert bilateral.AC40_STATION_LENGTH_M == AC_STATION_40FT_LENGTH_M
+
+
+# ---------------------------------------------------------------------------
+# LAND RULE (owner 2026-08-03: "综合整站占地面积最小")
+#
+# The DC Block is NOT symmetric end to end: one end carries the liquid-cooling
+# unit and fan grilles and needs 3.0 m, the other is plain and needs 0.9 m. Where
+# those ends point decides the site's land, so it is a design decision, not a
+# detail — these tests keep it from silently reverting to a flat max().
+# ---------------------------------------------------------------------------
+
+
+def test_end_gaps_alternate_so_the_cheap_gaps_land_inside_the_block():
+    from calb_diagrams.ac_block_arrangement_v2 import end_gap_sequence
+
+    assert end_gap_sequence(1, US_NFPA_OIL) == ()
+    assert end_gap_sequence(2, US_NFPA_OIL) == (0.9,)
+    assert end_gap_sequence(3, US_NFPA_OIL) == (0.9, 3.0)
+    assert end_gap_sequence(4, US_NFPA_OIL) == (0.9, 3.0, 0.9)
+    # Never a flat 3.0 everywhere — that was the defect.
+    assert set(end_gap_sequence(4, US_NFPA_OIL)) == {0.9, 3.0}
+
+
+def test_alternating_ends_are_strictly_shorter_than_a_flat_equipment_gap():
+    """The saving is real and it grows with the number of DC Blocks."""
+    for dc in (4, 6, 8, 12):
+        layout = compute_layout(dc, US_NFPA_OIL, pcs_count=8, block_power_mw=10.0)
+        units = dc // 2
+        flat = (units - 1) * US_NFPA_OIL.dc_equipment_end_gap_m
+        assert sum(layout.end_gaps_m) < flat
+    eight = compute_layout(8, US_NFPA_OIL, pcs_count=8, block_power_mw=10.0)
+    # 3 x 3.0 = 9.0 flat vs 0.9 + 3.0 + 0.9 = 4.8 alternating
+    assert sum(eight.end_gaps_m) == pytest.approx(4.8, abs=0.001)
+
+
+def test_unit_offsets_match_the_gap_sequence_and_never_overlap():
+    for dc in (2, 4, 5, 8, 9):
+        layout = compute_layout(dc, US_NFPA_OIL)
+        units = layout.pair_count + (1 if layout.has_single_tail else 0)
+        offsets = layout.unit_offsets_m
+        assert len(offsets) == units
+        for i in range(units - 1):
+            gap = offsets[i + 1] - (offsets[i] + 6.058)
+            assert gap == pytest.approx(layout.end_gaps_m[i], abs=0.001)
+            # Never below the owner's minimum plain-end clearance.
+            assert gap >= US_NFPA_OIL.pair_to_pair_gap_m - 1e-6
+
+
+def test_the_equipment_end_is_drawn_so_the_reader_can_see_which_end_it_is():
+    svg, _ = render_plan_svg(8, US_NFPA_OIL, pcs_count=8, block_power_mw=10.0)
+    # louvre fill = the cooling / fan-grille band
+    assert 'fill="#c2c8c7"' in svg
+    assert "equipment ends" in svg

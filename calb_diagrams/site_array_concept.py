@@ -128,6 +128,11 @@ class SiteArrayLayout:
     # Block Arrangement figure draws.
     station_length_m: float = 6.058
     end_gap_m: float = 0.9
+    unit_offsets_m: Tuple[float, ...] = ()
+    # Footprint is the objective, so it is reported, not left to be inferred.
+    land_area_m2: float = 0.0
+    land_per_block_m2: float = 0.0
+    land_per_mwh_m2: float = 0.0
 
 
 # NO NAMEPLATE MAY BE HARDCODED HERE (owner, 2026-08-03).
@@ -139,6 +144,24 @@ class SiteArrayLayout:
 # supply real values.
 _FALLBACK_BLOCK_POWER_MW = 5.0
 _FALLBACK_DC_ENERGY_MWH = 5.015
+
+
+def _max_rows_per_group(block_d_m: float, site_profile: SiteRuleProfile) -> int:
+    """Deepest group still inside the fire-apparatus access reach.
+
+    Reach is half the group depth (roads bound the group top and bottom), so the
+    group may grow until that half-depth hits ``fire_access_limit_m``. Each extra
+    group costs one 6.0 m road across the whole site, so under-filling groups is
+    pure land loss.
+    """
+    aisle = site_profile.maintenance_aisle_m
+    rows = 1
+    while True:
+        nxt = rows + 1
+        depth = nxt * block_d_m + (nxt - 1) * aisle
+        if depth / 2.0 > site_profile.fire_access_limit_m:
+            return rows
+        rows = nxt
 
 
 def compute_site_array(
@@ -198,8 +221,13 @@ def compute_site_array(
         remaining -= take
     rows = len(per_row)
 
-    # partition rows into groups (rows_per_group = ceil(bpg/2))
-    rows_pg = max(1, (bpg + 1) // 2)
+    # Partition rows into groups. Every extra group costs a 6.0 m fire road, so
+    # the group is made as DEEP as the fire-access reach allows instead of being
+    # fixed at ceil(bpg/2) — which silently assumed a block depth and cut large
+    # sites into more groups, and more roads, than the code requires.
+    rows_pg = _max_rows_per_group(block_d, site_profile)
+    if blocks_per_group is not None:
+        rows_pg = min(rows_pg, max(1, (bpg + 1) // 2))
     rows_per_group: List[int] = []
     r_left = rows
     while r_left > 0:
@@ -226,6 +254,8 @@ def compute_site_array(
     tallest_group_d = max(gr * block_d + (gr - 1) * aisle for gr in rows_per_group)
     reach = round(tallest_group_d / 2.0, 2)
 
+    _land = round(env_w * env_d, 1)
+    _energy = round(_resolved_dc_blocks * _resolved_dc_energy_mwh, 2)
     return SiteArrayLayout(
         n_blocks=n_blocks,
         dc_per_block=dc_per_block,
@@ -249,6 +279,10 @@ def compute_site_array(
         site_profile_key=site_profile.key,
         station_length_m=block.station_length_m,
         end_gap_m=block.end_gap_m,
+        unit_offsets_m=block.unit_offsets_m,
+        land_area_m2=_land,
+        land_per_block_m2=round(_land / max(1, n_blocks), 1),
+        land_per_mwh_m2=round(_land / _energy, 2) if _energy > 0 else 0.0,
     )
 
 
@@ -311,8 +345,11 @@ def _block_glyph(parts, s, x0, y0, layout: SiteArrayLayout, mv_left: bool):
             _r(parts, mv_x + (mv_w - 1.0 + i * 0.15) * s, y0 + 0.55 * s, 0.06 * s, (bd - 1.1) * s, "#c2c8c7", rx=0)
     # DC containers as two stacked rows
     units = (layout.dc_per_block + 1) // 2
+    offsets = layout.unit_offsets_m or tuple(
+        u * (6.058 + layout.end_gap_m) for u in range(units)
+    )
     for u in range(units):
-        ux = dc_x0 + u * (6.058 + layout.end_gap_m) * s
+        ux = dc_x0 + offsets[u] * s
         _r(parts, ux, y0 + 0.15 * s, 6.058 * s, 2.438 * s, _DC, _BLOCK_EDGE, 0.7)
         _r(parts, ux, y0 + (0.15 + 2.438 + 0.3) * s, 6.058 * s, 2.438 * s, _DC, _BLOCK_EDGE, 0.7)
 
