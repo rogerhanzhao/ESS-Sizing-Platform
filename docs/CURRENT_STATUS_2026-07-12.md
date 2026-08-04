@@ -379,14 +379,17 @@ Every agent session (Codex/Claude) that starts from zero re-reads large parts
 of the tree, which is slow and error-prone. The codebase already has clean
 seams; maintenance should exploit them instead of scanning everything.
 
-### 4.1 Module map (2026-07-12)
+### 4.1 Module map (2026-07-12, arrangement/layout rows updated 2026-08-04)
 
 | Domain | Packages | Size | Change frequency |
 | --- | --- | --- | --- |
 | Sizing core (FROZEN) | `services/stage*_service`, `dc_pipeline`, AC capacity/calculation services | part of `services/` (29 files, 6.3k lines) | Frozen — no edits without explicit logic-upgrade approval |
 | SLD engine | `sld/` (18 files, 3.1k), `services/sld_*`, `schemas/sld_*`, `schemas/ac_electrical_topology.py`, `schemas/governed_ac_block_config.py`, `adapters/ac_to_sld_adapter.py`; mixed→SLD bridge in `services/ac_mixed_station.py` (`head_fleet_ac_output_for_sld`) | ~6k lines | High — owns AC-to-SLD physical topology contract and the governed AC Block configuration; SLD V1 is uniform-only, so mixed stations render via a head-fleet projection; remains the most active area |
 | Diagram renderers | `calb_diagrams/` (incl. `ac_block_bilateral_layout.py`) | ~6.9k lines | Medium — renderer/template + governed layout-variant engines |
-| Layout / constraint gate | `plugins/layout_*`, `services/site_constraint_*` | ~1k lines | Medium — P2 Master Layout work lands here |
+| **Typical AC Block Arrangement (contract)** | `calb_diagrams/typical_ac_block_arrangement.py` | ~0.4k lines | **Low, but load-bearing** — SOLE owner of the engine-selection rule, the drawing title, the shape resolution from a run, and the CONCEPT marking. The exported report (`reporting/report_v2.py` §8/§9) and the web page (`plugins/layout_arrangement_v2_plugin.py`) are both thin callers; neither may reimplement any of it. `tests/unit/test_typical_ac_block_arrangement.py` holds the two surfaces byte-identical. |
+| Arrangement geometry | `calb_diagrams/ac_block_arrangement_v2.py` (linear row + SHARED equipment glyphs), `ac_block_bilateral_layout.py` (central-station 4+4) | ~1.3k lines | Low — geometry is owner-ruled; both engines draw through the shared `draw_dc_container` / `draw_mv_station` glyphs |
+| Site array (L2) | `calb_diagrams/site_array_concept.py` | ~0.7k lines | Medium — owns the minimum-land packing search, the connected fire-road loop and the reported land metrics; tiles any `BlockForm`, including a central-station block via its real placements |
+| Layout / constraint gate | `plugins/layout_*`, `services/site_constraint_*` | ~1k lines | Medium — P2 Master Layout work lands here. `services/layout_service.ARRANGEMENT_PLUGIN_ID` names the ONE arrangement renderer the page offers |
 | Reporting | `reporting/` (5 files, 2.0k) | 2k lines | Low — wording/section changes |
 | Web UI | `ui/` (18 files, 6.7k), `state/`, `app.py` | ~7.5k lines | Medium — copy and workflow polish |
 | Platform | `infra/` (36 files), `db/`, `importers/`, `adapters/`, `migrations/` | ~3.4k lines | Low — deployment/migration driven |
@@ -399,6 +402,14 @@ seams; maintenance should exploit them instead of scanning everything.
 2. **This section is the navigation index**: update the module map in the
    same commit whenever a domain gains or loses responsibility, so future
    sessions can trust it instead of re-scanning.
+2b. **One rule, one home**: the Typical AC Block Arrangement is published on two
+   surfaces (report and web page). Its engine choice, title, shape resolution and
+   CONCEPT marking live ONLY in `calb_diagrams/typical_ac_block_arrangement.py`.
+   Adding a second copy in a caller is how this domain accumulated its 2026-08-03
+   defect list (see `docs/LAYOUT_ARRANGEMENT_DEFECTS_2026-08-03.md`); an audit on
+   2026-08-04 still found three live divergences hiding in shape resolution alone.
+   Nothing dimensional may be hardcoded in a layout module — station size, block
+   power and per-DC energy all come from the run.
 3. **Frozen core stays frozen**: sizing formula modules are read-only;
    `git diff` review before commit must show no changes there (rule inherited
    from `OPTIMIZATION_EXECUTION_PLAN_2026-06-17.md`).

@@ -128,8 +128,11 @@ class SiteArrayLayout:
     n_blocks: int
     dc_per_block: int
     rows: int                            # total rows across all groups
-    blocks_per_row: Tuple[int, ...]      # blocks placed in each row (<= 2)
+    blocks_per_row: Tuple[int, ...]      # blocks placed in each row
     groups: int                          # project groups (fire road only between groups)
+    # The blocks in the LARGEST group as actually packed — a RESULT, not the cap
+    # that was asked for. Reporting the requested cap here made the report state
+    # "groups of <= 8 blocks" for a site whose groups hold 40.
     blocks_per_group: int
     rows_per_group: Tuple[int, ...]      # row count in each group
     fire_roads: int                      # internal fire roads = groups - 1
@@ -219,11 +222,17 @@ def _row_separator_span_m(b: int, form: BlockForm,
 
 def _pack_at(n_blocks: int, b: int, form: BlockForm,
              site_profile: SiteRuleProfile,
-             max_rows_per_group: Optional[int] = None) -> SitePacking:
+             max_blocks_per_group: Optional[int] = None) -> SitePacking:
     rows = -(-n_blocks // b)
     rpg = _max_rows_per_group(form.d_m, site_profile)
-    if max_rows_per_group is not None:
-        rpg = max(1, min(rpg, max_rows_per_group))
+    if max_blocks_per_group is not None:
+        # A group cap is stated in BLOCKS, so it converts to rows only once the
+        # blocks-per-row is known. Deriving it as ceil(cap / 2) — as the code did
+        # while 2 per row was hardcoded — silently turned a cap of 8 into groups
+        # of 20 as soon as the packing search picked a wider row.
+        # FLOOR, not ceil: ceil(cap / b) overshoots — a cap of 8 with 5 blocks
+        # per row would allow 2 rows, i.e. 10 blocks in a group.
+        rpg = max(1, min(rpg, max(1, int(max_blocks_per_group)) // b))
     sizes: List[int] = []
     left = rows
     while left > 0:
@@ -255,7 +264,7 @@ def _pack_at(n_blocks: int, b: int, form: BlockForm,
 def plan_site_packing(n_blocks: int, form: BlockForm,
                       site_profile: SiteRuleProfile = US_NFPA_SITE,
                       *, blocks_per_row: Optional[int] = None,
-                      max_rows_per_group: Optional[int] = None) -> SitePacking:
+                      max_blocks_per_group: Optional[int] = None) -> SitePacking:
     """Blocks-per-row that MINIMISES site land, subject to fire access.
 
     Owner objective 2026-08-03: "综合整站占地面积最小". Blocks per row used to be
@@ -270,10 +279,14 @@ def plan_site_packing(n_blocks: int, form: BlockForm,
         raise ValueError(f"n_blocks must be >= 1, got {n_blocks}")
     if blocks_per_row is not None:
         return _pack_at(n_blocks, max(1, int(blocks_per_row)), form,
-                        site_profile, max_rows_per_group)
+                        site_profile, max_blocks_per_group)
+    # A group cap of N blocks also caps the ROW: a row wider than the cap could
+    # never fit inside one group, whatever the row count.
+    widest = n_blocks if max_blocks_per_group is None else min(
+        n_blocks, max(1, int(max_blocks_per_group)))
     candidates = [
-        _pack_at(n_blocks, b, form, site_profile, max_rows_per_group)
-        for b in range(1, n_blocks + 1)
+        _pack_at(n_blocks, b, form, site_profile, max_blocks_per_group)
+        for b in range(1, widest + 1)
     ]
     # Ties broken toward fewer blocks per row: shallower rows keep the fire
     # access reach shorter and the MV runs inside a row shorter.
@@ -365,11 +378,10 @@ def compute_site_array(
     block_w, block_d = form.w_m, form.d_m
 
     # An explicit blocks_per_group only ever TIGHTENS the automatic grouping.
-    _forced_rows_pg = None if blocks_per_group is None else max(1, (bpg + 1) // 2)
     packing = plan_site_packing(
         n_blocks, form, site_profile,
         blocks_per_row=blocks_per_row,
-        max_rows_per_group=_forced_rows_pg,
+        max_blocks_per_group=None if blocks_per_group is None else bpg,
     )
 
     b = packing.blocks_per_row
@@ -394,7 +406,7 @@ def compute_site_array(
         rows=rows,
         blocks_per_row=tuple(per_row),
         groups=groups,
-        blocks_per_group=bpg,
+        blocks_per_group=b * max(rows_per_group),
         rows_per_group=tuple(rows_per_group),
         fire_roads=groups - 1,
         fire_access_reach_m=reach,
@@ -548,9 +560,14 @@ def render_site_svg(layout: SiteArrayLayout,
     row_offsets = _block_x_offsets(b)
     row_w = (row_offsets[-1] + bw) if row_offsets else bw
     row_x0 = ox + (layout.envelope_w_m - row_w) / 2 * s
-    # MV collection spine: the first shared corridor when there is one.
-    cx = (row_x0 + (bw + corridor / 2) * s if b >= 2 and layout.block_mirrorable
-          else row_x0 + row_w * s / 2)
+    # MV collection spine runs down the FIRST separator, whatever kind it is.
+    # Centring it on the row instead puts it straight through a block as soon as
+    # a row holds an odd number of them.
+    if b >= 2:
+        _gap0 = row_offsets[1] - (row_offsets[0] + bw)
+        cx = row_x0 + (bw + _gap0 / 2) * s
+    else:
+        cx = row_x0 + row_w * s / 2
 
     def fire_road(y_top_m: float) -> None:
         ry = oy + y_top_m * s
@@ -576,9 +593,8 @@ def render_site_svg(layout: SiteArrayLayout,
         for r in range(gr):
             ry = oy + y * s
             n_in_row = layout.blocks_per_row[row_idx]
-            offsets = _block_x_offsets(b)
             for k in range(n_in_row):
-                bx = row_x0 + offsets[k] * s
+                bx = row_x0 + row_offsets[k] * s
                 # In a mirrored pair the second block faces its station back at
                 # the first, so the two stations share one MV corridor.
                 _block_glyph(parts, s, bx, ry, layout,
@@ -586,7 +602,7 @@ def render_site_svg(layout: SiteArrayLayout,
                 placed += 1
                 _t(parts, bx + bw * s / 2, ry - 5, f"AC BLOCK {placed}", size=9.5)
                 if k < n_in_row - 1:
-                    gap = offsets[k + 1] - (offsets[k] + bw)
+                    gap = row_offsets[k + 1] - (row_offsets[k] + bw)
                     _r(parts, bx + bw * s, ry, gap * s, bd * s, "#dfe1dd", rx=0)
             row_idx += 1
             y += bd

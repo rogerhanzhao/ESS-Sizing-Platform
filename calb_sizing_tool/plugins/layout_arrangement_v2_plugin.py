@@ -54,12 +54,9 @@ from typing import Any
 
 from calb_diagrams.ac_block_arrangement_v2 import US_NFPA_OIL
 from calb_diagrams.typical_ac_block_arrangement import (
-    AcBlockShape,
+    ac_block_shape_from_ac_output,
     arrangement_spec,
     render_typical_ac_block,
-    resolve_block_power_mw,
-    resolve_dc_blocks_for_block,
-    resolve_pcs_for_block,
 )
 from calb_sizing_tool.plugins.base import ArtifactPayload, PluginMetadata, json_bytes
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot, LayoutRuleSnapshot, TopologySnapshot
@@ -137,19 +134,10 @@ class LayoutArrangementV2Plugin:
         ac_output = render_input.ac_snapshot.output
         block_index = max(1, _safe_int(render_input.options.block_index, 1))
 
-        # Resolve THIS block's shape from the run, then hand it to the shared
-        # arrangement. Everything after this line — engine choice, title,
-        # geometry, drawing — is the same code the exported report runs.
-        pcs_count = resolve_pcs_for_block(ac_output, block_index)
-        shape = AcBlockShape(
-            dc_blocks=resolve_dc_blocks_for_block(ac_output, block_index),
-            pcs_count=pcs_count,
-            block_power_mw=resolve_block_power_mw(ac_output, pcs_count),
-            block_index=block_index,
-            model_name=str(ac_output.get("ac_block_model_name")
-                           or ac_output.get("configuration_code") or "").strip(),
-            layout_variant=str(ac_output.get("ac_block_arrangement") or "").strip(),
-        )
+        # Reading the run is a shared rule too — see the audit note in
+        # typical_ac_block_arrangement. Everything from here on, shape included,
+        # is the same code the exported report runs.
+        shape = ac_block_shape_from_ac_output(ac_output, block_index)
         if shape.dc_blocks < 1:
             raise RuntimeError(
                 "AC snapshot carries no DC Block count for this AC Block; "

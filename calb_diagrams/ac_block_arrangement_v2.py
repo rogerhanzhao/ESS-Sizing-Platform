@@ -162,10 +162,10 @@ def end_gap_sequence(units: int,
 
 def unit_offsets_m(units: int, profile: ArrangementRuleProfile) -> Tuple[float, ...]:
     """Along-row offset of each DC unit's near edge, from the field origin."""
+    gaps = end_gap_sequence(units, profile)
     offsets, cursor = [], 0.0
     for i in range(max(0, units)):
         offsets.append(round(cursor, 3))
-        gaps = end_gap_sequence(units, profile)
         if i < len(gaps):
             cursor += DC_LENGTH_M + gaps[i]
     return tuple(offsets)

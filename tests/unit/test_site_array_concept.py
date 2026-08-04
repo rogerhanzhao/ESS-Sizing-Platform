@@ -369,3 +369,78 @@ def test_the_reported_land_states_what_it_excludes():
     svg = render_site_svg(layout, US_NFPA_SITE)
     assert "EQUIPMENT AND ACCESS ONLY" in svg
     assert "excludes substation" in svg
+
+
+def test_blocks_per_group_is_a_cap_in_BLOCKS_not_a_guess_at_rows():
+    """AUDIT 2026-08-04: the cap silently stopped meaning blocks.
+
+    rows_per_group was derived as ceil(blocks_per_group / 2), which was correct
+    only while 2 blocks per row was hardcoded. Once the packing search could pick
+    a wider row, a stated cap of 8 produced groups of 20. The cap now converts to
+    rows using the ACTUAL blocks per row, floor-wise, and also caps the row width
+    itself — a row wider than the cap could never fit inside one group.
+    """
+    from calb_diagrams.site_array_concept import BlockForm
+
+    form = BlockForm(w_m=18.79, d_m=13.016, mirrorable=False, dc_per_block=8)
+    for n in (8, 13, 40, 80):
+        for cap in (2, 4, 6, 8):
+            layout = compute_site_array(
+                n, 8, US_NFPA_OIL, US_NFPA_SITE,
+                blocks_per_group=cap, block_form=form, block_power_mw=10.0,
+            )
+            biggest = layout.blocks_per_row_target * max(layout.rows_per_group)
+            assert biggest <= cap, (n, cap, biggest)
+            assert layout.blocks_per_row_target <= cap, (n, cap)
+            assert layout.fire_access_reach_m <= US_NFPA_SITE.fire_access_limit_m
+
+
+def test_the_mv_spine_runs_down_a_separator_never_through_a_block():
+    """AUDIT 2026-08-04: the spine was centred on the row.
+
+    That lands inside a block as soon as a row holds an odd number of them.
+    """
+    import re
+
+    from calb_diagrams.site_array_concept import BlockForm
+
+    form = BlockForm(w_m=18.79, d_m=13.016, mirrorable=False, dc_per_block=8)
+    for b in (2, 3, 4, 5):
+        layout = compute_site_array(
+            b * 3, 8, US_NFPA_OIL, US_NFPA_SITE, blocks_per_row=b,
+            block_form=form, block_power_mw=10.0,
+        )
+        svg = render_site_svg(layout, US_NFPA_SITE)
+        # The duct is the only dashed vertical line in the drawing.
+        spine = re.search(
+            r'<line x1="([0-9.]+)" y1="[0-9.]+" x2="\1" y2="[0-9.]+" '
+            r'stroke="#454d52" stroke-width="2.5"', svg)
+        assert spine, b
+        s, road = 8.0, US_NFPA_SITE.fire_road_m
+        row_w = b * layout.block_w_m + (b - 1) * US_NFPA_SITE.maintenance_aisle_m
+        row_x0 = 60.0 + (layout.envelope_w_m - row_w) / 2 * s
+        offset_m = (float(spine.group(1)) - row_x0) / s
+        # It must sit in the first gap, between block 1 and block 2.
+        assert layout.block_w_m <= offset_m <= layout.block_w_m + US_NFPA_SITE.maintenance_aisle_m, b
+
+
+def test_the_reported_group_size_is_what_was_packed_not_what_was_asked_for():
+    """AUDIT 2026-08-04: the report stated a group size the site did not have.
+
+    blocks_per_group echoed the requested cap (or the profile default of 8) while
+    the packing search built groups of 40, so section 9 printed
+    "1 group(s) x <= 8 blocks" over a figure showing forty.
+    """
+    from calb_diagrams.site_array_concept import BlockForm
+
+    form = BlockForm(w_m=18.79, d_m=13.016, mirrorable=False, dc_per_block=8)
+    for n in (8, 13, 40, 80):
+        for cap in (None, 4, 6, 8):
+            layout = compute_site_array(
+                n, 8, US_NFPA_OIL, US_NFPA_SITE, blocks_per_group=cap,
+                block_form=form, block_power_mw=10.0,
+            )
+            packed = layout.blocks_per_row_target * max(layout.rows_per_group)
+            assert layout.blocks_per_group == packed, (n, cap)
+            if cap is not None:
+                assert packed <= cap, (n, cap, packed)

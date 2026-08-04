@@ -263,3 +263,75 @@ def test_the_page_spec_is_generated_from_the_same_values_as_the_drawing():
     assert out["spec"]["station_length_m"] == shared.station_length_m
     assert out["spec"]["label"] == shared.label
     assert out["metadata"]["envelope_area_m2"] == shared.envelope_area_m2
+
+
+# ---------------------------------------------------------------------------
+# AUDIT 2026-08-04 — divergences found by probing REALISTIC runs, not the
+# happy path. All three were "same block, two answers" bugs hiding in the last
+# thing still written twice: how the run is read.
+# ---------------------------------------------------------------------------
+
+
+def _matrix_case(ac_output: dict) -> tuple[str, str]:
+    """Render the same run through both surfaces; return (page, report) SVG."""
+    try:
+        page = strip_document_status(_page_svg(ac_output))
+    except Exception as exc:                                  # noqa: BLE001
+        page = f"__ERROR__ {type(exc).__name__}"
+    try:
+        report = _report_svg(ac_output)
+    except Exception as exc:                                  # noqa: BLE001
+        report = f"__ERROR__ {type(exc).__name__}"
+    return page, report
+
+
+def test_a_generic_run_with_a_product_name_titles_both_surfaces_the_same():
+    """Found by audit: the page honoured ac_block_model_name, the report did not."""
+    ac_output = dict(_AC_OUTPUT_8x8, ac_block_model_name="CALB 10 MW 1:8")
+    page, report = _matrix_case(ac_output)
+    assert page == report
+    assert "CALB 10 MW 1:8" in report
+
+
+def test_the_governed_variant_is_honoured_under_either_key():
+    """Found by audit: report read layout_variant, page read ac_block_arrangement.
+
+    ac_view writes both today, so the two agreed by luck. A writer that sets only
+    one would have split them — and the shape test masks it whenever the block is
+    already 8-and-8, so it would have shipped unnoticed.
+    """
+    assert uses_central_station(4, 4, "central_40ft_bilateral_4plus4") is True
+    for key in ("layout_variant", "ac_block_arrangement"):
+        from calb_diagrams.typical_ac_block_arrangement import resolve_layout_variant
+
+        assert resolve_layout_variant({key: CENTRAL_STATION_VARIANT}) == CENTRAL_STATION_VARIANT
+    for key in ("layout_variant", "ac_block_arrangement"):
+        page, report = _matrix_case(dict(_AC_OUTPUT_8x8, **{key: CENTRAL_STATION_VARIANT}))
+        assert page == report, key
+
+
+def test_a_run_without_a_per_block_plan_still_agrees():
+    """Found by audit: the page hard-failed while the report drew from the average."""
+    ac_output = {k: v for k, v in _AC_OUTPUT_8x8.items() if k != "dc_allocation_plan"}
+    page, report = _matrix_case(ac_output)
+    assert not page.startswith("__ERROR__"), page
+    assert page == report
+    # The fallback is the fleet average, and it must be the SAME fallback.
+    assert resolve_dc_blocks_for_block(ac_output, 1) == 8
+
+
+def test_a_run_with_neither_a_plan_nor_totals_still_fails_closed():
+    assert resolve_dc_blocks_for_block({"num_blocks": 4}, 1) == 0
+    with pytest.raises(ValueError, match="no DC Blocks"):
+        render_typical_ac_block(AcBlockShape(dc_blocks=0, pcs_count=8))
+
+
+def test_the_station_class_is_named_not_printed_as_a_raw_metre_value():
+    """"6.06 M STATION" tells a reader nothing; "20 FT STATION" identifies it."""
+    small = render_typical_ac_block(
+        AcBlockShape(dc_blocks=4, pcs_count=4, block_power_mw=5.0))
+    assert small.label.endswith("20 FT STATION")
+    big = render_typical_ac_block(
+        AcBlockShape(dc_blocks=6, pcs_count=8, block_power_mw=10.0))
+    assert big.label.endswith("40 FT STATION")
+    assert "M STATION" not in small.label and "M STATION" not in big.label

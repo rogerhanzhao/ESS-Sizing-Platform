@@ -47,12 +47,12 @@ input, the arrangement is not.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 from calb_diagrams.ac_block_arrangement_v2 import (
+    AC_STATION_40FT_LENGTH_M,
     ArrangementRuleProfile,
     US_NFPA_OIL,
-    compute_layout,
     render_plan_svg,
     resolve_station_length_m,
 )
@@ -150,9 +150,13 @@ def block_label(shape: AcBlockShape, *, station_length_m: float) -> str:
     model = str(shape.model_name or "").strip()
     if model:
         return model
-    station = "40 FT CENTRAL STATION" if uses_central_station(
-        shape.pcs_count, shape.dc_blocks, shape.layout_variant
-    ) else f"{station_length_m:.3g} M STATION"
+    if uses_central_station(shape.pcs_count, shape.dc_blocks, shape.layout_variant):
+        station = "40 FT CENTRAL STATION"
+    else:
+        # Name the ISO class, not the raw metre value: "6.06 M STATION" tells a
+        # reader nothing, "20 FT STATION" tells them which product it is.
+        station = ("40 FT STATION" if station_length_m >= AC_STATION_40FT_LENGTH_M - 0.01
+                   else "20 FT STATION")
     return (
         f"TYPICAL AC BLOCK {max(1, int(shape.block_index or 1))} · "
         f"{int(shape.pcs_count or 0)} PCS / {int(shape.dc_blocks or 0)} DC · {station}"
@@ -293,12 +297,67 @@ def arrangement_spec(arrangement: TypicalArrangement,
     }
 
 
-def resolve_dc_blocks_for_block(ac_output: Dict[str, Any], block_index: int) -> int:
-    """DC Blocks on ONE AC Block, from the run's allocation plan.
+# ---------------------------------------------------------------------------
+# Shape resolution
+#
+# Reading the run is ALSO a rule, and it was the last thing still written twice.
+# An audit across realistic runs found three live divergences before these moved
+# here: the page titled a generic run from ``ac_block_model_name`` while the
+# report ignored it; the page read the governed variant from
+# ``ac_block_arrangement`` while the report read ``layout_variant``; and a run
+# with no per-block allocation plan hard-failed on the page while the report drew
+# from the fleet average. Every one of them is a "same block, two answers" bug of
+# the same family as the rest of this file.
+# ---------------------------------------------------------------------------
 
-    Shared so the page and the report count the same way. The plan is per-block
-    truth; ``dc_blocks_total / num_blocks`` is an average that matches no real
-    block on a mixed station.
+
+def _as_int(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _as_float(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def resolve_model_name(ac_output: Dict[str, Any]) -> str:
+    """Product name for the drawing's title.
+
+    The bound catalogue product wins over the governed configuration code,
+    because that is the name a reader recognises.
+    """
+    for key in ("ac_block_model_name", "configuration_code"):
+        value = str(ac_output.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def resolve_layout_variant(ac_output: Dict[str, Any]) -> str:
+    """The governed layout variant, under EITHER key the run may carry.
+
+    ``ac_view`` writes ``layout_variant`` and ``ac_block_arrangement`` together
+    today, so reading one or the other happens to agree — until a writer sets
+    only one. Read both, once, here.
+    """
+    for key in ("layout_variant", "ac_block_arrangement"):
+        value = str(ac_output.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def resolve_dc_blocks_for_block(ac_output: Dict[str, Any], block_index: int) -> int:
+    """DC Blocks on ONE AC Block.
+
+    The per-block allocation plan is truth; the fleet average is the fallback for
+    a run that has no plan. ``dc_blocks_total / num_blocks`` matches no real block
+    on a mixed station, which is why it is second and not first.
     """
     plan = ac_output.get("dc_allocation_plan")
     if isinstance(plan, list):
@@ -311,6 +370,10 @@ def resolve_dc_blocks_for_block(ac_output: Dict[str, Any], block_index: int) -> 
                 by_index[idx] = total
         if by_index:
             return int(by_index.get(block_index) or next(iter(by_index.values())))
+    total = _as_int(ac_output.get("dc_blocks_total"))
+    blocks = _as_int(ac_output.get("num_blocks")) or _as_int(ac_output.get("ac_blocks_total"))
+    if total > 0 and blocks > 0:
+        return max(1, round(total / blocks))
     return 0
 
 
@@ -318,16 +381,10 @@ def resolve_pcs_for_block(ac_output: Dict[str, Any], block_index: int) -> int:
     """PCS on ONE AC Block: the per-block list wins over the fleet nominal."""
     per_block = ac_output.get("pcs_count_by_block")
     if isinstance(per_block, list) and 1 <= block_index <= len(per_block):
-        try:
-            resolved = int(per_block[block_index - 1])
-        except (TypeError, ValueError):
-            resolved = 0
+        resolved = _as_int(per_block[block_index - 1])
         if resolved > 0:
             return resolved
-    try:
-        return int(ac_output.get("pcs_per_block") or 0)
-    except (TypeError, ValueError):
-        return 0
+    return _as_int(ac_output.get("pcs_per_block"))
 
 
 def resolve_block_power_mw(ac_output: Dict[str, Any], pcs_count: int) -> float:
@@ -336,20 +393,38 @@ def resolve_block_power_mw(ac_output: Dict[str, Any], pcs_count: int) -> float:
     A tail AC Block with fewer PCS is a smaller block and, past the 8-PCS / 10 MW
     threshold, a smaller station.
     """
-    def _f(value: Any) -> float:
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return 0.0
-
-    pcs_kw = _f(ac_output.get("pcs_kw"))
+    pcs_kw = _as_float(ac_output.get("pcs_kw"))
     if pcs_count > 0 and pcs_kw > 0:
         return pcs_count * pcs_kw / 1000.0
-    return _f(ac_output.get("block_size_mw"))
+    return _as_float(ac_output.get("block_size_mw"))
+
+
+def ac_block_shape_from_ac_output(ac_output: Dict[str, Any], block_index: int = 1,
+                                  *, dc_blocks_override: int | None = None) -> AcBlockShape:
+    """THE shape resolver. Both surfaces build their AcBlockShape through this.
+
+    ``dc_blocks_override`` exists for one documented case: the report draws the
+    HEAD block of a mixed station, whose DC count comes from the mixed-station
+    schedule rather than the plan row for ``block_index``.
+    """
+    ac_output = ac_output if isinstance(ac_output, dict) else {}
+    index = max(1, int(block_index or 1))
+    pcs_count = resolve_pcs_for_block(ac_output, index)
+    dc_blocks = (int(dc_blocks_override) if dc_blocks_override
+                 else resolve_dc_blocks_for_block(ac_output, index))
+    return AcBlockShape(
+        dc_blocks=dc_blocks,
+        pcs_count=pcs_count,
+        block_power_mw=resolve_block_power_mw(ac_output, pcs_count),
+        block_index=index,
+        model_name=resolve_model_name(ac_output),
+        layout_variant=resolve_layout_variant(ac_output),
+    )
 
 
 __all__ = [
     "AcBlockShape",
+    "ac_block_shape_from_ac_output",
     "TypicalArrangement",
     "CENTRAL_STATION_VARIANT",
     "LINEAR_VARIANT",
@@ -359,6 +434,8 @@ __all__ = [
     "block_label",
     "render_typical_ac_block",
     "resolve_block_power_mw",
+    "resolve_layout_variant",
+    "resolve_model_name",
     "resolve_dc_blocks_for_block",
     "resolve_pcs_for_block",
     "strip_document_status",

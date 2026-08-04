@@ -36,6 +36,7 @@ from calb_sizing_tool.reporting.export_docx import (
 from calb_diagrams.ac_block_arrangement_v2 import US_NFPA_OIL as ARRANGEMENT_PROFILE
 from calb_diagrams.typical_ac_block_arrangement import (
     AcBlockShape,
+    ac_block_shape_from_ac_output,
     render_typical_ac_block,
     uses_central_station,
 )
@@ -370,14 +371,13 @@ def _arrangement_shape(ctx: ReportContext) -> AcBlockShape:
     same AC Block with two different footprints. The web page builds the same
     object from its own AcSnapshot and calls the same renderer.
     """
-    block_power_mw, _ = _site_nameplate_from_ctx(ctx)
-    return AcBlockShape(
-        dc_blocks=_representative_dc_per_ac(ctx),
-        pcs_count=int(ctx.pcs_per_block or 0),
-        block_power_mw=float(block_power_mw or 0.0),
-        block_index=1,
-        model_name=str(ctx.configuration_code or "").strip(),
-        layout_variant=str(ctx.layout_variant or "").strip(),
+    # Same resolver the page uses. The ONE override is the mixed-station head:
+    # §8 draws the head block, whose DC count comes from the mixed-station
+    # schedule rather than the allocation row for block 1.
+    ac_output = ctx.ac_output if isinstance(ctx.ac_output, dict) else {}
+    head_override = _representative_dc_per_ac(ctx) if _mixed_head_entry(ctx) else None
+    return ac_block_shape_from_ac_output(
+        ac_output, 1, dc_blocks_override=head_override,
     )
 
 
@@ -447,22 +447,29 @@ def _compute_site_layout(ctx: ReportContext):
         return None
 
 
-def _compute_typical_group_layout(ctx: ReportContext):
+def _compute_typical_group_layout(ctx: ReportContext, site_layout=None):
     """A single representative project group, drawn at legible page scale.
 
-    The full-site concept array is a tall linear strip (all groups stacked in
-    one column), which collapses to an illegible sliver when fit to a page. A
-    real site simply repeats one project group, so the report draws ONE typical
-    group at legible scale and states the whole-site composition (N such groups)
-    in the summary instead of drawing every block. For a mixed station the
-    representative block is the Head AC Block (tails are listed in §6.1).
+    The full-site concept array is a tall strip; fit to a page it collapses to an
+    illegible sliver. A real site simply repeats one project group, so the report
+    draws ONE typical group at legible scale and states the whole-site composition
+    (N such groups) in the summary. For a mixed station the representative block
+    is the Head AC Block (tails are listed in §6.1).
+
+    The group MUST be the group the site actually packs. Drawing a fixed
+    ``default_blocks_per_group`` while the packing search built groups of a
+    different size made §9 show eight blocks under a table that said ten.
     """
     if ctx.ac_blocks_total <= 0 or ctx.dc_blocks_total <= 0:
         return None
     dc_per_ac = _representative_dc_per_ac(ctx)
     if dc_per_ac <= 0:
         return None
-    group_blocks = min(SITE_PROFILE.default_blocks_per_group, ctx.ac_blocks_total)
+    if site_layout is None:
+        site_layout = _compute_site_layout(ctx)
+    if site_layout is None:
+        return None
+    group_blocks = min(max(1, int(site_layout.blocks_per_group)), ctx.ac_blocks_total)
     try:
         block_power_mw, dc_block_energy_mwh = _site_nameplate_from_ctx(ctx)
         form = _central_station_block_form(ctx) if _uses_central_station_block(ctx) else None
@@ -475,6 +482,9 @@ def _compute_typical_group_layout(ctx: ReportContext):
             dc_blocks_total=min(ctx.dc_blocks_total, group_blocks * _dc_per_ac),
             pcs_per_block=ctx.pcs_per_block,
             block_form=form,
+            # Same row width the whole site uses, so the group reads as a slice
+            # of it rather than a differently-shaped site of its own.
+            blocks_per_row=site_layout.blocks_per_row_target,
         )
     except Exception:
         return None
@@ -1661,7 +1671,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         group_layout = None
     else:
         site_layout = _compute_site_layout(ctx)
-        group_layout = _compute_typical_group_layout(ctx)
+        group_layout = _compute_typical_group_layout(ctx, site_layout)
     if site_layout is not None and group_layout is not None:
         try:
             # Draw ONE representative project group at legible scale, not the
