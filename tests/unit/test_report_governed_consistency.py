@@ -10,6 +10,8 @@ contradictions:
       bilateral unit rather than drawn with contradictory single-row geometry.
 """
 from __future__ import annotations
+import pytest
+
 
 from calb_diagrams.ac_block_bilateral_layout import LAYOUT_VARIANT
 from calb_sizing_tool.reporting.report_context import build_report_context
@@ -57,12 +59,27 @@ def test_report_uses_owner_confirmed_transformer_mva():
     assert ctx.transformer_rating_kva == 11110.0
 
 
-def test_linear_site_array_is_suppressed_for_bilateral():
+def test_site_array_tiles_the_bilateral_block_itself_not_a_linear_stand_in():
+    """The site must compose the block section 8 drew, not a linear stand-in.
+
+    This used to be suppressed outright — the L2 engine could only reconstruct a
+    linear block from dc_per_block, so tiling a governed bilateral unit produced a
+    contradictory single-row field. The engine now takes the block's REAL
+    placements, so it composes the correct block instead of nothing.
+    """
+    from calb_diagrams.ac_block_bilateral_layout import compute_bilateral_layout
+
     ctx = _governed_ctx(with_mva=True)
     assert ctx.layout_variant == LAYOUT_VARIANT
-    # The linear L2 site-array engine must not draw a contradictory single-row
-    # field for a governed bilateral unit.
-    assert _compute_site_layout(ctx) is None
+    site = _compute_site_layout(ctx)
+    assert site is not None
+    block = compute_bilateral_layout(8)
+    assert site.block_w_m == pytest.approx(block.envelope_w_m, abs=0.001)
+    assert site.block_d_m == pytest.approx(block.envelope_d_m, abs=0.001)
+    # A central-station block has no station-to-station corridor to share.
+    assert site.block_mirrorable is False
+    assert len(site.block_placements) == 9
+    assert site.land_area_m2 > 0
 
 
 def test_linear_site_array_still_runs_for_ungoverned_runs():

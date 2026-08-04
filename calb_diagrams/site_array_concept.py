@@ -43,10 +43,30 @@ Station size, per-block power and per-DC-Block energy all come from the run:
 Both rules exist because the 2026-08-03 report printed a 130 MW project as 65 MW
 and drew its 10 MW blocks with the 20 ft cabin.
 
-ROW MODEL LIMIT: this engine tiles blocks whose PCS & MV Station sits at the ROW
-END and faces the shared MV corridor. The central-station bilateral block
-(ac_block_bilateral_layout) does not satisfy that model — do not tile it here;
-the report states its site composition in words until Master Layout (L3) lands.
+MINIMUM LAND IS THE OBJECTIVE (owner, 2026-08-03)
+-------------------------------------------------
+- Blocks per row is SEARCHED (plan_site_packing), not fixed at 2. A site is a
+  rectangle whose road and perimeter cost scales with its PERIMETER, so the
+  blocks-per-row that squares it up is the cheap one. Fixed 2/row happens to be
+  right for a small site and costs ~10% on a large one.
+- Groups are filled to the fire-access reach, because every extra group costs a
+  6.0 m road across the whole site.
+- Fire roads form a connected PERIMETER LOOP. Internal E-W roads used to end at
+  the fence with nothing joining them: no apparatus route, no site entrance, and
+  a land figure that flattered long thin sites because only their two short ends
+  paid for road.
+- perimeter_clear_m is NOT stacked on top of the loop road; a 6.0 m road already
+  exceeds the 3.0 m clearance to the lot line.
+
+Any block form can be tiled: pass a ``BlockForm``. A block whose PCS & MV Station
+sits at the ROW END is ``mirrorable`` and two neighbours share the narrow MV
+corridor; a central-station block is not, and takes the full maintenance aisle
+between blocks. A BlockForm may carry the block's REAL placements, which is how
+the central-station bilateral unit gets composed as the block it is instead of a
+linear stand-in.
+
+WHAT THE LAND FIGURE IS NOT: equipment and access inside the perimeter road. It
+excludes the substation, O&M building, laydown, stormwater and lot-line setbacks.
 """
 
 from __future__ import annotations
@@ -129,6 +149,11 @@ class SiteArrayLayout:
     station_length_m: float = 6.058
     end_gap_m: float = 0.9
     unit_offsets_m: Tuple[float, ...] = ()
+    # Chosen to minimise land, not fixed at 2 (see plan_site_packing).
+    blocks_per_row_target: int = 2
+    block_form_label: str = "linear_mirrored_pairs"
+    block_mirrorable: bool = True
+    block_placements: Tuple[dict, ...] = ()
     # Footprint is the objective, so it is reported, not left to be inferred.
     land_area_m2: float = 0.0
     land_per_block_m2: float = 0.0
@@ -144,6 +169,115 @@ class SiteArrayLayout:
 # supply real values.
 _FALLBACK_BLOCK_POWER_MW = 5.0
 _FALLBACK_DC_ENERGY_MWH = 5.015
+
+
+@dataclass(frozen=True)
+class BlockForm:
+    """The AC Block as the SITE sees it: a footprint plus how it may be tiled."""
+
+    w_m: float
+    d_m: float
+    label: str = "linear_mirrored_pairs"
+    dc_per_block: int = 0
+    station_length_m: float = 6.058
+    unit_offsets_m: Tuple[float, ...] = ()
+    # True when the PCS & MV Station sits at the ROW END, so two mirrored blocks
+    # can put their stations face to face and share the narrow MV corridor. A
+    # central-station block cannot: its outward faces are DC doors and DC
+    # equipment ends, which need the full maintenance aisle between blocks.
+    mirrorable: bool = True
+    # Real block-local equipment placements, when the caller has them. The site
+    # glyph draws these instead of reconstructing a generic linear block — that
+    # reconstruction is what made a central-station block undrawable.
+    placements: Tuple[dict, ...] = ()
+
+
+@dataclass(frozen=True)
+class SitePacking:
+    blocks_per_row: int
+    rows: int
+    rows_per_group: Tuple[int, ...]
+    groups: int
+    envelope_w_m: float
+    envelope_d_m: float
+    land_area_m2: float
+    fire_access_reach_m: float
+
+
+def _row_separator_span_m(b: int, form: BlockForm,
+                          site_profile: SiteRuleProfile) -> float:
+    """Total separator width inside a row of ``b`` blocks."""
+    if b <= 1:
+        return 0.0
+    if not form.mirrorable:
+        return (b - 1) * site_profile.maintenance_aisle_m
+    # [B][corridor][B'] pairs, maintenance aisle between pairs.
+    pairs = b // 2
+    between = (b + 1) // 2 - 1
+    return pairs * site_profile.mv_corridor_m + between * site_profile.maintenance_aisle_m
+
+
+def _pack_at(n_blocks: int, b: int, form: BlockForm,
+             site_profile: SiteRuleProfile,
+             max_rows_per_group: Optional[int] = None) -> SitePacking:
+    rows = -(-n_blocks // b)
+    rpg = _max_rows_per_group(form.d_m, site_profile)
+    if max_rows_per_group is not None:
+        rpg = max(1, min(rpg, max_rows_per_group))
+    sizes: List[int] = []
+    left = rows
+    while left > 0:
+        take = min(rpg, left)
+        sizes.append(take)
+        left -= take
+    aisle = site_profile.maintenance_aisle_m
+    road = site_profile.fire_road_m
+    inner_w = b * form.w_m + _row_separator_span_m(b, form, site_profile)
+    inner_d = (sum(g * form.d_m + (g - 1) * aisle for g in sizes)
+               + (len(sizes) - 1) * road)
+    # The perimeter LOOP road: internal roads are stubs unless something joins
+    # them, and a site with no loop has no apparatus route and no entrance.
+    env_w = inner_w + 2 * road
+    env_d = inner_d + 2 * road
+    reach = max(g * form.d_m + (g - 1) * aisle for g in sizes) / 2.0
+    return SitePacking(
+        blocks_per_row=b,
+        rows=rows,
+        rows_per_group=tuple(sizes),
+        groups=len(sizes),
+        envelope_w_m=round(env_w, 2),
+        envelope_d_m=round(env_d, 2),
+        land_area_m2=round(env_w * env_d, 1),
+        fire_access_reach_m=round(reach, 2),
+    )
+
+
+def plan_site_packing(n_blocks: int, form: BlockForm,
+                      site_profile: SiteRuleProfile = US_NFPA_SITE,
+                      *, blocks_per_row: Optional[int] = None,
+                      max_rows_per_group: Optional[int] = None) -> SitePacking:
+    """Blocks-per-row that MINIMISES site land, subject to fire access.
+
+    Owner objective 2026-08-03: "综合整站占地面积最小". Blocks per row used to be
+    fixed at 2 regardless of the block's shape or the project size, which is
+    right for small sites and costs up to ~10% on large ones — a site is a
+    rectangle, and its road and perimeter cost scales with the PERIMETER, so the
+    number of blocks per row that squares it up is the cheap one.
+
+    Pass ``blocks_per_row`` to force a value instead of searching.
+    """
+    if n_blocks < 1:
+        raise ValueError(f"n_blocks must be >= 1, got {n_blocks}")
+    if blocks_per_row is not None:
+        return _pack_at(n_blocks, max(1, int(blocks_per_row)), form,
+                        site_profile, max_rows_per_group)
+    candidates = [
+        _pack_at(n_blocks, b, form, site_profile, max_rows_per_group)
+        for b in range(1, n_blocks + 1)
+    ]
+    # Ties broken toward fewer blocks per row: shallower rows keep the fire
+    # access reach shorter and the MV runs inside a row shorter.
+    return min(candidates, key=lambda p: (p.land_area_m2, p.blocks_per_row))
 
 
 def _max_rows_per_group(block_d_m: float, site_profile: SiteRuleProfile) -> int:
@@ -174,13 +308,20 @@ def compute_site_array(
     dc_block_energy_mwh: Optional[float] = None,
     dc_blocks_total: Optional[int] = None,
     pcs_per_block: Optional[int] = None,
+    block_form: Optional[BlockForm] = None,
+    blocks_per_row: Optional[int] = None,
 ) -> SiteArrayLayout:
     """Blocks grouped by project; fire roads only between groups, not per row.
 
-    Within a group, mirrored 2-block rows share a central MV corridor and are
-    separated only by a maintenance aisle. Fire apparatus access roads run
-    between groups and along the top/bottom perimeter, so a block is never
-    more than fire_access_limit_m from a road.
+    Within a group, mirrored blocks share a central MV corridor and are separated
+    only by a maintenance aisle. Fire apparatus roads run between groups and as a
+    PERIMETER LOOP, so every block is inside ``fire_access_limit_m`` of a road AND
+    the roads are actually connected to one another and to a site entrance.
+
+    Blocks per row is CHOSEN to minimise land (see plan_site_packing) unless the
+    caller forces it; ``block_form`` lets the caller tile a block this module
+    cannot reconstruct from ``dc_per_block`` alone, such as the central-station
+    bilateral unit.
     """
     if n_blocks < 1:
         raise ValueError(f"n_blocks must be >= 1, got {n_blocks}")
@@ -212,47 +353,38 @@ def compute_site_array(
     block_w, block_d = block.envelope_w_m, block.envelope_d_m
     station_len_m = block.station_length_m
 
-    # rows across the whole site (2 blocks per row)
+    form = block_form or BlockForm(
+        w_m=block_w,
+        d_m=block_d,
+        label="linear_mirrored_pairs",
+        dc_per_block=dc_per_block,
+        station_length_m=station_len_m,
+        unit_offsets_m=block.unit_offsets_m,
+        mirrorable=True,
+    )
+    block_w, block_d = form.w_m, form.d_m
+
+    # An explicit blocks_per_group only ever TIGHTENS the automatic grouping.
+    _forced_rows_pg = None if blocks_per_group is None else max(1, (bpg + 1) // 2)
+    packing = plan_site_packing(
+        n_blocks, form, site_profile,
+        blocks_per_row=blocks_per_row,
+        max_rows_per_group=_forced_rows_pg,
+    )
+
+    b = packing.blocks_per_row
     per_row: List[int] = []
     remaining = n_blocks
     while remaining > 0:
-        take = min(2, remaining)
+        take = min(b, remaining)
         per_row.append(take)
         remaining -= take
-    rows = len(per_row)
-
-    # Partition rows into groups. Every extra group costs a 6.0 m fire road, so
-    # the group is made as DEEP as the fire-access reach allows instead of being
-    # fixed at ceil(bpg/2) — which silently assumed a block depth and cut large
-    # sites into more groups, and more roads, than the code requires.
-    rows_pg = _max_rows_per_group(block_d, site_profile)
-    if blocks_per_group is not None:
-        rows_pg = min(rows_pg, max(1, (bpg + 1) // 2))
-    rows_per_group: List[int] = []
-    r_left = rows
-    while r_left > 0:
-        take = min(rows_pg, r_left)
-        rows_per_group.append(take)
-        r_left -= take
-    groups = len(rows_per_group)
-
-    max_in_row = max(per_row)
-    row_w = (2 * block_w + site_profile.mv_corridor_m) if max_in_row == 2 else block_w
-
-    aisle = site_profile.maintenance_aisle_m
-    road = site_profile.fire_road_m
-    # depth: each group is rows*block_d + (rows-1)*aisle; groups joined by a road;
-    # a perimeter fire road runs along the top and bottom of the site.
-    groups_depth = sum(gr * block_d + (gr - 1) * aisle for gr in rows_per_group)
-    stacked_d = groups_depth + (groups - 1) * road + 2 * road
-
-    env_w = row_w + 2 * site_profile.perimeter_clear_m
-    env_d = stacked_d
-
-    # worst-case fire-access reach: deepest block within a group is bounded by
-    # roads at both group edges; reach = half the tallest group's depth.
-    tallest_group_d = max(gr * block_d + (gr - 1) * aisle for gr in rows_per_group)
-    reach = round(tallest_group_d / 2.0, 2)
+    rows = packing.rows
+    rows_per_group = list(packing.rows_per_group)
+    groups = packing.groups
+    env_w = packing.envelope_w_m
+    env_d = packing.envelope_d_m
+    reach = packing.fire_access_reach_m
 
     _land = round(env_w * env_d, 1)
     _energy = round(_resolved_dc_blocks * _resolved_dc_energy_mwh, 2)
@@ -277,9 +409,13 @@ def compute_site_array(
         total_energy_mwh=round(_resolved_dc_blocks * _resolved_dc_energy_mwh, 2),
         profile_key=profile.key,
         site_profile_key=site_profile.key,
-        station_length_m=block.station_length_m,
+        station_length_m=form.station_length_m,
         end_gap_m=block.end_gap_m,
-        unit_offsets_m=block.unit_offsets_m,
+        unit_offsets_m=form.unit_offsets_m,
+        blocks_per_row_target=b,
+        block_form_label=form.label,
+        block_mirrorable=form.mirrorable,
+        block_placements=tuple(form.placements),
         land_area_m2=_land,
         land_per_block_m2=round(_land / max(1, n_blocks), 1),
         land_per_mwh_m2=round(_land / _energy, 2) if _energy > 0 else 0.0,
@@ -331,6 +467,19 @@ def _block_glyph(parts, s, x0, y0, layout: SiteArrayLayout, mv_left: bool):
     """Top-down AC block: DC pairs + MV station, MV toward the corridor side."""
     bw, bd = layout.block_w_m, layout.block_d_m
     _r(parts, x0, y0, bw * s, bd * s, _BLOCK, _BLOCK_EDGE, 1.0)
+
+    # When the caller supplied real block-local placements, draw THOSE. A
+    # central-station block cannot be reconstructed from dc_per_block alone, and
+    # guessing it as a linear block is how the same product ends up with two
+    # different footprints in one report.
+    if layout.block_placements:
+        for p in layout.block_placements:
+            fill = _MV if p.get("equipment_type") == "ac_station" else _DC
+            _r(parts, x0 + float(p["x_m"]) * s, y0 + float(p["y_m"]) * s,
+               float(p["width_m"]) * s, float(p["height_m"]) * s,
+               fill, _BLOCK_EDGE, 0.7)
+        return
+
     mv_w = layout.station_length_m   # 20 ft cabin or 40 ft flagship — never fixed
     if mv_left:
         _r(parts, x0 + 3, y0 + 0.5 * s, mv_w * s, (bd - 1.0) * s, _MV, _BLOCK_EDGE, 0.8)
@@ -360,7 +509,9 @@ def render_site_svg(layout: SiteArrayLayout,
     between groups and along the top/bottom perimeter."""
     s = 8.0  # px per metre (site scale)
     margin_l, margin_r, margin_t, margin_b = 60.0, 100.0, 70.0, 96.0
-    per = site_profile.perimeter_clear_m
+    # perimeter_clear_m is not added on top of the loop road: a 6.0 m road already
+    # exceeds the 3.0 m clearance to the lot line, and stacking both would report
+    # land the code does not ask for.
     corridor = site_profile.mv_corridor_m
     aisle = site_profile.maintenance_aisle_m
     road = site_profile.fire_road_m
@@ -379,36 +530,64 @@ def render_site_svg(layout: SiteArrayLayout,
     # perimeter fence
     _r(parts, ox, oy, env_w_px, layout.envelope_d_m * s, "none", _FENCE, 2.0, rx=0)
 
-    row_w = (2 * bw + corridor) if max(layout.blocks_per_row) == 2 else bw
-    row_x0 = ox + (layout.envelope_w_m - row_w) / 2 * s
-    cx = row_x0 + (bw + corridor / 2) * s  # corridor centre (2-block rows)
+    # Block x-offsets within a row, from the row's own separator sequence.
+    b = max(1, layout.blocks_per_row_target)
 
-    def fire_road(y_top_m: float, label: bool = False) -> None:
+    def _block_x_offsets(count: int) -> List[float]:
+        offsets, cursor = [], 0.0
+        for i in range(count):
+            offsets.append(cursor)
+            cursor += bw
+            if i < count - 1:
+                if layout.block_mirrorable and i % 2 == 0:
+                    cursor += corridor      # inside a mirrored pair
+                else:
+                    cursor += aisle         # between pairs / non-mirrorable
+        return offsets
+
+    row_offsets = _block_x_offsets(b)
+    row_w = (row_offsets[-1] + bw) if row_offsets else bw
+    row_x0 = ox + (layout.envelope_w_m - row_w) / 2 * s
+    # MV collection spine: the first shared corridor when there is one.
+    cx = (row_x0 + (bw + corridor / 2) * s if b >= 2 and layout.block_mirrorable
+          else row_x0 + row_w * s / 2)
+
+    def fire_road(y_top_m: float) -> None:
         ry = oy + y_top_m * s
-        _r(parts, ox + 2, ry, env_w_px - 4, road * s, _ROAD, rx=0)
+        _r(parts, ox, ry, env_w_px, road * s, _ROAD, rx=0)
         for dash_x in range(int(ox), int(ox + env_w_px), 44):
             _r(parts, dash_x + 8, ry + road * s / 2 - 1, 22, 2, "#e4e6e2", rx=0)
 
-    # walk groups top→bottom: [road] group [road] group ... [road]
-    y = 0.0
-    fire_road(y)                       # top perimeter road
-    y += road
+    # PERIMETER LOOP ROAD. Without it the internal roads are disconnected stubs:
+    # apparatus cannot travel from one to the next and the site has no entrance.
+    _r(parts, ox, oy, env_w_px, road * s, _ROAD, rx=0)
+    _r(parts, ox, oy + (layout.envelope_d_m - road) * s, env_w_px, road * s, _ROAD, rx=0)
+    _r(parts, ox, oy, road * s, layout.envelope_d_m * s, _ROAD, rx=0)
+    _r(parts, ox + (layout.envelope_w_m - road) * s, oy, road * s,
+       layout.envelope_d_m * s, _ROAD, rx=0)
+
+    # walk groups top→bottom: [loop road] group [road] group ... [loop road]
+    y = road
     row_idx = 0
+    placed = 0
     corridor_top = None
-    corridor_bot = None
     for gi, gr in enumerate(layout.rows_per_group):
         group_top = y
         for r in range(gr):
-            ry_m = y
-            ry = oy + ry_m * s
+            ry = oy + y * s
             n_in_row = layout.blocks_per_row[row_idx]
-            _block_glyph(parts, s, row_x0, ry, layout, mv_left=False)
-            _t(parts, row_x0 + bw * s / 2, ry - 5, f"AC BLOCK {row_idx*2+1}", size=9.5)
-            if n_in_row == 2:
-                rx0 = row_x0 + (bw + corridor) * s
-                _block_glyph(parts, s, rx0, ry, layout, mv_left=True)
-                _t(parts, rx0 + bw * s / 2, ry - 5, f"AC BLOCK {row_idx*2+2}", size=9.5)
-                _r(parts, row_x0 + bw * s, ry, corridor * s, bd * s, "#dfe1dd", rx=0)
+            offsets = _block_x_offsets(b)
+            for k in range(n_in_row):
+                bx = row_x0 + offsets[k] * s
+                # In a mirrored pair the second block faces its station back at
+                # the first, so the two stations share one MV corridor.
+                _block_glyph(parts, s, bx, ry, layout,
+                             mv_left=bool(layout.block_mirrorable and k % 2 == 1))
+                placed += 1
+                _t(parts, bx + bw * s / 2, ry - 5, f"AC BLOCK {placed}", size=9.5)
+                if k < n_in_row - 1:
+                    gap = offsets[k + 1] - (offsets[k] + bw)
+                    _r(parts, bx + bw * s, ry, gap * s, bd * s, "#dfe1dd", rx=0)
             row_idx += 1
             y += bd
             if r < gr - 1:
@@ -416,13 +595,12 @@ def render_site_svg(layout: SiteArrayLayout,
         # MV corridor duct spanning this group
         if corridor_top is None:
             corridor_top = oy + (group_top + bd / 2) * s
-        corridor_bot = oy + (y - bd / 2) * s
         parts.append(f'<line x1="{cx:.1f}" y1="{oy + (group_top+bd/2)*s:.1f}" '
                      f'x2="{cx:.1f}" y2="{oy + (y-bd/2)*s:.1f}" stroke="{_DUCT}" '
                      f'stroke-width="2.5" stroke-dasharray="8 5" opacity="0.85"/>')
-        # fire road after each group (between groups + bottom perimeter)
-        fire_road(y)
-        y += road
+        if gi < len(layout.rows_per_group) - 1:
+            fire_road(y)            # internal road, tied into the loop at both ends
+            y += road
 
     # feeder collection down the corridor + east to substation, on the top road
     fy = oy + (road / 2) * s
@@ -453,6 +631,12 @@ def render_site_svg(layout: SiteArrayLayout,
          f"{layout.envelope_w_m:.1f} m site envelope", above=False)
     _dim(parts, ox - 22, oy, ox - 22, oy + layout.envelope_d_m * s,
          f"{layout.envelope_d_m:.1f} m", above=True)
+    _t(parts, margin_l, height - 32,
+       f"{layout.land_area_m2:,.0f} m2 inside the perimeter road "
+       f"({layout.land_per_block_m2:,.0f} m2/AC Block · "
+       f"{layout.land_per_mwh_m2:.1f} m2/MWh) — EQUIPMENT AND ACCESS ONLY: "
+       f"excludes substation, O&M building, laydown, stormwater and setbacks",
+       size=9.5, anchor="start", weight=600, fill="#5b6367")
     _t(parts, margin_l, height - 16,
        "CONCEPT ONLY — NOT FOR CONSTRUCTION · envelope estimate, not a site layout",
        size=10.5, anchor="start", weight=600, fill="#5b6367")

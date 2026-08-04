@@ -44,13 +44,14 @@ def test_site_profile_values():
 
 
 def test_row_allocation_two_per_row():
-    layout = compute_site_array(4, 2)
+    # blocks_per_row may be forced; the search is exercised separately.
+    layout = compute_site_array(4, 2, blocks_per_row=2)
     assert layout.rows == 2
     assert layout.blocks_per_row == (2, 2)
 
 
 def test_row_allocation_odd_last_row_single():
-    layout = compute_site_array(3, 4)
+    layout = compute_site_array(3, 4, blocks_per_row=2)
     assert layout.rows == 2
     assert layout.blocks_per_row == (2, 1)
     assert sum(layout.blocks_per_row) == 3
@@ -58,20 +59,18 @@ def test_row_allocation_odd_last_row_single():
 
 def test_single_block_no_corridor_in_width():
     layout = compute_site_array(1, 2)
-    # lone block: width = block_w + 2*perimeter (no corridor added)
-    # block 2xDC = 15.116; + 2*3.0 = 21.116
-    assert layout.envelope_w_m == pytest.approx(21.116, abs=0.01)
-    # One project group still has apparatus-access roads at its top and
-    # bottom: 5.176 m block depth + 2 * 6.0 m perimeter fire roads.
+    # Lone block inside the perimeter LOOP road: block + 2 * 6.0 m on each axis.
+    # Width  15.116 + 12.0 = 27.116; depth 5.176 + 12.0 = 17.176.
+    assert layout.envelope_w_m == pytest.approx(27.116, abs=0.01)
     assert layout.envelope_d_m == pytest.approx(17.176, abs=0.01)
 
 
 def test_envelope_4x2dc():
-    layout = compute_site_array(4, 2)
-    # width = 2*15.116 + 2.0 corridor + 2*3.0 = 38.232
-    assert layout.envelope_w_m == pytest.approx(38.23, abs=0.01)
+    layout = compute_site_array(4, 2, blocks_per_row=2)
+    # width = 2*15.116 + 2.0 corridor + 2*6.0 loop road = 44.232
+    assert layout.envelope_w_m == pytest.approx(44.23, abs=0.01)
     # 4 blocks = 1 group (2 rows), no internal fire road:
-    # depth = 2*5.176 + 1*3.0 aisle + 2*6.0 perimeter roads = 25.352
+    # depth = 2*5.176 + 1*3.0 aisle + 2*6.0 loop road = 25.352
     assert layout.envelope_d_m == pytest.approx(25.35, abs=0.01)
     assert layout.groups == 1
     assert layout.fire_roads == 0
@@ -79,7 +78,7 @@ def test_envelope_4x2dc():
 
 def test_grouping_removes_per_row_fire_roads():
     """8 blocks default to one group: 0 internal fire roads (was 3 per-row)."""
-    layout = compute_site_array(8, 2)
+    layout = compute_site_array(8, 2, blocks_per_row=2)
     assert layout.groups == 1
     assert layout.rows == 4
     assert layout.fire_roads == 0
@@ -87,14 +86,14 @@ def test_grouping_removes_per_row_fire_roads():
 
 
 def test_explicit_small_group_adds_roads():
-    layout = compute_site_array(8, 2, blocks_per_group=4)
+    layout = compute_site_array(8, 2, blocks_per_group=4, blocks_per_row=2)
     assert layout.groups == 2
     assert layout.rows_per_group == (2, 2)
     assert layout.fire_roads == 1
 
 
 def test_fire_access_reach_within_limit():
-    layout = compute_site_array(8, 2)
+    layout = compute_site_array(8, 2, blocks_per_row=2)
     # tallest group 4 rows: (4*5.176 + 3*3.0)/2 = 14.85 m <= 45.7
     assert layout.fire_access_reach_m == pytest.approx(14.85, abs=0.02)
     assert layout.fire_access_ok is True
@@ -106,8 +105,8 @@ def test_blocks_per_group_too_small_rejected():
 
 
 def test_envelope_4x4dc_wider_than_2dc():
-    two = compute_site_array(4, 2)
-    four = compute_site_array(4, 4)
+    two = compute_site_array(4, 2, blocks_per_row=2)
+    four = compute_site_array(4, 4, blocks_per_row=2)
     # 4xDC block is wider (22.074 vs 15.116) so the site is wider, same depth
     assert four.envelope_w_m > two.envelope_w_m
     assert four.envelope_d_m == pytest.approx(two.envelope_d_m, abs=0.01)
@@ -120,15 +119,15 @@ def test_single_block_still_no_internal_road():
 
 
 def test_energy_scales_with_dc_count():
-    two = compute_site_array(4, 2)
-    four = compute_site_array(4, 4)
+    two = compute_site_array(4, 2, blocks_per_row=2)
+    four = compute_site_array(4, 4, blocks_per_row=2)
     assert two.total_power_mw == pytest.approx(20.0)
     assert four.total_power_mw == pytest.approx(20.0)   # power set by AC blocks
     assert four.total_energy_mwh == pytest.approx(2 * two.total_energy_mwh, abs=0.1)
 
 
 def test_eight_blocks_four_rows():
-    layout = compute_site_array(8, 2)
+    layout = compute_site_array(8, 2, blocks_per_row=2)
     assert layout.rows == 4
     assert layout.blocks_per_row == (2, 2, 2, 2)
 
@@ -139,7 +138,7 @@ def test_invalid_block_count_rejected():
 
 
 def test_render_site_svg_markers():
-    svg = render_site_svg(compute_site_array(4, 2))
+    svg = render_site_svg(compute_site_array(4, 2, blocks_per_row=2))
     assert svg.startswith("<svg") and svg.endswith("</svg>")
     assert "CONCEPT SITE ARRANGEMENT" in svg
     assert "CONCEPT ONLY" in svg
@@ -165,11 +164,13 @@ def test_station_length_follows_the_ac_block_class_not_a_constant():
     drawn 6.13 m short and contradicted the Typical AC Block Arrangement figure.
     """
     small = compute_site_array(4, 4, US_NFPA_OIL, US_NFPA_SITE,
-                               block_power_mw=5.0, pcs_per_block=4)
+                               block_power_mw=5.0, pcs_per_block=4,
+                               blocks_per_row=2)
     assert small.station_length_m == pytest.approx(6.058, abs=0.001)
 
     big = compute_site_array(4, 8, US_NFPA_OIL, US_NFPA_SITE,
-                             block_power_mw=10.0, pcs_per_block=8)
+                             block_power_mw=10.0, pcs_per_block=8,
+                             blocks_per_row=2)
     assert big.station_length_m == pytest.approx(12.192, abs=0.001)
     # 4 mirrored pairs, end gaps alternating 0.9 / 3.0 / 0.9, + aisle + 40 ft
     assert big.block_w_m == pytest.approx(4 * 6.058 + 4.8 + 3.0 + 12.192, abs=0.001)
@@ -182,7 +183,8 @@ def test_site_block_width_equals_the_arrangement_engine_envelope():
 
     for dc, pcs, mw in ((4, 4, 5.0), (6, 6, 7.5), (8, 8, 10.0)):
         site = compute_site_array(6, dc, US_NFPA_OIL, US_NFPA_SITE,
-                                  block_power_mw=mw, pcs_per_block=pcs)
+                                  block_power_mw=mw, pcs_per_block=pcs,
+                                  blocks_per_row=2)
         block = compute_layout(dc, US_NFPA_OIL, pcs_count=pcs, block_power_mw=mw)
         assert site.block_w_m == pytest.approx(block.envelope_w_m, abs=0.001)
         assert site.block_d_m == pytest.approx(block.envelope_d_m, abs=0.001)
@@ -210,7 +212,8 @@ def test_site_glyph_draws_the_resolved_station_not_a_hardcoded_one():
 def test_site_reports_its_land_and_land_intensity():
     layout = compute_site_array(13, 8, US_NFPA_OIL, US_NFPA_SITE,
                                 block_power_mw=10.0, dc_block_energy_mwh=5.015,
-                                dc_blocks_total=104, pcs_per_block=8)
+                                dc_blocks_total=104, pcs_per_block=8,
+                                blocks_per_row=2)
     assert layout.land_area_m2 == pytest.approx(
         layout.envelope_w_m * layout.envelope_d_m, abs=0.2)
     assert layout.land_per_block_m2 == pytest.approx(
@@ -226,7 +229,7 @@ def test_groups_are_filled_to_the_fire_access_limit_not_a_fixed_row_count():
     how deep a row actually is, so shallow blocks were cut into more groups — and
     more roads — than IFC 503.1.1 requires.
     """
-    layout = compute_site_array(14, 2, US_NFPA_OIL, US_NFPA_SITE)
+    layout = compute_site_array(14, 2, US_NFPA_OIL, US_NFPA_SITE, blocks_per_row=2)
     assert layout.rows == 7
     # A 5.176 m deep block: 7 rows reach only (7*5.176 + 6*3.0)/2 = 27.1 m,
     # well inside the 45.7 m limit, so one group and NO internal fire road.
@@ -240,13 +243,20 @@ def test_fire_access_limit_is_still_respected_when_groups_grow():
                               block_power_mw=10.0, pcs_per_block=8)
     assert deep.fire_access_reach_m <= US_NFPA_SITE.fire_access_limit_m
     assert deep.fire_access_ok is True
-    assert deep.groups >= 2 and deep.fire_roads == deep.groups - 1
+    assert deep.fire_roads == deep.groups - 1
+    # Forcing a narrow site makes the rows stack until groups must split.
+    narrow = compute_site_array(60, 8, US_NFPA_OIL, US_NFPA_SITE,
+                                block_power_mw=10.0, pcs_per_block=8,
+                                blocks_per_row=2)
+    assert narrow.groups >= 2
+    assert narrow.fire_access_reach_m <= US_NFPA_SITE.fire_access_limit_m
 
 
 def test_an_explicit_group_size_still_wins_when_it_is_smaller():
     """An owner-imposed group size may only tighten the automatic one."""
-    auto = compute_site_array(8, 2, US_NFPA_OIL, US_NFPA_SITE)
-    forced = compute_site_array(8, 2, US_NFPA_OIL, US_NFPA_SITE, blocks_per_group=4)
+    auto = compute_site_array(8, 2, US_NFPA_OIL, US_NFPA_SITE, blocks_per_row=2)
+    forced = compute_site_array(8, 2, US_NFPA_OIL, US_NFPA_SITE,
+                                blocks_per_group=4, blocks_per_row=2)
     assert forced.groups > auto.groups
     assert forced.rows_per_group == (2, 2)
 
@@ -258,10 +268,104 @@ def test_land_falls_when_the_plain_ends_face_inward():
     (what the engine now does) against the old flat 3.0 m gap everywhere.
     """
     good = compute_site_array(13, 8, US_NFPA_OIL, US_NFPA_SITE,
-                              block_power_mw=10.0, pcs_per_block=8)
+                              block_power_mw=10.0, pcs_per_block=8,
+                              blocks_per_row=2)
     # Reconstruct the old behaviour: every DC end gap forced to 3.0 m.
     flat_block_d = good.block_d_m           # depth is unchanged for a linear block
     old_block_w = 4 * 6.058 + 3 * 3.0 + 3.0 + 12.192
     assert good.block_w_m < old_block_w
     assert (old_block_w - good.block_w_m) == pytest.approx(4.2, abs=0.001)
     assert flat_block_d > 0
+
+
+# ---------------------------------------------------------------------------
+# Whole-site packing (owner 2026-08-03: "无论整张 … 占地面积最小")
+# ---------------------------------------------------------------------------
+
+
+def test_fire_roads_form_a_connected_loop_not_disconnected_stubs():
+    """Internal E-W roads used to end at the fence with nothing joining them.
+
+    Apparatus could not travel from one road to the next and the site had no
+    entrance, so the land figure was also under-counted: a long thin site looked
+    cheap because only its two short ends paid for road.
+    """
+    layout = compute_site_array(13, 8, US_NFPA_OIL, US_NFPA_SITE,
+                                block_power_mw=10.0, pcs_per_block=8)
+    road = US_NFPA_SITE.fire_road_m
+    inner_w = layout.envelope_w_m - 2 * road
+    inner_d = layout.envelope_d_m - 2 * road
+    # The loop is charged on ALL FOUR sides, so the equipment field is inset by a
+    # full road width on every edge.
+    assert inner_w > 0 and inner_d > 0
+    assert layout.envelope_w_m - inner_w == pytest.approx(2 * road, abs=0.01)
+    assert layout.envelope_d_m - inner_d == pytest.approx(2 * road, abs=0.01)
+
+
+def test_blocks_per_row_is_searched_for_minimum_land():
+    from calb_diagrams.site_array_concept import BlockForm, plan_site_packing
+
+    form = BlockForm(w_m=18.79, d_m=13.016, mirrorable=False, dc_per_block=8)
+    for n in (4, 13, 26, 40, 80):
+        best = plan_site_packing(n, form, US_NFPA_SITE)
+        # Nothing else may beat what the planner picked.
+        for b in range(1, n + 1):
+            other = plan_site_packing(n, form, US_NFPA_SITE, blocks_per_row=b)
+            assert best.land_area_m2 <= other.land_area_m2 + 1e-6, (n, b)
+        assert best.fire_access_reach_m <= US_NFPA_SITE.fire_access_limit_m
+
+
+def test_the_search_beats_a_fixed_two_per_row_on_large_sites():
+    """Fixed 2/row is right for a small site and costs land on a big one."""
+    from calb_diagrams.site_array_concept import BlockForm, plan_site_packing
+
+    form = BlockForm(w_m=18.79, d_m=13.016, mirrorable=False, dc_per_block=8)
+    small_fixed = plan_site_packing(13, form, US_NFPA_SITE, blocks_per_row=2)
+    small_best = plan_site_packing(13, form, US_NFPA_SITE)
+    assert small_best.land_area_m2 == pytest.approx(small_fixed.land_area_m2, abs=0.1)
+
+    big_fixed = plan_site_packing(80, form, US_NFPA_SITE, blocks_per_row=2)
+    big_best = plan_site_packing(80, form, US_NFPA_SITE)
+    assert big_best.land_area_m2 < big_fixed.land_area_m2
+    assert (big_fixed.land_area_m2 - big_best.land_area_m2) / big_fixed.land_area_m2 > 0.05
+
+
+def test_a_central_station_block_is_tiled_from_its_real_placements():
+    """The site draws the block section 8 drew, not a reconstructed linear one."""
+    from calb_diagrams.ac_block_bilateral_layout import compute_bilateral_layout
+    from calb_diagrams.site_array_concept import BlockForm
+
+    block = compute_bilateral_layout(8)
+    form = BlockForm(
+        w_m=block.envelope_w_m, d_m=block.envelope_d_m,
+        label=block.layout_variant, dc_per_block=8, mirrorable=False,
+        placements=tuple(
+            {"equipment_type": p.equipment_type, "x_m": p.x_m, "y_m": p.y_m,
+             "width_m": p.width_m, "height_m": p.height_m}
+            for p in block.placements
+        ),
+    )
+    layout = compute_site_array(13, 8, US_NFPA_OIL, US_NFPA_SITE,
+                                block_power_mw=10.0, dc_block_energy_mwh=5.015,
+                                dc_blocks_total=104, pcs_per_block=8,
+                                block_form=form)
+    assert layout.block_w_m == pytest.approx(block.envelope_w_m, abs=0.001)
+    assert layout.block_mirrorable is False
+    assert len(layout.block_placements) == 9
+    svg = render_site_svg(layout, US_NFPA_SITE)
+    import xml.dom.minidom
+    xml.dom.minidom.parseString(svg)
+    # A non-mirrorable block never gets the station-to-station MV corridor.
+    row_span = layout.blocks_per_row_target * layout.block_w_m + (
+        (layout.blocks_per_row_target - 1) * US_NFPA_SITE.maintenance_aisle_m)
+    assert layout.envelope_w_m == pytest.approx(
+        row_span + 2 * US_NFPA_SITE.fire_road_m, abs=0.01)
+
+
+def test_the_reported_land_states_what_it_excludes():
+    layout = compute_site_array(13, 8, US_NFPA_OIL, US_NFPA_SITE,
+                                block_power_mw=10.0, dc_block_energy_mwh=5.015,
+                                dc_blocks_total=104, pcs_per_block=8)
+    svg = render_site_svg(layout, US_NFPA_SITE)
+    assert "EQUIPMENT AND ACCESS ONLY" in svg
+    assert "excludes substation" in svg

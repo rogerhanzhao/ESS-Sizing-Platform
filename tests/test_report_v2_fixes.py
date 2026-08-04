@@ -267,23 +267,35 @@ def test_ten_mw_block_is_drawn_with_the_forty_foot_station_not_the_twenty():
     assert f"{twenty.envelope_w_m:.2f}" not in caption, caption
 
 
-def test_eight_by_eight_report_states_site_composition_instead_of_wrong_geometry():
-    """§8 and §9 may never publish two different footprints for one AC Block.
+def test_eight_by_eight_report_draws_the_site_from_the_block_it_actually_drew():
+    """Section 9 must compose the block section 8 drew — one product, one footprint.
 
-    The 8-PCS / 8-DC block has its station in the CENTRE, which the L2 row model
-    (station at the row end facing a shared MV corridor) cannot tile. §9 must
-    therefore state the composition in words rather than draw a second, different
-    block — and must not silently vanish either.
+    This case used to have NO site figure at all: the L2 engine could only
+    reconstruct a linear block from dc_per_block, so a central-station block was
+    either suppressed or tiled as something it is not. The block's real
+    placements now travel to the site engine, so the section is drawn and its
+    land is reported.
     """
+    from calb_diagrams.ac_block_bilateral_layout import compute_bilateral_layout
+
     ctx = _ctx_for(pcs_per_block=8, num_blocks=13, dc_blocks_total=104,
                    block_size_mw=10.0, total_ac_mw=130.0)
     doc = Document(io.BytesIO(export_report_v2_1(ctx)))
     text = "\n".join(p.text for p in doc.paragraphs)
+    tables = "\n".join(
+        cell.text for table in doc.tables for row in table.rows for cell in row.cells
+    )
 
     assert "9.  Concept Site Arrangement (Concept Only)" in text
-    assert "single-axis unit" in text
-    assert "Master Layout scope" in text
-    # No site-array figure caption -> no second footprint for the same block.
-    assert "Concept Site Arrangement —" not in text
+    assert "Concept Site Arrangement —" in text          # the figure is there
+    # Footprint is reported, because minimum land is the objective.
+    assert "Site land area" in tables
+    assert "Land intensity" in tables
+    assert "Packing (minimum land)" in tables
+    # A central-station block has no station-to-station corridor to share.
+    assert "central-station blocks, full aisle between blocks" in tables
     # And the rejected perimeter field never appears.
     assert "28.54" not in text
+
+    block = compute_bilateral_layout(8)
+    assert f"{block.envelope_w_m:.2f}" in text

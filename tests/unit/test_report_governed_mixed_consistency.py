@@ -67,11 +67,24 @@ def test_governed_groups_carried_for_the_report():
     }
 
 
-def test_linear_site_array_suppressed_for_governed_mixed():
+def test_governed_mixed_report_shows_the_governed_composition_not_the_l2_array():
+    """A governed run draws its own section 9; the L2 array is not also emitted.
+
+    The suppression lives in the report body (a governed run sets site_layout to
+    None before the L2 figure), not in _compute_site_layout — which now returns a
+    correct tiling for any block form and is reused by the generic path.
+    """
+    import io
+
+    from docx import Document
+
+    from calb_sizing_tool.reporting.report_v2 import export_report_v2_1
+
     ctx = _mixed_ctx()
-    # A governed run shows the governed composition (§9), not the generic linear
-    # L2 site array.
-    assert _compute_site_layout(ctx) is None
+    doc = Document(io.BytesIO(export_report_v2_1(ctx)))
+    headings = [p.text for p in doc.paragraphs if p.text.startswith("9.")]
+    assert len(headings) == 1, headings
+    assert "Equipment Schedule" in headings[0], headings
 
 
 def test_full_report_doc_builds_for_governed_mixed():

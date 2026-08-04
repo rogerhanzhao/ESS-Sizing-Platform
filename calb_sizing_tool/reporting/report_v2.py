@@ -45,6 +45,7 @@ from calb_diagrams.ac_block_bilateral_layout import (
 from calb_diagrams.governed_site_layout_concept import render_governed_site_layout_concept_svg
 from calb_diagrams.site_array_concept import (
     US_NFPA_SITE as SITE_PROFILE,
+    BlockForm,
     compute_site_array,
     render_site_svg,
 )
@@ -379,29 +380,55 @@ def _uses_central_station_block(ctx: ReportContext) -> bool:
     return int(ctx.pcs_per_block or 0) == 8 and dc_per_ac == 8
 
 
+def _central_station_block_form():
+    """The central-station bilateral block, described so the SITE can tile it.
+
+    It is NOT mirrorable: its station is inside the block, so two neighbours
+    never put stations face to face and cannot share the narrow MV corridor —
+    every outward face is a DC door or a DC equipment end and takes the full
+    maintenance aisle. Real placements travel with it so the site glyph draws the
+    block that §8 drew instead of reconstructing a linear one.
+    """
+    layout = compute_bilateral_layout(8)
+    station = layout.by_type("ac_station")[0]
+    return BlockForm(
+        w_m=layout.envelope_w_m,
+        d_m=layout.envelope_d_m,
+        label=layout.layout_variant,
+        dc_per_block=layout.dc_count,
+        station_length_m=station.height_m,
+        mirrorable=False,
+        placements=tuple(
+            {
+                "equipment_type": p.equipment_type,
+                "x_m": p.x_m, "y_m": p.y_m,
+                "width_m": p.width_m, "height_m": p.height_m,
+            }
+            for p in layout.placements
+        ),
+    )
+
+
 def _compute_site_layout(ctx: ReportContext):
     """Concept site-array layout from the sizing result (None if not sizeable)."""
     if ctx.ac_blocks_total <= 0 or ctx.dc_blocks_total <= 0:
-        return None
-    # The L2 site-array engine tiles blocks whose PCS & MV Station sits at the
-    # ROW END and faces a shared MV corridor. A central-station bilateral block
-    # does not satisfy that row model, so tiling it here would print a second,
-    # contradictory footprint for the block §8 just drew. Whole-site composition
-    # of the central-station block is Master Layout (L3) scope; the report states
-    # that in words instead of drawing wrong geometry.
-    if _uses_central_station_block(ctx):
         return None
     dc_per_ac = _representative_dc_per_ac(ctx)
     if dc_per_ac <= 0:
         return None
     try:
         block_power_mw, dc_block_energy_mwh = _site_nameplate_from_ctx(ctx)
+        # The central-station block is tiled from its REAL placements, so §9
+        # composes the very block §8 drew rather than a linear stand-in.
+        form = _central_station_block_form() if _uses_central_station_block(ctx) else None
         return compute_site_array(
-            ctx.ac_blocks_total, dc_per_ac, ARRANGEMENT_PROFILE, SITE_PROFILE,
+            ctx.ac_blocks_total, form.dc_per_block if form else dc_per_ac,
+            ARRANGEMENT_PROFILE, SITE_PROFILE,
             block_power_mw=block_power_mw,
             dc_block_energy_mwh=dc_block_energy_mwh,
             dc_blocks_total=ctx.dc_blocks_total,
             pcs_per_block=ctx.pcs_per_block,
+            block_form=form,
         )
     except Exception:
         return None
@@ -419,21 +446,22 @@ def _compute_typical_group_layout(ctx: ReportContext):
     """
     if ctx.ac_blocks_total <= 0 or ctx.dc_blocks_total <= 0:
         return None
-    if _uses_central_station_block(ctx):
-        return None
     dc_per_ac = _representative_dc_per_ac(ctx)
     if dc_per_ac <= 0:
         return None
     group_blocks = min(SITE_PROFILE.default_blocks_per_group, ctx.ac_blocks_total)
     try:
         block_power_mw, dc_block_energy_mwh = _site_nameplate_from_ctx(ctx)
+        form = _central_station_block_form() if _uses_central_station_block(ctx) else None
+        _dc_per_ac = form.dc_per_block if form else dc_per_ac
         return compute_site_array(
-            group_blocks, dc_per_ac, ARRANGEMENT_PROFILE, SITE_PROFILE,
+            group_blocks, _dc_per_ac, ARRANGEMENT_PROFILE, SITE_PROFILE,
             block_power_mw=block_power_mw,
             dc_block_energy_mwh=dc_block_energy_mwh,
             # A GROUP holds group_blocks x dc_per_ac DC Blocks, not the whole site.
-            dc_blocks_total=min(ctx.dc_blocks_total, group_blocks * dc_per_ac),
+            dc_blocks_total=min(ctx.dc_blocks_total, group_blocks * _dc_per_ac),
             pcs_per_block=ctx.pcs_per_block,
+            block_form=form,
         )
     except Exception:
         return None
@@ -1727,50 +1755,25 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                  f"{ws_energy_mwh:.1f} MWh"),
                 # Footprint is an objective, so it is reported rather than left
                 # to be inferred from the envelope dimensions.
-                ("Site land area",
+                ("Site land area (equipment + access only)",
                  f"{site_layout.land_area_m2:,.0f} m² "
-                 f"({site_layout.land_area_m2 / 10000.0:.2f} ha)"),
+                 f"({site_layout.land_area_m2 / 10000.0:.2f} ha) — excludes "
+                 f"substation, O&M building, laydown, stormwater and setbacks"),
                 ("Land intensity",
                  f"{site_layout.land_per_block_m2:,.0f} m² per AC Block · "
                  f"{site_layout.land_per_mwh_m2:.1f} m² per MWh"),
+                # The packing is a result, not an assumption — it is searched for
+                # the minimum land at this project size.
+                ("Packing (minimum land)",
+                 f"{site_layout.blocks_per_row_target} block(s) per row × "
+                 f"{site_layout.rows} row(s) · "
+                 f"{'mirrored pairs share the MV corridor' if site_layout.block_mirrorable else 'central-station blocks, full aisle between blocks'}"),
             ]
             site_rows.extend(
                 (item, f"{value} — {basis}")
                 for item, value, basis in SITE_PROFILE.basis
             )
             _add_table(doc, site_rows, ["Site parameter", "Value & code basis"])
-    elif not ctx.configuration_code and _uses_central_station_block(ctx):
-        # The block §8 drew has its PCS & MV Station in the CENTRE, so it does not
-        # fit the L2 row model (station at the row end, facing a shared MV
-        # corridor). Rather than silently drop §9 — or print a second, different
-        # footprint for the same block — state the site composition rule that the
-        # single-axis arrangement was chosen to satisfy.
-        doc.add_page_break()
-        doc.add_heading("9.  Concept Site Arrangement (Concept Only)", level=2)
-        _keep_next_para(doc.add_paragraph(
-            f"The AC Block in Section 8 is a single-axis unit: west DC field, "
-            f"central 40 ft PCS & MV Station, east DC field, all on one east-west "
-            f"axis. Blocks of this form repeat along that axis to build a site row, "
-            f"and rows repeat north-south, so the whole-site composition follows the "
-            f"same spacing rules stated below."
-        ))
-        _add_table(
-            doc,
-            [
-                ("AC Blocks", f"{ctx.ac_blocks_total}"),
-                ("DC Blocks", f"{ctx.dc_blocks_total}"),
-                ("Block arrangement", "single-axis · central 40 ft station · "
-                                      "west/east mirrored DC fields"),
-            ]
-            + [(item, f"{value} — {basis}") for item, value, basis in SITE_PROFILE.basis],
-            ["Site parameter", "Value & code basis"],
-        )
-        doc.add_paragraph(
-            "A geometric site plan for this block form — block pitch, MV collection "
-            "route and fire-road placement against a real site boundary — is Master "
-            "Layout scope and is not drawn here. — NOT FOR CONSTRUCTION"
-        )
-
     return _doc_to_bytes(doc)
 
 
