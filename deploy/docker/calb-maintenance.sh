@@ -31,6 +31,24 @@ load_env() {
   set +a
 }
 
+# Database-side retention FIRST, then whatever files it left behind.
+#
+# Order matters. This script used to delete FILES ONLY. The artifact_registry
+# rows survived, pointing at files that no longer existed, and the reader
+# swallows every error — so an old run's report lost its figures silently, with
+# nothing in any log. Rows and files must expire together, so the application's
+# own sweep runs first and the find below is only a floor for anything the
+# database never knew about.
+cleanup_database_retention() {
+  local project_name="${COMPOSE_PROJECT_NAME:-$DEFAULT_PROJECT_NAME}"
+  local service="${CALB_APP_SERVICE:-app}"
+
+  echo "Running CALB database retention sweep (rows + their files)"
+  docker compose -p "$project_name" exec -T "$service" \
+    python -m calb_sizing_tool.services.maintenance_service \
+    || echo "Database retention sweep skipped (container not running?)"
+}
+
 cleanup_outputs() {
   local runtime_root="${CALB_RUNTIME_ROOT:-/opt/calb-sizingtool/runtime}"
   local retention_days="${CALB_OUTPUT_RETENTION_DAYS:-30}"
@@ -107,6 +125,7 @@ main() {
   require_command docker
   load_env
 
+  cleanup_database_retention
   cleanup_outputs
   cleanup_stopped_compose_containers
   cleanup_ngrok_container

@@ -424,6 +424,27 @@ result cannot carry two AC alternatives. Promoting AC to its own Run is an
 approved-in-principle change (owner ruling B) that is NOT yet done — see
 `docs/AC_RUN_PROMOTION_DESIGN.md`.
 
+**Bounded growth** (owner requirement 2026-08-04: 日志和数据库不能无限制的变大).
+Measured on a working checkout before the fix: 479 run directories, 5081 files,
+172 MB — all of it written by the TEST SUITE into the real `outputs/`. Controls
+now in place, at the source and after the fact:
+
+| store | control |
+| --- | --- |
+| test artifacts | `tests/conftest.py` redirects `CALB_OUTPUTS_DIR` to a temp dir |
+| artifact files + rows | each `(run, kind, artifact_mode)` lineage keeps the newest generation only (`CALB_ARTIFACT_GENERATIONS`, default 1) |
+| orphaned rows | `maintenance_service.prune_orphaned_artifacts` |
+| old artifacts | `prune_artifacts_older_than` — **row AND file together** (`CALB_ARTIFACT_RETENTION_DAYS`, 30) |
+| output snapshots | `prune_snapshot_generations` (`CALB_SNAPSHOT_GENERATIONS`, 3) |
+| audit trail | `prune_audit_log` (`CALB_AUDIT_RETENTION_DAYS`, 180 — longer than artifacts on purpose) |
+| op log | `prune_oplog` (`CALB_OPLOG_RETENTION_DAYS`, 30) |
+
+`deploy/docker/calb-maintenance.sh` now runs the database sweep BEFORE the file
+sweep. It used to delete files only, leaving rows that pointed at nothing — and
+because the reader swallows every error, an old run's report lost its figures
+silently. Never prune one side alone. `storage_report()` gives the current
+numbers so growth is measured rather than assumed.
+
 **Guest mode never touches the database**: the login page injects
 `roles=["guest"]` with a synthetic `user_id`, and DC results live in
 `st.session_state`. Note that `ensure_system_roles()` seeds only `admin` and

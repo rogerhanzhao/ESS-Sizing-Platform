@@ -205,3 +205,41 @@ class RunRepository:
         if limit:
             query = query.limit(int(limit))
         return query.all()
+
+    def list_artifacts(
+        self,
+        sizing_run_id: str,
+        *,
+        artifact_kind: str | None = None,
+        artifact_mode: str | None = None,
+    ) -> list[ArtifactRegistry]:
+        """Registered artifacts, newest first.
+
+        (sizing_run_id, artifact_kind) is the key readers use — see
+        artifact_service.load_artifact_bytes_from_db, which takes the newest row
+        of each kind — so it is also the key generations are counted by.
+        """
+        query = self.session.query(ArtifactRegistry).filter(
+            ArtifactRegistry.sizing_run_id == sizing_run_id
+        )
+        if artifact_kind:
+            query = query.filter(ArtifactRegistry.artifact_kind == artifact_kind)
+        rows = query.order_by(ArtifactRegistry.created_at.desc()).all()
+        if artifact_mode is not None:
+            # artifact_mode lives in metadata_json, not a column: an SLD run holds
+            # a "concept" AND a "draft_override" artifact of the SAME kind, and
+            # they are separate lineages that must not supersede each other.
+            rows = [
+                row for row in rows
+                if str((row.metadata_json or {}).get("artifact_mode") or "") == artifact_mode
+            ]
+        return rows
+
+    def delete_artifact(self, artifact_registry_id: str) -> None:
+        row = (
+            self.session.query(ArtifactRegistry)
+            .filter_by(artifact_registry_id=artifact_registry_id)
+            .one_or_none()
+        )
+        if row is not None:
+            self.session.delete(row)

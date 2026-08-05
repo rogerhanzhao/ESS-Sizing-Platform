@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 from typing import Iterable
 
@@ -16,6 +17,59 @@ from calb_sizing_tool.utils.files import safe_child_path, safe_storage_filename
 
 def _hash_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+# How many generations of each (run, artifact_kind) to keep. Readers always take
+# the NEWEST row, so older generations are already unreachable through the app —
+# keeping them only grows the database and the disk. Raise it via
+# CALB_ARTIFACT_GENERATIONS if you want regeneration history for diffing.
+_DEFAULT_ARTIFACT_GENERATIONS = 1
+
+
+def artifact_generations_to_keep() -> int:
+    raw = os.environ.get("CALB_ARTIFACT_GENERATIONS", "").strip()
+    try:
+        value = int(raw) if raw else _DEFAULT_ARTIFACT_GENERATIONS
+    except ValueError:
+        value = _DEFAULT_ARTIFACT_GENERATIONS
+    return max(1, value)
+
+
+def _supersede_older_generations(
+    repo: RunRepository, run_id: str, artifact_kind: str, artifact_mode: str, keep: int
+) -> int:
+    """Drop generations beyond ``keep`` for one lineage, rows AND files.
+
+    Regenerating an SLD or a layout used to leave the previous row and its file
+    behind forever. Nothing reads them — load_artifact_bytes_from_db takes the
+    newest of each kind — so they were pure growth.
+
+    A lineage is (run, kind, artifact_mode). The mode matters: one SLD run
+    legitimately holds a "concept" AND a "draft_override" artifact of the same
+    kind, and rendering one must not delete the other.
+    """
+    rows = repo.list_artifacts(run_id, artifact_kind=artifact_kind, artifact_mode=artifact_mode)
+    doomed, survivors = rows[keep:], rows[:keep]
+    # A regeneration writes the SAME file name, so the superseded row and the row
+    # that replaced it point at the SAME path. Deleting by row alone would erase
+    # the file that was just produced. Only remove a file no surviving row claims.
+    still_referenced = {str(row.file_path or "") for row in survivors}
+    removed = 0
+    for row in doomed:
+        stored_path = str(row.file_path or "")
+        repo.delete_artifact(row.artifact_registry_id)
+        removed += 1
+        if not stored_path or stored_path in still_referenced:
+            continue
+        try:
+            path = resolve_artifact_path(stored_path)
+            if path.is_file():
+                path.unlink()
+        except OSError:
+            # The row is the record of truth; a file we cannot remove is a
+            # leftover for the maintenance sweep, not a reason to fail a render.
+            pass
+    return removed
 
 
 def relative_to_outputs(file_path: Path, outputs_dir: Path | None = None) -> str:
@@ -98,6 +152,11 @@ def persist_artifacts(
             )
             session.flush()
             artifact_ids.append(row.artifact_registry_id)
+            _supersede_older_generations(
+                repo, run_id, artifact.artifact_kind,
+                str(metadata.get("artifact_mode") or ""),
+                artifact_generations_to_keep(),
+            )
             repo.add_audit_log(
                 entity_type="artifact_registry",
                 entity_id=row.artifact_registry_id,
