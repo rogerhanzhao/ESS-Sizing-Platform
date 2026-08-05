@@ -24,6 +24,16 @@ class SizingRun(Base, TimestampMixin, SourceVersionMixin, ActivePublishMixin):
         nullable=True,
         index=True,
     )
+    # A run may hang off another run. Today: an AC run under its DC run — the DC
+    # result is fixed and the AC configuration is the branch (owner ruling B,
+    # 2026-08-04). Self-referential, CASCADE, so deleting a DC run takes its AC
+    # branches with it rather than orphaning them.
+    parent_run_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("sizing_run.sizing_run_id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     run_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     started_at: Mapped[datetime] = mapped_column(default=utc_now, nullable=False)

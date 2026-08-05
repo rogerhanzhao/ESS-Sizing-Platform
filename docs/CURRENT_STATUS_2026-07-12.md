@@ -416,13 +416,20 @@ outputs directory** so the database stays portable; a path outside that tree, an
 any row written before 2026-08-04, stays absolute and still resolves. Always read
 through `artifact_service.resolve_artifact_path` — never `Path(row.file_path)`.
 
-**Only DC creates a Run today.** AC attaches to the same run as
-`run_output_snapshot(kind="ac_runtime_snapshot_v1")`; SLD / Layout attach as
-`artifact_registry` rows. Consequence, stated so it is not rediscovered: there is
-no AC history in the UI (rows accumulate, only the latest is read) and one DC
-result cannot carry two AC alternatives. Promoting AC to its own Run is an
-approved-in-principle change (owner ruling B) that is NOT yet done — see
-`docs/AC_RUN_PROMOTION_DESIGN.md`.
+**AC alternatives branch off a DC run** (owner ruling B, 2026-08-04, step 1 done).
+`sizing_run.parent_run_id` is self-referential with CASCADE, and
+`services/ac_run_service.persist_ac_run` records one run per DISTINCT AC
+configuration under its DC run. Identity is a hash of the 17 fields that actually
+decide a scheme — PCS count and rating, transformer size and topology, LV winding
+count, the DC allocation plan, the bound product — so recomputing an unchanged
+configuration reuses its run and the table counts alternatives tried, not clicks.
+An AC run does not duplicate a Case: `SizingCaseInput` has no AC field at all,
+which `test_ac_run_service.py` verifies rather than assumes.
+
+Still true after step 1: SLD / Layout / Report artifacts attach to the DC run.
+Re-addressing them to the AC run is step 2 and is NOT done — see
+`docs/AC_RUN_PROMOTION_DESIGN.md`. Until then, switching AC alternatives does not
+by itself give you a second set of drawings.
 
 **Bounded growth** (owner requirement 2026-08-04: 日志和数据库不能无限制的变大).
 Measured on a working checkout before the fix: 479 run directories, 5081 files,

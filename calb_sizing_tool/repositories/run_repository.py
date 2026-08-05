@@ -25,6 +25,7 @@ class RunRepository:
         sizing_case_id: str | None,
         run_type: str,
         status: str,
+        parent_run_id: str | None = None,
         input_summary_json: dict | None = None,
         output_summary_json: dict | None = None,
         version_tag: str | None = None,
@@ -33,6 +34,7 @@ class RunRepository:
         row = SizingRun(
             project_id=project_id,
             sizing_case_id=sizing_case_id,
+            parent_run_id=parent_run_id,
             run_type=run_type,
             status=status,
             input_summary_json=input_summary_json or {},
@@ -243,3 +245,34 @@ class RunRepository:
         )
         if row is not None:
             self.session.delete(row)
+
+    def list_child_runs(self, parent_run_id: str, *, run_type: str | None = None) -> list[SizingRun]:
+        """Runs branching off ``parent_run_id``, newest first."""
+        query = self.session.query(SizingRun).filter(
+            SizingRun.parent_run_id == parent_run_id
+        )
+        if run_type:
+            query = query.filter(SizingRun.run_type == run_type)
+        return query.order_by(SizingRun.started_at.desc()).all()
+
+    def find_child_run_by_hash(
+        self, parent_run_id: str, run_type: str, content_hash: str
+    ) -> SizingRun | None:
+        """A child run whose INPUT snapshot carries ``content_hash``.
+
+        This is what stops the run table growing per click: re-running with an
+        unchanged configuration finds the existing branch instead of adding one.
+        """
+        if not content_hash:
+            return None
+        return (
+            self.session.query(SizingRun)
+            .join(RunInputSnapshot, RunInputSnapshot.sizing_run_id == SizingRun.sizing_run_id)
+            .filter(
+                SizingRun.parent_run_id == parent_run_id,
+                SizingRun.run_type == run_type,
+                RunInputSnapshot.content_hash == content_hash,
+            )
+            .order_by(SizingRun.started_at.desc())
+            .first()
+        )

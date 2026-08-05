@@ -46,6 +46,7 @@ from calb_sizing_tool.services.ac_mixed_station import (
     validate_ac_block_rows,
 )
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot
+from calb_sizing_tool.services.ac_run_service import persist_ac_run
 from calb_sizing_tool.services.sld_data_source_service import persist_ac_runtime_snapshot, resolve_preferred_ac_snapshot
 from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.state.project_state import bump_run_id_ac, get_project_state, init_project_state
@@ -1094,7 +1095,36 @@ def show():
                     source_ref="ac_view",
                     actor=_auth_ctx.username,
                 )
-                st.info("Configuration saved.")
+                # Record this AC alternative under the DC run. Identical
+                # configurations reuse their run, so the history counts the
+                # alternatives actually tried, not the times Save was pressed.
+                #
+                # Fail-soft on purpose: the configuration itself is already saved
+                # by the call above, which is what SLD and the report read. This
+                # is bookkeeping, and bookkeeping must never cost a user their
+                # save.
+                try:
+                    _ac_run = persist_ac_run(
+                        dc_run_id=source_run_id,
+                        ac_inputs=ac_inputs,
+                        ac_output=ac_output,
+                        actor=_auth_ctx.username,
+                        source_ref="ac_view",
+                    )
+                except Exception:
+                    _ac_run = None
+                if _ac_run is None:
+                    st.info("Configuration saved.")
+                elif _ac_run.reused:
+                    st.info(
+                        f"Configuration saved — unchanged, so it stays AC alternative "
+                        f"1 of {_ac_run.alternatives} on this DC run."
+                    )
+                else:
+                    st.info(
+                        f"Configuration saved as a new AC alternative "
+                        f"({_ac_run.alternatives} on this DC run)."
+                    )
             else:
                 st.success("AC sizing complete (guest mode — session only).")
 
