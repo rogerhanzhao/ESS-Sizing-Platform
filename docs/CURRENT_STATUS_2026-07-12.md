@@ -394,6 +394,42 @@ seams; maintenance should exploit them instead of scanning everything.
 | Web UI | `ui/` (18 files, 6.7k), `state/`, `app.py` | ~7.5k lines | Medium — copy and workflow polish |
 | Platform | `infra/` (36 files), `db/`, `importers/`, `adapters/`, `migrations/` | ~3.4k lines | Low — deployment/migration driven |
 
+### 4.1b Data model — owner rulings 2026-08-04
+
+**Project → Case → Run**, and what each layer means:
+
+| Layer | Meaning | Mutability |
+| --- | --- | --- |
+| `Project` | commercial entity; `project_code` globally unique | long-lived |
+| `SizingCase` | **一个方案 x 一个 scenario**, inside one project | mutable — `input_json` tracks the latest successful run |
+| `SizingRun` | one execution, immutable, input + output each stored with a content hash | append-only |
+
+**Case identity is `(project_id, case_code)`** (owner ruling A, 2026-08-04). A Case
+is 方案 x scenario, so one code means one scenario and the scenario belongs IN the
+code. Two projects may reuse a code. Reusing a code under a second scenario is a
+naming clash and is refused in plain words, not as an IntegrityError. Migration
+`20260804_0008`; locked by `tests/unit/test_case_identity.py`.
+
+**Artifacts** are files on disk under `outputs/artifacts/<run_id>/<plugin_id>/`,
+registered in `artifact_registry`. The stored `file_path` is **relative to the
+outputs directory** so the database stays portable; a path outside that tree, and
+any row written before 2026-08-04, stays absolute and still resolves. Always read
+through `artifact_service.resolve_artifact_path` — never `Path(row.file_path)`.
+
+**Only DC creates a Run today.** AC attaches to the same run as
+`run_output_snapshot(kind="ac_runtime_snapshot_v1")`; SLD / Layout attach as
+`artifact_registry` rows. Consequence, stated so it is not rediscovered: there is
+no AC history in the UI (rows accumulate, only the latest is read) and one DC
+result cannot carry two AC alternatives. Promoting AC to its own Run is an
+approved-in-principle change (owner ruling B) that is NOT yet done — see
+`docs/AC_RUN_PROMOTION_DESIGN.md`.
+
+**Guest mode never touches the database**: the login page injects
+`roles=["guest"]` with a synthetic `user_id`, and DC results live in
+`st.session_state`. Note that `ensure_system_roles()` seeds only `admin` and
+`normal_user`, so a persistent guest ACCOUNT cannot be created from the admin
+portal — guest is the button, not a role row.
+
 ### 4.2 Working rules effective immediately (no code moves)
 
 1. **Scope declaration first**: every task states up front which domains it

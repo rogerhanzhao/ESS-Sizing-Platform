@@ -101,8 +101,17 @@ class CaseRepository:
     def get_case_by_id(self, sizing_case_id: str) -> SizingCase | None:
         return self.session.query(SizingCase).filter_by(sizing_case_id=sizing_case_id).one_or_none()
 
-    def get_case_by_code(self, case_code: str) -> SizingCase | None:
-        return self.session.query(SizingCase).filter_by(case_code=case_code).one_or_none()
+    def get_case_by_code(self, case_code: str, project_id: str | None = None) -> SizingCase | None:
+        """Look a Case up by its code.
+
+        A Case is identified by (project_id, case_code); pass ``project_id``.
+        Omitting it searches across projects, which is only correct for a
+        migration-era caller and returns the first match by creation order.
+        """
+        query = self.session.query(SizingCase).filter_by(case_code=case_code)
+        if project_id:
+            return query.filter_by(project_id=project_id).one_or_none()
+        return query.order_by(SizingCase.created_at.asc()).first()
 
     def save_case_input(
         self,
@@ -195,13 +204,23 @@ class CaseRepository:
         version_tag: str | None = None,
         source_ref: str | None = None,
     ) -> SizingCase:
+        # Identity is (project_id, case_code). scenario_mode is NOT part of the
+        # lookup: a Case IS 方案 x scenario, so one code means one scenario. Adding
+        # scenario_mode here made the same code under a different scenario miss the
+        # existing row and then collide on insert.
         row = (
             self.session.query(SizingCase)
-            .filter_by(project_id=project_id, case_code=case_code, scenario_mode=scenario_mode)
+            .filter_by(project_id=project_id, case_code=case_code)
             .order_by(SizingCase.created_at.desc())
             .first()
         )
         if row is not None:
+            if row.scenario_mode != scenario_mode:
+                raise ValueError(
+                    f"Case code '{case_code}' already exists in this project under "
+                    f"scenario '{row.scenario_mode}'. A Case is one scenario, so use a "
+                    f"different code for '{scenario_mode}'."
+                )
             return row
         return self.create_case(
             project_id=project_id,

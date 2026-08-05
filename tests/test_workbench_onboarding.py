@@ -112,6 +112,7 @@ def test_duplicate_case_is_rejected_without_a_technical_exception(monkeypatch):
     from calb_sizing_tool.ui import workbench_view
 
     observed_case_codes = []
+    observed_project_ids = []
 
     @contextmanager
     def fake_session_scope():
@@ -121,7 +122,10 @@ def test_duplicate_case_is_rejected_without_a_technical_exception(monkeypatch):
         def __init__(self, _session):
             pass
 
-        def get_case_by_code(self, case_code):
+        def get_case_by_code(self, case_code, project_id=None):
+            # Identity is (project_id, case_code): the view must scope its
+            # duplicate check, or one project's code would block another's.
+            observed_project_ids.append(project_id)
             observed_case_codes.append(case_code)
             return object()
 
@@ -145,7 +149,9 @@ def test_duplicate_case_is_rejected_without_a_technical_exception(monkeypatch):
     app.button[0].click()
     app.run()
 
-    assert observed_case_codes == ["project-1-existing-case"]
+    # A Case is 方案 x scenario, so the scenario belongs in the code.
+    assert observed_case_codes == ["project-1-existing-case-container-only"]
+    assert observed_project_ids == ["project-1"]
     assert not app.exception
     assert [item.value for item in app.error] == [
         "A case with the same name already exists in this project."

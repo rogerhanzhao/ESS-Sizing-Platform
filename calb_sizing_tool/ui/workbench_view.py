@@ -579,14 +579,23 @@ def _render_create_case_form(context: dict, auth_user, *, form_key: str) -> None
                 proj_code = context.get("project_code") or slugify(
                     context.get("project_name") or "project", fallback="project"
                 )
-                case_code = f"{proj_code}-{slugify(case_name_input, fallback='case')}"
+                # A Case is 方案 x scenario (owner ruling 2026-08-04), so the scenario
+                # belongs IN the code. Without it, the same plan under two scenarios
+                # produced one code and the second create was refused.
+                case_code = (
+                    f"{proj_code}-{slugify(case_name_input, fallback='case')}"
+                    f"-{slugify(scenario_mode, fallback='scenario')}"
+                )
                 duplicate_case = False
                 case = None
                 try:
                     with session_scope() as session:
                         repo = CaseRepository(session)
                         AccessControlService(session, auth_user).ensure_project_access(context["project_id"])
-                        duplicate_case = repo.get_case_by_code(case_code) is not None
+                        # Scoped to THIS project: another project may reuse a code.
+                        duplicate_case = repo.get_case_by_code(
+                            case_code, project_id=context["project_id"]
+                        ) is not None
                         if not duplicate_case:
                             case = repo.create_case(
                                 project_id=context["project_id"],

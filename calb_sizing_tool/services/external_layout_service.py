@@ -11,7 +11,11 @@ from calb_sizing_tool.runtime_paths import ensure_outputs_dir
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot
 from calb_sizing_tool.schemas.layout_inputs import LayoutRenderOptions
 from calb_sizing_tool.services.access_control_service import AccessControlService
-from calb_sizing_tool.services.artifact_service import persist_artifacts
+from calb_sizing_tool.services.artifact_service import (
+    persist_artifacts,
+    relative_to_outputs,
+    resolve_artifact_path,
+)
 from calb_sizing_tool.services.auth_service import AuthUser
 from calb_sizing_tool.services.sld_data_source_service import load_persisted_ac_snapshot
 from calb_sizing_tool.utils.files import safe_child_path, safe_storage_filename
@@ -102,6 +106,9 @@ def submit_external_layout_artifact(
     stored_file_name = safe_storage_filename(file_name, fallback="layout_ai_upload")
     file_path = safe_child_path(outputs_dir, stored_file_name, fallback="layout_ai_upload")
     file_path.write_bytes(file_bytes)
+    # Relative to the outputs directory, for the same reason as artifact_registry:
+    # an absolute path pins the database to one host.
+    stored_path = relative_to_outputs(file_path)
     content_hash = _hash_bytes(file_bytes)
 
     with session_scope(db_url) as session:
@@ -112,7 +119,7 @@ def submit_external_layout_artifact(
             plugin_version="1.0.0",
             artifact_kind="layout_ai_preview",
             file_name=stored_file_name,
-            file_path=str(file_path),
+            file_path=stored_path,
             media_type=media_type,
             content_hash=content_hash,
             status="pending_review",
@@ -176,7 +183,7 @@ def review_external_layout(
             }
 
             # Promote to artifact registry
-            content = Path(submission.file_path).read_bytes()
+            content = resolve_artifact_path(submission.file_path).read_bytes()
             persist_artifacts(
                 run_id=submission.sizing_run_id,
                 artifacts=[

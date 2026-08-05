@@ -6,6 +6,7 @@ from pathlib import Path
 from calb_sizing_tool.adapters.excel_loader_adapter import load_dc_excel_bundle_from_path
 from calb_sizing_tool.infra.db.models import ArtifactRegistry
 from calb_sizing_tool.infra.db.session import session_scope
+from calb_sizing_tool.services.artifact_service import resolve_artifact_path
 from calb_sizing_tool.schemas.case import SizingCaseInput
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot, SldRenderOptions
 from calb_sizing_tool.schemas.sld_render_input import legacy_sld_override_preset
@@ -162,28 +163,63 @@ def test_sld_artifact_registry_records_traceability(sample_excel_path, tmp_path)
             assert ".concept." in artifact.file_name
 
         artifacts_by_kind = {artifact.artifact_kind: artifact for artifact in artifacts}
-        svg_text = Path(artifacts_by_kind["sld_svg"].file_path).read_text(encoding="utf-8")
+        svg_text = resolve_artifact_path(artifacts_by_kind["sld_svg"].file_path).read_text(encoding="utf-8")
         assert "CONCEPT ONLY - NOT FOR CONSTRUCTION" in svg_text
         assert "MISSING:" not in svg_text
         manifest = json.loads(
-            Path(artifacts_by_kind["sld_readiness_manifest_json"].file_path).read_text(encoding="utf-8")
+            resolve_artifact_path(artifacts_by_kind["sld_readiness_manifest_json"].file_path).read_text(encoding="utf-8")
         )
         assert manifest["document_status"] == "concept"
         assert manifest["formal_readiness"]["ready"] is False
         site_index = json.loads(
-            Path(artifacts_by_kind["site_electrical_index_json"].file_path).read_text(encoding="utf-8")
+            resolve_artifact_path(artifacts_by_kind["site_electrical_index_json"].file_path).read_text(encoding="utf-8")
         )
         assert site_index["sheet_id"] == "SLD-01"
         assert site_index["quantity_summary"]["ac_block_count"] == 1
         assert site_index["scope"]["typical_sld_reference"] == "SLD-02 Typical AC Block SLD (AC Block 1)."
         design_basis = json.loads(
-            Path(artifacts_by_kind["sld_design_basis_schedule_json"].file_path).read_text(encoding="utf-8")
+            resolve_artifact_path(artifacts_by_kind["sld_design_basis_schedule_json"].file_path).read_text(encoding="utf-8")
         )
         assert design_basis["sheet_id"] == "SLD-03"
         assert design_basis["document_status"] == "concept"
         interface_scope = json.loads(
-            Path(artifacts_by_kind["sld_interface_scope_json"].file_path).read_text(encoding="utf-8")
+            resolve_artifact_path(artifacts_by_kind["sld_interface_scope_json"].file_path).read_text(encoding="utf-8")
         )
         assert interface_scope["sheet_id"] == "SLD-04"
         assert "must be confirmed" in interface_scope["scope_status"]
         assert interface_scope["scope_zones"][0]["responsibility"] == "To be confirmed by project agreement."
+
+
+def test_artifact_paths_are_portable_not_pinned_to_one_host(sample_excel_path, tmp_path):
+    """artifact_registry.file_path must survive moving the database.
+
+    It used to store an ABSOLUTE path, so restoring a database on another host —
+    or simply moving outputs/ — left every row claiming a figure it could no
+    longer produce. Paths inside the outputs tree are now stored relative to it
+    and resolved on read; anything outside stays absolute, which is the old
+    behaviour and is still correct for a caller that redirects its outputs.
+    """
+    from pathlib import Path
+
+    from calb_sizing_tool.runtime_paths import get_outputs_dir
+    from calb_sizing_tool.services.artifact_service import (
+        relative_to_outputs,
+        resolve_artifact_path,
+    )
+
+    outputs = get_outputs_dir()
+    inside = outputs / "artifacts" / "run-x" / "plugin" / "fig.svg"
+    stored = relative_to_outputs(inside)
+    assert not Path(stored).is_absolute(), stored
+    assert stored == "artifacts/run-x/plugin/fig.svg"
+    assert resolve_artifact_path(stored).resolve() == inside.resolve()
+
+    # Outside the outputs tree there is nothing to be relative to.
+    outside = tmp_path / "elsewhere" / "fig.svg"
+    stored_outside = relative_to_outputs(outside)
+    assert Path(stored_outside).is_absolute()
+    assert resolve_artifact_path(stored_outside) == Path(stored_outside)
+
+    # A legacy absolute row keeps working untouched.
+    legacy = str(inside.resolve())
+    assert resolve_artifact_path(legacy) == Path(legacy)
