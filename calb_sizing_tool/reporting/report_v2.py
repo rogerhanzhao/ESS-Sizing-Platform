@@ -276,6 +276,13 @@ def _add_cover_page_v2(doc: Document, ctx: ReportContext, brand: BrandProfile) -
     info_lines = [
         f"Project: {ctx.project_name}",
         f"Case: {ctx.case_name or '—'}",
+    ]
+    # Only when the DC run carries more than one AC alternative. A single
+    # alternative is the normal case and needs no label — printing one would put
+    # a meaningless "AC Alternative: A" on every ordinary cover.
+    if ctx.ac_alternative_label:
+        info_lines.append(f"AC Alternative: {ctx.ac_alternative_label}")
+    info_lines += [
         f"Date: {generated}",
         f"Tool Version: {brand.tool_version_label}",
     ]
@@ -977,8 +984,18 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         ("Case", ctx.case_name or "—"),
         ("DC Sizing Data", dc_source),
         ("AC Sizing Data", ac_source),
-        ("Report Generated", ctx.report_generated_at or datetime.datetime.now().strftime("%Y-%m-%d %H:%M")),
     ]
+    # Which AC branch of this DC run the drawings and schedules came from. Shown
+    # only when there is something to tell apart (>= 2 alternatives).
+    if ctx.ac_alternative_label:
+        prov_rows.append((
+            "AC Alternative",
+            f"{ctx.ac_alternative_label} (AC run {ctx.ac_alternative_id})"
+            if ctx.ac_alternative_id else ctx.ac_alternative_label,
+        ))
+    prov_rows.append(
+        ("Report Generated", ctx.report_generated_at or datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+    )
     _add_table(doc, prov_rows, ["Field", "Value"])
     if not ctx.run_id:
         doc.add_paragraph(

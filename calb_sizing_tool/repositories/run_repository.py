@@ -253,7 +253,12 @@ class RunRepository:
         )
         if run_type:
             query = query.filter(SizingRun.run_type == run_type)
-        return query.order_by(SizingRun.started_at.desc()).all()
+        # The id is a tiebreaker, not decoration: AC alternatives are LABELLED by
+        # their position in this list (ac_run_service.ac_alternative_label), and
+        # two runs created in the same clock tick would otherwise be free to swap
+        # places between calls — renaming an alternative on an already-issued
+        # report.
+        return query.order_by(SizingRun.started_at.desc(), SizingRun.sizing_run_id.desc()).all()
 
     def find_child_run_by_hash(
         self, parent_run_id: str, run_type: str, content_hash: str

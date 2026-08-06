@@ -828,14 +828,26 @@ def sanitize_filename(text: str, max_length: int = 80) -> str:
     return cleaned
 
 
-def make_proposal_filename(project_name: str | None, version: str = "V2.1", prefix: str = "CALB") -> str:
+def make_proposal_filename(project_name: str | None, version: str = "V2.1",
+                           prefix: str = "CALB",
+                           ac_alternative: str | None = None) -> str:
+    """Proposal file name, optionally naming the AC alternative it reports.
+
+    ``ac_alternative`` is the short label from
+    ac_run_service.ac_alternative_label ("A", "B", …). It is appended so two
+    alternatives of one DC run download as two files instead of one overwriting
+    the other. It is None when the run has only one alternative, so the ordinary
+    case keeps the file name it always had.
+    """
     stamp = datetime.date.today().strftime("%Y%m%d")
     safe_project = sanitize_filename(project_name or "")
     safe_version = sanitize_filename(version or "", max_length=12) or "V2.1"
     safe_prefix = sanitize_filename(prefix or "", max_length=16) or "CALB"
+    safe_alt = sanitize_filename(ac_alternative or "", max_length=8)
+    suffix = f"_{safe_version}_AC-{safe_alt}" if safe_alt else f"_{safe_version}"
     if safe_project:
-        return f"{safe_prefix}_{safe_project}_BESS_Proposal_{stamp}_{safe_version}.docx"
-    return f"{safe_prefix}_BESS_Proposal_{stamp}_{safe_version}.docx"
+        return f"{safe_prefix}_{safe_project}_BESS_Proposal_{stamp}{suffix}.docx"
+    return f"{safe_prefix}_BESS_Proposal_{stamp}{suffix}.docx"
 
 
 def create_dc_report(dc_output: dict, ctx: dict) -> bytes:

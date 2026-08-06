@@ -390,7 +390,8 @@ seams; maintenance should exploit them instead of scanning everything.
 | Arrangement geometry | `calb_diagrams/ac_block_arrangement_v2.py` (linear row + SHARED equipment glyphs), `ac_block_bilateral_layout.py` (central-station 4+4) | ~1.3k lines | Low — geometry is owner-ruled; both engines draw through the shared `draw_dc_container` / `draw_mv_station` glyphs |
 | Site array (L2) | `calb_diagrams/site_array_concept.py` | ~0.7k lines | Medium — owns the minimum-land packing search, the connected fire-road loop and the reported land metrics; tiles any `BlockForm`, including a central-station block via its real placements |
 | Layout / constraint gate | `plugins/layout_*`, `services/site_constraint_*` | ~1k lines | Medium — P2 Master Layout work lands here. `services/layout_service.ARRANGEMENT_PLUGIN_ID` names the ONE arrangement renderer the page offers |
-| Reporting | `reporting/` (5 files, 2.0k) | 2k lines | Low — wording/section changes |
+| **AC alternatives (identity)** | `services/ac_run_service.py` | ~0.3k lines | **Low, but load-bearing** — SOLE owner of what makes two AC schemes different (the 17-field identity hash, the only gate against over-splitting) and of how siblings are NAMED (`ac_alternative_label`, oldest-first `A`/`B`/…). Report file names, covers and provenance all quote that label; no other module may compute one. |
+| Reporting | `reporting/` (5 files, 2.0k) | 2k lines | Low — wording/section changes; the AC alternative label is CONSUMED here (file name, cover, provenance), never derived |
 | Web UI | `ui/` (18 files, 6.7k), `state/`, `app.py` | ~7.5k lines | Medium — copy and workflow polish |
 | Platform | `infra/` (36 files), `db/`, `importers/`, `adapters/`, `migrations/` | ~3.4k lines | Low — deployment/migration driven |
 
@@ -435,6 +436,27 @@ and a pre-AC-run database needs no migration. Pages ask
 `site_constraint_set` deliberately stays on the DC run: site boundary and access
 do not change with an AC choice. The workbench shows an AC alternative switcher
 only when a DC run actually has two or more.
+
+**Reports are versioned per alternative** (step 4 done 2026-08-06). Both versions
+used to download under the SAME file name, so the second silently replaced the
+first — the "最终报告可以重新生成一个版本" half of ruling B was still open.
+`ac_run_service.ac_alternative_label(dc_run_id, ac_run_id)` names the siblings
+`A`, `B`, … **oldest first**, so a later alternative never renames an earlier one
+(and `list_child_runs` now orders by `started_at, sizing_run_id` so a clock-tick
+tie cannot swap two labels between calls). The label reaches
+`ReportContext.ac_alternative_label`, the proposal file name
+(`..._V2.1_AC-B.docx`), the cover, and the Document Provenance table.
+**It is None when the DC run has only one alternative** — the ordinary report's
+file name and wording are unchanged, which
+`tests/unit/test_report_ac_alternative_versioning.py` holds in both directions.
+
+**Still open, by design, not a bug**: `sld_data_source_service.load_persisted_ac_snapshot`
+reads the AC RUNTIME snapshot with `get_latest_output_snapshot_by_kind(dc_run_id, …)`
+— "the last AC saved", not "the selected alternative's AC". Already-generated
+figures and reports are unaffected (those are artifacts, resolved per
+alternative); what is affected is REGENERATING on alternative A after B was the
+last one saved. The fix is to write the runtime snapshot on the AC run and read
+it through the same ancestor walk. See `docs/AC_RUN_PROMOTION_DESIGN.md` §六.
 
 **Bounded growth** (owner requirement 2026-08-04: 日志和数据库不能无限制的变大).
 Measured on a working checkout before the fix: 479 run directories, 5081 files,

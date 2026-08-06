@@ -71,6 +71,11 @@ class ReportContext:
     # --- DB provenance (populated from workspace session state) ---
     run_id: Optional[str] = None
     ac_run_id: Optional[str] = None
+    # The AC ALTERNATIVE this report was produced from: "A", "B", … or None when
+    # the DC run has only one. Distinct from ac_run_id above, which is the older
+    # ac_output["source_ac_run_id"] provenance field.
+    ac_alternative_id: Optional[str] = None
+    ac_alternative_label: Optional[str] = None
     project_code: Optional[str] = None
     case_code: Optional[str] = None
     case_name: Optional[str] = None
@@ -539,6 +544,17 @@ def build_report_context(
     # NOTE: distinct from ac_run_id above, which is ac_output["source_ac_run_id"]
     # — an older provenance field, not the alternative selection.
     _artifact_run_id = state.get("active_ac_run_id") or run_id
+    # Name the alternative only when there IS more than one — otherwise every
+    # ordinary report would grow a label that distinguishes it from nothing.
+    _ac_alternative_id = state.get("active_ac_run_id") or None
+    _ac_alternative_label = None
+    if _ac_alternative_id and run_id:
+        try:
+            from calb_sizing_tool.services.ac_run_service import ac_alternative_label
+
+            _ac_alternative_label = ac_alternative_label(run_id, _ac_alternative_id)
+        except Exception:
+            _ac_alternative_label = None
     if (sld_pro_png_bytes is None or layout_png_bytes is None) and _artifact_run_id:
         try:
             from calb_sizing_tool.services.artifact_service import load_artifact_bytes_from_db
@@ -595,6 +611,8 @@ def build_report_context(
         layout_variant=(ac_output.get("layout_variant") if isinstance(ac_output, dict) else None),
         run_id=run_id,
         ac_run_id=ac_run_id,
+        ac_alternative_id=_ac_alternative_id,
+        ac_alternative_label=_ac_alternative_label,
         project_code=project_code,
         case_code=case_code,
         case_name=case_name,

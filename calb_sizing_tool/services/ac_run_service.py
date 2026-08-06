@@ -253,6 +253,43 @@ def list_ac_alternatives(dc_run_id: str, *, db_url: str | None = None) -> list[d
         ]
 
 
+def ac_alternative_label(dc_run_id: str | None, ac_run_id: str | None,
+                         *, db_url: str | None = None) -> str | None:
+    """A short, stable name for one alternative among its siblings: "A", "B", …
+
+    Ordered OLDEST FIRST, so A is the first alternative tried and a later one
+    never renames an earlier one.
+
+    Returns None when the DC run has fewer than two alternatives. A single
+    alternative needs no name — labelling it would churn every report filename
+    for the ordinary case, where there is nothing to tell apart.
+    """
+    parent = str(dc_run_id or "").strip()
+    target = str(ac_run_id or "").strip()
+    if not parent or not target:
+        return None
+    with session_scope(db_url) as session:
+        rows = RunRepository(session).list_child_runs(parent, run_type=AC_RUN_TYPE)
+        # Read the ids INSIDE the session — the ORM rows detach on exit.
+        newest_first = [row.sizing_run_id for row in rows]
+    if len(newest_first) < 2:
+        return None
+    for index, run_id in enumerate(reversed(newest_first)):
+        if run_id == target:
+            return _ordinal_label(index)
+    return None
+
+
+def _ordinal_label(index: int) -> str:
+    """0 -> A, 25 -> Z, 26 -> AA. Letters stay readable past 26 alternatives."""
+    label = ""
+    index += 1
+    while index > 0:
+        index, remainder = divmod(index - 1, 26)
+        label = chr(ord("A") + remainder) + label
+    return label
+
+
 def _now():
     from calb_sizing_tool.infra.db.base import utc_now
 
@@ -264,6 +301,7 @@ __all__ = [
     "AC_INPUT_SNAPSHOT_KIND",
     "AC_OUTPUT_SNAPSHOT_KIND",
     "AcRunResult",
+    "ac_alternative_label",
     "ac_configuration_hash",
     "list_ac_alternatives",
     "persist_ac_run",

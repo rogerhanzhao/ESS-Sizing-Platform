@@ -483,8 +483,12 @@ def show():
             # Never fall back to another brand's assets in a white-label report.
             st.error(str(exc))
         else:
+            # Naming the alternative keeps two AC branches of one DC run from
+            # downloading as the same file. ctx.ac_alternative_label is None when
+            # there is only one, so the ordinary report name is unchanged.
             proposal_filename = make_proposal_filename(
-                project_name, version=brand.version_tag, prefix=brand.filename_prefix
+                project_name, version=brand.version_tag, prefix=brand.filename_prefix,
+                ac_alternative=ctx.ac_alternative_label,
             )
             st.download_button(
                 f"Download Combined Report {brand.display_name}",
