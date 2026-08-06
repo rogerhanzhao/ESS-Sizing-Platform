@@ -390,7 +390,8 @@ seams; maintenance should exploit them instead of scanning everything.
 | Arrangement geometry | `calb_diagrams/ac_block_arrangement_v2.py` (linear row + SHARED equipment glyphs), `ac_block_bilateral_layout.py` (central-station 4+4) | ~1.3k lines | Low — geometry is owner-ruled; both engines draw through the shared `draw_dc_container` / `draw_mv_station` glyphs |
 | Site array (L2) | `calb_diagrams/site_array_concept.py` | ~0.7k lines | Medium — owns the minimum-land packing search, the connected fire-road loop and the reported land metrics; tiles any `BlockForm`, including a central-station block via its real placements |
 | Layout / constraint gate | `plugins/layout_*`, `services/site_constraint_*` | ~1k lines | Medium — P2 Master Layout work lands here. `services/layout_service.ARRANGEMENT_PLUGIN_ID` names the ONE arrangement renderer the page offers |
-| **AC alternatives (identity)** | `services/ac_run_service.py` | ~0.3k lines | **Low, but load-bearing** — SOLE owner of what makes two AC schemes different (the 17-field identity hash, the only gate against over-splitting) and of how siblings are NAMED (`ac_alternative_label`, oldest-first `A`/`B`/…). Report file names, covers and provenance all quote that label; no other module may compute one. |
+| **AC alternatives (identity)** | `services/ac_run_service.py` | ~0.3k lines | **Low, but load-bearing** — SOLE owner of what makes two AC schemes different (the 17-field identity hash, the only gate against over-splitting) and of how siblings are NAMED (`ac_alternative_label`, oldest-first `A`/`B`/…). Report file names, covers and provenance all quote that label; no other module may compute one. Its per-run snapshots double as the per-alternative AC configuration `sld_data_source_service` reads back — there is no second copy. |
+| **AC alternative resolution** | `services/sld_data_source_service.resolve_preferred_ac_snapshot`, `state/workspace_state.artifact_run_id()` | ~0.3k lines | **Low, but load-bearing** — the two places that answer "which alternative am I working from": one for INPUTS (the AC snapshot), one for OUTPUTS (the artifacts). Both read `active_ac_run_id` themselves. A page that decides this for itself is the defect pattern that gave the arrangement two implementations. |
 | Reporting | `reporting/` (5 files, 2.0k) | 2k lines | Low — wording/section changes; the AC alternative label is CONSUMED here (file name, cover, provenance), never derived |
 | Web UI | `ui/` (18 files, 6.7k), `state/`, `app.py` | ~7.5k lines | Medium — copy and workflow polish |
 | Platform | `infra/` (36 files), `db/`, `importers/`, `adapters/`, `migrations/` | ~3.4k lines | Low — deployment/migration driven |
@@ -450,13 +451,24 @@ tie cannot swap two labels between calls). The label reaches
 file name and wording are unchanged, which
 `tests/unit/test_report_ac_alternative_versioning.py` holds in both directions.
 
-**Still open, by design, not a bug**: `sld_data_source_service.load_persisted_ac_snapshot`
-reads the AC RUNTIME snapshot with `get_latest_output_snapshot_by_kind(dc_run_id, …)`
-— "the last AC saved", not "the selected alternative's AC". Already-generated
-figures and reports are unaffected (those are artifacts, resolved per
-alternative); what is affected is REGENERATING on alternative A after B was the
-last one saved. The fix is to write the runtime snapshot on the AC run and read
-it through the same ancestor walk. See `docs/AC_RUN_PROMOTION_DESIGN.md` §六.
+**Regeneration follows the alternative too** (step 5 done 2026-08-06, ruling B
+now fully landed). `load_persisted_ac_snapshot` used to read "the last AC saved
+on this DC run", so regenerating on alternative A after B was saved fed A's
+figures with B's parameters. It now takes `ac_run_id` and prefers that
+alternative's own `ac_case_input` / `ac_sizing_output` — snapshots
+`persist_ac_run` ALREADY writes from the same dicts, so this adds no storage and
+needs no migration; anything an alternative has not recorded falls back to the
+DC run's runtime snapshot, which is all a pre-AC-run database has.
+`run_id` stays the DC run: it is the identity anchor the pages cross-validate
+against, and a selection pointing at another DC run's branch is refused rather
+than used. `resolve_preferred_ac_snapshot` reads `active_ac_run_id` itself —
+same rule as `artifact_run_id()`, the decision lives in ONE place. AC sizing
+now selects the alternative it just saved (`clear_downstream=False`, because
+that session state IS the alternative's).
+
+**Still deliberate, not debt**: `site_constraint_set` stays on the DC run, and
+`external_layout_service` resolves "last AC saved" — an external caller passes a
+run id and has no alternative context.
 
 **Bounded growth** (owner requirement 2026-08-04: 日志和数据库不能无限制的变大).
 Measured on a working checkout before the fix: 479 run directories, 5081 files,

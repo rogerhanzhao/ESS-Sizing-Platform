@@ -51,7 +51,7 @@ from calb_sizing_tool.services.sld_data_source_service import persist_ac_runtime
 from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.state.project_state import bump_run_id_ac, get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
-from calb_sizing_tool.state.workspace_state import get_workspace_context
+from calb_sizing_tool.state.workspace_state import get_workspace_context, set_active_ac_run
 
 # Transformer topology is now selected explicitly. A two-winding transformer
 # can serve any supported PCS count on one common LV busbar; a three-winding
@@ -1113,6 +1113,15 @@ def show():
                     )
                 except Exception:
                     _ac_run = None
+                if _ac_run is not None:
+                    # Work continues on the alternative just saved: the SLD,
+                    # arrangement and report pages all resolve their inputs and
+                    # their drawings from the SELECTED alternative, and leaving
+                    # the selection on the previous one would regenerate from a
+                    # configuration the user just replaced.
+                    # clear_downstream=False: the session already HOLDS this
+                    # alternative's results — clearing would wipe the save.
+                    set_active_ac_run(_ac_run.run_id, clear_downstream=False)
                 if _ac_run is None:
                     st.info("Configuration saved.")
                 elif _ac_run.reused:

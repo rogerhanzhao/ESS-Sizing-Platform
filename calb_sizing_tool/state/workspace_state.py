@@ -133,15 +133,20 @@ def get_workspace_context() -> dict[str, Any]:
     }
 
 
-def set_active_ac_run(ac_run_id: str | None) -> None:
+def set_active_ac_run(ac_run_id: str | None, *, clear_downstream: bool = True) -> None:
     """Select which AC alternative the downstream pages work from.
 
-    Switching alternatives invalidates the drawings on screen — they belong to
-    the alternative that produced them — so the same runtime state is cleared as
-    when the run itself changes.
+    SWITCHING to an alternative invalidates what is on screen — that state came
+    from a different alternative — so the same runtime state is cleared as when
+    the run itself changes.
+
+    ``clear_downstream=False`` is for the one case where the session ALREADY
+    holds this alternative's state: AC sizing pointing the selection at the
+    configuration it just saved. Clearing there would wipe the very results the
+    user just produced.
     """
     current = st.session_state.get("active_ac_run_id")
-    if current != ac_run_id:
+    if clear_downstream and current != ac_run_id:
         _clear_downstream_runtime_state()
     st.session_state["active_ac_run_id"] = ac_run_id
 

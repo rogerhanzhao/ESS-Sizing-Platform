@@ -84,12 +84,57 @@ def _build_session_cached_snapshot(session_state: Mapping[str, Any] | None) -> A
     )
 
 
-def load_persisted_ac_snapshot(run_id: str | None, *, db_url: str | None = None) -> AcSnapshot | None:
+def _alternative_ac_snapshot(session, ac_run_id: str) -> AcSnapshot | None:
+    """The AC configuration recorded FOR ONE ALTERNATIVE, or None.
+
+    No new storage: ``ac_run_service.persist_ac_run`` already writes this
+    alternative's inputs and outputs as its own run snapshots, from the very
+    same dicts the runtime snapshot is built from. Reading them back is what
+    makes "regenerate on alternative A" use A's configuration instead of
+    whichever alternative was saved last.
+    """
+    from calb_sizing_tool.services.ac_run_service import (
+        AC_INPUT_SNAPSHOT_KIND,
+        AC_OUTPUT_SNAPSHOT_KIND,
+    )
+
+    repo = RunRepository(session)
+    output_row = repo.get_latest_output_snapshot_by_kind(ac_run_id, AC_OUTPUT_SNAPSHOT_KIND)
+    if output_row is None:
+        return None
+    output = output_row.snapshot_json if isinstance(output_row.snapshot_json, dict) else {}
+    input_row = repo.get_latest_input_snapshot_by_kind(ac_run_id, AC_INPUT_SNAPSHOT_KIND)
+    inputs = input_row.snapshot_json if input_row is not None and isinstance(input_row.snapshot_json, dict) else {}
+    return _build_ac_snapshot({"inputs": inputs, "output": output, "results": {}})
+
+
+def load_persisted_ac_snapshot(run_id: str | None, *,
+                               ac_run_id: str | None = None,
+                               db_url: str | None = None) -> AcSnapshot | None:
+    """The persisted AC configuration for a DC run, preferring one alternative.
+
+    ``run_id`` is always the DC run — it stays the identity anchor that
+    ``_snapshot_matches_run`` and the pages' cross-validation check against, and
+    an AC configuration is still computed FROM that DC result.
+
+    ``ac_run_id`` is the selected alternative (owner ruling B). Its own
+    configuration wins; without it, or when that alternative has nothing
+    recorded, this falls back to the DC run's runtime snapshot — "the last AC
+    saved", which is exactly what every database written before AC runs existed
+    contains. So no migration, and single-alternative projects are untouched.
+    """
     resolved_run_id = str(run_id or "").strip()
-    if not resolved_run_id:
+    resolved_ac_run_id = str(ac_run_id or "").strip()
+    if not resolved_run_id and not resolved_ac_run_id:
         return None
     try:
         with session_scope(db_url) as session:
+            if resolved_ac_run_id:
+                alternative = _alternative_ac_snapshot(session, resolved_ac_run_id)
+                if alternative is not None:
+                    return alternative
+            if not resolved_run_id:
+                return None
             repo = RunRepository(session)
             row = repo.get_latest_output_snapshot_by_kind(resolved_run_id, AC_RUNTIME_SNAPSHOT_KIND)
             if row is None:
@@ -109,8 +154,24 @@ def resolve_preferred_ac_snapshot(
     project_state: Mapping[str, Any] | None,
     shared_state: Any,
     session_state: Mapping[str, Any] | None,
+    ac_run_id: str | None = None,
     db_url: str | None = None,
 ) -> AcSnapshotResolution:
+    # ac_run_id defaults to the selected alternative, so a page that never
+    # thinks about alternatives still regenerates from the right one. Reading it
+    # here rather than in three pages is the same rule as artifact_run_id():
+    # this decision may exist in ONE place.
+    if ac_run_id is None and isinstance(session_state, Mapping):
+        ac_run_id = session_state.get("active_ac_run_id")
+
+    # The alternative's own configuration first — but only if it really belongs
+    # to this DC run. A stale selection pointing at another run's branch must
+    # fall through to the DC run's snapshot, not silently supply a foreign one.
+    if str(ac_run_id or "").strip():
+        alternative = load_persisted_ac_snapshot(None, ac_run_id=ac_run_id, db_url=db_url)
+        if _snapshot_matches_run(alternative, run_id):
+            return AcSnapshotResolution(snapshot=alternative, source="persisted_ac_alternative")
+
     persisted = load_persisted_ac_snapshot(run_id, db_url=db_url)
     if _snapshot_matches_run(persisted, run_id):
         return AcSnapshotResolution(snapshot=persisted, source="persisted_run_snapshot")

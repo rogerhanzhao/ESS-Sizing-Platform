@@ -9,7 +9,8 @@
 需要一条明确的去重规则来挡住。
 
 **当前状态**：第 1、2、3 步**均已实施**（2026-08-04），
-第 4 步"报告分版本"**已实施**（2026-08-06）。见 §四。
+第 4 步"报告分版本"与第 5 步"重新生成也按方案取输入"**已实施**（2026-08-06）。
+裁决 B 至此**全部落地**。见 §四。
 
 ---
 
@@ -162,19 +163,49 @@ artifact 改挂 AC Run 后，**每个 AC 方案会有自己的一套图**，
 `CALB_ARTIFACT_GENERATIONS`（每条 lineage 只留最新一代）依然生效，
 但方案数本身成为新的增长维度 —— 去重规则是唯一的闸门，不要放宽它。
 
+### ✅ 第 5 步 —— 重新生成也按方案取输入（已完成 2026-08-06）
+
+第 2、3、4 步之后，**已经生成的**图纸和报告都跟着方案走了，
+但 `load_persisted_ac_snapshot` 读的还是
+`get_latest_output_snapshot_by_kind(dc_run_id, …)` —— "**最后保存的那套 AC**"。
+于是**重新生成**会走味：在方案 A 上点重算 SLD，喂进去的可能是方案 B 的参数，
+图上写着 A，画的是 B。
+
+**修法：不新增任何存储。** `persist_ac_run` 本来就把每个方案的
+inputs / output 各存了一份快照，**而且和运行态快照来自同一对 dict**。
+读取端优先取选中方案的那一份即可：
+
+```
+load_persisted_ac_snapshot(dc_run_id, ac_run_id=选中方案)
+    1. 方案自己的 ac_case_input / ac_sizing_output  → 有就用
+    2. 否则回退 DC Run 的 ac_runtime_snapshot_v1   → 老库就是这一条
+```
+
+- **`run_id` 始终是 DC Run**：它是身份锚点，`_snapshot_matches_run` 和页面的
+  run/case/project 交叉校验都认它；AC 配置本来也是**从这份 DC 结果算出来的**。
+  方案快照里的 `source_run_id` 仍是 DC Run，所以校验一行都不用改。
+- **选到别的 DC Run 的分支 → 不用**，落回本 DC Run 的快照。
+  陈旧的选择绝不能把别人的配置偷渡进来。
+- `resolve_preferred_ac_snapshot` **自己**从 `session_state` 读
+  `active_ac_run_id` —— 和 `artifact_run_id()` 同一条规矩：
+  **这个判断只能有一处**，三个页面白拿。
+
+配套：AC 页面保存成功后 `set_active_ac_run(新方案, clear_downstream=False)`。
+不指过去的话，下一页会拿刚被替换掉的那个方案重算。
+`clear_downstream=False` 是必须的 —— 此时 session 里装的**就是**这个方案的结果，
+照常清理会把用户刚算出来的东西一起抹掉。切换方案时默认仍然清理。
+
+回归锁 `tests/unit/test_ac_alternative_snapshot_scope.py`（9 条）。
+
 ---
 
 ## 六、四步之后仍然成立的限制
 
-前三条已经解决（方案能并存、图纸跟着方案走、报告分版本），**还剩一条**：
+**没有了。** 裁决 B 的四条——方案能并存、图纸跟着方案走、报告分版本、
+重新生成也按方案取输入——均已落地（第 1–5 步）。
 
-- `sld_data_source_service.load_persisted_ac_snapshot` 读 AC 运行态快照仍用
-  `get_latest_output_snapshot_by_kind(dc_run_id, …)`，即"**最后保存的那套 AC**"，
-  不是"选中的那个方案的那套 AC"。
-  **影响面**：已经生成的图纸和报告不受影响 —— 它们是 artifact，按方案取
-  （第 2 步）。受影响的是**重新生成**：在方案 A 上点重算 SLD，
-  取到的输入可能是最后保存的方案 B 的配置。
-  **要改的是**：`persist_ac_runtime_snapshot` 落到 AC Run 上，
-  读取端同样走 `parent_run_id` 祖先回退（与 artifact 一致，老库不用迁移）。
+仍然**故意不动**的两处，是设计选择而不是欠账：
 
-这条已写进 `docs/CURRENT_STATUS_2026-07-12.md` §4.1b，避免被当成 bug 反复发现。
+- `site_constraint_set` 留在 DC Run：场地边界、进场、退界不随 AC 方案变。
+- `external_layout_service` 的对外接口按 DC Run 取"最后保存的那套 AC"：
+  外部调用方只给 run_id，没有方案上下文。
