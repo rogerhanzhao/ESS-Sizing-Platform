@@ -4,8 +4,8 @@
 **可自行复现的验证方式**，不要求相信本文——请直接跑验证命令。
 
 **分支**：`ops/ubuntu-docker-coexist-20260311`（未新建分支）
-**基线**：`1f053b7` → **末端 `2977966`**，共 6 次提交
-**测试**：起始 633 passed / 2 skipped → **末端 665 passed / 2 skipped**
+**基线**：`1f053b7` → 分支末端，共 8 次提交
+**测试**：起始 633 passed / 2 skipped → **末端 684 passed / 2 skipped**
 **冻结正典**：`services/ac_sizing_service.py`、`services/dc_pipeline_service.py`、
 `common/ac_block.py`、`common/allocation.py` —— **本轮一个字节未改**
 
@@ -28,6 +28,8 @@ git diff --name-only 1f053b7..HEAD | grep -E "ac_sizing_service|dc_pipeline_serv
 | `9b7f2ab` | 回收"有文件、没数据库行"的产物 + 堵 `.gitignore` 缺口 | 运维 + 安全 |
 | `bfb36ac` | 服务器上七个保留参数以前根本没传进容器 | **修既有缺陷** |
 | `2977966` | 服务器只读诊断脚本 | 工具 |
+| `5db9aca` | 执行记录文档 + 本机清理脚本 | 文档 + 工具 |
+| （本次） | 侧边栏版本号可随升级变化、V 大写、升级后自动校验 | **修既有缺陷** |
 
 ---
 
@@ -197,6 +199,59 @@ Run 被复用: True              ← 符合预期
 
 ---
 
+## 四之二、侧边栏版本号（owner 2026-08-06 提出）
+
+**缺陷**：`app.py` 侧边栏底部是 `st.caption("v2.1 · …")` —— **硬编码字面量**。
+它不可能随代码变化，**比不显示版本更糟**：升级后无论成没成功都显示 `v2.1`，
+去核对的人会被一个什么都没证明的字符串安抚。
+
+**两个数字，回答两个不同问题**（只显示前者正是无用的原因）：
+
+| | 来源 | 变化频率 |
+| --- | --- | --- |
+| `release_version()` | `VERSION` 文件 | 手动改版本时才变；报告以它署名 |
+| `build_revision()` | 构建时烧入的 commit | **每次部署都变** —— 唯一能验证部署的东西 |
+
+**为什么必须构建时烧入**：`.dockerignore` **排除了 `.git`**，容器里没有 git
+元数据，运行时查 git 在服务器上**永远失败**。因此走
+Dockerfile `ARG` → compose `build.args` → `calb-serverctl.sh` 三段链路，
+**任何一段断了，侧边栏就静默退回 `dev`**，缺陷复发而无人察觉。
+`tests/unit/test_app_version.py` 逐段锁死（18 条）。
+
+**显示**（位置就是 owner 要求的侧边栏最底部，原本就在那里）：
+
+- 正文：`V2.1 · 5db9aca · CALB ESS Sizing Platform · db:20260804_0009`
+- 悬停：加上 `branch <分支>` 与 `built <UTC 时间>`
+
+**V 大写**：`VERSION` 文件只存裸数字 `2.1`，大写 V 在 `release_version()`
+统一加，杜绝各调用点写法漂移；文件里已带 `v/V` 前缀会被归一化而不是叠加。
+
+### 每次升级自动校验（owner："无论任何升级，版本号都要检验"）
+
+`calb-serverctl.sh` 的 `start` / `restart` / `update` **收尾都会跑
+`verify_version`**，另有独立的 `version` 动作。它检查**三方一致**：
+
+```
+branch          : ops/ubuntu-docker-coexist-20260311
+local HEAD      : 5db9aca
+origin/<branch> : 5db9aca      -> checkout matches GitHub
+running app     : V2.1 · 5db9aca · branch ...
+                               -> the running image is built from this checkout
+```
+
+三条设计要点：
+
+1. **与 GitHub 的比较按分支**（`origin/<branch>`）。"最新"是相对分支的说法，
+   光有 commit 号无法判断。
+2. **连不上 origin 报 `UNREACHABLE`，绝不报"一致"**。内网服务器出不去是常态，
+   把"没查到"说成"没问题"才是真事故。
+3. **checkout 与 GitHub 一致，不代表镜像是新的** —— 构建失败时旧容器会继续服务，
+   这恰恰是最该抓的情况，所以运行中容器单独查一遍。
+
+`+dirty` 标记：工作区脏时构建，镜像不配声称自己是那个 commit。
+
+---
+
 ## 五、尚未执行的两件事（均因**访问权限**受阻，非技术阻塞）
 
 会话运行在 Anthropic 云上的隔离容器：**`ssh` 未安装**，出站仅一个 HTTPS 代理，
@@ -222,15 +277,20 @@ powershell -ExecutionPolicy Bypass -File scripts\clean_outputs.ps1 -Delete  # �
 
 ```bash
 cd /opt/calb-sizingtool/app
-sudo bash deploy/scripts/calb-diagnose.sh          # 先看现状（只读）
-git pull
-docker compose -p calb-sizingtool up -d --force-recreate app
-sudo bash deploy/scripts/calb-diagnose.sh          # 再看第 4 节是否已带参数
+sudo bash deploy/scripts/calb-diagnose.sh                  # 先看现状（只读）
+sudo bash deploy/docker/calb-serverctl.sh update           # 升级，收尾自动校验版本
+sudo bash deploy/docker/calb-serverctl.sh version          # 随时可单独复查
 ```
 
-诊断脚本第 4 节会打印容器内的实际环境变量。**列表为空 = 该容器早于
+`update` 结束会自动打印版本三方比对（checkout / GitHub / 运行中的镜像），
+并提示"同一串内容显示在 Web 页面左侧导航栏最底部"，照着核对即可。
+诊断脚本第 4 节会打印容器内的实际环境变量：**列表为空 = 该容器早于
 2026-08-06，清扫在用内置默认值** —— 脚本会把这句话直接印出来，
 而不是让一次"看起来正常"的运行蒙混过关。
+
+> **注意**：升级后侧边栏若仍显示 `dev`，说明镜像是用 `docker compose` 直接构建的，
+> 没走 `calb-serverctl.sh` —— 构建参数只在该脚本里注入。
+
 
 ---
 

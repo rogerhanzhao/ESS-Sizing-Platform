@@ -4,6 +4,13 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
+      args:
+        # Filled by calb-serverctl.sh from the host checkout. Without them the
+        # sidebar falls back to "dev" and an upgrade cannot be verified from
+        # the UI — which is the whole point of showing a revision.
+        CALB_BUILD_REV: ${CALB_BUILD_REV:-}
+        CALB_BUILD_BRANCH: ${CALB_BUILD_BRANCH:-}
+        CALB_BUILD_TIME: ${CALB_BUILD_TIME:-}
     restart: unless-stopped
     ports:
       - "${CALB_HOST_PORT:-18511}:${STREAMLIT_INTERNAL_PORT:-8501}"

@@ -29,6 +29,7 @@ from pathlib import Path
 import streamlit as st
 
 import calb_sizing_tool.config as config  # noqa: F401
+from calb_sizing_tool.app_version import version_detail, version_label
 from calb_sizing_tool.infra.db.base import Base
 from calb_sizing_tool.infra.db.session import create_engine_for_url, session_scope
 from calb_sizing_tool.state.auth_state import clear_auth_context, get_auth_context
@@ -224,7 +225,13 @@ with st.sidebar:
             st.rerun()
 
     st.markdown("---")
-    st.caption(f"v2.1 · CALB ESS Sizing Platform · db:{_db_schema_revision()}")
+    # The revision moves on every deploy — that is what makes this line usable
+    # to verify one. The old hard-coded "v2.1" could not change and so proved
+    # nothing. See calb_sizing_tool/app_version.py.
+    st.caption(
+        f"{version_label()} · CALB ESS Sizing Platform · db:{_db_schema_revision()}",
+        help=version_detail(),
+    )
 
 # ── Route ─────────────────────────────────────────────────────────────────────
 # BEGIN OPLOG — removable trial-run instrumentation (calb_sizing_tool/infra/oplog.py).

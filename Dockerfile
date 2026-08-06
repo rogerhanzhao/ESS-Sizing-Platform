@@ -30,6 +30,19 @@ COPY . .
 
 RUN mkdir -p /app/runtime/outputs /app/runtime/state
 
+# Build stamp. Deliberately placed AFTER `COPY . .` so that a changed revision
+# invalidates only this trivial layer, never the pip install above.
+#
+# This has to be baked in: .dockerignore excludes .git, so there is no git
+# metadata inside the image and a runtime lookup would always fail on the
+# server. deploy/docker/calb-serverctl.sh fills these from the host checkout.
+ARG CALB_BUILD_REV=""
+ARG CALB_BUILD_BRANCH=""
+ARG CALB_BUILD_TIME=""
+ENV CALB_BUILD_REV=${CALB_BUILD_REV} \
+    CALB_BUILD_BRANCH=${CALB_BUILD_BRANCH} \
+    CALB_BUILD_TIME=${CALB_BUILD_TIME}
+
 EXPOSE 8501
 
 CMD ["sh", "-c", "mkdir -p \"${CALB_OUTPUTS_DIR}\" \"$(dirname \"${CALB_PREFERENCES_FILE}\")\" && exec streamlit run app.py --server.address=${STREAMLIT_SERVER_ADDRESS:-0.0.0.0} --server.port=${STREAMLIT_SERVER_PORT:-8501} --server.headless=${STREAMLIT_SERVER_HEADLESS:-true} --server.fileWatcherType=none"]

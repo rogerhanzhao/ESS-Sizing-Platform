@@ -19,7 +19,8 @@ Commands:
   start         Build and start the CALB stack
   stop          Stop and remove the CALB stack
   restart       Rebuild and restart the CALB stack
-  status        Show docker compose status
+  status        Show docker compose status, then the version check
+  version       Check the running version against the checkout and GitHub
   logs          Follow CALB app logs
   cleanup       Run scoped CALB maintenance cleanup
   config        Render docker compose config
@@ -56,8 +57,80 @@ load_env() {
   set +a
 }
 
+export_build_stamp() {
+  # The commit the image is built from, so the running app can say which one it
+  # is. .dockerignore excludes .git, so the container cannot work this out for
+  # itself — if it is not passed here, the sidebar shows "dev" and an upgrade
+  # cannot be verified from the UI.
+  #
+  # Exported (not just set): docker compose substitutes build args from the
+  # process environment, which takes precedence over --env-file.
+  if [ -z "${CALB_BUILD_REV:-}" ] && [ -d "${REPO_ROOT}/.git" ]; then
+    CALB_BUILD_REV="$(git -C "$REPO_ROOT" rev-parse --short=7 HEAD 2>/dev/null || true)"
+    # A dirty worktree means the image does not match the commit named on it.
+    if [ -n "$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null)" ]; then
+      CALB_BUILD_REV="${CALB_BUILD_REV}+dirty"
+    fi
+  fi
+  if [ -z "${CALB_BUILD_BRANCH:-}" ] && [ -d "${REPO_ROOT}/.git" ]; then
+    CALB_BUILD_BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  fi
+  : "${CALB_BUILD_TIME:=$(date -u +%Y-%m-%dT%H:%MZ)}"
+  export CALB_BUILD_REV CALB_BUILD_BRANCH CALB_BUILD_TIME
+}
+
+verify_version() {
+  # Owner requirement (2026-08-06): "每次升级完，无论任何升级，版本号都要检验
+  # 并和 github 上最新的要显示一致".
+  #
+  # Checked here rather than left to the eye, because the failure this catches
+  # is precisely the one a human misses: a build that succeeded against a stale
+  # checkout looks completely normal, and the sidebar would then show a
+  # perfectly plausible revision that is simply not the latest.
+  local branch local_rev remote_rev container_line
+  branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
+  local_rev="$(git -C "$REPO_ROOT" rev-parse --short=7 HEAD 2>/dev/null || echo '?')"
+
+  echo
+  echo "── Version check ────────────────────────────────────────────"
+  echo "branch          : ${branch}"
+  echo "local HEAD      : ${local_rev}"
+
+  # Compare with GitHub. A server with no route out is normal, so failing to
+  # reach the remote is reported as UNKNOWN, never as agreement.
+  if git -C "$REPO_ROOT" fetch --quiet origin "$branch" 2>/dev/null; then
+    remote_rev="$(git -C "$REPO_ROOT" rev-parse --short=7 "origin/${branch}" 2>/dev/null || echo '?')"
+    echo "origin/${branch} : ${remote_rev}"
+    if [ "$local_rev" = "$remote_rev" ]; then
+      echo "  -> checkout matches GitHub"
+    else
+      echo "  -> MISMATCH: checkout is NOT the latest on GitHub. Run 'update'." >&2
+    fi
+  else
+    echo "origin          : UNREACHABLE — cannot confirm this is GitHub's latest" >&2
+  fi
+
+  # What the RUNNING container reports. The checkout matching GitHub says
+  # nothing about the image: a build can fail while the previous container
+  # keeps serving, and that is the case worth catching.
+  container_line="$(compose exec -T app python -c \
+    'from calb_sizing_tool.app_version import version_detail; print(version_detail())' 2>/dev/null || true)"
+  if [ -n "$container_line" ]; then
+    echo "running app     : ${container_line}"
+    case "$container_line" in
+      *"$local_rev"*) echo "  -> the running image is built from this checkout" ;;
+      *) echo "  -> MISMATCH: the running image is NOT this checkout. Rebuild." >&2 ;;
+    esac
+  else
+    echo "running app     : not reachable (container down?)" >&2
+  fi
+  echo "─────────────────────────────────────────────────────────────"
+  echo "The same string is shown at the BOTTOM of the app's left sidebar."
+}
+
 compose() {
   load_env
+  export_build_stamp
   require_command docker
   docker compose \
     --env-file "$ENV_FILE" \
@@ -159,6 +232,7 @@ case "$ACTION" in
     compose up -d --build
     print_internal_urls
     compose ps
+    verify_version
     ;;
   stop)
     compose down
@@ -168,9 +242,14 @@ case "$ACTION" in
     compose up -d --build
     print_internal_urls
     compose ps
+    verify_version
+    ;;
+  version)
+    verify_version
     ;;
   status)
     compose ps
+    verify_version
     if docker ps --format '{{.Names}}' | grep -qx "${NGROK_CONTAINER_NAME}"; then
       docker ps --filter "name=${NGROK_CONTAINER_NAME}"
     fi
@@ -193,6 +272,7 @@ case "$ACTION" in
     compose up -d --build
     print_internal_urls
     compose ps
+    verify_version
     ;;
   ngrok-start)
     start_ngrok

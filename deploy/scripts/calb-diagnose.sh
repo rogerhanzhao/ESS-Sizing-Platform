@@ -79,6 +79,13 @@ echo "artifact files          : $(find "$RUNTIME_ROOT/outputs/artifacts" -type f
 echo "oldest artifact file    : $(find "$RUNTIME_ROOT/outputs/artifacts" -type f -printf '%TY-%Tm-%Td\n' 2>/dev/null | sort | head -1)"
 ls -la "$RUNTIME_ROOT/state" 2>/dev/null
 
+section "4a. Which build is actually running"
+docker compose -p "$PROJECT_NAME" exec -T "$SERVICE" \
+  python -c 'from calb_sizing_tool.app_version import version_detail; print(version_detail())' 2>/dev/null \
+  || echo "(container down, or an image built before the version stamp existed)"
+echo "This is the SAME string shown at the bottom of the app's left sidebar."
+echo "Compare its revision with the head commit of that branch on GitHub."
+
 section "4. Container: is it carrying the retention knobs?"
 docker compose -p "$PROJECT_NAME" ps 2>/dev/null || echo "(compose stack not reachable)"
 echo "-- retention environment INSIDE the running container:"
