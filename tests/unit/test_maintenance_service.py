@@ -393,3 +393,31 @@ def test_emptied_directories_are_removed(db_url, tmp_path, monkeypatch):
     ms.prune_unreferenced_artifact_files(db_url=db_url, dry_run=False)
     assert not (out / "artifacts" / "r1").exists()
     assert (out / "artifacts").exists(), "the root itself stays"
+
+
+def test_the_server_can_actually_tune_the_sweep():
+    """calb-maintenance.sh runs the sweep INSIDE the container.
+
+    A retention variable that compose does not pass cannot reach it, so an
+    operator setting it in deploy/docker/.env would change nothing and the sweep
+    would silently keep its built-in defaults. This was the state before
+    2026-08-06 for every database-side knob.
+    """
+    import yaml
+
+    compose = yaml.safe_load(open("deploy/docker/docker-compose.ubuntu.yml", encoding="utf-8"))
+    env = compose["services"]["app"]["environment"]
+    for name in ("CALB_ARTIFACT_GENERATIONS", "CALB_ARTIFACT_RETENTION_DAYS",
+                 "CALB_SNAPSHOT_GENERATIONS", "CALB_AUDIT_RETENTION_DAYS",
+                 "CALB_OPLOG_RETENTION_DAYS", "CALB_UNREFERENCED_GRACE_DAYS",
+                 "CALB_PRUNE_UNREFERENCED_FILES"):
+        assert name in env, f"{name} never reaches the container"
+
+    # Deleting unreferenced files stays opt-in on the server too.
+    assert env["CALB_PRUNE_UNREFERENCED_FILES"] == "${CALB_PRUNE_UNREFERENCED_FILES:-}"
+
+
+def test_the_server_sweep_runs_rows_before_files():
+    """File-only pruning is what left rows pointing at nothing in the first place."""
+    script = open("deploy/docker/calb-maintenance.sh", encoding="utf-8").read()
+    assert script.index("cleanup_database_retention\n") < script.index("  cleanup_outputs\n")

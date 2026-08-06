@@ -16,6 +16,22 @@ services:
       CALB_BOOTSTRAP_ADMIN_TOKEN: ${CALB_BOOTSTRAP_ADMIN_TOKEN:-}
       CALB_ALLOW_CREATE_ALL_FALLBACK: ${CALB_ALLOW_CREATE_ALL_FALLBACK:-false}
       CALB_OPLOG_ENABLED: ${CALB_OPLOG_ENABLED:-true}
+      # Retention knobs for the weekly sweep. calb-maintenance.sh runs
+      # `python -m calb_sizing_tool.services.maintenance_service` INSIDE this
+      # container, so a value that is not passed here cannot reach it: without
+      # these lines an operator could set them in deploy/docker/.env and the
+      # sweep would still silently use its built-in defaults — and the
+      # unreferenced-file sweep could not be enabled at all.
+      CALB_ARTIFACT_GENERATIONS: ${CALB_ARTIFACT_GENERATIONS:-1}
+      CALB_ARTIFACT_RETENTION_DAYS: ${CALB_ARTIFACT_RETENTION_DAYS:-30}
+      CALB_SNAPSHOT_GENERATIONS: ${CALB_SNAPSHOT_GENERATIONS:-3}
+      CALB_AUDIT_RETENTION_DAYS: ${CALB_AUDIT_RETENTION_DAYS:-180}
+      CALB_OPLOG_RETENTION_DAYS: ${CALB_OPLOG_RETENTION_DAYS:-30}
+      CALB_UNREFERENCED_GRACE_DAYS: ${CALB_UNREFERENCED_GRACE_DAYS:-7}
+      # Empty = count only. Deleting files the registry does not know about is
+      # opt-in, because an operator pointed at the wrong database would see an
+      # empty registry and condemn every artifact on disk.
+      CALB_PRUNE_UNREFERENCED_FILES: ${CALB_PRUNE_UNREFERENCED_FILES:-}
       STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
       STREAMLIT_SERVER_ADDRESS: 0.0.0.0
       STREAMLIT_SERVER_HEADLESS: "true"

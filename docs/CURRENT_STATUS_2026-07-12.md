@@ -528,6 +528,16 @@ own retention, `external_ai/` is user-facing), and a file younger than
 has not committed yet is safe. An unreadable registry deletes nothing at all —
 `test_an_unreadable_registry_deletes_nothing`.
 
+**The server was tunable only on paper** (found 2026-08-06). `calb-maintenance.sh`
+runs the sweep INSIDE the app container, but `docker-compose.ubuntu.yml` passed
+none of the database-side knobs — so every retention value an operator set in
+`deploy/docker/.env` was discarded at the container boundary and the sweep could
+only ever use its built-in defaults. The unreferenced-file sweep could not be
+enabled at all. All seven are now in the `environment:` block with matching
+defaults and documented in `.env.example`; `test_the_server_can_actually_tune_the_sweep`
+holds it. Only `CALB_OUTPUT_RETENTION_DAYS` worked before, because that one is
+consumed by the host-side `find` rather than by the app.
+
 **`.gitignore` closed three ways junk reaches the public repo** (2026-08-06):
 `*.docx` (a proposal carries customer figures and `export_docx` writes wherever
 it is run from), `*.db` / `*.sqlite*` / `*-wal` / `*-shm` (a sizing database is
