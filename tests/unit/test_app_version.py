@@ -164,14 +164,12 @@ def test_the_dockerfile_bakes_the_stamp_in():
 
 
 def test_compose_passes_the_stamp_as_a_build_arg():
-    import yaml
-
-    compose = yaml.safe_load(open("deploy/docker/docker-compose.ubuntu.yml", encoding="utf-8"))
-    args = compose["services"]["app"]["build"]["args"]
     # Every stamp serverctl exports must have a build arg to travel through, or
     # it is set on the host and silently never reaches the image.
     for name in ("CALB_BUILD_REV", "CALB_BUILD_BRANCH", "CALB_BUILD_TIME"):
-        assert args[name] == "${%s:-}" % name, f"{name} does not reach the image"
+        assert f"        {name}: ${{{name}:-}}" in open(
+            "deploy/docker/docker-compose.ubuntu.yml", encoding="utf-8"
+        ).read(), f"{name} does not reach the image"
 
 
 def test_serverctl_fills_the_stamp_from_the_checkout():

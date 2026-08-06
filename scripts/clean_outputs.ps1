@@ -77,7 +77,7 @@ try {
     Write-Host "`n[2/3] Measuring" -ForegroundColor Cyan
     $env:CALB_UNREFERENCED_GRACE_DAYS = "$GraceDays"
     $env:CALB_PRUNE_UNREFERENCED_FILES = ""
-    $dryJson = python -m calb_sizing_tool.services.maintenance_service | Out-String
+    $dryJson = python -m calb_sizing_tool.services.maintenance_service --dry-run | Out-String
     $dry = $dryJson | ConvertFrom-Json
 
     $before        = $dry.before

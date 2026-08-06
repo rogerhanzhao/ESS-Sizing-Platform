@@ -325,3 +325,24 @@ git ls-files | git check-ignore --stdin
 3. `resolve_preferred_ac_snapshot` 中"选到别的 DC Run 的分支要拒绝" ——
    陈旧选择不能偷渡外来配置。
 4. `list_child_runs` 次序键的必要性 —— 关系到已发出报告的方案名是否稳定。
+
+---
+
+## 七、CI 测试依赖收口（2026-08-06，Codex）
+
+本轮维护参数的 compose 契约测试最初直接导入 `yaml`，但 PyYAML 不在
+`requirements.txt` 或 CI 的测试依赖中。GitHub Actions 因此在测试收尾阶段报
+`ModuleNotFoundError: No module named 'yaml'`；应用代码与维护逻辑本身没有失败。
+
+该测试的目标只是锁住 app 容器中的七个精确环境变量映射及其安全默认值，不是
+验证 YAML 解析器。因此已改为标准库文本契约断言：每个变量必须以预期缩进、名称和
+默认值出现在 `services.app.environment` 中，且删除开关仍为空默认值。这样本地与 CI
+都无需隐式依赖，并避免为了一个测试把 PyYAML 加进生产容器。
+
+### 本地清理脚本的 P0 安全修复
+
+复核 `clean_outputs.ps1` 后发现其“未带 `-Delete` 不改动”的说明与实现不一致：
+测量阶段虽禁用了未引用文件删除，但维护入口仍会删除过期 artifact 行、快照、审计行
+和 oplog。现已增加 `maintenance_service --dry-run`：它计数每项保留策略的候选对象，
+但绝不删除数据库行或文件；本地脚本的测量阶段显式传入该参数，`-Delete` 才运行现有
+的正式保留策略。服务器的定时任务不传该参数，保持原定的正式清理行为。

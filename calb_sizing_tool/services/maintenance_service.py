@@ -105,7 +105,7 @@ def _env_int(name: str, default: int) -> int:
 
 @dataclass
 class PruneReport:
-    """What a sweep actually removed. Returned so it can be logged, not guessed."""
+    """What a sweep removed, or would remove in an explicit dry run."""
 
     artifact_rows: int = 0
     artifact_files: int = 0
@@ -151,6 +151,7 @@ def _delete_file(stored_path: str) -> int:
 
 
 def prune_orphaned_artifacts(*, db_url: str | None = None,
+                             dry_run: bool = False,
                              report: PruneReport | None = None) -> PruneReport:
     """Drop registry rows whose file is gone.
 
@@ -169,14 +170,16 @@ def prune_orphaned_artifacts(*, db_url: str | None = None,
                 except OSError:
                     exists = False
                 if not exists:
-                    session.delete(row)
                     report.orphaned_rows += 1
+                    if not dry_run:
+                        session.delete(row)
     except OperationalError as exc:
         report.notes.append(f"artifact_registry unavailable: {exc}")
     return report
 
 
 def prune_artifacts_older_than(days: int | None = None, *, db_url: str | None = None,
+                               dry_run: bool = False,
                                report: PruneReport | None = None) -> PruneReport:
     """Delete artifact rows AND their files older than ``days``.
 
@@ -196,18 +199,21 @@ def prune_artifacts_older_than(days: int | None = None, *, db_url: str | None = 
                 .all()
             )
             for row in rows:
+                report.artifact_rows += 1
+                if dry_run:
+                    continue
                 freed = _delete_file(str(row.file_path or ""))
                 if freed:
                     report.artifact_files += 1
                     report.bytes_freed += freed
                 session.delete(row)
-                report.artifact_rows += 1
     except OperationalError as exc:
         report.notes.append(f"artifact_registry unavailable: {exc}")
     return report
 
 
 def prune_snapshot_generations(keep: int | None = None, *, db_url: str | None = None,
+                               dry_run: bool = False,
                                report: PruneReport | None = None) -> PruneReport:
     """Keep the newest ``keep`` snapshots of each (run, kind), inputs and outputs.
 
@@ -235,14 +241,16 @@ def prune_snapshot_generations(keep: int | None = None, *, db_url: str | None = 
                     key = (str(row.sizing_run_id), str(row.snapshot_kind))
                     seen[key] = seen.get(key, 0) + 1
                     if seen[key] > keep:
-                        session.delete(row)
                         report.snapshot_rows += 1
+                        if not dry_run:
+                            session.delete(row)
         except OperationalError as exc:
             report.notes.append(f"{label} unavailable: {exc}")
     return report
 
 
 def prune_audit_log(days: int | None = None, *, db_url: str | None = None,
+                    dry_run: bool = False,
                     report: PruneReport | None = None) -> PruneReport:
     """Trim the audit trail. ``days=0`` disables it — set that to keep everything.
 
@@ -257,17 +265,18 @@ def prune_audit_log(days: int | None = None, *, db_url: str | None = None,
     cutoff = _cutoff(days)
     try:
         with session_scope(db_url) as session:
-            report.audit_rows += (
-                session.query(AuditLog)
-                .filter(AuditLog.created_at < cutoff)
-                .delete(synchronize_session=False)
-            )
+            query = session.query(AuditLog).filter(AuditLog.created_at < cutoff)
+            if dry_run:
+                report.audit_rows += query.count()
+            else:
+                report.audit_rows += query.delete(synchronize_session=False)
     except OperationalError as exc:
         report.notes.append(f"audit_log unavailable: {exc}")
     return report
 
 
-def prune_oplog(days: int | None = None, *, report: PruneReport | None = None) -> PruneReport:
+def prune_oplog(days: int | None = None, *, dry_run: bool = False,
+                report: PruneReport | None = None) -> PruneReport:
     """Delete op-log day files older than ``days``. ``days=0`` disables it."""
     report = report or PruneReport()
     days = _env_int("CALB_OPLOG_RETENTION_DAYS", DEFAULT_OPLOG_RETENTION_DAYS) if days is None else days
@@ -281,9 +290,10 @@ def prune_oplog(days: int | None = None, *, report: PruneReport | None = None) -
     for path in sorted(log_dir.glob("oplog-*.jsonl")):
         try:
             if path.stat().st_mtime < cutoff:
-                report.bytes_freed += path.stat().st_size
-                path.unlink()
                 report.oplog_files += 1
+                if not dry_run:
+                    report.bytes_freed += path.stat().st_size
+                    path.unlink()
         except OSError:
             pass
     return report
@@ -430,32 +440,41 @@ def storage_report(*, db_url: str | None = None) -> dict[str, Any]:
     }
 
 
-def run_maintenance(*, db_url: str | None = None) -> PruneReport:
+def run_maintenance(*, db_url: str | None = None, dry_run: bool = False) -> PruneReport:
     """One sweep: orphans first, then age, then generations, then logs.
 
-    Orphans go first so the age pass is not slowed by rows it would delete anyway.
+    ``dry_run`` measures every policy without changing rows or files. Orphans go
+    first during a real run so the age pass is not slowed by rows it would delete.
     """
     report = PruneReport()
-    prune_orphaned_artifacts(db_url=db_url, report=report)
-    prune_artifacts_older_than(db_url=db_url, report=report)
-    prune_snapshot_generations(db_url=db_url, report=report)
-    prune_audit_log(db_url=db_url, report=report)
-    prune_oplog(report=report)
+    if dry_run:
+        report.notes.append("dry run — no rows or files were deleted")
+    prune_orphaned_artifacts(db_url=db_url, dry_run=dry_run, report=report)
+    prune_artifacts_older_than(db_url=db_url, dry_run=dry_run, report=report)
+    prune_snapshot_generations(db_url=db_url, dry_run=dry_run, report=report)
+    prune_audit_log(db_url=db_url, dry_run=dry_run, report=report)
+    prune_oplog(dry_run=dry_run, report=report)
     # Files whose rows are gone. COUNTED, not deleted, unless explicitly enabled
     # — see prune_unreferenced_artifact_files for why that default is not timidity.
     prune_unreferenced_artifact_files(
         db_url=db_url,
-        dry_run=not _env_flag("CALB_PRUNE_UNREFERENCED_FILES"),
+        dry_run=dry_run or not _env_flag("CALB_PRUNE_UNREFERENCED_FILES"),
         report=report,
     )
     return report
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    import argparse
     import json
 
+    parser = argparse.ArgumentParser(description="Run CALB runtime retention.")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="measure every retention policy without deleting data")
+    args = parser.parse_args([] if argv is None else argv)
+
     before = storage_report()
-    report = run_maintenance()
+    report = run_maintenance(dry_run=args.dry_run)
     after = storage_report()
     print(json.dumps({"before": before, "pruned": report.as_dict(), "after": after},
                      ensure_ascii=False, indent=2))
@@ -463,4 +482,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":  # pragma: no cover - operator entry point
-    raise SystemExit(main())
+    import sys
+
+    raise SystemExit(main(sys.argv[1:]))

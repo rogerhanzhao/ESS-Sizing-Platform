@@ -403,18 +403,70 @@ def test_the_server_can_actually_tune_the_sweep():
     would silently keep its built-in defaults. This was the state before
     2026-08-06 for every database-side knob.
     """
-    import yaml
+    # This is a narrow deployment-file contract, not a YAML-parser test.  Keep it
+    # standard-library-only so the project test suite has no undeclared PyYAML
+    # dependency in either a local checkout or GitHub Actions.
+    compose = open("deploy/docker/docker-compose.ubuntu.yml", encoding="utf-8").read()
+    expected_mappings = {
+        "CALB_ARTIFACT_GENERATIONS": "${CALB_ARTIFACT_GENERATIONS:-1}",
+        "CALB_ARTIFACT_RETENTION_DAYS": "${CALB_ARTIFACT_RETENTION_DAYS:-30}",
+        "CALB_SNAPSHOT_GENERATIONS": "${CALB_SNAPSHOT_GENERATIONS:-3}",
+        "CALB_AUDIT_RETENTION_DAYS": "${CALB_AUDIT_RETENTION_DAYS:-180}",
+        "CALB_OPLOG_RETENTION_DAYS": "${CALB_OPLOG_RETENTION_DAYS:-30}",
+        "CALB_UNREFERENCED_GRACE_DAYS": "${CALB_UNREFERENCED_GRACE_DAYS:-7}",
+        # Empty keeps the destructive file sweep explicitly opt-in.
+        "CALB_PRUNE_UNREFERENCED_FILES": "${CALB_PRUNE_UNREFERENCED_FILES:-}",
+    }
+    for name, value in expected_mappings.items():
+        assert f"      {name}: {value}" in compose, (
+            f"{name} never reaches the container with its safe default"
+        )
 
-    compose = yaml.safe_load(open("deploy/docker/docker-compose.ubuntu.yml", encoding="utf-8"))
-    env = compose["services"]["app"]["environment"]
-    for name in ("CALB_ARTIFACT_GENERATIONS", "CALB_ARTIFACT_RETENTION_DAYS",
-                 "CALB_SNAPSHOT_GENERATIONS", "CALB_AUDIT_RETENTION_DAYS",
-                 "CALB_OPLOG_RETENTION_DAYS", "CALB_UNREFERENCED_GRACE_DAYS",
-                 "CALB_PRUNE_UNREFERENCED_FILES"):
-        assert name in env, f"{name} never reaches the container"
 
-    # Deleting unreferenced files stays opt-in on the server too.
-    assert env["CALB_PRUNE_UNREFERENCED_FILES"] == "${CALB_PRUNE_UNREFERENCED_FILES:-}"
+def test_a_full_sweep_dry_run_never_changes_rows_or_files(db_url, tmp_path, monkeypatch):
+    """The local cleanup script promises measurement only until -Delete."""
+    monkeypatch.setenv("CALB_OUTPUTS_DIR", str(tmp_path))
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    monkeypatch.setenv("CALB_OPLOG_DIR", str(log_dir))
+
+    old_artifact = tmp_path / "artifacts" / "r1" / "old.svg"
+    old_artifact.parent.mkdir(parents=True)
+    old_artifact.write_text("<svg>old</svg>")
+    old_log = log_dir / "oplog-20200101.jsonl"
+    old_log.write_text('{"kind":"page_view"}\n')
+    os.utime(old_log, (_ago(90).timestamp(), _ago(90).timestamp()))
+
+    with session_scope(db_url) as session:
+        _artifact(session, "r1", "sld_svg", "artifacts/r1/old.svg", age_days=90)
+        _artifact(session, "r1", "layout_svg", "artifacts/r1/missing.svg")
+        for i in range(4):
+            row = RunOutputSnapshot(
+                sizing_run_id="r1", snapshot_kind="ac_runtime_snapshot_v1",
+                content_hash=f"h{i}", snapshot_json={"i": i},
+            )
+            session.add(row)
+            session.flush()
+            row.created_at = _ago(4 - i)
+        audit = AuditLog(entity_type="sizing_run", entity_id="r1",
+                         action="persist", actor="tester", payload_json={})
+        session.add(audit)
+        session.flush()
+        audit.created_at = _ago(400)
+
+    report = ms.run_maintenance(db_url=db_url, dry_run=True)
+    assert report.artifact_rows == 1
+    assert report.orphaned_rows == 1
+    assert report.snapshot_rows == 1
+    assert report.audit_rows == 1
+    assert report.oplog_files == 1
+    assert any("dry run" in note for note in report.notes)
+    assert old_artifact.exists() and old_log.exists()
+
+    with session_scope(db_url) as session:
+        assert session.query(ArtifactRegistry).count() == 2
+        assert session.query(RunOutputSnapshot).count() == 4
+        assert session.query(AuditLog).count() == 1
 
 
 def test_the_server_sweep_runs_rows_before_files():
@@ -441,7 +493,7 @@ def test_the_cleanup_script_contract_holds(tmp_path, monkeypatch):
 
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
-        ms.main()
+        ms.main(["--dry-run"])
     payload = json.loads(buffer.getvalue())
 
     for path in (("before", "output_files"), ("before", "output_mb"),
@@ -457,6 +509,7 @@ def test_the_cleanup_script_contract_holds(tmp_path, monkeypatch):
     # The safe order is the shape of the script, not a habit: without -Delete it
     # must not be able to set the deletion flag.
     assert 'if (-not $Delete)' in script
+    assert 'maintenance_service --dry-run' in script
     assert re.search(r'CALB_PRUNE_UNREFERENCED_FILES\s*=\s*""', script), (
         "the measuring pass must explicitly blank the deletion flag"
     )
