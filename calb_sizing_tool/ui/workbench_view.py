@@ -12,10 +12,13 @@ from calb_sizing_tool.repositories.case_repository import CaseRepository
 from calb_sizing_tool.services.access_control_service import AccessControlService
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import init_project_state
+from calb_sizing_tool.services.ac_run_service import list_ac_alternatives
 from calb_sizing_tool.state.workspace_state import (
+    get_active_ac_run_id,
     get_workspace_context,
     navigate_now,
     restore_run_bundle_to_session,
+    set_active_ac_run,
     set_active_case,
     set_active_project,
 )
@@ -825,6 +828,62 @@ def _render_run_registry(runs: list[dict], context: dict, auth_user) -> None:
         key="workbench_restore_selected",
     ):
         _restore_run(selected_run_id, auth_user)
+
+    _render_ac_alternative_picker(context)
+
+
+def _render_ac_alternative_picker(context: dict) -> None:
+    """Switch between the AC alternatives recorded under the ACTIVE DC run.
+
+    Owner ruling C (2026-08-04): the picker stays three levels. AC alternatives
+    are a branch of one DC run, not a fourth level, so they switch sideways here
+    rather than becoming another dropdown in the hierarchy.
+    """
+    active_run_id = context.get("run_id")
+    if not active_run_id:
+        return
+    try:
+        alternatives = list_ac_alternatives(active_run_id)
+    except Exception:
+        return
+    if len(alternatives) < 2:
+        # One alternative is the normal case and needs no control: the downstream
+        # pages already resolve to it, or to the DC run when there is none.
+        return
+
+    def _label(index: int, item: dict) -> str:
+        summary = item.get("summary") or {}
+        pcs = summary.get("pcs_per_block")
+        dc = summary.get("dc_blocks_total")
+        code = summary.get("configuration_code")
+        detail = code or (f"{pcs} PCS / {dc} DC" if pcs else "AC alternative")
+        return f"{index}. {detail}"
+
+    labels = {_label(i, item): item["run_id"] for i, item in enumerate(alternatives, start=1)}
+    current = get_active_ac_run_id()
+    current_label = next((lbl for lbl, rid in labels.items() if rid == current), None)
+
+    st.caption(
+        f"{len(alternatives)} AC alternatives on this DC run. The SLD, the "
+        f"arrangement and the report are produced from the selected one."
+    )
+    picker_col, apply_col = st.columns([3, 1])
+    chosen_label = picker_col.selectbox(
+        "AC alternative",
+        list(labels.keys()),
+        index=list(labels.keys()).index(current_label) if current_label else 0,
+        key="workbench_ac_alternative_select",
+        label_visibility="collapsed",
+    )
+    chosen = labels[chosen_label]
+    if apply_col.button(
+        "Selected" if chosen == current else "Use",
+        disabled=chosen == current,
+        use_container_width=True,
+        key="workbench_ac_alternative_apply",
+    ):
+        set_active_ac_run(chosen)
+        st.rerun()
 
 
 def show() -> None:

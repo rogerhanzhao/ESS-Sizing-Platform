@@ -24,6 +24,7 @@ def render_layout_from_run_bundle(
     plugin_id: str = ARRANGEMENT_PLUGIN_ID,
     actor: str | None = None,
     db_url: str | None = None,
+    artifact_run_id: str | None = None,
 ) -> LayoutArtifactBundle:
     registry = get_plugin_registry()
     plugin = registry.get(plugin_id)
@@ -45,8 +46,10 @@ def render_layout_from_run_bundle(
     artifacts = plugin.emit_artifact(render_output)
     metadata = plugin.metadata_payload(render_input, render_output)
 
+    # The arrangement belongs to the AC alternative it was drawn from, when one
+    # is selected; otherwise it stays on the DC run.
     persist_artifacts(
-        run_id=run_bundle.run_id,
+        run_id=str(artifact_run_id or "").strip() or run_bundle.run_id,
         artifacts=artifacts,
         plugin_id=plugin.metadata.plugin_id,
         plugin_version=plugin.metadata.plugin_version,

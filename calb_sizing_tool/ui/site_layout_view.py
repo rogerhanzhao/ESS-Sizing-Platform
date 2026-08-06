@@ -49,7 +49,7 @@ from calb_sizing_tool.services.sld_data_source_service import AcSnapshotResoluti
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state
-from calb_sizing_tool.state.workspace_state import get_workspace_context
+from calb_sizing_tool.state.workspace_state import artifact_run_id, get_workspace_context
 from calb_sizing_tool.utils.files import human_bytes, upload_exceeds_limit
 
 
@@ -382,6 +382,9 @@ def show() -> None:
                 options=options,
                 plugin_id=selected_plugin,
                 actor=auth_user.username,
+                # The arrangement belongs to the AC alternative it was drawn
+                # from; with none selected this is the DC run, as before.
+                artifact_run_id=artifact_run_id(),
             )
         except Exception as exc:
             st.error(f"Typical AC Block Arrangement generation failed: {exc}")

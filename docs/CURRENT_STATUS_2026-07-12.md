@@ -426,10 +426,15 @@ configuration reuses its run and the table counts alternatives tried, not clicks
 An AC run does not duplicate a Case: `SizingCaseInput` has no AC field at all,
 which `test_ac_run_service.py` verifies rather than assumes.
 
-Still true after step 1: SLD / Layout / Report artifacts attach to the DC run.
-Re-addressing them to the AC run is step 2 and is NOT done — see
-`docs/AC_RUN_PROMOTION_DESIGN.md`. Until then, switching AC alternatives does not
-by itself give you a second set of drawings.
+**Drawings follow the alternative** (step 2 + 3 done 2026-08-04). SLD and
+arrangement artifacts attach to the selected AC run;
+`load_artifact_bytes_from_db` walks up `parent_run_id` NEAREST FIRST, so an
+alternative's own figure wins, one it never produced falls back to the DC run's,
+and a pre-AC-run database needs no migration. Pages ask
+`workspace_state.artifact_run_id()` — one helper, never a per-page decision.
+`site_constraint_set` deliberately stays on the DC run: site boundary and access
+do not change with an AC choice. The workbench shows an AC alternative switcher
+only when a DC run actually has two or more.
 
 **Bounded growth** (owner requirement 2026-08-04: 日志和数据库不能无限制的变大).
 Measured on a working checkout before the fix: 479 run directories, 5081 files,

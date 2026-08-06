@@ -532,7 +532,14 @@ def build_report_context(
             layout_svg_bytes = candidate.read_bytes()
 
     # Priority 5: DB artifact_registry (enables recovery after run restore)
-    if (sld_pro_png_bytes is None or layout_png_bytes is None) and run_id:
+    # Artifacts are read at the AC ALTERNATIVE when one is selected. The reader
+    # walks up parent_run_id, so an alternative that never produced a given figure
+    # still shows the DC run's, and a pre-AC-run database is unaffected.
+    #
+    # NOTE: distinct from ac_run_id above, which is ac_output["source_ac_run_id"]
+    # — an older provenance field, not the alternative selection.
+    _artifact_run_id = state.get("active_ac_run_id") or run_id
+    if (sld_pro_png_bytes is None or layout_png_bytes is None) and _artifact_run_id:
         try:
             from calb_sizing_tool.services.artifact_service import load_artifact_bytes_from_db
             _needed = []
@@ -541,7 +548,7 @@ def build_report_context(
             if layout_png_bytes is None:
                 _needed += ["layout_png", "layout_svg"]
             if _needed:
-                _db_art = load_artifact_bytes_from_db(run_id, _needed)
+                _db_art = load_artifact_bytes_from_db(_artifact_run_id, _needed)
                 sld_pro_png_bytes = sld_pro_png_bytes or _db_art.get("sld_png")
                 sld_preview_svg_bytes = sld_preview_svg_bytes or _db_art.get("sld_svg")
                 layout_png_bytes = layout_png_bytes or _db_art.get("layout_png")

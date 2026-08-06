@@ -174,16 +174,47 @@ def persist_artifacts(
     return artifact_ids
 
 
+def _artifact_run_chain(session, run_id: str, depth: int = 4) -> list[str]:
+    """``run_id`` and its ancestors, nearest first.
+
+    An AC alternative is a child run (ac_run_service). Its drawings belong to it,
+    but anything produced before the alternative existed — and everything in a
+    database written before AC runs did — still hangs off the DC run. Reading the
+    chain is what lets both be true at once without a data migration.
+    """
+    from calb_sizing_tool.infra.db.models.sizing_run import SizingRun
+
+    chain: list[str] = []
+    current: str | None = run_id
+    seen: set[str] = set()
+    while current and current not in seen and len(chain) < depth:
+        chain.append(current)
+        seen.add(current)
+        row = (
+            session.query(SizingRun.parent_run_id)
+            .filter(SizingRun.sizing_run_id == current)
+            .one_or_none()
+        )
+        current = str(row[0]) if row and row[0] else None
+    return chain
+
+
 def load_artifact_bytes_from_db(
     run_id: str,
     artifact_kinds: list[str],
     *,
     db_url: str | None = None,
+    include_ancestors: bool = True,
 ) -> dict[str, bytes]:
     """Load artifact file bytes from disk using paths recorded in artifact_registry.
 
     Returns a dict mapping artifact_kind → file bytes for each kind found.
     Missing or unreadable artifacts are silently omitted.
+
+    ``include_ancestors`` walks up ``parent_run_id`` for kinds this run does not
+    have of its own, NEAREST FIRST — so an AC alternative's own drawing always
+    wins, and one it never produced falls back to the DC run's. Pass False to
+    read strictly this run.
     """
     result: dict[str, bytes] = {}
     if not run_id or not artifact_kinds:
@@ -191,16 +222,25 @@ def load_artifact_bytes_from_db(
     kinds_set = set(artifact_kinds)
     try:
         with session_scope(db_url) as session:
+            chain = _artifact_run_chain(session, run_id) if include_ancestors else [run_id]
             rows = (
-                session.query(ArtifactRegistry.artifact_kind, ArtifactRegistry.file_path)
+                session.query(
+                    ArtifactRegistry.sizing_run_id,
+                    ArtifactRegistry.artifact_kind,
+                    ArtifactRegistry.file_path,
+                )
                 .filter(
-                    ArtifactRegistry.sizing_run_id == run_id,
+                    ArtifactRegistry.sizing_run_id.in_(chain),
                     ArtifactRegistry.artifact_kind.in_(kinds_set),
                 )
                 .order_by(ArtifactRegistry.created_at.desc())
                 .all()
             )
-            artifact_paths = [(str(row.artifact_kind), str(row.file_path)) for row in rows]
+            rank = {value: index for index, value in enumerate(chain)}
+            # Nearest run wins; within one run, newest wins. Sorting by rank only
+            # is stable, so the created_at order above is preserved inside a run.
+            rows = sorted(rows, key=lambda row: rank.get(str(row[0]), len(chain)))
+            artifact_paths = [(str(row[1]), str(row[2])) for row in rows]
         seen: set[str] = set()
         for kind, file_path_value in artifact_paths:
             if kind in seen:

@@ -36,6 +36,7 @@ from calb_sizing_tool.services.sld_engineering_settings_service import (
     load_run_sld_project_settings,
 )
 from calb_sizing_tool.services.sld_pipeline_service import run_sld_pipeline_from_run_bundle
+from calb_sizing_tool.state.workspace_state import artifact_run_id
 from calb_sizing_tool.services.sld_renderer_mode_service import (
     AVAILABLE_SLD_RENDERER_MODES,
     PUBLIC_SLD_RENDERER_MODES,
@@ -291,6 +292,9 @@ def _execute_sld_pipeline(
         plugin_id=plugin_id,
         actor=actor,
         register_artifacts=register_artifacts,
+        # The SLD belongs to the AC alternative it was drawn from. With none
+        # selected this resolves to the DC run, which is the previous behaviour.
+        artifact_run_id=artifact_run_id(),
     )
 
 

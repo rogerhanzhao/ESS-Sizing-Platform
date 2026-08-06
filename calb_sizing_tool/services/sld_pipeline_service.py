@@ -210,9 +210,14 @@ def run_sld_pipeline_from_run_bundle(
     actor: str | None = None,
     db_url: str | None = None,
     register_artifacts: bool = True,
+    artifact_run_id: str | None = None,
 ) -> ExecutedSldPipeline:
     if register_artifacts and not str(run_bundle.run_id or "").strip():
         raise ValueError("SLD artifact registration requires a valid run_id.")
+    # An SLD belongs to the AC alternative it was drawn from, when one is
+    # selected. Without it the drawings stay on the DC run, which is where every
+    # database written before AC runs existed already has them.
+    _artifact_run_id = str(artifact_run_id or "").strip() or run_bundle.run_id
 
     prepared = prepare_sld_pipeline_from_run_bundle(
         run_bundle,
@@ -300,7 +305,7 @@ def run_sld_pipeline_from_run_bundle(
 
     if register_artifacts:
         persist_artifacts(
-            run_id=run_bundle.run_id,
+            run_id=_artifact_run_id,
             artifacts=artifacts,
             plugin_id=prepared.plugin_id,
             plugin_version=prepared.plugin_version,

@@ -16,6 +16,7 @@ def render_sld_from_run_bundle(
     plugin_id: str = "sld_engineering_v1",
     actor: str | None = None,
     db_url: str | None = None,
+    artifact_run_id: str | None = None,
 ) -> DiagramArtifactBundle:
     execution = run_sld_pipeline_from_run_bundle(
         run_bundle,
@@ -27,5 +28,6 @@ def render_sld_from_run_bundle(
         plugin_id=plugin_id,
         actor=actor,
         db_url=db_url,
+        artifact_run_id=artifact_run_id,
     )
     return execution.artifact_bundle

@@ -125,7 +125,42 @@ def get_workspace_context() -> dict[str, Any]:
         "case_code": st.session_state.get("active_case_code"),
         "case_name": st.session_state.get("active_case_name"),
         "run_id": st.session_state.get("active_run_id") or st.session_state.get("dc_last_run_id"),
+        # The AC alternative selected under that DC run, when there is one.
+        # Downstream artifacts (SLD, arrangement, report) attach to it; None means
+        # they attach to the DC run, which is where every pre-existing database
+        # already has them.
+        "ac_run_id": st.session_state.get("active_ac_run_id"),
     }
+
+
+def set_active_ac_run(ac_run_id: str | None) -> None:
+    """Select which AC alternative the downstream pages work from.
+
+    Switching alternatives invalidates the drawings on screen — they belong to
+    the alternative that produced them — so the same runtime state is cleared as
+    when the run itself changes.
+    """
+    current = st.session_state.get("active_ac_run_id")
+    if current != ac_run_id:
+        _clear_downstream_runtime_state()
+    st.session_state["active_ac_run_id"] = ac_run_id
+
+
+def get_active_ac_run_id() -> str | None:
+    return st.session_state.get("active_ac_run_id")
+
+
+def artifact_run_id() -> str | None:
+    """The run downstream artifacts belong to: the AC alternative, else the DC run.
+
+    One helper so no page has to decide this for itself — deciding it twice is
+    how the arrangement ended up with two implementations.
+    """
+    return (
+        st.session_state.get("active_ac_run_id")
+        or st.session_state.get("active_run_id")
+        or st.session_state.get("dc_last_run_id")
+    )
 
 
 def navigate_to(page_name: str) -> None:
@@ -208,6 +243,9 @@ def set_active_run(run_id: str | None) -> None:
     current_run_id = st.session_state.get("active_run_id") or st.session_state.get("dc_last_run_id")
     if current_run_id != run_id:
         _clear_downstream_runtime_state()
+        # An AC alternative belongs to ONE DC run. Carrying the selection across
+        # a run switch would point the downstream pages at another run's branch.
+        st.session_state.pop("active_ac_run_id", None)
     st.session_state["active_run_id"] = run_id
     st.session_state["dc_last_run_id"] = run_id
 

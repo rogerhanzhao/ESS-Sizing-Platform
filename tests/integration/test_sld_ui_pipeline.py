@@ -25,7 +25,8 @@ def test_sld_ui_pipeline_delegates_to_pipeline_service(monkeypatch):
         ),
     )
 
-    def _fake_pipeline(bundle, *, ac_snapshot, options, project_settings, plugin_id, actor, register_artifacts):
+    def _fake_pipeline(bundle, *, ac_snapshot, options, project_settings, plugin_id,
+                       actor, register_artifacts, artifact_run_id=None):
         calls["bundle"] = bundle
         calls["ac_snapshot"] = ac_snapshot
         calls["options"] = options
@@ -33,6 +34,9 @@ def test_sld_ui_pipeline_delegates_to_pipeline_service(monkeypatch):
         calls["plugin_id"] = plugin_id
         calls["actor"] = actor
         calls["register_artifacts"] = register_artifacts
+        # The page must tell the pipeline WHICH run the SLD belongs to: the
+        # selected AC alternative, or the DC run when none is selected.
+        calls["artifact_run_id"] = artifact_run_id
         return fake_result
 
     monkeypatch.setattr(single_line_diagram_view, "run_sld_pipeline_from_run_bundle", _fake_pipeline)
@@ -57,6 +61,7 @@ def test_sld_ui_pipeline_delegates_to_pipeline_service(monkeypatch):
     assert calls["plugin_id"] == "sld_engineering_v1"
     assert calls["actor"] == "tester"
     assert calls["register_artifacts"] is True
+    assert "artifact_run_id" in calls
 
 
 def test_sld_ui_pipeline_can_run_a_guest_preview_without_registering_artifacts(monkeypatch):

@@ -8,8 +8,7 @@
 **结论先说**：逻辑理得清楚，**不会与 Case 重复**，但**会有过度细分的风险**，
 需要一条明确的去重规则来挡住。
 
-**当前状态**：第 1 步（schema + 记录 + 去重 + 页面接入）**已实施**；
-第 2 步（下游 artifact 改址）和第 3 步（UI 切换器）**未做** —— 见 §四。
+**当前状态**：第 1、2、3 步**均已实施**（2026-08-04）。见 §四。
 
 ---
 
@@ -91,15 +90,35 @@ Project
 
 **下游未动**：SLD / Layout / Report 的 artifact 仍挂 DC Run。
 
-### 第 2 步 —— 改址（未做）
+### ✅ 第 2 步 —— 改址（已完成 2026-08-04）
 
-SLD / Layout / Report 改为挂 AC Run，读取加"本级找不到就找父级"的兼容。
-这是三步里最大的一步，约 23 种 artifact 的 `run_id` 语义都要重新判断。
+**核心是"祖先回退"，不是逐个改址。** `load_artifact_bytes_from_db` 沿
+`parent_run_id` 向上走，**就近优先**：
 
-### 第 3 步 —— UI（未做）
+- 方案自己的图**永远赢**；
+- 方案没生成过的那一种，**自动回退到 DC Run 的**；
+- **老库完全不用迁移** —— 图本来就都在 DC Run 上，照常读得到。
 
-按 owner 裁决走 **B**：workbench 第三级仍列 DC Run，选中后旁边给一个
-AC 方案切换器（不算第四级）。`list_ac_alternatives()` 已经按这个形状返回数据。
+写入端：`run_sld_pipeline_from_run_bundle` / `render_sld_from_run_bundle` /
+`render_layout_from_run_bundle` 各加一个 `artifact_run_id=None` 参数，
+**默认 None 即落在 DC Run**，所有既有调用行为不变。
+
+`site_constraint_set` **故意没有改址**：场地约束是地块边界/进场/退界，
+属于项目与 DC Run 层面，**不随 AC 方案变**。
+
+页面侧只认一个 helper `workspace_state.artifact_run_id()`
+（选中方案 → 否则 DC Run），SLD / 排布 / 报告三页都调它 ——
+**这个判断只能有一处**，各页各写一份正是排布那条缺陷链的成因。
+
+`set_active_run()` 切换 DC Run 时会**清掉方案选择**：
+一个 AC 方案只属于一个 DC Run，带过去就会指向别人的分支。
+
+### ✅ 第 3 步 —— UI（已完成 2026-08-04）
+
+按 owner 裁决 **C/B**：workbench 第三级仍列 DC Run，
+下面多一个 **AC 方案横向切换器**（不是第四级下拉）。
+**只有当该 DC Run 下确实有 ≥2 个方案时才出现** —— 一个方案是常态，
+不需要控件，下游本来就会解析到它。
 
 ---
 

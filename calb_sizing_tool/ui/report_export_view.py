@@ -31,7 +31,7 @@ from calb_sizing_tool.reporting.report_v2 import export_report_v2_1
 from calb_sizing_tool.runtime_paths import get_outputs_dir
 from calb_sizing_tool.state.project_state import get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state
-from calb_sizing_tool.state.workspace_state import get_workspace_context
+from calb_sizing_tool.state.workspace_state import artifact_run_id, get_workspace_context
 from calb_sizing_tool.services.sld_data_source_service import AcSnapshotResolution, resolve_preferred_ac_snapshot
 from calb_sizing_tool.services.artifact_service import load_artifact_bytes_from_db
 from calb_sizing_tool.services.governed_ac_block_service import governed_poi_power_closure_issue
@@ -161,10 +161,11 @@ def show():
     ac_results = state.ac_results or {}
     artifacts = state.artifacts
     outputs_dir = get_outputs_dir()
-    _active_run_id = (
-        st.session_state.get("active_run_id")
-        or st.session_state.get("dc_last_run_id")
-    )
+    # Read artifacts at the AC alternative when one is selected. The reader walks
+    # up parent_run_id, so an alternative that never produced a given figure still
+    # shows the DC run's — and a database written before AC runs existed is
+    # unaffected.
+    _active_run_id = artifact_run_id()
 
     # --- SLD bytes: DB artifact_registry → plugin bundle → old artifacts dict → old diagram_results → file ---
     sld_png = sld_svg = None
