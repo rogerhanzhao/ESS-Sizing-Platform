@@ -98,7 +98,17 @@ verify_version() {
 
   # Compare with GitHub. A server with no route out is normal, so failing to
   # reach the remote is reported as UNKNOWN, never as agreement.
-  if git -C "$REPO_ROOT" fetch --quiet origin "$branch" 2>/dev/null; then
+  #
+  # GIT_TERMINAL_PROMPT=0 because origin is an https:// remote: without stored
+  # credentials git asks for a username whenever a terminal is available. This
+  # check runs at the end of every start/restart/update, which an operator
+  # normally does over an interactive ssh — so a deploy would stop on a
+  # credential prompt that has nothing to do with deploying. (Measured: with no
+  # tty, as under the systemd timer, git already fails fast with 128 rather than
+  # waiting, so this hardens the interactive path specifically.) Either way the
+  # result is an honest UNREACHABLE instead of a blocked terminal.
+  if GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true git -C "$REPO_ROOT" \
+       fetch --quiet --no-tags origin "$branch" 2>/dev/null; then
     remote_rev="$(git -C "$REPO_ROOT" rev-parse --short=7 "origin/${branch}" 2>/dev/null || echo '?')"
     echo "origin/${branch} : ${remote_rev}"
     if [ "$local_rev" = "$remote_rev" ]; then

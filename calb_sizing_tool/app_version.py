@@ -63,13 +63,17 @@ UNKNOWN_VERSION = "V?"
 UNKNOWN_REVISION = "dev"
 
 
-@lru_cache(maxsize=1)
 def release_version() -> str:
     """The release, ALWAYS with a capital V (owner, 2026-08-06: "V 请大写").
 
     The VERSION file holds the bare number ("2.1"); the V is applied here so it
     cannot drift between call sites. A file that already carries a v/V prefix is
     normalised rather than doubled.
+
+    Uncached, like the revision: a cached read would keep serving the release a
+    long-running process started on, so bumping VERSION and pulling would not
+    change what the page says — the very complaint this module answers. One
+    small file read per rerun.
     """
     try:
         raw = _VERSION_FILE.read_text(encoding="utf-8").strip()
@@ -80,12 +84,26 @@ def release_version() -> str:
     return "V" + raw.lstrip("vV").strip()
 
 
-@lru_cache(maxsize=1)
+#: Longest revision we will print. A short SHA is 7; the rest of the budget is
+#: for the ``+dirty`` marker, which must NEVER be clipped — "5db9aca+dirt" reads
+#: as a typo, and a warning that looks like a typo is not a warning.
+_MAX_REVISION_CHARS = 24
+
+
 def build_revision() -> str:
-    """The commit this build came from — the part that proves a deploy landed."""
+    """The commit this build came from — the part that proves a deploy landed.
+
+    NOT cached. Caching this is how the original defect comes back in miniature:
+    on a developer checkout the revision is read from git, and a process that
+    cached it would keep showing the commit it started on long after a pull —
+    a version number that does not change when the code changes, which is
+    exactly what the owner reported. The git call costs ~2 ms and only happens
+    where there is no build stamp; in a container the environment answers
+    immediately and there is nothing to cache anyway.
+    """
     env_rev = os.environ.get("CALB_BUILD_REV", "").strip()
     if env_rev:
-        return env_rev[:12]
+        return env_rev[:_MAX_REVISION_CHARS]
     # Developer checkout fallback. Never fires in the container: .dockerignore
     # excludes .git, which is exactly why the build argument exists.
     try:
@@ -101,9 +119,11 @@ def build_revision() -> str:
     return UNKNOWN_REVISION
 
 
-@lru_cache(maxsize=1)
 def build_branch() -> str:
     """The branch the image was built from. Empty when it was not recorded.
+
+    Uncached for the same reason as ``build_revision``: on a developer checkout
+    this comes from git, and switching branches must be reflected.
 
     "Latest on GitHub" is a per-branch statement, so a revision alone cannot be
     compared against it — a1b2c3d being absent from `main` proves nothing if the
@@ -127,7 +147,12 @@ def build_branch() -> str:
 
 @lru_cache(maxsize=1)
 def build_time() -> str:
-    """When the image was built, UTC. Empty when it was not recorded."""
+    """When the image was built, UTC. Empty when it was not recorded.
+
+    Safe to cache — unlike the release and the revision this has no on-disk
+    source that can change under a running process; it is the environment, which
+    is fixed for the life of the container.
+    """
     return os.environ.get("CALB_BUILD_TIME", "").strip()
 
 

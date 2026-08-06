@@ -226,6 +226,34 @@ Dockerfile `ARG` → compose `build.args` → `calb-serverctl.sh` 三段链路�
 **V 大写**：`VERSION` 文件只存裸数字 `2.1`，大写 V 在 `release_version()`
 统一加，杜绝各调用点写法漂移；文件里已带 `v/V` 前缀会被归一化而不是叠加。
 
+### 复审发现的三个缺陷（2026-08-06 二次梳理，均已修）
+
+owner 要求"再梳理一遍"，把上面这套机制当别人的代码逐条实证，查出三处：
+
+| # | 缺陷 | 实证 | 修法 |
+| --- | --- | --- | --- |
+| 1 | `env_rev[:12]` 把 `5db9aca+dirty` 截成 `5db9aca+dirt` | 直接跑出来 | 上限放到 24 字符；**截断仍保留**，防止构建参数灌爆侧边栏 |
+| 2 | `@lru_cache` 让开发机上的版本号**永远停在进程启动时** | 进程内改仓库后函数仍返回旧值 | `release_version` / `build_revision` / `build_branch` 全部取消缓存（git 调用实测 2.2 ms）；`build_time` 保留缓存，因为它只来自环境变量、容器内不可变 |
+| 3 | `verify_version` 的 `git fetch` 会因索要凭据打断部署 | 见下 | 加 `GIT_TERMINAL_PROMPT=0` / `GIT_ASKPASS=true` |
+
+**缺陷 2 是原缺陷的翻版**：owner 报的就是"版本号不随更新改变"，而缓存会在开发机上
+把同一个毛病重新造出来——`git pull` 改了代码，页面还是旧号，直到重启进程。
+
+**缺陷 3 的实证过程值得记一笔**：我最初写的是"无 tty 会挂起"。搭了一个返回 401 的
+本地服务端实测，**结论是相反的** —— 无 tty 时 git 直接以 128 退出，不会挂。
+真正的场景是 ssh 交互式跑 `update` 时弹出凭据提示打断部署。
+脚本注释已按实测结论改写，没有保留我未证明的说法。
+
+**一处怀疑但证伪的**：`case "$container_line" in *"$local_rev"*)` 中若 `local_rev`
+取不到而变成 `?`，`?` 在 case 里是通配符，会误判成"一致"。实测**不会** ——
+模式里的 `"$local_rev"` 带引号，引号已禁用了通配。原样保留。
+
+**已验证无问题的**：`st.caption(help=)` 在 streamlit 1.60 受支持（不支持会直接
+崩掉整个应用）；`VERSION` 不被 `.dockerignore` 排除，确实进得了镜像。
+
+回归锁：`tests/unit/test_app_version.py` 增至 23 条，其中 5 条专锁这三个缺陷，
+含"拿掉护栏测试必须失败"的反向验证。
+
 ### 每次升级自动校验（owner："无论任何升级，版本号都要检验"）
 
 `calb-serverctl.sh` 的 `start` / `restart` / `update` **收尾都会跑

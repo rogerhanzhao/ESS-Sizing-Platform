@@ -58,11 +58,7 @@ def test_the_version_file_is_normalised(tmp_path, monkeypatch, raw, expected):
     path = tmp_path / "VERSION"
     path.write_text(raw, encoding="utf-8")
     monkeypatch.setattr(app_version, "_VERSION_FILE", path)
-    app_version.release_version.cache_clear()
-    try:
-        assert app_version.release_version() == expected
-    finally:
-        app_version.release_version.cache_clear()
+    assert app_version.release_version() == expected
 
 
 @pytest.mark.parametrize("raw", ["", "   "])
@@ -71,11 +67,7 @@ def test_an_empty_version_file_reads_as_unknown(tmp_path, monkeypatch, raw):
     path = tmp_path / "VERSION"
     path.write_text(raw, encoding="utf-8")
     monkeypatch.setattr(app_version, "_VERSION_FILE", path)
-    app_version.release_version.cache_clear()
-    try:
-        assert app_version.release_version() == app_version.UNKNOWN_VERSION
-    finally:
-        app_version.release_version.cache_clear()
+    assert app_version.release_version() == app_version.UNKNOWN_VERSION
 
 
 def test_the_repository_ships_a_version_file():
@@ -218,3 +210,85 @@ def test_the_version_check_reports_unknown_rather_than_agreement():
     # The running image is a separate claim from the checkout, and is the one a
     # failed build leaves stale.
     assert "running app" in check and "MISMATCH" in check
+
+
+# ---------------------------------------------------------------------------
+# Re-review 2026-08-06: three defects found in the first cut of this feature
+# ---------------------------------------------------------------------------
+
+def test_the_dirty_marker_is_never_clipped():
+    """It was: "5db9aca+dirty" came out as "5db9aca+dirt".
+
+    A truncated warning reads as a typo, and a warning that looks like a typo
+    stops being a warning — an operator would shrug at it rather than notice the
+    image does not match any commit.
+    """
+    label = _in_fresh_process(
+        "from calb_sizing_tool.app_version import version_label; print(version_label())",
+        CALB_BUILD_REV="5db9aca+dirty", CALB_BUILD_TIME="",
+    )
+    assert label.endswith("5db9aca+dirty")
+
+
+def test_a_hostile_build_arg_cannot_flood_the_sidebar():
+    """The truncation still has to bound what a build arg can print."""
+    label = _in_fresh_process(
+        "from calb_sizing_tool.app_version import build_revision; print(build_revision())",
+        CALB_BUILD_REV="x" * 500, CALB_BUILD_TIME="",
+    )
+    assert len(label) == app_version._MAX_REVISION_CHARS
+
+
+def test_the_revision_is_not_frozen_for_the_process():
+    """The original defect in miniature, and the reason not to cache.
+
+    Streamlit keeps this module imported across reruns, so a cached revision
+    would show the commit the process started on for as long as it lives — on a
+    developer machine, `git pull` would change the code and not the version.
+    """
+    import inspect
+
+    for name in ("build_revision", "build_branch", "release_version"):
+        func = getattr(app_version, name)
+        assert not hasattr(func, "cache_clear"), (
+            f"{name} must not be cached — it has an on-disk source that changes "
+            f"under a running process"
+        )
+        # And it must genuinely re-read, not just be uncached by accident.
+        assert "lru_cache" not in inspect.getsource(func)
+
+
+def test_the_release_follows_the_file_within_one_process():
+    """Bumping VERSION must change what the page says, without a restart."""
+    import pathlib
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = pathlib.Path(tmp) / "VERSION"
+        original = app_version._VERSION_FILE
+        try:
+            app_version._VERSION_FILE = path
+            path.write_text("2.1", encoding="utf-8")
+            assert app_version.release_version() == "V2.1"
+            path.write_text("2.2", encoding="utf-8")
+            assert app_version.release_version() == "V2.2", "stale after a bump"
+        finally:
+            app_version._VERSION_FILE = original
+
+
+def test_the_github_comparison_cannot_stop_on_a_credential_prompt():
+    """origin is https; without credentials git asks for a username.
+
+    This check runs at the end of every start/restart/update, normally over an
+    interactive ssh — a deploy must not stop on a prompt unrelated to deploying.
+    """
+    script = open("deploy/docker/calb-serverctl.sh", encoding="utf-8").read()
+    check = script[script.index("verify_version() {"):]
+    check = check[:check.index("\ncompose() {")]
+    # Comments mention the guard too; the CODE is what has to carry it.
+    code = "\n".join(l for l in check.splitlines() if not l.strip().startswith("#"))
+    assert "fetch" in code, "the check must consult the remote at all"
+    assert "GIT_TERMINAL_PROMPT=0" in code
+    assert "GIT_ASKPASS" in code
+    # And on the fetch itself, not somewhere else in the function.
+    assert 0 < code.index("fetch --quiet") - code.index("GIT_TERMINAL_PROMPT=0") < 200
