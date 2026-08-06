@@ -152,6 +152,15 @@ def persist_ac_run(
             # Same configuration as before: this is the SAME alternative being
             # recomputed, not a new one. Keep one row and move on.
             existing.finished_at = _now()
+            _refresh_alternative_snapshots(
+                repo,
+                run_id=existing.sizing_run_id,
+                ac_inputs=ac_inputs,
+                ac_output=ac_output,
+                content_hash=content_hash,
+                version_tag=version_tag,
+                source_ref=source_ref,
+            )
             session.flush()
             return AcRunResult(
                 run_id=existing.sizing_run_id,
@@ -225,6 +234,63 @@ def persist_ac_run(
             content_hash=content_hash,
             reused=False,
             alternatives=len(repo.list_child_runs(parent_id, run_type=AC_RUN_TYPE)),
+        )
+
+
+def _refresh_alternative_snapshots(
+    repo: RunRepository,
+    *,
+    run_id: str,
+    ac_inputs: Mapping[str, Any] | None,
+    ac_output: Mapping[str, Any],
+    content_hash: str,
+    version_tag: str | None,
+    source_ref: str,
+) -> None:
+    """Keep a reused alternative's stored configuration current.
+
+    The identity hash covers only the 17 fields that make one scheme different
+    from another, so a re-save can legitimately carry NEW content under the SAME
+    identity — a renamed case, an edited input that does not change the scheme.
+    Since these snapshots are what the SLD, arrangement and report pages read
+    back for this alternative, leaving them at the first save would serve stale
+    values. (Before alternatives were read from, the DC run's runtime snapshot
+    was rewritten on every save and this could not arise.)
+
+    Writes only when the content ACTUALLY differs, so re-running an unchanged
+    configuration still adds nothing — the owner's growth constraint holds.
+
+    The input row keeps the IDENTITY hash, never a hash of its payload:
+    ``find_child_run_by_hash`` matches on it, and changing it would orphan the
+    alternative and mint a duplicate run on the next save.
+    """
+    input_payload = dict(ac_inputs or {})
+    existing_input = repo.get_latest_input_snapshot_by_kind(run_id, AC_INPUT_SNAPSHOT_KIND)
+    if existing_input is None or existing_input.snapshot_json != input_payload:
+        repo.add_input_snapshot(
+            run_id,
+            RunInputSnapshotSchema(
+                snapshot_kind=AC_INPUT_SNAPSHOT_KIND,
+                payload=input_payload,
+                content_hash=content_hash,
+            ),
+            version_tag=version_tag,
+            source_ref=source_ref,
+        )
+
+    output_payload = dict(ac_output)
+    output_hash = _payload_hash(output_payload)
+    existing_output = repo.get_latest_output_snapshot_by_kind(run_id, AC_OUTPUT_SNAPSHOT_KIND)
+    if existing_output is None or existing_output.content_hash != output_hash:
+        repo.add_output_snapshot(
+            run_id,
+            RunOutputSnapshotSchema(
+                snapshot_kind=AC_OUTPUT_SNAPSHOT_KIND,
+                payload=output_payload,
+                content_hash=output_hash,
+            ),
+            version_tag=version_tag,
+            source_ref=source_ref,
         )
 
 

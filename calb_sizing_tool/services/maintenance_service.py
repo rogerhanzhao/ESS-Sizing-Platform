@@ -60,6 +60,7 @@ from sqlalchemy.exc import OperationalError
 
 from calb_sizing_tool.infra.db.models import ArtifactRegistry
 from calb_sizing_tool.infra.db.models.audit_log import AuditLog
+from calb_sizing_tool.infra.db.models.run_input_snapshot import RunInputSnapshot
 from calb_sizing_tool.infra.db.models.run_output_snapshot import RunOutputSnapshot
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.runtime_paths import get_outputs_dir
@@ -188,32 +189,36 @@ def prune_artifacts_older_than(days: int | None = None, *, db_url: str | None = 
 
 def prune_snapshot_generations(keep: int | None = None, *, db_url: str | None = None,
                                report: PruneReport | None = None) -> PruneReport:
-    """Keep the newest ``keep`` output snapshots of each (run, kind).
+    """Keep the newest ``keep`` snapshots of each (run, kind), inputs and outputs.
 
     Re-running AC appends a full AC output document every time while only the
     newest is ever read, so the tail is unreachable weight. ``keep=0`` disables it.
+
+    Input snapshots are pruned on the same rule because a reused AC alternative
+    re-records its inputs whenever their content drifts under an unchanged
+    identity (see ``ac_run_service._refresh_alternative_snapshots``). That is
+    safe for the dedup lookup: every input row of one AC run carries the SAME
+    identity hash, so ``find_child_run_by_hash`` still matches the newest.
     """
     report = report or PruneReport()
     keep = _env_int("CALB_SNAPSHOT_GENERATIONS", DEFAULT_SNAPSHOT_GENERATIONS) if keep is None else keep
     if keep <= 0:
         report.notes.append("snapshot retention disabled")
         return report
-    try:
-        with session_scope(db_url) as session:
-            rows = (
-                session.query(RunOutputSnapshot)
-                .order_by(RunOutputSnapshot.created_at.desc())
-                .all()
-            )
-            seen: dict[tuple[str, str], int] = {}
-            for row in rows:
-                key = (str(row.sizing_run_id), str(row.snapshot_kind))
-                seen[key] = seen.get(key, 0) + 1
-                if seen[key] > keep:
-                    session.delete(row)
-                    report.snapshot_rows += 1
-    except OperationalError as exc:
-        report.notes.append(f"run_output_snapshot unavailable: {exc}")
+    for model, label in ((RunOutputSnapshot, "run_output_snapshot"),
+                         (RunInputSnapshot, "run_input_snapshot")):
+        try:
+            with session_scope(db_url) as session:
+                rows = session.query(model).order_by(model.created_at.desc()).all()
+                seen: dict[tuple[str, str], int] = {}
+                for row in rows:
+                    key = (str(row.sizing_run_id), str(row.snapshot_kind))
+                    seen[key] = seen.get(key, 0) + 1
+                    if seen[key] > keep:
+                        session.delete(row)
+                        report.snapshot_rows += 1
+        except OperationalError as exc:
+            report.notes.append(f"{label} unavailable: {exc}")
     return report
 
 
@@ -283,6 +288,7 @@ def storage_report(*, db_url: str | None = None) -> dict[str, Any]:
             for label, model in (
                 ("artifact_registry", ArtifactRegistry),
                 ("run_output_snapshot", RunOutputSnapshot),
+                ("run_input_snapshot", RunInputSnapshot),
                 ("audit_log", AuditLog),
             ):
                 counts[label] = session.query(model).count()

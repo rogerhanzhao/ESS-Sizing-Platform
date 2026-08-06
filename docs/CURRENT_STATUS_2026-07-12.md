@@ -466,6 +466,21 @@ same rule as `artifact_run_id()`, the decision lives in ONE place. AC sizing
 now selects the alternative it just saved (`clear_downstream=False`, because
 that session state IS the alternative's).
 
+Step 5 opened one hole and closed it in the same breath, worth stating because
+it is not obvious: the identity hash covers 17 fields, so a re-save can carry
+NEW content under the SAME identity (a renamed case, an edited input that does
+not change the scheme) and the run is REUSED. Once the alternative's own
+snapshots became what the pages read, leaving them at the first save served
+stale values — something that could not happen while the DC runtime snapshot
+was rewritten every time. `_refresh_alternative_snapshots` re-records them
+**only when the content actually differs**, so an unchanged re-run still writes
+nothing and 行数 = 真正试过的方案数 still holds. The refreshed input row keeps
+the IDENTITY hash, never a hash of its payload — `find_child_run_by_hash`
+matches on it, and changing it would orphan the alternative and mint a
+duplicate. `prune_snapshot_generations` now covers input snapshots for the same
+reason, and that is safe because every input row of one AC run carries that same
+identity hash.
+
 **Still deliberate, not debt**: `site_constraint_set` stays on the DC run, and
 `external_layout_service` resolves "last AC saved" — an external caller passes a
 run id and has no alternative context.
@@ -481,7 +496,7 @@ now in place, at the source and after the fact:
 | artifact files + rows | each `(run, kind, artifact_mode)` lineage keeps the newest generation only (`CALB_ARTIFACT_GENERATIONS`, default 1) |
 | orphaned rows | `maintenance_service.prune_orphaned_artifacts` |
 | old artifacts | `prune_artifacts_older_than` — **row AND file together** (`CALB_ARTIFACT_RETENTION_DAYS`, 30) |
-| output snapshots | `prune_snapshot_generations` (`CALB_SNAPSHOT_GENERATIONS`, 3) |
+| run snapshots (input AND output) | `prune_snapshot_generations` (`CALB_SNAPSHOT_GENERATIONS`, 3) |
 | audit trail | `prune_audit_log` (`CALB_AUDIT_RETENTION_DAYS`, 180 — longer than artifacts on purpose) |
 | op log | `prune_oplog` (`CALB_OPLOG_RETENTION_DAYS`, 30) |
 

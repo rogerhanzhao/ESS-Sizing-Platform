@@ -164,3 +164,83 @@ def test_switching_alternatives_still_clears_stale_state():
 
     params = inspect.signature(set_active_ac_run).parameters
     assert params["clear_downstream"].default is True
+
+
+# --------------------------------------------------------------------------
+# A reused alternative must not serve the FIRST save's content
+# --------------------------------------------------------------------------
+#
+# The identity hash covers 17 fields. Everything else in ac_output — a renamed
+# case, an edited input that does not change the scheme — can legitimately move
+# while the identity holds, and the run is then REUSED. Before alternatives were
+# read from, the DC runtime snapshot was rewritten on every save, so this could
+# not arise; now the alternative's own snapshots are what the pages read, and
+# they have to keep up.
+
+
+def test_a_reused_alternative_serves_the_latest_content(db):
+    first = dict(_ac_output("dc-1", 8), source_case_name="OLD")
+    a = persist_ac_run(dc_run_id="dc-1", ac_inputs={"note": "first"},
+                       ac_output=first, db_url=db)
+    again = persist_ac_run(dc_run_id="dc-1", ac_inputs={"note": "second"},
+                           ac_output=dict(first, source_case_name="NEW"), db_url=db)
+
+    assert again.reused and again.run_id == a.run_id, (
+        "a non-identity change must NOT mint a second alternative"
+    )
+    snapshot = load_persisted_ac_snapshot("dc-1", ac_run_id=a.run_id, db_url=db)
+    assert snapshot.output["source_case_name"] == "NEW"
+    assert snapshot.inputs == {"note": "second"}
+
+
+def test_an_unchanged_re_save_writes_nothing(db):
+    """The growth gate: re-running an identical configuration adds no rows."""
+    from calb_sizing_tool.infra.db.models.run_input_snapshot import RunInputSnapshot
+    from calb_sizing_tool.infra.db.models.run_output_snapshot import RunOutputSnapshot
+
+    payload = _ac_output("dc-1", 8)
+    persist_ac_run(dc_run_id="dc-1", ac_inputs={"note": "x"}, ac_output=payload, db_url=db)
+
+    def _counts():
+        with session_scope(db) as session:
+            return (session.query(RunInputSnapshot).count(),
+                    session.query(RunOutputSnapshot).count())
+
+    before = _counts()
+    for _ in range(3):
+        persist_ac_run(dc_run_id="dc-1", ac_inputs={"note": "x"},
+                       ac_output=dict(payload), db_url=db)
+    assert _counts() == before
+
+
+def test_refreshing_does_not_break_deduplication(db):
+    """The refreshed input row must keep the IDENTITY hash, not its own."""
+    payload = dict(_ac_output("dc-1", 8), source_case_name="OLD")
+    a = persist_ac_run(dc_run_id="dc-1", ac_inputs={"note": "1"}, ac_output=payload, db_url=db)
+    persist_ac_run(dc_run_id="dc-1", ac_inputs={"note": "2"},
+                   ac_output=dict(payload, source_case_name="NEW"), db_url=db)
+    third = persist_ac_run(dc_run_id="dc-1", ac_inputs={"note": "3"},
+                           ac_output=dict(payload, source_case_name="THIRD"), db_url=db)
+    assert third.reused and third.run_id == a.run_id
+    assert third.alternatives == 1, "still ONE alternative, not three"
+
+
+def test_snapshot_pruning_keeps_the_dedup_lookup_working(db):
+    """Input snapshots are pruned now too; the identity must survive it."""
+    from calb_sizing_tool.services.maintenance_service import prune_snapshot_generations
+
+    payload = _ac_output("dc-1", 8)
+    a = persist_ac_run(dc_run_id="dc-1", ac_inputs={"n": 0}, ac_output=payload, db_url=db)
+    for n in range(1, 8):
+        persist_ac_run(dc_run_id="dc-1", ac_inputs={"n": n},
+                       ac_output=dict(payload, source_case_name=str(n)), db_url=db)
+
+    prune_snapshot_generations(keep=2, db_url=db)
+
+    after = persist_ac_run(dc_run_id="dc-1", ac_inputs={"n": 99},
+                           ac_output=dict(payload, source_case_name="99"), db_url=db)
+    assert after.reused and after.run_id == a.run_id, (
+        "pruning must not orphan the alternative and mint a duplicate run"
+    )
+    snapshot = load_persisted_ac_snapshot("dc-1", ac_run_id=a.run_id, db_url=db)
+    assert snapshot.output["source_case_name"] == "99"

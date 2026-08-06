@@ -195,7 +195,22 @@ load_persisted_ac_snapshot(dc_run_id, ac_run_id=选中方案)
 `clear_downstream=False` 是必须的 —— 此时 session 里装的**就是**这个方案的结果，
 照常清理会把用户刚算出来的东西一起抹掉。切换方案时默认仍然清理。
 
-回归锁 `tests/unit/test_ac_alternative_snapshot_scope.py`（9 条）。
+**这一步自己捅出来又补上的一个洞**（值得单独写，因为不明显）：
+身份哈希只覆盖 17 个字段，所以**同一身份下内容是可以变的**
+（案例改名、不改变方案的输入微调），此时 Run 会被**复用**。
+一旦方案自己的快照成了页面读取的来源，停在第一次保存就等于**发陈货** ——
+在"DC 运行态快照每次重写"的年代这不可能发生。
+
+`_refresh_alternative_snapshots` 只在**内容真的变了**时才补写：
+参数没动的重算依然一行不写，**行数 = 真正试过的方案数**这条不破。
+补写的 input 行**必须保留身份哈希**，不能改成自身 payload 的哈希 ——
+`find_child_run_by_hash` 认的就是它，改了会让方案变孤儿、下次保存多出一个重复 Run。
+`prune_snapshot_generations` 同步覆盖 input 快照（同一个 AC Run 的 input 行
+哈希全都一样，所以剪枝不影响去重查找）。
+
+回归锁 `tests/unit/test_ac_alternative_snapshot_scope.py`（13 条），
+其中 4 条专门锁这个洞：复用必须发最新内容、未改动的重存必须一行不写、
+补写不能破坏去重、剪枝之后去重仍然找得到。
 
 ---
 
