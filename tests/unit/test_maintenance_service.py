@@ -9,6 +9,7 @@ row-and-file together.
 from __future__ import annotations
 
 import datetime
+import os
 
 import pytest
 
@@ -287,3 +288,108 @@ def test_the_generation_count_is_configurable(monkeypatch):
     assert artifact_generations_to_keep() == 1
     monkeypatch.setenv("CALB_ARTIFACT_GENERATIONS", "abc")
     assert artifact_generations_to_keep() == 1
+
+
+# ---------------------------------------------------------------------------
+# Files whose ROW is gone — the direction prune_orphaned_artifacts never covered
+# ---------------------------------------------------------------------------
+#
+# prune_orphaned_artifacts removes a row whose file vanished. Nothing in Python
+# removed a FILE whose row vanished; only the shell sweep did, and only on the
+# deployed host under CALB_RUNTIME_ROOT. A developer checkout therefore grew
+# without limit — measured at 479 run directories / ~159 MB, referenced by no
+# database still in existence.
+
+
+def _outputs(tmp_path, monkeypatch):
+    out = tmp_path / "out"
+    (out / "artifacts" / "r1" / "plug").mkdir(parents=True)
+    monkeypatch.setenv("CALB_OUTPUTS_DIR", str(out))
+    return out
+
+
+def _old_file(path, days: int):
+    path.write_bytes(b"x" * 100)
+    stamp = (datetime.datetime.now() - datetime.timedelta(days=days)).timestamp()
+    os.utime(path, (stamp, stamp))
+
+
+def test_a_file_no_row_points_at_is_found(db_url, tmp_path, monkeypatch):
+    out = _outputs(tmp_path, monkeypatch)
+    kept = out / "artifacts" / "r1" / "plug" / "kept.svg"
+    junk = out / "artifacts" / "r1" / "plug" / "junk.svg"
+    _old_file(kept, 40)
+    _old_file(junk, 40)
+    with session_scope(db_url) as session:
+        _artifact(session, "r1", "sld_svg", "artifacts/r1/plug/kept.svg")
+
+    found = ms.find_unreferenced_artifact_files(db_url=db_url)
+    assert found == [junk]
+
+
+def test_a_recent_file_is_never_a_candidate(db_url, tmp_path, monkeypatch):
+    """Its row may simply not have committed yet."""
+    out = _outputs(tmp_path, monkeypatch)
+    fresh = out / "artifacts" / "r1" / "plug" / "fresh.svg"
+    fresh.write_bytes(b"new")
+    assert ms.find_unreferenced_artifact_files(db_url=db_url) == []
+
+
+def test_only_the_artifacts_subtree_is_swept(db_url, tmp_path, monkeypatch):
+    """logs/ has its own retention and external_ai/ is user-facing output."""
+    out = _outputs(tmp_path, monkeypatch)
+    for name in ("logs", "external_ai"):
+        (out / name).mkdir(parents=True, exist_ok=True)
+        _old_file(out / name / "keep.json", 90)
+    assert ms.find_unreferenced_artifact_files(db_url=db_url) == []
+    assert (out / "logs" / "keep.json").exists()
+
+
+def test_the_sweep_counts_before_it_deletes(db_url, tmp_path, monkeypatch):
+    """Default is dry run: an operator on the wrong database sees a number."""
+    out = _outputs(tmp_path, monkeypatch)
+    junk = out / "artifacts" / "r1" / "plug" / "junk.svg"
+    _old_file(junk, 40)
+
+    report = ms.prune_unreferenced_artifact_files(db_url=db_url)
+    assert report.unreferenced_files == 1
+    assert junk.exists(), "dry run must not delete"
+    assert any("CALB_PRUNE_UNREFERENCED_FILES" in n for n in report.notes)
+
+    report = ms.prune_unreferenced_artifact_files(db_url=db_url, dry_run=False)
+    assert report.unreferenced_files == 1 and not junk.exists()
+    assert report.bytes_freed == 100
+
+
+def test_an_unreadable_registry_deletes_nothing(tmp_path, monkeypatch):
+    """The worst failure mode: concluding 'no rows' means 'all files are junk'."""
+    out = _outputs(tmp_path, monkeypatch)
+    junk = out / "artifacts" / "r1" / "plug" / "junk.svg"
+    _old_file(junk, 40)
+    empty_db = f"sqlite:///{(tmp_path / 'no-tables.sqlite').as_posix()}"
+
+    report = ms.prune_unreferenced_artifact_files(db_url=empty_db, dry_run=False)
+    assert junk.exists(), "a missing registry must never authorise deletion"
+    assert report.unreferenced_files == 0
+    assert any("registry unreadable" in n for n in report.notes)
+
+
+def test_the_full_sweep_only_counts_unless_enabled(db_url, tmp_path, monkeypatch):
+    out = _outputs(tmp_path, monkeypatch)
+    junk = out / "artifacts" / "r1" / "plug" / "junk.svg"
+    _old_file(junk, 40)
+
+    assert ms.run_maintenance(db_url=db_url).unreferenced_files == 1
+    assert junk.exists()
+
+    monkeypatch.setenv("CALB_PRUNE_UNREFERENCED_FILES", "1")
+    assert ms.run_maintenance(db_url=db_url).unreferenced_files == 1
+    assert not junk.exists()
+
+
+def test_emptied_directories_are_removed(db_url, tmp_path, monkeypatch):
+    out = _outputs(tmp_path, monkeypatch)
+    _old_file(out / "artifacts" / "r1" / "plug" / "junk.svg", 40)
+    ms.prune_unreferenced_artifact_files(db_url=db_url, dry_run=False)
+    assert not (out / "artifacts" / "r1").exists()
+    assert (out / "artifacts").exists(), "the root itself stays"

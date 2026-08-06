@@ -43,6 +43,16 @@ swallows every error — so an old run's report lost its figures SILENTLY. Pruni
 must always be row-and-file together, which is what prune_orphaned_artifacts and
 prune_artifacts_older_than do.
 
+THE OTHER HALF, found 2026-08-06: the reverse direction had no owner at all.
+prune_orphaned_artifacts drops a row whose file is gone; NOTHING in Python
+removed a file whose row is gone. Only that shell sweep did, and only on the
+deployed host under CALB_RUNTIME_ROOT — so a developer checkout accumulated
+without limit (measured: 479 run directories, 5267 files, ~159 MB, referenced
+by no database still in existence). prune_unreferenced_artifact_files closes it,
+and COUNTS rather than deletes unless explicitly enabled, because an operator
+pointed at the wrong database would otherwise reclassify every artifact on disk
+as garbage.
+
 Nothing here runs automatically. Call it from the maintenance timer or
 ``python -m calb_sizing_tool.services.maintenance_service``, so that deleting
 data is always something a human or an operator scheduled.
@@ -74,6 +84,14 @@ DEFAULT_OPLOG_RETENTION_DAYS = 30
 # Snapshots are the run's evidence; keep the newest few of each kind per run so a
 # re-run does not erase what the previous one recorded.
 DEFAULT_SNAPSHOT_GENERATIONS = 3
+# An artifact file younger than this is never treated as unreferenced: its row
+# may simply not have committed yet. A week is far longer than any write window
+# and still short enough to reclaim a developer checkout.
+DEFAULT_UNREFERENCED_GRACE_DAYS = 7
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _env_int(name: str, default: int) -> int:
@@ -92,6 +110,7 @@ class PruneReport:
     artifact_rows: int = 0
     artifact_files: int = 0
     orphaned_rows: int = 0
+    unreferenced_files: int = 0
     snapshot_rows: int = 0
     audit_rows: int = 0
     oplog_files: int = 0
@@ -103,6 +122,7 @@ class PruneReport:
             "artifact_rows": self.artifact_rows,
             "artifact_files": self.artifact_files,
             "orphaned_rows": self.orphaned_rows,
+            "unreferenced_files": self.unreferenced_files,
             "snapshot_rows": self.snapshot_rows,
             "audit_rows": self.audit_rows,
             "oplog_files": self.oplog_files,
@@ -269,6 +289,113 @@ def prune_oplog(days: int | None = None, *, report: PruneReport | None = None) -
     return report
 
 
+def find_unreferenced_artifact_files(*, db_url: str | None = None,
+                                     grace_days: int | None = None) -> list[Path]:
+    """Artifact FILES that no registry row points at.
+
+    This is the direction ``prune_orphaned_artifacts`` does not cover. That one
+    removes a row whose file is gone; this one finds a file whose row is gone —
+    and nothing in Python reclaimed those. Only the shell sweep in
+    ``deploy/docker/calb-maintenance.sh`` did, and only on the deployed host
+    under ``CALB_RUNTIME_ROOT``. A developer checkout therefore accumulates
+    forever: a working tree measured 479 run directories / 172 MB, none of it
+    referenced by any database still in existence.
+
+    Two things bound the blast radius, because this returns deletion candidates:
+
+    - only ``outputs/artifacts`` is walked, never the whole outputs tree
+      (``logs/`` has its own retention, ``external_ai/`` is user-facing output);
+    - a file younger than ``grace_days`` is never a candidate, so an artifact
+      written moments ago whose row has not committed yet is safe.
+    """
+    grace = _env_int("CALB_UNREFERENCED_GRACE_DAYS",
+                     DEFAULT_UNREFERENCED_GRACE_DAYS) if grace_days is None else max(0, grace_days)
+    root = get_outputs_dir() / "artifacts"
+    if not root.is_dir():
+        return []
+
+    referenced: set[Path] = set()
+    with session_scope(db_url) as session:
+        # Deliberately NOT guarded against OperationalError: if the registry
+        # cannot be read we must not conclude "nothing is referenced" and hand
+        # back every file on disk. Let it raise.
+        for row in session.query(ArtifactRegistry).all():
+            stored = str(row.file_path or "")
+            if not stored:
+                continue
+            try:
+                referenced.add(resolve_artifact_path(stored).resolve())
+            except OSError:
+                pass
+
+    cutoff = _cutoff(grace).timestamp()
+    candidates: list[Path] = []
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        try:
+            if path.stat().st_mtime >= cutoff:
+                continue
+            if path.resolve() not in referenced:
+                candidates.append(path)
+        except OSError:
+            pass
+    return sorted(candidates)
+
+
+def prune_unreferenced_artifact_files(*, db_url: str | None = None,
+                                      grace_days: int | None = None,
+                                      dry_run: bool = True,
+                                      report: PruneReport | None = None) -> PruneReport:
+    """Delete artifact files no registry row references. **Counts by default.**
+
+    ``dry_run=True`` is the default and ``run_maintenance`` keeps it that way
+    unless ``CALB_PRUNE_UNREFERENCED_FILES`` is set. Reason: an operator pointed
+    at the wrong database would see an empty registry and this sweep would
+    reclassify every artifact on disk as garbage. Counting first makes that
+    mistake visible instead of expensive — the number belongs in front of a
+    human before the deletion does.
+    """
+    report = report or PruneReport()
+    try:
+        candidates = find_unreferenced_artifact_files(db_url=db_url, grace_days=grace_days)
+    except OperationalError as exc:
+        report.notes.append(f"unreferenced sweep skipped, registry unreadable: {exc}")
+        return report
+
+    report.unreferenced_files = len(candidates)
+    if dry_run:
+        if candidates:
+            total = sum(p.stat().st_size for p in candidates if p.exists())
+            report.notes.append(
+                f"{len(candidates)} unreferenced artifact files ({total / 1048576:.1f} MB) "
+                f"— set CALB_PRUNE_UNREFERENCED_FILES=1 to delete"
+            )
+        return report
+
+    for path in candidates:
+        try:
+            size = path.stat().st_size
+            path.unlink()
+            report.bytes_freed += size
+        except OSError:
+            report.unreferenced_files -= 1
+    _remove_empty_dirs(get_outputs_dir() / "artifacts")
+    return report
+
+
+def _remove_empty_dirs(root: Path) -> None:
+    """Deepest first, so a directory emptied by its children is removed too."""
+    if not root.is_dir():
+        return
+    for path in sorted(root.rglob("*"), key=lambda p: len(p.parts), reverse=True):
+        if path.is_dir():
+            try:
+                path.rmdir()
+            except OSError:
+                pass
+
+
 def storage_report(*, db_url: str | None = None) -> dict[str, Any]:
     """Measure the stores, so growth is a number rather than a worry."""
     outputs = get_outputs_dir()
@@ -314,6 +441,13 @@ def run_maintenance(*, db_url: str | None = None) -> PruneReport:
     prune_snapshot_generations(db_url=db_url, report=report)
     prune_audit_log(db_url=db_url, report=report)
     prune_oplog(report=report)
+    # Files whose rows are gone. COUNTED, not deleted, unless explicitly enabled
+    # — see prune_unreferenced_artifact_files for why that default is not timidity.
+    prune_unreferenced_artifact_files(
+        db_url=db_url,
+        dry_run=not _env_flag("CALB_PRUNE_UNREFERENCED_FILES"),
+        report=report,
+    )
     return report
 
 

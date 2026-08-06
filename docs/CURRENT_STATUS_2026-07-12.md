@@ -494,7 +494,8 @@ now in place, at the source and after the fact:
 | --- | --- |
 | test artifacts | `tests/conftest.py` redirects `CALB_OUTPUTS_DIR` to a temp dir |
 | artifact files + rows | each `(run, kind, artifact_mode)` lineage keeps the newest generation only (`CALB_ARTIFACT_GENERATIONS`, default 1) |
-| orphaned rows | `maintenance_service.prune_orphaned_artifacts` |
+| orphaned rows (row without file) | `maintenance_service.prune_orphaned_artifacts` |
+| orphaned files (file without row) | `prune_unreferenced_artifact_files` — **counts, does not delete**, unless `CALB_PRUNE_UNREFERENCED_FILES=1` |
 | old artifacts | `prune_artifacts_older_than` — **row AND file together** (`CALB_ARTIFACT_RETENTION_DAYS`, 30) |
 | run snapshots (input AND output) | `prune_snapshot_generations` (`CALB_SNAPSHOT_GENERATIONS`, 3) |
 | audit trail | `prune_audit_log` (`CALB_AUDIT_RETENTION_DAYS`, 180 — longer than artifacts on purpose) |
@@ -505,6 +506,35 @@ sweep. It used to delete files only, leaving rows that pointed at nothing — an
 because the reader swallows every error, an old run's report lost its figures
 silently. Never prune one side alone. `storage_report()` gives the current
 numbers so growth is measured rather than assumed.
+
+**Re-measured 2026-08-06** (`find_unreferenced_artifact_files`): the source
+control works — a full suite run adds **0** files to the real `outputs/`. What
+remains is the pre-fix backlog, and it had no owner: every Python sweep worked
+from the registry outward, so a file whose row was gone was reclaimed only by
+the shell `find -mtime` in `deploy/docker/calb-maintenance.sh`, which runs
+against `CALB_RUNTIME_ROOT` on the deployed host. **A developer checkout was
+swept by nothing.** Local cleanup is now one command:
+
+```powershell
+python -m calb_sizing_tool.services.maintenance_service          # counts only
+$env:CALB_PRUNE_UNREFERENCED_FILES=1; python -m calb_sizing_tool.services.maintenance_service
+```
+
+Counting is the default because an operator pointed at the wrong database sees
+an empty registry, and a sweep that trusted it would call every artifact on disk
+garbage. Two further guards: only `outputs/artifacts` is walked (`logs/` has its
+own retention, `external_ai/` is user-facing), and a file younger than
+`CALB_UNREFERENCED_GRACE_DAYS` (7) is never a candidate, so an artifact whose row
+has not committed yet is safe. An unreadable registry deletes nothing at all —
+`test_an_unreadable_registry_deletes_nothing`.
+
+**`.gitignore` closed three ways junk reaches the public repo** (2026-08-06):
+`*.docx` (a proposal carries customer figures and `export_docx` writes wherever
+it is run from), `*.db` / `*.sqlite*` / `*-wal` / `*-shm` (a sizing database is
+customer data; `var/` was covered but a stray path was not), and root-level
+`/.env`, `/secrets.toml`, `/.streamlit/secrets.toml`. Root-anchored on purpose,
+so the existing `deploy/systemd/*.env.example` negation still holds. No tracked
+file is caught by any of them — verified with `git ls-files | git check-ignore --stdin`.
 
 **Guest mode never touches the database**: the login page injects
 `roles=["guest"]` with a synthetic `user_id`, and DC results live in

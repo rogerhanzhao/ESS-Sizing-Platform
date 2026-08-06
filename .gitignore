@@ -65,3 +65,22 @@ deploy/systemd/calb-ngrok@.service.d/override.conf
 
 # local-only ops records (contain infra details; repo is public)
 docs/ops-local/
+
+# Generated proposals. export_docx writes these wherever it is run from, and a
+# proposal carries customer figures — this repo is public.
+*.docx
+
+# Stray databases. var/ is the runtime home, but a wrong CALB_DATABASE_URL or a
+# stray script drops one anywhere; a sizing database is customer data.
+*.db
+*.sqlite
+*.sqlite3
+*-wal
+*-shm
+
+# Root-level secrets. deploy/{systemd,docker} env files are handled above; this
+# closes the top-level ones without disturbing their .example negations.
+/.env
+/.env.*
+/secrets.toml
+/.streamlit/secrets.toml
