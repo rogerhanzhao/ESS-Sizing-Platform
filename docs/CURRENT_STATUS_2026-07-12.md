@@ -528,6 +528,10 @@ own retention, `external_ai/` is user-facing), and a file younger than
 has not committed yet is safe. An unreadable registry deletes nothing at all —
 `test_an_unreadable_registry_deletes_nothing`.
 
+**Full execution record for this round**: `docs/WORK_RECORD_2026-08-06.md` —
+what changed, why, how to verify each claim yourself, and the two items that
+remain blocked on machine access rather than on engineering.
+
 **The server was tunable only on paper** (found 2026-08-06). `calb-maintenance.sh`
 runs the sweep INSIDE the app container, but `docker-compose.ubuntu.yml` passed
 none of the database-side knobs — so every retention value an operator set in

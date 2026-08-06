@@ -421,3 +421,42 @@ def test_the_server_sweep_runs_rows_before_files():
     """File-only pruning is what left rows pointing at nothing in the first place."""
     script = open("deploy/docker/calb-maintenance.sh", encoding="utf-8").read()
     assert script.index("cleanup_database_retention\n") < script.index("  cleanup_outputs\n")
+
+
+def test_the_cleanup_script_contract_holds(tmp_path, monkeypatch):
+    """scripts/clean_outputs.ps1 parses this JSON by key.
+
+    A renamed key would not fail anything — the script would quietly print blank
+    numbers and an operator would delete against a report that said nothing.
+    """
+    import contextlib
+    import io
+    import json
+    import re
+
+    monkeypatch.setenv("CALB_OUTPUTS_DIR", str(tmp_path / "out"))
+    monkeypatch.setenv("CALB_DATABASE_URL", f"sqlite:///{(tmp_path / 'c.sqlite').as_posix()}")
+    with session_scope() as session:
+        Base.metadata.create_all(bind=session.get_bind())
+
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        ms.main()
+    payload = json.loads(buffer.getvalue())
+
+    for path in (("before", "output_files"), ("before", "output_mb"),
+                 ("before", "row_counts", "artifact_registry"),
+                 ("pruned", "unreferenced_files"), ("pruned", "bytes_freed"),
+                 ("after", "output_files"), ("after", "output_mb")):
+        cursor = payload
+        for key in path:
+            assert key in cursor, f"clean_outputs.ps1 reads {'.'.join(path)}"
+            cursor = cursor[key]
+
+    script = open("scripts/clean_outputs.ps1", encoding="utf-8").read()
+    # The safe order is the shape of the script, not a habit: without -Delete it
+    # must not be able to set the deletion flag.
+    assert 'if (-not $Delete)' in script
+    assert re.search(r'CALB_PRUNE_UNREFERENCED_FILES\s*=\s*""', script), (
+        "the measuring pass must explicitly blank the deletion flag"
+    )

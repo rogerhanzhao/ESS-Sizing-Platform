@@ -1,0 +1,267 @@
+# 执行记录与状态（2026-08-06）
+
+**用途**：供 owner 与其他审阅者（含 CODEX）核对本轮改动。每一条结论都给出
+**可自行复现的验证方式**，不要求相信本文——请直接跑验证命令。
+
+**分支**：`ops/ubuntu-docker-coexist-20260311`（未新建分支）
+**基线**：`1f053b7` → **末端 `2977966`**，共 6 次提交
+**测试**：起始 633 passed / 2 skipped → **末端 665 passed / 2 skipped**
+**冻结正典**：`services/ac_sizing_service.py`、`services/dc_pipeline_service.py`、
+`common/ac_block.py`、`common/allocation.py` —— **本轮一个字节未改**
+
+```bash
+# 一次性核对上面三条
+git log --oneline 1f053b7..HEAD
+python -m pytest tests/ -q | tail -3
+git diff --name-only 1f053b7..HEAD | grep -E "ac_sizing_service|dc_pipeline_service|common/ac_block|common/allocation" || echo "冻结正典未动"
+```
+
+---
+
+## 一、本轮提交清单
+
+| 提交 | 主题 | 性质 |
+| --- | --- | --- |
+| `393463f` | 报告按 AC 方案分版本（第 4 步） | 功能 |
+| `e216f5a` | 重新生成也按选中方案取输入（第 5 步） | 功能 |
+| `81b58b0` | 复用的方案必须发最新内容，不是首次内容 | **修我自己引入的回归** |
+| `9b7f2ab` | 回收"有文件、没数据库行"的产物 + 堵 `.gitignore` 缺口 | 运维 + 安全 |
+| `bfb36ac` | 服务器上七个保留参数以前根本没传进容器 | **修既有缺陷** |
+| `2977966` | 服务器只读诊断脚本 | 工具 |
+
+---
+
+## 二、功能改动（owner 裁决 B 收尾）
+
+裁决 B 原文："同一个确定了的 DC 方案，AC 是可以稍微有多一个方案的……
+SLD 以后的所有生成都可以变，最终报告可以重新生成一个版本"。
+第 1–3 步在 2026-08-04 已完成；本轮做完第 4、5 步，**裁决 B 全部落地**。
+
+### 第 4 步 —— 报告分版本（`393463f`）
+
+**问题**：两个 AC 方案导出的报告**文件名相同**，第二次静默覆盖第一次。
+
+**命名规则**：`ac_run_service.ac_alternative_label(dc_run_id, ac_run_id)` → `A`/`B`/…
+
+| 约束 | 为什么 |
+| --- | --- |
+| **按最早优先排序** | 先试的永远是 A；后来的方案不给已发出的报告改名，报告必须可复现 |
+| **只有 ≥2 个方案才返回标签** | 一个方案是常态，跟谁都不用区分；贴标签会改掉**所有**普通报告的文件名 |
+| `list_child_runs` 加 `sizing_run_id` 次序键 | 同一时钟刻度内建的两个 Run 若只按 `started_at` 排，两次调用可能互换 = 改名 |
+
+标签落到三处：文件名 `..._V2.1_AC-B.docx`、封面 `AC Alternative: B`、
+Document Provenance 表（含 AC Run 号）。
+
+**验证**：`tests/unit/test_report_ac_alternative_versioning.py`（10 条），
+**正反双向锁**——两个方案必须导出两个文件；一个方案必须与历史文件名逐字一致、
+正文不出现任何方案措辞。
+
+### 第 5 步 —— 重新生成按方案取输入（`e216f5a`）
+
+**问题**：图纸已跟着方案走，但 `load_persisted_ac_snapshot` 读的仍是
+"最后保存的那套 AC"。在方案 A 上重算 SLD，喂进去的可能是 B 的参数 ——
+**图上写着 A，画的是 B**。
+
+**修法：不新增任何存储。** `persist_ac_run` 本来就把每个方案的 inputs/output
+各存了一份快照，且与运行态快照来自同一对 dict，读取端优先取即可。
+
+```
+load_persisted_ac_snapshot(dc_run_id, ac_run_id=选中方案)
+    1. 方案自己的 ac_case_input / ac_sizing_output  → 有就用
+    2. 否则回退 DC Run 的 ac_runtime_snapshot_v1   → 老库就是这一条（无需迁移）
+```
+
+三个设计决定：
+
+1. **`run_id` 始终是 DC Run** —— 它是身份锚点，页面 run/case/project 交叉校验
+   都认它；方案快照里的 `source_run_id` 仍是 DC Run，**校验一行未改**。
+2. **选到别的 DC Run 的分支 → 拒绝使用**，落回本 DC Run 的快照。
+3. `resolve_preferred_ac_snapshot` **自己**读 `active_ac_run_id`，
+   与 `artifact_run_id()` 同一条规矩：**这个判断只能有一处**。
+
+配套：AC 页面保存成功后 `set_active_ac_run(新方案, clear_downstream=False)`。
+`clear_downstream=False` 是必须的 —— 此时 session 里装的**就是**这个方案的结果。
+
+**验证**：`tests/unit/test_ac_alternative_snapshot_scope.py`（13 条）。
+
+### 自查发现并修掉的回归（`81b58b0`）
+
+**这是我在第 5 步亲手挖的洞，不是既有缺陷。**
+
+身份哈希只覆盖 17 个字段，所以**同一身份下内容可以变**（案例改名、不改变方案的
+输入微调），此时 Run 被**复用**。第 5 步让方案自己的快照成为页面读取来源后，
+停在第一次保存 = **发陈货**。第 5 步之前 DC 运行态快照每次保存都重写，不会发生。
+
+复现过，不是推测：
+
+```
+保存 → 案例改名 → 再保存
+Run 被复用: True              ← 符合预期
+方案给出 source_case_name = OLD NAME   ← 错
+方案给出 inputs = {'note': 'first'}    ← 错
+```
+
+**修法**：`_refresh_alternative_snapshots` **只在内容真的变了时**补写。
+守住两条红线：
+
+- 参数没动的重算依然一行不写 → **行数 = 真正试过的方案数**不破
+- 补写的 input 行**保留身份哈希**，不能换成自身 payload 的哈希 ——
+  `find_child_run_by_hash` 认的就是它，改了会让方案变孤儿、下次保存多出重复 Run
+
+`prune_snapshot_generations` 同步覆盖 input 快照（同一 AC Run 的 input 行哈希
+全都一样，剪枝不影响去重查找）。
+
+---
+
+## 三、垃圾文件治理
+
+### 3.1 三个位置必须分清
+
+| 位置 | 有没有垃圾 | 谁在清 |
+| --- | --- | --- |
+| **GitHub 仓库** | **没有** —— `outputs/` 一直被 gitignore | 不需要清 |
+| **开发机 checkout** | 有 | **以前没有任何东西在清** ← 本轮补上 |
+| **服务器 runtime** | 有 | 每周日 03:30 systemd timer（本来就有） |
+
+`git ls-files | grep -E "^outputs/"` 为空 —— 那 172 MB **从未上过 GitHub**。
+
+### 3.2 查出的真缺口：有一半方向没有 owner（`9b7f2ab`）
+
+- `prune_orphaned_artifacts` 管"**有行、没文件**" → 删行
+- "**有文件、没行**" → **Python 侧一个函数都没有**
+
+唯一在扫的是 `deploy/docker/calb-maintenance.sh` 里的 `find -mtime +30 -delete`，
+而它只对部署机的 `CALB_RUNTIME_ROOT` 生效。**开发机的 checkout 是裸奔的**，
+所以攒到 479 个 run 目录 / 5081 个文件 / 172 MB。
+
+**源头控制是有效的**（这一条要单独说，避免被误判为失效）：
+全量测试跑前跑后 `outputs` 文件数不变，`tests/conftest.py` 的隔离生效。
+
+### 3.3 新增清扫的三道护栏
+
+`maintenance_service.prune_unreferenced_artifact_files`：
+
+1. **默认只数不删**。不是胆小：操作员连错数据库时看到的是空注册表，
+   一个信任它的清扫会把磁盘上**所有** artifact 判成垃圾。先把数字摆到人面前。
+2. **注册表读不出来就一个都不删**。`find_unreferenced_artifact_files`
+   **故意不接** `OperationalError` —— 它绝不能在"读不到"时回答"没有被引用"。
+3. **只扫 `outputs/artifacts`**（`logs/` 有自己的保留策略、`external_ai/` 是
+   给用户的产出）；**`CALB_UNREFERENCED_GRACE_DAYS`（7 天）内的文件永不入选**。
+
+**验证**：`tests/unit/test_maintenance_service.py` 中 7 条，含
+`test_an_unreadable_registry_deletes_nothing`。
+
+### 3.4 `.gitignore` 堵住三类进入公开仓库的途径
+
+| 新增 | 原因 |
+| --- | --- |
+| `*.docx` | `export_docx` 在哪运行往哪写，报告含客户数据 |
+| `*.db` / `*.sqlite*` / `*-wal` / `*-shm` | sizing 库是客户数据；`var/` 挡住了，路径跑偏挡不住 |
+| `/.env`、`/secrets.toml`、`/.streamlit/secrets.toml` | **密钥**；根锚定，不影响 `deploy/systemd/*.env.example` 例外 |
+
+**验证**：`git ls-files | git check-ignore --stdin` 输出为空 = 无已跟踪文件被误伤。
+
+### 3.5 本容器的实际清理（已执行）
+
+| | 清理前 | 清理后 |
+| --- | --- | --- |
+| `outputs/` 总计 | 5267 文件 / **158.8 MB** | 186 文件 / **1.0 MB** |
+| `outputs/artifacts` | 5081 文件 | **0** |
+| `external_ai/` / `logs/` | 1.5 MB / 1.0 MB | **未动** |
+
+**未使用 `rm`**，两次都走产品自己的清扫入口：
+
+1. 默认 7 天宽限期 → 1275 文件 / 40.1 MB
+2. `CALB_UNREFERENCED_GRACE_DAYS=0` → 3806 文件 / 117.7 MB
+
+**第二次归零宽限期的前提**：先 `alembic upgrade head` 让 `artifact_registry`
+表真正建起来，查得 **0 行** —— 把手工推断换成了产品口径的证据。
+**这个组合只在验证过注册表确实为空时成立，不是常规操作。**
+
+---
+
+## 四、服务器侧缺陷（`bfb36ac`）
+
+`calb-maintenance.sh` 在**容器内**跑清扫，但 `docker-compose.ubuntu.yml`
+的 `environment:` 块**一个数据库侧保留参数都没传**。
+
+**后果**：`deploy/docker/.env` 里设的值**全在容器边界上被丢掉**，
+清扫永远只用内置默认值；未引用文件清扫**根本无法在服务器上启用**。
+之前唯一生效的是 `CALB_OUTPUT_RETENTION_DAYS` —— 那个是宿主机 `find` 用的。
+
+七个参数现已接通并写进 `.env.example`。`CALB_PRUNE_UNREFERENCED_FILES`
+在服务器上同样默认留空（只数不删）。
+
+**验证**：`test_the_server_can_actually_tune_the_sweep`、
+`test_the_server_sweep_runs_rows_before_files`。
+
+---
+
+## 五、尚未执行的两件事（均因**访问权限**受阻，非技术阻塞）
+
+会话运行在 Anthropic 云上的隔离容器：**`ssh` 未安装**，出站仅一个 HTTPS 代理，
+仓库内无任何服务器地址。owner 的 VPN 连在本人笔记本上，与本容器无路由。
+下面两件必须由 owner 在自己的机器上执行。
+
+### 5.1 开发机 `outputs/` 清理
+
+```powershell
+cd <项目根目录>
+python -m alembic upgrade head
+powershell -ExecutionPolicy Bypass -File scripts\clean_outputs.ps1          # 只看数字
+powershell -ExecutionPolicy Bypass -File scripts\clean_outputs.ps1 -Delete  # 确认后删除
+```
+
+`scripts/clean_outputs.ps1` 把"先看数字再删"固化成了流程。
+**开发机的库里有真实数据**，因此：
+
+- **不要**加 `-GraceDays 0`，保留 7 天宽限期
+- 若数出的数字接近 `outputs/` 全部文件，**停下别删** —— 那是连错库了
+
+### 5.2 服务器升级（否则 `bfb36ac` 不生效）
+
+```bash
+cd /opt/calb-sizingtool/app
+sudo bash deploy/scripts/calb-diagnose.sh          # 先看现状（只读）
+git pull
+docker compose -p calb-sizingtool up -d --force-recreate app
+sudo bash deploy/scripts/calb-diagnose.sh          # 再看第 4 节是否已带参数
+```
+
+诊断脚本第 4 节会打印容器内的实际环境变量。**列表为空 = 该容器早于
+2026-08-06，清扫在用内置默认值** —— 脚本会把这句话直接印出来，
+而不是让一次"看起来正常"的运行蒙混过关。
+
+---
+
+## 六、给审阅者的复核清单
+
+```bash
+# 1) 冻结正典未动
+git diff --name-only 1f053b7..HEAD | grep -E "ac_sizing_service|dc_pipeline_service|common/ac_block|common/allocation"
+
+# 2) 产品代码改动规模（其余为测试与文档）
+git diff --stat 1f053b7..HEAD
+
+# 3) 全量测试
+python -m pytest tests/ -q
+
+# 4) 单方案（常态）路径未被改变
+python -m pytest tests/unit/test_report_ac_alternative_versioning.py -q
+
+# 5) 清扫的安全边界
+python -m pytest tests/unit/test_maintenance_service.py -q
+
+# 6) 无已跟踪文件被新 gitignore 误伤（应无输出）
+git ls-files | git check-ignore --stdin
+```
+
+**重点复核建议**（这几处最值得挑毛病）：
+
+1. `_refresh_alternative_snapshots` 补写 input 行时保留身份哈希 ——
+   若此处判断有误，会导致方案变孤儿并产生重复 Run。
+2. `prune_unreferenced_artifact_files` 的"注册表读不出来就不删" ——
+   这是唯一挡住"误删全部 artifact"的护栏。
+3. `resolve_preferred_ac_snapshot` 中"选到别的 DC Run 的分支要拒绝" ——
+   陈旧选择不能偷渡外来配置。
+4. `list_child_runs` 次序键的必要性 —— 关系到已发出报告的方案名是否稳定。
