@@ -292,3 +292,49 @@ def test_the_github_comparison_cannot_stop_on_a_credential_prompt():
     assert "GIT_ASKPASS" in code
     # And on the fetch itself, not somewhere else in the function.
     assert 0 < code.index("fetch --quiet") - code.index("GIT_TERMINAL_PROMPT=0") < 200
+
+
+# ---------------------------------------------------------------------------
+# One release number, or the page and the proposal will disagree
+# ---------------------------------------------------------------------------
+
+def test_the_report_cannot_drift_from_the_release_file():
+    """VERSION and the report brands are two independent sources today.
+
+    Demonstrated: bump VERSION to 2.2 and the sidebar says V2.2 while the report
+    cover and file name still say V2.1 — the same "a version that does not track
+    the code" defect the owner reported, only in the document a customer keeps.
+
+    The report's identity is NOT derived from VERSION here on purpose: cover
+    titles and proposal file names are issued to customers, so changing how they
+    are produced is the owner's call, not a refactor. What this test removes is
+    the ability to ship the divergence SILENTLY — bump VERSION and this fails
+    until the brands are updated with it, or the split is made deliberate.
+    """
+    from calb_sizing_tool.reporting.brand_profiles import BRAND_PROFILES
+
+    release = app_version.release_version()          # e.g. "V2.1"
+    for name, brand in BRAND_PROFILES.items():
+        assert brand.version_tag.startswith(release), (
+            f"brand {name!r} is tagged {brand.version_tag!r} while VERSION says "
+            f"{release!r} — the sidebar and the proposal would disagree"
+        )
+        assert release in brand.tool_version_label, (
+            f"brand {name!r} labels the tool {brand.tool_version_label!r}, "
+            f"which does not carry {release!r}"
+        )
+        assert release in brand.cover_title, (
+            f"brand {name!r} covers read {brand.cover_title!r}, "
+            f"which does not carry {release!r}"
+        )
+
+
+def test_the_version_is_visible_before_signing_in():
+    """The sidebar only exists after login; verifying a deploy must not need one."""
+    import inspect
+
+    from calb_sizing_tool.ui import login_view
+
+    assert "version_label()" in inspect.getsource(login_view), (
+        "an operator checking whether an upgrade landed should not have to log in"
+    )

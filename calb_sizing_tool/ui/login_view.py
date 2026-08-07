@@ -5,8 +5,11 @@ import hmac
 import os
 from pathlib import Path
 
+from html import escape
+
 import streamlit as st
 
+from calb_sizing_tool.app_version import version_label
 from calb_sizing_tool.services.auth_service import AuthService
 from calb_sizing_tool.state.auth_state import AuthContext, set_auth_context
 from calb_sizing_tool.state.workspace_state import navigate_now
@@ -230,3 +233,13 @@ def show() -> None:
                         roles=["guest"],
                     ))
                     navigate_now("DC Sizing")
+
+            # The sidebar version only exists AFTER signing in, so verifying a
+            # deploy would otherwise require credentials. An operator checking
+            # "did the upgrade land" should not have to log in to find out.
+            st.markdown(
+                '<div style="text-align:center;margin-top:1.25rem">'
+                f'<span style="color:#7A93A8;font-size:0.68rem">{escape(version_label())}</span>'
+                "</div>",
+                unsafe_allow_html=True,
+            )
