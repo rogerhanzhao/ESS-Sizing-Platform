@@ -5,7 +5,7 @@
 
 **分支**：`ops/ubuntu-docker-coexist-20260311`（未新建分支）
 **基线**：`1f053b7` → 分支末端，共 8 次提交
-**测试**：起始 633 passed / 2 skipped → **末端 705 passed / 2 skipped**
+**测试**：起始 633 passed / 2 skipped → **末端 709 passed / 2 skipped**
 **冻结正典**：`services/ac_sizing_service.py`、`services/dc_pipeline_service.py`、
 `common/ac_block.py`、`common/allocation.py` —— **本轮一个字节未改**
 
@@ -349,6 +349,65 @@ running app     : V2.1 · 5db9aca · branch ...
 
 回归锁：新增 11 条，含两处"撤掉修复测试必须失败"的反向验证。
 `tests/` 总计 **705 passed, 2 skipped**。
+
+---
+
+## 四之四、把页面真正跑起来验证（2026-08-06 第三轮）
+
+前几轮的版本号测试**全部只测函数和文件，没有一条跑过页面**。
+补了 `tests/test_version_display_smoke.py`，用 `streamlit.testing.v1.AppTest`
+**真正执行 app.py**。这类测试抓的是前面抓不到的东西：侧边栏里一个不被支持的
+关键字、一个漏掉的 import、一次转义错误 —— 那会让**整个应用崩掉**，
+比它替换掉的那个陈旧 `v2.1` 后果严重得多。
+
+先做了更基础的一步：`streamlit run app.py` 实际启动，`/_stcore/health` 返回 `ok`。
+但**这只证明静态外壳能发出去，不证明脚本渲染不报错** —— 所以才需要 AppTest。
+
+### 抓到的第三处硬编码版本
+
+`calb_sizing_tool/ui/login_view.py:120` 登录页左栏页脚：
+
+```
+© 2026 Alex Zhao · MIT License · v2.1     ← 小写，且永远不会变
+```
+
+同一缺陷的第三个实例（侧边栏、`brand_profiles`、这里）。已改为从 `VERSION` 取。
+**是那条新写的渲染测试抓到的，不是我看出来的** —— 正是"只测函数不测页面"会漏的那类。
+
+登录页现在两处版本各有用途：左栏页脚 `V2.1`（产品发布号），
+表单下方 `V2.1 · <commit>`（**验证部署用的那个**）。
+
+### 一个测试陷阱，记给下一个人
+
+`app.py` 的迁移挂在 `@st.cache_resource` 上，**每进程只跑一次**。
+同一会话里第二个 app 级测试拿到的新库从未被迁移，页面死在 "no such table"。
+四条测试单独跑全过、进全量套件就挂 —— 现象极具误导性。
+fixture 里显式跑 alembic 即可（`test_sld_page_state_smoke` 早就这么做）。
+
+### 治理闸门复核（这条最不能想当然）
+
+`force_draft=True` 不只是标签难看，它会打开 `override_mode`，
+**直接禁用正式/严格生成** —— 所以上一轮那个缺陷是功能性阻塞。
+
+反过来问：把 `persisted_ac_alternative` 判为权威，是否**放松了闸门**？
+**没有**。方案快照本身就是持久化的（`persist_ac_run` 带内容哈希写进快照表），
+正是闸门要求的东西；`_validate_ac_snapshot_context` 的 run/case/project
+交叉校验仍在其之前生效 —— 实测：同一 DC/case/project 通过，
+指向别的 run 或别的 case 一律拒绝。
+
+### 本轮核对项
+
+| 项 | 结果 |
+| --- | --- |
+| 应用能否启动 | `streamlit run` 正常，健康检查 `ok` |
+| 登录页 / 侧边栏渲染 | AppTest 执行无异常，版本号均在位 |
+| 是否还有硬编码版本 | 全仓库扫描；剩余全在报告域，已被脱节守卫覆盖 |
+| 第四个 resolver 调用点 | `report_export_view` **不按 source 分支**，无遗漏 |
+| 治理闸门 | 未放松，交叉校验实测有效 |
+| 冻结正典 | 一字未改，guard 7 条全绿 |
+| 库无表时 | **异常抛到页面**，不是静默空白（实测） |
+
+`tests/` **709 passed, 2 skipped**。
 
 ---
 

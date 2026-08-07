@@ -9,7 +9,7 @@ from html import escape
 
 import streamlit as st
 
-from calb_sizing_tool.app_version import version_label
+from calb_sizing_tool.app_version import release_version, version_label
 from calb_sizing_tool.services.auth_service import AuthService
 from calb_sizing_tool.state.auth_state import AuthContext, set_auth_context
 from calb_sizing_tool.state.workspace_state import navigate_now
@@ -101,6 +101,10 @@ def _left_html() -> str:
         for t, d in _FEATURES
     )
 
+    # From VERSION, never retyped: this line read a hard-coded lowercase "v2.1"
+    # that could not follow a release — the same defect as the old sidebar.
+    release = release_version()
+
     return f"""
 {logo}
 <div style="color:#1A2635;font-size:0.92rem;font-weight:700;margin-bottom:0.65rem;line-height:1.3">
@@ -117,7 +121,7 @@ def _left_html() -> str:
 </div>
 <table style="border-collapse:collapse;width:100%">{rows}</table>
 <div style="color:#A8BED4;font-size:0.63rem;margin-top:1.25rem">
-    © 2026 Alex Zhao &nbsp;·&nbsp; MIT License &nbsp;·&nbsp; v2.1
+    © 2026 Alex Zhao &nbsp;·&nbsp; MIT License &nbsp;·&nbsp; {release}
 </div>
 """
 
