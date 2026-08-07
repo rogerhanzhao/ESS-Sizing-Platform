@@ -5,7 +5,7 @@
 
 **分支**：`ops/ubuntu-docker-coexist-20260311`（未新建分支）
 **基线**：`1f053b7` → 分支末端，共 8 次提交
-**测试**：起始 633 passed / 2 skipped → **末端 722 passed / 2 skipped**
+**测试**：起始 633 passed / 2 skipped → **末端 735 passed / 2 skipped**
 **冻结正典**：`services/ac_sizing_service.py`、`services/dc_pipeline_service.py`、
 `common/ac_block.py`、`common/allocation.py` —— **本轮一个字节未改**
 
@@ -506,6 +506,74 @@ owner："先删掉死代码，但是再多确认梳理一次！"
 > `__init__.py` 和测试用 `sld_pro_renderer`，插件用 `sld_server_baseline_renderer`。
 > 同名不同实现，两条路径可能画出不同的图。这属于 §四之五 第 2 项
 > "8 套渲染器并存"，需要 owner 确认产品意图后才能收敛。
+
+---
+
+## 四之七、渲染器与重复实现的取证（2026-08-06，只查不动）
+
+owner："请继续分析！！先确认清楚。" 所以这一节**只摆事实**，没有删任何东西。
+方法上放弃了正则猜测，改用 **AST 解析真实 import 语句建导入图**。
+
+### 先纠正我自己上一条消息里的判断
+
+我上一条说"两份 `render_sld_pro_svg`，测试验的可能不是用户看到的那份"。
+**查下来不成立**：
+
+```
+PUBLIC_SLD_RENDERER_MODES = ("engineering_v2",)      ← 用户唯一能选的
+DEV_ONLY   = ("legacy_server",)     → sld_server_baseline_renderer
+RESERVED   = ("topology_v1",)       → sld_pro_renderer（已退役，UI 选不到）
+```
+
+用户看到的是 `sld_engineering_v2_renderer`（1309 行，**7 处测试引用**），
+覆盖是好的。担心不成立。
+
+### 渲染相关模块的真实状态
+
+| 模块 | 行数 | 产品可达路径 | 测试 |
+| --- | --- | --- | --- |
+| `sld_engineering_v2_renderer` | 1309 | **用户默认路径** | 7 |
+| `sld_server_baseline_renderer` | 1716 | 仅 `legacy_server`（dev-only） | **0** |
+| `sld_pro_renderer` + `sld_layout_engine` | 187 + 548 | 仅 `topology_v1`（**已退役**） | 4 + 2 |
+| `jp_pro_renderer` | 778 | **产品无消费者**，唯一调用者是 `test_sld_pro_smoke.py` | 1 |
+| `visualizer` | 68 | **导入图不可达**，唯一调用者是 `test_sld.py` | 1 |
+| `svg_postprocess` / `_margin` | 155 + 99 | 只被 `sld/__init__.py` **再导出**，`append_dc_block_function_blocks` 与 `add_margins` **无任何调用点** | 0 |
+
+**"被 `__init__` 导入"不等于"被使用"** —— 这是上次删死代码时踩过的同一个坑，
+所以这次逐个查了调用点而不是引用数。
+
+合计约 **3.5k 行**只被测试或已退役模式触及。是否退役需要 owner 的产品意图：
+`legacy_server` 是否还要保留作为出问题时的回退？`topology_v1` 是否真的不再需要？
+
+### 另一条：23 个 public 符号被多处独立定义
+
+其中最值得追的是 `ui/dc_view.py` 与**冻结正典** `services/stage1_service.py`
+同名的七个。
+
+**第一反应是严重问题**：冻结正典被 SHA 锁定，而页面有自己一份 `run_stage1`？
+那冻结岂不是装饰品。
+
+**查完是虚惊**：`dc_view.run_stage1` 是**两行的转发壳**，直接调
+`service_run_stage1(...).to_legacy_dict()`。**冻结正典就是用户拿到的东西。**
+
+但另外六个（`to_float`/`to_int`/`to_frac`/`clamp01`/`safe_div`/`calc_sc_loss_pct`）
+**是真的复制粘贴副本**。不看代码、直接比行为：
+
+```
+to_float / to_int / to_frac   28 组用例   差异 0
+clamp01 / safe_div            22 组用例   差异 0
+calc_sc_loss_pct              51 组用例   差异 0
+```
+
+**今天完全一致，所以这是漂移风险而不是现行缺陷。** 但冻结保护的是其中一份，
+而用户看的页面读的是另一份，**没有任何东西保证它们同步**。
+`calc_sc_loss_pct` 尤其要紧 —— 它是个 sizing 数字，一旦分叉，
+页面显示一个储存损失率、正典算出另一个，**而冻结文件的哈希校验照样通过**。
+
+已加 `tests/unit/test_dc_view_helpers_match_the_canon.py`（13 条）锁住这个事实，
+并反向验证过：把页面那份的 `4.5` 改成 `4.6`，测试立刻失败。
+**根治方法是让页面直接调服务**（`run_stage1` 已经是这么做的），
+在那之前由这个测试盯着。
 
 ---
 
