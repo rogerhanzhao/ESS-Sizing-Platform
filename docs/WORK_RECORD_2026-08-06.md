@@ -5,7 +5,8 @@
 
 **分支**：`ops/ubuntu-docker-coexist-20260311`（未新建分支）
 **基线**：`1f053b7` → 分支末端，共 8 次提交
-**测试**：起始 633 passed / 2 skipped → **末端 735 passed / 2 skipped**
+**测试**：起始 633 passed / 2 skipped → **末端 732 passed / 2 skipped**
+（净减 3 条：退役渲染器自己的 smoke 与边界测试随之退役，见 §四之八）
 **冻结正典**：`services/ac_sizing_service.py`、`services/dc_pipeline_service.py`、
 `common/ac_block.py`、`common/allocation.py` —— **本轮一个字节未改**
 
@@ -574,6 +575,75 @@ calc_sc_loss_pct              51 组用例   差异 0
 并反向验证过：把页面那份的 `4.5` 改成 `4.6`，测试立刻失败。
 **根治方法是让页面直接调服务**（`run_stage1` 已经是这么做的），
 在那之前由这个测试盯着。
+
+---
+
+## 四之八、退役 legacy_server 与 topology_v1（owner 裁定 2026-08-06）
+
+owner：「1. legacy_server，不留；2. TOPOLOGY_V1 不用了」。
+
+### 删了什么
+
+| 模块 | 行数 | 归属 |
+| --- | --- | --- |
+| `calb_diagrams/sld_server_baseline_renderer.py` | 1716 | `legacy_server` |
+| `calb_diagrams/sld_pro_renderer.py` | 187 | `topology_v1` |
+
+加上模式管道（插件分派、UI 选择器、`__init__` 导出、死掉的
+`server_baseline_commit` 元数据字段）。**净减约 1.9k 行。**
+
+### 关键设计：退役的模式名必须能优雅降级
+
+`renderer_mode` 会写进**每一张 SLD artifact 的 metadata**。恢复旧 run、
+外部提交、手改设置，都可能把 `"legacy_server"` 递回来。
+如果 `normalize_sld_renderer_mode` 对它抛错，**旧的合法数据就变成了崩溃**。
+
+所以模式名保留在 `RETIRED_SLD_RENDERER_MODES` 里并**映射到当前渲染器**；
+只有真正未知的字符串才报错——那是调用方的 bug，不是历史记录，
+这个区分不能丢，否则一个拼写错误会静默渲染出别的东西。
+
+### 我删过界了一次，被测试逮住
+
+第一遍连 `sld_layout_engine.py` 一起删了（以为它是 topology_v1 独占）。
+**11 个测试文件集体报错**，其中包括 engineering_v2 自己的：
+它的测试模块里有 `_build_topology` 夹具，被 **3 个活的 engineering_v2 测试文件**
+导入，`SldLayoutSymbol` 还撑着 `test_symbol_library`。
+
+**已恢复。** 为了一次清理去重写活测试是本末倒置 —— 这个文件现在只被测试用，
+属于后续可清理项，但要先把夹具解耦。
+
+### 测试的处置：逐个按其真实主题判断，不是一删了之
+
+| 测试 | 处置 | 依据 |
+| --- | --- | --- |
+| `test_sld_busbar_groups_smoke` / `test_sld_pro_template_smoke` | **删** | 整体就是退役渲染器的 smoke |
+| `test_mv_rmu_voltage_contract` | **保留 4/5 条** | 契约本身与 builder 由前 3 条覆盖；**第 4 条本来就用 engineering_v2 验的**；只删掉测退役渲染器兼容包装器的末条 |
+| `test_sld_renderer_pure_render_only` | **保留 2 条** | 主体测 engineering_v2；只摘掉末尾两行对退役渲染器的断言 |
+| `test_sld_renderer_mode_boundary` | 删 2 条 | 验的是"非 v2 渲染器拒绝三绕组"，渲染器没了规则也就不存在 |
+| `test_sld_renderer_mode_service` | **重写** | 改锁新契约：唯一渲染器 + 退役名降级 + 未知名仍报错 |
+
+### 回归基线：只动了一个键，且证明图没变
+
+`render_baseline.json` 因 `server_baseline_commit` 消失而失配。
+**没有整体重新生成**（那会掩盖别的变化），而是先逐键比对：
+
+```
+仅基线有的键: ['server_baseline_commit']
+仅当前有的键: []
+共有键中值变化: 无
+metadata 之外的部分是否完全一致: True
+```
+
+**图纸逐字节未变**，只删掉那一个死字段。
+
+### 验证
+
+| 项 | 结果 |
+| --- | --- |
+| 全量测试 | **732 passed, 2 skipped** |
+| 逐模块导入 | 205 个模块，失败 0 |
+| 应用启动 | 健康检查 `ok` |
+| SLD 页面真渲染（AppTest） | 无异常，提示 `Renderer mode: Engineering V2 Professional SLD.` |
 
 ---
 

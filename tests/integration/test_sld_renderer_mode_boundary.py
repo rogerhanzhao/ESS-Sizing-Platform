@@ -35,34 +35,6 @@ def _with_professional_note_specs(project_settings):
     return settings
 
 
-def test_legacy_server_renderer_mode_rejects_split_secondary_topology():
-    run_bundle, ac_snapshot, options, project_settings = _case_inputs()
-    options = options.model_copy(update={"renderer_mode": "legacy_server"})
-
-    prepared = prepare_sld_pipeline_from_run_bundle(
-        run_bundle,
-        ac_snapshot=ac_snapshot,
-        options=options,
-        project_settings=project_settings,
-    )
-    with pytest.raises(ValueError, match="requires Engineering V2 SLD"):
-        render_prepared_sld_pipeline(prepared)
-
-
-def test_topology_v1_renderer_mode_rejects_split_secondary_topology():
-    run_bundle, ac_snapshot, options, project_settings = _case_inputs()
-    options = options.model_copy(update={"renderer_mode": "topology_v1"})
-
-    prepared = prepare_sld_pipeline_from_run_bundle(
-        run_bundle,
-        ac_snapshot=ac_snapshot,
-        options=options,
-        project_settings=project_settings,
-    )
-    with pytest.raises(ValueError, match="requires Engineering V2 SLD"):
-        render_prepared_sld_pipeline(prepared)
-
-
 def test_engineering_v2_renderer_mode_uses_port_bay_preview_path():
     run_bundle, ac_snapshot, options, project_settings = _case_inputs()
     options = options.model_copy(update={"renderer_mode": "engineering_v2"})
@@ -78,7 +50,6 @@ def test_engineering_v2_renderer_mode_uses_port_bay_preview_path():
     svg_text = output["svg_bytes"].decode("utf-8")
     assert output["metadata"]["renderer_mode"] == "engineering_v2"
     assert output["metadata"]["renderer_lineage"] == "port_bay_engineering_v2_preview"
-    assert output["metadata"]["server_baseline_commit"] is None
     assert output["metadata"]["engineering_v2_graph_hash"]
     assert output["metadata"]["engineering_v2_layout_hash"]
     assert output["metadata"]["engineering_v2_node_count"] == 25

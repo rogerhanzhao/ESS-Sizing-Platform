@@ -170,7 +170,9 @@ def test_sld_ui_clears_cached_preview_when_render_controls_change(monkeypatch):
         theme="dark",
         compact_mode=False,
         draw_summary=False,
-        renderer_mode="legacy_server",
+        # Renderer mode is no longer a control — one renderer remains. The theme
+        # change below is what must invalidate the cached preview.
+        renderer_mode="engineering_v2",
         plugin_id="sld_engineering_v1",
     )
     changed_signature = single_line_diagram_view._build_sld_preview_control_signature(

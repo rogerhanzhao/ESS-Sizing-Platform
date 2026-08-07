@@ -6,7 +6,6 @@ import pytest
 
 from calb_diagrams.sld_engineering_v2_layout import build_sld_engineering_v2_layout_plan
 from calb_diagrams.sld_engineering_v2_renderer import render_sld_engineering_v2_svg
-from calb_diagrams.sld_pro_renderer import render_sld_pro_svg
 from calb_diagrams.specs import SldGroupSpec
 from calb_sizing_tool.schemas.diagram_inputs import SldRenderOptions
 from calb_sizing_tool.schemas.sld_render_input import SldInputOverride, legacy_sld_override_preset
@@ -81,39 +80,3 @@ def test_renderer_uses_same_rmu_voltage_as_authoritative_mv_input(sample_excel_p
     assert warning is None
     svg_text = svg_path.read_text(encoding="utf-8")
     assert "33 kV" in svg_text
-
-
-def test_renderer_compatibility_wrapper_rejects_missing_rmu_rated_kv(tmp_path: Path):
-    spec = SldGroupSpec(
-        group_index=1,
-        ac_blocks_total=1,
-        mv_voltage_kv=33.0,
-        lv_voltage_v_ll=690.0,
-        transformer_mva=6.0,
-        transformer_vector_group="Dyn11",
-        transformer_uk_percent=7.0,
-        pcs_count=1,
-        pcs_rating_kw_list=[1250.0],
-        dc_block_energy_mwh=1.0,
-        dc_blocks_total_in_group=1,
-        dc_blocks_per_feeder=[1],
-        equipment_list={
-            "mv_labels": {"to_switchgear": "To Switchgear", "to_other_rmu": "To Other RMU"},
-            "rmu": {
-                "rated_a": 630.0,
-                "short_circuit_ka_3s": 25.0,
-                "ct_ratio": "200/1",
-                "ct_class": "5P20",
-                "ct_va": 10.0,
-            },
-            "transformer": {"vector_group": "Dyn11", "uk_percent": 7.0, "cooling": "ONAN"},
-            "lv_busbar": {"rated_a": 2500.0, "short_circuit_ka": 25.0},
-            "cables": {"mv_cable_spec": "TBD", "lv_cable_spec": "TBD", "dc_cable_spec": "TBD"},
-            "dc_fuse": {"fuse_spec": "DC isolator/fuse"},
-            "dc_block_voltage_v": 1500.0,
-        },
-        layout_params={"theme": "dark"},
-    )
-
-    with pytest.raises(ValueError, match="Renderer will not infer RMU equipment class"):
-        render_sld_pro_svg(spec, tmp_path / "missing_rmu_rated_kv.svg")

@@ -8,7 +8,11 @@ from calb_sizing_tool.schemas.common import CanonicalBaseModel
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
 from calb_sizing_tool.schemas.sld_render_input import SldCanonicalInput, SldInputOverride
 
-SldRendererMode = Literal["legacy_server", "topology_v1", "engineering_v2"]
+# One renderer remains (owner, 2026-08-06). Retired names are accepted and
+# mapped by sld_renderer_mode_service.normalize_sld_renderer_mode, which is
+# where old persisted values are met — not here, where a Literal would
+# reject them.
+SldRendererMode = Literal["engineering_v2"]
 
 
 class AcSnapshot(CanonicalBaseModel):

@@ -8,7 +8,6 @@ pytest.importorskip("svgwrite")
 
 from calb_diagrams.sld_engineering_v2_layout import build_sld_engineering_v2_layout_plan
 from calb_diagrams.sld_engineering_v2_renderer import render_sld_engineering_v2_svg
-from calb_diagrams.sld_pro_renderer import render_sld_pro_svg
 from calb_sizing_tool.schemas.diagram_inputs import SldRenderOptions
 from calb_sizing_tool.schemas.sld_render_input import SldInputOverride, legacy_sld_override_preset
 from calb_sizing_tool.services.sld_input_builder import build_sld_canonical_input
@@ -61,5 +60,3 @@ def test_renderer_source_does_not_reference_legacy_runtime_inputs():
     assert "session_state" not in source
     assert "st.session_state" not in source
 
-    compat_source = inspect.getsource(render_sld_pro_svg)
-    assert "render_sld_svg" in compat_source

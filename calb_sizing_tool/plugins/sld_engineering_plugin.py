@@ -12,8 +12,6 @@ from calb_diagrams.sld_engineering_v2_layout import build_sld_engineering_v2_lay
 from calb_diagrams.sld_engineering_v2_renderer import render_sld_engineering_v2_svg
 from calb_diagrams.sld_engineering_v2_validation import validate_sld_engineering_v2_layout
 from calb_diagrams.specs import build_sld_group_spec_from_topology
-from calb_diagrams.sld_server_baseline_renderer import render_sld_pro_svg as render_sld_server_baseline_svg
-from calb_diagrams.sld_pro_renderer import render_sld_svg
 from calb_sizing_tool.plugins.base import ArtifactPayload, DiagramPlugin, PluginMetadata, json_bytes
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot, LayoutRuleSnapshot, SldRenderInput, SldRenderOptions, TopologySnapshot
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
@@ -59,10 +57,6 @@ def _svg_bytes_to_png(svg_bytes: bytes) -> bytes:
 
 
 def _renderer_lineage(renderer_mode: str) -> str:
-    if renderer_mode == "legacy_server":
-        return "legacy_compatibility_patched"
-    if renderer_mode == "topology_v1":
-        return "refactored_topology_v1"
     if renderer_mode == "engineering_v2":
         return "port_bay_engineering_v2_preview"
     return "unknown"
@@ -146,12 +140,7 @@ class SldEngineeringPlugin:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             svg_path = Path(tmpdir) / "sld_engineering.svg"
-            layout_profile = "compact" if topology.summary.compact_mode else "engineering_readable"
-            if renderer_mode == "legacy_server":
-                render_sld_server_baseline_svg(sld_spec, svg_path)
-            elif renderer_mode == "topology_v1":
-                render_sld_svg(topology, layout_profile, topology.summary.theme, svg_path)
-            elif renderer_mode == "engineering_v2":
+            if renderer_mode == "engineering_v2":
                 engineering_v2_graph = build_sld_engineering_v2_graph(topology)
                 engineering_v2_layout = build_sld_engineering_v2_layout_plan(engineering_v2_graph)
                 engineering_v2_layout_issues = validate_sld_engineering_v2_layout(engineering_v2_layout)
@@ -202,7 +191,6 @@ class SldEngineeringPlugin:
             "renderer_version": self.metadata.plugin_version,
             "renderer_mode": renderer_mode,
             "renderer_lineage": _renderer_lineage(renderer_mode),
-            "server_baseline_commit": "8568af4" if renderer_mode == "legacy_server" else None,
             "input_hash": input_hash,
             "topology_hash": topology_hash,
             "render_spec_hash": render_spec_hash,
@@ -257,7 +245,6 @@ class SldEngineeringPlugin:
             "renderer_version": metadata.get("renderer_version"),
             "renderer_mode": metadata.get("renderer_mode"),
             "renderer_lineage": metadata.get("renderer_lineage"),
-            "server_baseline_commit": metadata.get("server_baseline_commit"),
             "input_hash": metadata.get("input_hash"),
             "topology_hash": metadata.get("topology_hash"),
             "render_spec_hash": metadata.get("render_spec_hash"),

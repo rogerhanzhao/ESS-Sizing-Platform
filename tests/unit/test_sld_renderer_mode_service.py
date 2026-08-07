@@ -1,56 +1,85 @@
+"""One renderer remains, and the retired names must still be safe to receive.
+
+Owner, 2026-08-06: "legacy_server 不留; topology_v1 不用了". Both renderers were
+deleted, so there is nothing left to dispatch to.
+
+The interesting half is what happens to the NAMES. Every SLD artifact ever
+generated recorded its renderer_mode in metadata, so a restored run, an external
+submission or a hand-edited setting can still hand us "legacy_server" long after
+the code is gone. Rejecting it would turn old, valid data into a crash; the mode
+resolves to the current renderer instead. An outright unknown string is still an
+error, because that is a caller bug rather than a historical record — and losing
+that distinction would let a typo silently render something unintended.
+"""
 import pytest
 
 from calb_sizing_tool.schemas.diagram_inputs import SldRenderOptions
 from calb_sizing_tool.services.sld_renderer_mode_service import (
     AVAILABLE_SLD_RENDERER_MODES,
-    DEV_ONLY_SLD_RENDERER_MODES,
-    PRODUCTION_BASELINE_SLD_RENDERER_MODE,
+    DEFAULT_SLD_RENDERER_MODE,
     PUBLIC_SLD_RENDERER_MODES,
-    RESERVED_SLD_RENDERER_MODES,
+    RETIRED_SLD_RENDERER_MODES,
     is_sld_renderer_mode_available,
     is_sld_renderer_mode_public,
     normalize_sld_renderer_mode,
     sld_renderer_mode_label,
 )
 
+RETIRED = ("legacy_server", "topology_v1")
 
-def test_sld_render_options_default_is_engineering_v2_professional_candidate():
+
+def test_engineering_v2_is_the_only_renderer():
+    assert AVAILABLE_SLD_RENDERER_MODES == ("engineering_v2",)
+    assert PUBLIC_SLD_RENDERER_MODES == ("engineering_v2",)
+    assert DEFAULT_SLD_RENDERER_MODE == "engineering_v2"
     assert SldRenderOptions().renderer_mode == "engineering_v2"
-    assert normalize_sld_renderer_mode(None) == "engineering_v2"
-
-
-def test_production_baseline_mode_is_available():
-    assert PRODUCTION_BASELINE_SLD_RENDERER_MODE == "legacy_server"
-    assert "legacy_server" in AVAILABLE_SLD_RENDERER_MODES
-    assert is_sld_renderer_mode_available("legacy_server") is True
-    assert sld_renderer_mode_label("legacy_server").startswith("Legacy Compatibility")
-
-
-def test_engineering_v2_is_available_for_manual_preview():
-    assert normalize_sld_renderer_mode("engineering_v2") == "engineering_v2"
     assert is_sld_renderer_mode_available("engineering_v2") is True
-    assert "engineering_v2" in AVAILABLE_SLD_RENDERER_MODES
+    assert is_sld_renderer_mode_public("engineering_v2") is True
     assert "Engineering V2 Professional SLD" in sld_renderer_mode_label("engineering_v2")
 
 
-def test_topology_v1_is_retired_from_public_mode_list_but_reserved_for_compatibility():
-    assert "topology_v1" not in AVAILABLE_SLD_RENDERER_MODES
-    assert "topology_v1" in RESERVED_SLD_RENDERER_MODES
-    assert normalize_sld_renderer_mode("topology_v1") == "topology_v1"
-    assert is_sld_renderer_mode_available("topology_v1") is False
+@pytest.mark.parametrize("mode", RETIRED)
+def test_a_retired_mode_resolves_instead_of_raising(mode):
+    """Old metadata must not become a crash."""
+    assert mode in RETIRED_SLD_RENDERER_MODES
+    assert normalize_sld_renderer_mode(mode) == DEFAULT_SLD_RENDERER_MODE
+    assert is_sld_renderer_mode_available(mode) is True, (
+        "it resolves to the available renderer, so it reports as available — the "
+        "caller gets a drawing rather than an error"
+    )
 
 
-def test_legacy_is_dev_only_and_not_in_public_dropdown():
-    # Legacy stays available for dev/regression comparison, but the public
-    # renderer dropdown must offer only the professional engineering_v2 mode.
-    assert PUBLIC_SLD_RENDERER_MODES == ("engineering_v2",)
-    assert "legacy_server" in DEV_ONLY_SLD_RENDERER_MODES
-    assert "legacy_server" not in PUBLIC_SLD_RENDERER_MODES
-    assert "legacy_server" in AVAILABLE_SLD_RENDERER_MODES  # still reachable for dev tooling
-    assert is_sld_renderer_mode_public("engineering_v2") is True
-    assert is_sld_renderer_mode_public("legacy_server") is False
+@pytest.mark.parametrize("mode", RETIRED)
+def test_a_retired_mode_is_not_offered_to_anyone(mode):
+    assert mode not in AVAILABLE_SLD_RENDERER_MODES
+    assert mode not in PUBLIC_SLD_RENDERER_MODES
+    assert mode not in sld_renderer_mode_label.__globals__["_MODE_LABELS"]
 
 
-def test_unknown_renderer_mode_fails_fast():
+def test_an_unknown_mode_still_fails_fast():
+    """A typo is a caller bug and must not silently render something else."""
     with pytest.raises(ValueError, match="Unsupported SLD renderer mode"):
         normalize_sld_renderer_mode("unknown")
+
+
+def test_the_retired_renderers_are_gone():
+    """The point of the retirement — the modules must not come back quietly."""
+    import importlib
+
+    for module in ("calb_diagrams.sld_server_baseline_renderer",
+                   "calb_diagrams.sld_pro_renderer"):
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module(module)
+
+
+def test_nothing_dispatches_on_a_retired_mode():
+    """A leftover branch would be dead code pointing at a deleted renderer."""
+    import inspect
+
+    from calb_sizing_tool.plugins import sld_engineering_plugin
+
+    source = inspect.getsource(sld_engineering_plugin)
+    for mode in RETIRED:
+        assert f'renderer_mode == "{mode}"' not in source, (
+            f"the plugin still branches on {mode}, whose renderer no longer exists"
+        )
