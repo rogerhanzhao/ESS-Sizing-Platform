@@ -28,5 +28,6 @@ def check_dependencies() -> Dict[str, bool]:
     return {
         "svgwrite": _has_module("svgwrite"),
         "cairosvg": _has_module("cairosvg"),
-        "pypowsybl": _has_module("pypowsybl"),
+        # pypowsybl was probed for the IIDM SLD stack, retired 2026-08-06.
+        # Reporting on a library nothing can use is noise, not diagnostics.
     }

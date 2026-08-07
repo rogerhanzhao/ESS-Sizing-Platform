@@ -16,38 +16,15 @@
 # of any company or organization.
 # -----------------------------------------------------------------------------
 
-from calb_sizing_tool.sld.iidm_builder import (
-    build_network_for_single_unit,
-    build_iidm_network_from_chain_snapshot,
-    build_iidm_network_from_snapshot,
-)
-from calb_sizing_tool.sld.qc import run_sld_qc
-from calb_sizing_tool.sld.renderer import render_pow_sybl_svg, render_raw_svg, render_sld_svg
-from calb_sizing_tool.sld.snapshot_builder import build_sld_snapshot_v1
-from calb_sizing_tool.sld.snapshot_builder_v2 import build_sld_chain_snapshot_v2
-from calb_sizing_tool.sld.snapshot_schema import (
-    validate_snapshot_chain_v2,
-    validate_snapshot_v1,
-)
-from calb_sizing_tool.sld.snapshot_single_unit import (
-    build_single_unit_snapshot,
-    validate_single_unit_snapshot,
-)
-from calb_sizing_tool.sld.svg_pro_template import apply_pro_template
+"""SLD support modules.
 
-__all__ = [
-    "apply_pro_template",
-    "build_network_for_single_unit",
-    "build_iidm_network_from_chain_snapshot",
-    "build_iidm_network_from_snapshot",
-    "build_single_unit_snapshot",
-    "build_sld_chain_snapshot_v2",
-    "build_sld_snapshot_v1",
-    "render_pow_sybl_svg",
-    "render_raw_svg",
-    "render_sld_svg",
-    "run_sld_qc",
-    "validate_single_unit_snapshot",
-    "validate_snapshot_chain_v2",
-    "validate_snapshot_v1",
-]
+This package re-exported an entire pypowsybl / IIDM SLD stack — snapshot
+builders, an IIDM network builder, a QC pass, renderers and an SVG template.
+None of it had a product consumer: it was superseded by the engineering_v2
+pipeline in calb_diagrams, and its only two tests had been SKIPPED all along
+because pypowsybl is not a dependency of this project. Retired 2026-08-06.
+
+What remains is imported directly by the modules that need it — voltage_contract,
+transformer_vector_group and standard_transformer_impedance — so this file
+deliberately re-exports nothing.
+"""

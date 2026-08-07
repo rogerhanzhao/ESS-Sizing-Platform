@@ -1,3 +1,0 @@
-# Optional / platform-specific dependencies
-# pypowsybl provides SLD raw generator; may not have wheels on aarch64
-pypowsybl>=1.13.0

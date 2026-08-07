@@ -5,8 +5,8 @@
 
 **分支**：`ops/ubuntu-docker-coexist-20260311`（未新建分支）
 **基线**：`1f053b7` → 分支末端，共 8 次提交
-**测试**：起始 633 passed / 2 skipped → **末端 721 passed / 2 skipped**
-（退役模块自己的 smoke / 边界测试随之退役；活测试一条未减，见 §四之八、四之九）
+**测试**：起始 633 passed / 2 skipped → **末端 721 passed / 0 skipped**
+（**skipped 归零** —— 那 2 条常年 skipped 的正是被退役的 IIDM 栈的唯一测试，见 §四之十）
 **冻结正典**：`services/ac_sizing_service.py`、`services/dc_pipeline_service.py`、
 `common/ac_block.py`、`common/allocation.py` —— **本轮一个字节未改**
 
@@ -704,6 +704,60 @@ metadata 之外的部分是否完全一致: True
 | 全量测试 | **721 passed, 2 skipped** |
 | 逐模块导入 | 200 个模块，失败 0 |
 | SLD 页面真渲染（AppTest） | 无异常 |
+
+---
+
+## 四之十、退役 pypowsybl / IIDM 栈（2026-08-06）
+
+owner 在看过取证清单后说「继续」，据此退役。**`git revert c0669c0..` 可整体回退。**
+
+### 删了什么
+
+`calb_sizing_tool/sld/` 下 11 个模块，约 **2.2k 行**：
+
+`svg_pro_template`(644) · `iidm_builder`(349) · `snapshot_single_unit`(281) ·
+`snapshot_builder_v2`(235) · `snapshot_builder`(173) · `snapshot_schema`(169) ·
+`renderer`(122) · `ac_block_group`(88) · `qc`(73) · `topology`(63) · `generator`(50)
+
+**集群是闭合的**：这些模块只被彼此和 `sld/__init__.py` 的再导出引用，
+产品代码零消费。删完 `sld/` 只剩三个真正活着的模块 ——
+`voltage_contract`、`transformer_vector_group`、`standard_transformer_impedance`，
+它们都被消费者**直接导入**，不经过包，所以 `__init__.py` 现在有意不再导出任何东西。
+
+### 最有说服力的一条证据
+
+那 2 条**常年 skipped** 的测试（`test_sld_smoke` / `test_sld_raw_smoke`）
+正是这个栈的唯一测试 —— 它们从来没跑过，因为 `pypowsybl` 只在
+`requirements_optional.txt` 里。**退役后全量结果的 skipped 归零。**
+
+这个状态是最差的：**既没在用，也没在验**。
+
+### 连带清掉的依赖足迹
+
+| 位置 | 内容 |
+| --- | --- |
+| `requirements_optional.txt` | 整个文件（唯一内容就是 pypowsybl） |
+| `requirements.txt` | `graphviz>=0.20.1` —— 唯一消费者 `visualizer` 已随上一步删除 |
+| `packages.txt` / `Dockerfile` | 系统包 `graphviz`（`libcairo2` 留着，cairosvg 需要） |
+| `common/dependencies.py` | `pypowsybl` 探测项 —— 报告一个用不上的库是噪声不是诊断 |
+
+**镜像和安装都变小了**，而且不再暗示一个已不存在的能力。
+
+### 一条活契约被保住了
+
+`test_sld_builder_unification` 的 3 条里，有 1 条验的是
+**「legacy 包装器与权威 topology 路径必须产出相同的 spec」** —— 活契约，与集群无关。
+删除时它一度失败，因为同一条测试的后半段还在调用两个已退役的构建器。
+**没有删掉整条测试**，而是摘掉后两段、保留这条断言，并在注释里写明摘掉了什么。
+
+### 验证
+
+| 项 | 结果 |
+| --- | --- |
+| 全量测试 | **721 passed, 0 skipped** |
+| 逐模块导入 | 189 个模块，失败 0（`networkx` 的两个失败也随之消失 —— 它们正属于该集群） |
+| 应用启动 | 健康检查 `ok` |
+| SLD 页面真渲染 | 无异常 |
 
 ---
 

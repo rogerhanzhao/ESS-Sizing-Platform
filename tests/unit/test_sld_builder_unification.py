@@ -4,8 +4,6 @@ from dataclasses import asdict
 
 from calb_diagrams.specs import build_sld_group_spec, build_sld_group_spec_from_topology
 from calb_sizing_tool.services.sld_topology_builder import build_legacy_sld_topology
-from calb_sizing_tool.sld.ac_block_group import build_ac_block_group_spec
-from calb_sizing_tool.sld.snapshot_single_unit import build_single_unit_snapshot
 import pytest
 
 
@@ -56,23 +54,24 @@ def test_legacy_builders_route_through_authoritative_topology():
     wrapped_spec = build_sld_group_spec(stage13_output, ac_output, dc_summary, sld_inputs, group_index=1)
     direct_spec = build_sld_group_spec_from_topology(topology)
 
+    # The contract that still matters: the legacy wrapper and the authoritative
+    # topology path must produce the SAME spec, so nothing renders differently
+    # depending on which door it came through.
+    #
+    # This also checked build_ac_block_group_spec and build_single_unit_snapshot
+    # against the same topology; both belonged to the IIDM stack retired
+    # 2026-08-06.
     assert asdict(wrapped_spec) == asdict(direct_spec)
-
-    group_spec = build_ac_block_group_spec(stage13_output, ac_output, dc_summary, sld_inputs, group_index=1)
-    assert group_spec.group_index == topology.summary.group_index
-    assert group_spec.pcs_count == topology.summary.pcs_count
-    assert group_spec.dc_blocks_per_feeder == topology.summary.dc_blocks_per_feeder
-
-    snapshot = build_single_unit_snapshot(stage13_output, ac_output, dc_summary, sld_inputs, scenario_id="legacy")
-    assert snapshot["group_index"] == topology.summary.group_index
-    assert snapshot["ac_block"]["pcs_count"] == topology.summary.pcs_count
-    assert [entry["dc_block_count"] for entry in snapshot["dc_blocks_by_feeder"]] == topology.summary.dc_blocks_per_feeder
 
 
 def test_legacy_builders_are_marked_compatibility_only():
+    """The two IIDM-stack builders this also checked were retired 2026-08-06.
+
+    build_sld_group_spec is the one that survives, because it is still reachable
+    from calb_diagrams; the marking matters so nobody mistakes it for the
+    authoritative path.
+    """
     assert "LEGACY" in (build_sld_group_spec.__doc__ or "")
-    assert "LEGACY" in (build_ac_block_group_spec.__doc__ or "")
-    assert "LEGACY" in (build_single_unit_snapshot.__doc__ or "")
 
 
 def test_legacy_builders_do_not_guess_missing_feeder_allocation():

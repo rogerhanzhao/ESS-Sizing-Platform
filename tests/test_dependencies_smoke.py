@@ -27,4 +27,3 @@ def test_check_dependencies_keys():
     assert isinstance(deps, dict)
     assert "svgwrite" in deps
     assert "cairosvg" in deps
-    assert "pypowsybl" in deps
