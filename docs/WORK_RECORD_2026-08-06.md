@@ -5,8 +5,8 @@
 
 **分支**：`ops/ubuntu-docker-coexist-20260311`（未新建分支）
 **基线**：`1f053b7` → 分支末端，共 8 次提交
-**测试**：起始 633 passed / 2 skipped → **末端 732 passed / 2 skipped**
-（净减 3 条：退役渲染器自己的 smoke 与边界测试随之退役，见 §四之八）
+**测试**：起始 633 passed / 2 skipped → **末端 721 passed / 2 skipped**
+（退役模块自己的 smoke / 边界测试随之退役；活测试一条未减，见 §四之八、四之九）
 **冻结正典**：`services/ac_sizing_service.py`、`services/dc_pipeline_service.py`、
 `common/ac_block.py`、`common/allocation.py` —— **本轮一个字节未改**
 
@@ -644,6 +644,66 @@ metadata 之外的部分是否完全一致: True
 | 逐模块导入 | 205 个模块，失败 0 |
 | 应用启动 | 健康检查 `ok` |
 | SLD 页面真渲染（AppTest） | 无异常，提示 `Renderer mode: Engineering V2 Professional SLD.` |
+
+---
+
+## 四之九、清掉 sld/ 包里的取代品（owner「继续」，2026-08-06）
+
+### 删了什么
+
+| 模块 | 行数 | 依据 |
+| --- | --- | --- |
+| `sld/jp_pro_renderer.py` | 778 | 产品无消费者；`render_jp_pro_svg` 只被一个 smoke 测试调 |
+| `sld/svg_pro_template.py` 之外的 `svg_postprocess` + `_margin` | 254 | 只被 `__init__` 再导出，`append_dc_block_function_blocks` 与 `add_margins` **零调用点** |
+| `sld/visualizer.py` | 68 | 导入图不可达，只被一个测试调 |
+| `calb_diagrams/sld_layout_engine.py` | 548 | `topology_v1` 退役后产品已无消费者 |
+
+连同它们各自的测试。**净减约 1.6k 行**（本轮累计约 5.1k）。
+
+### `sld_layout_engine` 这次是先解耦再删
+
+上一轮它被恢复过一次 —— 它的测试模块里寄居着 `_build_topology`，
+**三个活的 engineering_v2 测试文件从那里导入夹具**，一删就是 11 个模块无法收集。
+
+这次的顺序：
+
+1. 把 `_build_topology` / `_build_single_winding_topology` 抽到
+   `tests/unit/sld_topology_fixtures.py` —— **夹具不该寄居在某个被测模块的测试文件里**，
+   那正是"删一个退役模块会炸掉三个活测试"的成因；
+2. `test_symbol_library` 原本借用退役引擎的 `SldLayoutSymbol` 当替身，
+   **让一个活模块的活测试依赖了退役模块**。`draw_symbol` 是鸭子类型的，
+   换成本地 `_Symbol` dataclass；
+3. 两处解耦各自单独跑绿之后，才删模块与它自己的 9 条测试。
+
+### 一个更大的发现（未动，需 owner 决定）
+
+`calb_sizing_tool/sld/` 里还剩**一整套被取代的 pypowsybl / IIDM 技术栈**，
+全部只挂在 `sld/__init__.py` 的再导出上或彼此互引，**产品代码零消费**：
+
+| 模块 | 行数 | 模块 | 行数 |
+| --- | --- | --- | --- |
+| `svg_pro_template` | 644 | `snapshot_schema` | 169 |
+| `iidm_builder` | 349 | `renderer` | 122 |
+| `snapshot_single_unit` | 281 | `ac_block_group` | 88 |
+| `snapshot_builder_v2` | 235 | `qc` / `topology` / `generator` | 186 |
+| `snapshot_builder` | 173 | | |
+
+**约 2.2k 行。** 佐证：`pypowsybl` **不在 `requirements.txt` 里**，
+它唯一的两个测试（`test_sld_smoke` / `test_sld_raw_smoke`）**一直是 skipped 状态** ——
+就是每次全量结果里那 2 条。
+
+`sld/` 里真正活着的只有三个：`voltage_contract`、`transformer_vector_group`、
+`standard_transformer_impedance`。
+
+**没有动。** 这不是零散死代码，是一整套早期架构；退不退役是产品决定。
+
+### 验证
+
+| 项 | 结果 |
+| --- | --- |
+| 全量测试 | **721 passed, 2 skipped** |
+| 逐模块导入 | 200 个模块，失败 0 |
+| SLD 页面真渲染（AppTest） | 无异常 |
 
 ---
 

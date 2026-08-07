@@ -11,11 +11,11 @@ PUBLIC_SLD_RENDERER_MODES: tuple[SldRendererMode, ...] = ("engineering_v2",)
 #: topology_v1 不用了". Both renderers are gone — sld_server_baseline_renderer
 #: and sld_pro_renderer — so there is nothing left to dispatch to.
 #:
-#: sld_layout_engine survived: it looked like topology_v1's alone, but its test
-#: module hosts the _build_topology fixture that three LIVE engineering_v2 test
-#: files import, and SldLayoutSymbol backs test_symbol_library. Removing it
-#: would have meant rewriting live tests to serve a cleanup — the suite caught
-#: that and the file went back.
+#: sld_layout_engine went too, but only after its test-side coupling was
+#: untangled: its test module had been hosting the _build_topology fixture that
+#: three LIVE engineering_v2 test files imported, which is why the first attempt
+#: broke eleven collections at once. The fixtures now live in
+#: tests/unit/sld_topology_fixtures.py, where they belong.
 #:
 #: They are NAMED here rather than simply forgotten, because the strings outlive
 #: the code: every SLD artifact ever generated recorded its renderer_mode in

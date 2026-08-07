@@ -3,7 +3,7 @@ import inspect
 from calb_diagrams.sld_engineering_v2_layout import build_sld_engineering_v2_layout_plan
 from calb_diagrams.sld_professional_sheet import build_professional_sld_sheet, compact_voltage_label
 from calb_sizing_tool.services.sld_engineering_v2_builder import build_sld_engineering_v2_graph
-from tests.unit.test_sld_layout_engine import _build_topology
+from tests.unit.sld_topology_fixtures import _build_topology
 
 
 def _build_sheet(sample_excel_path):

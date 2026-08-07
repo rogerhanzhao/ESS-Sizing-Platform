@@ -8,7 +8,7 @@ from calb_diagrams import sld_engineering_v2_renderer as renderer_module
 from calb_diagrams.sld_engineering_v2_layout import build_sld_engineering_v2_layout_plan
 from calb_diagrams.sld_engineering_v2_renderer import render_sld_engineering_v2_svg
 from calb_sizing_tool.services.sld_engineering_v2_builder import build_sld_engineering_v2_graph
-from tests.unit.test_sld_layout_engine import _build_topology
+from tests.unit.sld_topology_fixtures import _build_topology
 
 
 def _build_plan(sample_excel_path):
@@ -205,7 +205,7 @@ def test_three_winding_product_dy_marks_both_lvs_as_ungrounded_wye(sample_excel_
 
 def test_two_winding_dyn_marks_the_single_lv_as_plain_wye(sample_excel_path, tmp_path):
     """``n`` means neutral brought out; it must never infer neutral earthing."""
-    from tests.unit.test_sld_layout_engine import _build_single_winding_topology
+    from tests.unit.sld_topology_fixtures import _build_single_winding_topology
     from calb_sizing_tool.services.sld_engineering_v2_builder import (
         build_sld_engineering_v2_graph as _build_graph,
     )

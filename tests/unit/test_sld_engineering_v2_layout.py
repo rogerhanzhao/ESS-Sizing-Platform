@@ -12,7 +12,7 @@ from calb_sizing_tool.schemas.sld_render_input import SldInputOverride, legacy_s
 from calb_sizing_tool.services.sld_input_builder import build_sld_canonical_input
 from calb_sizing_tool.services.sld_engineering_v2_builder import build_sld_engineering_v2_graph
 from calb_sizing_tool.services.sld_topology_builder import build_sld_topology
-from tests.unit.test_sld_layout_engine import _build_topology
+from tests.unit.sld_topology_fixtures import _build_topology
 from tests.unit.test_sld_topology_builder import _build_run_bundle
 
 

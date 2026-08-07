@@ -2,7 +2,7 @@ import pytest
 
 from calb_sizing_tool.schemas.sld_engineering_v2 import SldEngineeringV2Graph
 from calb_sizing_tool.services.sld_engineering_v2_builder import build_sld_engineering_v2_graph
-from tests.unit.test_sld_layout_engine import _build_topology
+from tests.unit.sld_topology_fixtures import _build_topology
 
 
 def test_engineering_v2_builder_outputs_port_level_graph(sample_excel_path):
