@@ -444,7 +444,7 @@ DC 寿命图表）。新增一处未声明的插图 → 测试直接失败。
 
 | # | 发现 | 量级 | 为什么没动 |
 | --- | --- | --- | --- |
-| 1 | **死代码**：`calb_diagrams/calb_diagrams_sld.py`（1473 行）、`calb_sizing_tool/sld/svg_postprocess_raw.py`（123 行） | 1596 行 | 严格可达性分析（静态导入 + 全仓库字符串引用 + 动态导入路径）确认**零引用**。删除是清理决定，不是缺陷修复 |
+| 1 | ~~死代码 1596 行~~ | — | **已删除**，见下方 §四之六 |
 | 2 | **SLD 渲染器并存 8 套**：`sld_server_baseline_renderer`(1716) / `sld_engineering_v2_renderer`(1309) / `jp_pro_renderer`(778) / `sld_pro_renderer` / `sld_professional_sheet` / `visualizer` / `renderer` / `calb_diagrams_sld`(死) | ~6k 行 | 其中 `sld_server_baseline_renderer` 只被 1 个文件引用。要判断哪些是活的、哪些该退役，需要您确认产品意图 |
 | 3 | **`svg_postprocess` 三个变体**（`_margin` / `_raw` / 主体） | ~400 行 | `_raw` 已死；另两个的分工没有文档说明 |
 
@@ -457,6 +457,55 @@ DC 寿命图表）。新增一处未声明的插图 → 测试直接失败。
 - **32 处静默吞异常**：逐个看过，多数是可选依赖探测和路径回退，属合理用法。
   唯一值得留意的是 `report_context.py` 读 artifact 失败会静默 —— 后果就是上面
   那条"缺图但说成没生成"。
+
+---
+
+## 四之六、删除死代码（owner 批准，2026-08-06）
+
+owner："先删掉死代码，但是再多确认梳理一次！"
+
+第一次的判定只按**模块名**做正则。再查一次时补上**符号级引用**，
+结果直接推翻了那个方法的可靠性：`calb_diagrams_sld.py` 导出的
+`render_sld_pro_svg` **在 16 处出现**，其中包括 `calb_diagrams/__init__.py`。
+
+追下去才清楚 —— **仓库里有三份同名的 `render_sld_pro_svg`**：
+
+| 定义处 | 谁在用 |
+| --- | --- |
+| `calb_diagrams/sld_pro_renderer.py` | `calb_diagrams/__init__.py` + 4 个测试 |
+| `calb_diagrams/sld_server_baseline_renderer.py` | `plugins/sld_engineering_plugin.py` |
+| `calb_diagrams/calb_diagrams_sld.py` | **无人** |
+
+那 16 处命中全是**别的模块里的同名函数**。结论不变，但**如果只做模块名扫描就删，
+理由是站不住的** —— 这正是 owner 要求"再确认一次"的价值。
+
+### 删除前通过的八项确认
+
+| # | 检查 | 结果 |
+| --- | --- | --- |
+| 1 | 模块名在全仓库（py/md/toml/json/yml/sh/ps1）的引用 | 0 |
+| 2 | **每个 public 符号**在别处的引用 | 全为同名巧合，非引用 |
+| 3 | 是否在冻结正典清单里 | 否（清单只有 7 个 sizing 核心文件） |
+| 4 | 是否被任何 `__init__.py` 再导出 | 否 |
+| 5 | 星号导入路径（会绕过模块名） | 仓库仅 2 处，均不涉及 |
+| 6 | 打包/配置/Dockerfile 点名 | 无 |
+| 7 | git 历史 | 随初始导入 `2cb294c`（579 文件/92k 行）进来，**此后从未修改** |
+| 8 | 自身能否导入 | 能 —— 不是坏掉的残骸，只是无人使用 |
+
+### 删除后验证
+
+| 验证 | 结果 |
+| --- | --- |
+| 逐模块导入 207 个模块 | 全部成功（2 个 `networkx` 失败是本容器缺装可选依赖，与删除无关） |
+| 全量测试 | **722 passed, 2 skipped**，与删除前一致 |
+| 应用启动 | `streamlit run` 正常，健康检查 `ok`，HTTP 200 |
+
+净减 **1596 行**。
+
+> **顺带暴露的问题**：`render_sld_pro_svg` 现在仍有**两份活的实现** ——
+> `__init__.py` 和测试用 `sld_pro_renderer`，插件用 `sld_server_baseline_renderer`。
+> 同名不同实现，两条路径可能画出不同的图。这属于 §四之五 第 2 项
+> "8 套渲染器并存"，需要 owner 确认产品意图后才能收敛。
 
 ---
 
