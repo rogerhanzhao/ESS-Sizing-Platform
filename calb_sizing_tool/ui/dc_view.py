@@ -521,6 +521,11 @@ def _docx_add_lifetime_table(doc: Document, s3_df: pd.DataFrame):
         "DC_RTE_Pct",
         "System_RTE_Pct",
     ]
+    # Fill missing columns on a COPY. The frame handed in is the live Stage 3
+    # result held in session state (dc_results["results_dict"]), so writing the
+    # placeholder columns into it would let exporting a report edit the sizing
+    # result the page is displaying.
+    s3_df = s3_df.copy()
     for c in cols:
         if c not in s3_df.columns:
             s3_df[c] = np.nan
