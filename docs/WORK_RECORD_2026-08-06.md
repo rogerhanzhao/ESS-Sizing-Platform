@@ -5,7 +5,7 @@
 
 **分支**：`ops/ubuntu-docker-coexist-20260311`（未新建分支）
 **基线**：`1f053b7` → 分支末端，共 8 次提交
-**测试**：起始 633 passed / 2 skipped → **末端 709 passed / 2 skipped**
+**测试**：起始 633 passed / 2 skipped → **末端 722 passed / 2 skipped**
 **冻结正典**：`services/ac_sizing_service.py`、`services/dc_pipeline_service.py`、
 `common/ac_block.py`、`common/allocation.py` —— **本轮一个字节未改**
 
@@ -408,6 +408,55 @@ fixture 里显式跑 alembic 即可（`test_sld_page_state_smoke` 早就这么�
 | 库无表时 | **异常抛到页面**，不是静默空白（实测） |
 
 `tests/` **709 passed, 2 skipped**。
+
+---
+
+## 四之五、扩大审查：本轮改动之外的存量问题（2026-08-06）
+
+owner："这个项目经历了很多过程，CODEX、Claude 都参与，模型能力迭代很快，
+之前的设计可能有不合理的地方。"
+
+审查范围从"本轮 diff"扩到**整个仓库**（49k 行产品代码）。
+先讲已修的那条，因为它是唯一有对外风险的。
+
+### 已修：加戳咽喉之外还有一条插图路径
+
+NOT-FOR-CONSTRUCTION 的设计是对的 —— `_add_concept_figure` 是唯一咽喉，
+fail-closed。**但设计只在"所有图纸都走它"时成立**，而
+`export_docx.create_combined_report` 用裸 `doc.add_picture` 插入 SLD 和排布图，
+**不加戳**。
+
+它目前只有测试在调，UI 用的是 `export_report_v2_1`，所以**没有发出过无标记的图**。
+但"当前不可达"不是安全属性 —— 把那个生成器接回一个按钮，就会把无标记的工程图
+发给客户，而且没有任何东西会反对。已改为走同一个咽喉。
+
+规则现在是**结构性强制**而非靠人记得：`tests/unit/test_watermark_choke_point.py`
+用 AST 遍历 reporting 包里**每一个** `add_picture`，要么在咽喉内，
+要么在 `ALLOWED_UNSTAMPED` 里具名说明"这是数据不是图纸"（POI 曲线、页眉 logo、
+DC 寿命图表）。新增一处未声明的插图 → 测试直接失败。
+
+**顺带纠正我自己一个错误判断**：我最初写的测试断言"坏图必须抛 `WatermarkError`"，
+**实测没抛，但代码是对的、而且比我以为的更严** —— 坏图会被换成**带红框标记的
+占位图**，报告仍能产出而那张图明确标着无法加戳；`WatermarkError` 只在连占位图
+都造不出来（Pillow 缺失）时才抛。是我的预期错了，测试已按真实契约重写。
+
+### 查实但未动，需要 owner 决策的三项
+
+| # | 发现 | 量级 | 为什么没动 |
+| --- | --- | --- | --- |
+| 1 | **死代码**：`calb_diagrams/calb_diagrams_sld.py`（1473 行）、`calb_sizing_tool/sld/svg_postprocess_raw.py`（123 行） | 1596 行 | 严格可达性分析（静态导入 + 全仓库字符串引用 + 动态导入路径）确认**零引用**。删除是清理决定，不是缺陷修复 |
+| 2 | **SLD 渲染器并存 8 套**：`sld_server_baseline_renderer`(1716) / `sld_engineering_v2_renderer`(1309) / `jp_pro_renderer`(778) / `sld_pro_renderer` / `sld_professional_sheet` / `visualizer` / `renderer` / `calb_diagrams_sld`(死) | ~6k 行 | 其中 `sld_server_baseline_renderer` 只被 1 个文件引用。要判断哪些是活的、哪些该退役，需要您确认产品意图 |
+| 3 | **`svg_postprocess` 三个变体**（`_margin` / `_raw` / 主体） | ~400 行 | `_raw` 已死；另两个的分工没有文档说明 |
+
+### 查过但**不是**问题的（记下来免得反复发现）
+
+- **报告缺图不是静默的**：§7 会写 "SLD not generated"。但措辞会误导 ——
+  读取失败也说成"没生成"，用户会去重新生成一张本来就存在的图。**小问题，未改。**
+- **DC 页导出、报告 §容量曲线**：插的是数据图表（POI 曲线、容量衰减），
+  不是工程图纸，**不需要加戳**，治理没破。
+- **32 处静默吞异常**：逐个看过，多数是可选依赖探测和路径回退，属合理用法。
+  唯一值得留意的是 `report_context.py` 读 artifact 失败会静默 —— 后果就是上面
+  那条"缺图但说成没生成"。
 
 ---
 

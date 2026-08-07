@@ -971,10 +971,21 @@ def create_combined_report(dc_output: dict, ac_output: dict, ctx: dict) -> bytes
 
     figure_index = 1
 
+    # The NOT-FOR-CONSTRUCTION stamp is mandatory on every engineering drawing,
+    # and report_v2._add_concept_figure is the ONE place that applies it —
+    # fail-closed, raising rather than embedding an unmarked figure. Imported
+    # inside the function because report_v2 imports this module at load time.
+    #
+    # This generator is currently reached only from tests; the UI exports
+    # export_report_v2_1. It embedded drawings UNSTAMPED, which made it a loaded
+    # gun: wiring it back to a button would have shipped unmarked engineering
+    # figures. Routing it through the same choke point removes that.
+    from calb_sizing_tool.reporting.report_v2 import _add_concept_figure
+
     doc.add_heading("6. Single Line Diagram", level=2)
     sld_png = _resolve_diagram_bytes(ctx or {}, "sld_png_bytes", "sld_svg_bytes")
     if sld_png:
-        doc.add_picture(io.BytesIO(sld_png), width=Inches(6.7))
+        _add_concept_figure(doc, sld_png, width=Inches(6.7))
         doc.add_paragraph(f"Figure {figure_index} - Single Line Diagram (auto-generated)")
         figure_index += 1
     else:
@@ -984,7 +995,7 @@ def create_combined_report(dc_output: dict, ac_output: dict, ctx: dict) -> bytes
     doc.add_heading("7. Typical AC Block Arrangement (Concept Only)", level=2)
     layout_png = _resolve_diagram_bytes(ctx or {}, "layout_png_bytes", "layout_svg_bytes")
     if layout_png:
-        doc.add_picture(io.BytesIO(layout_png), width=Inches(6.7))
+        _add_concept_figure(doc, layout_png, width=Inches(6.7))
         doc.add_paragraph(f"Figure {figure_index} - Typical AC Block Arrangement (concept only)")
         figure_index += 1
     else:
