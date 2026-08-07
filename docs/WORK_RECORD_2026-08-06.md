@@ -5,7 +5,7 @@
 
 **分支**：`ops/ubuntu-docker-coexist-20260311`（未新建分支）
 **基线**：`1f053b7` → 分支末端，共 8 次提交
-**测试**：起始 633 passed / 2 skipped → **末端 684 passed / 2 skipped**
+**测试**：起始 633 passed / 2 skipped → **末端 705 passed / 2 skipped**
 **冻结正典**：`services/ac_sizing_service.py`、`services/dc_pipeline_service.py`、
 `common/ac_block.py`、`common/allocation.py` —— **本轮一个字节未改**
 
@@ -81,8 +81,9 @@ load_persisted_ac_snapshot(dc_run_id, ac_run_id=选中方案)
 3. `resolve_preferred_ac_snapshot` **自己**读 `active_ac_run_id`，
    与 `artifact_run_id()` 同一条规矩：**这个判断只能有一处**。
 
-配套：AC 页面保存成功后 `set_active_ac_run(新方案, clear_downstream=False)`。
-`clear_downstream=False` 是必须的 —— 此时 session 里装的**就是**这个方案的结果。
+配套：AC 页面保存成功后 `adopt_saved_ac_run(新方案)` ——
+**保留 AC 状态**（session 里装的就是这个方案的结果）、**清掉 SLD 与排布**
+（那是上一套配置画的）。见 §四之三。
 
 **验证**：`tests/unit/test_ac_alternative_snapshot_scope.py`（13 条）。
 
@@ -298,6 +299,56 @@ running app     : V2.1 · 5db9aca · branch ...
    这恰恰是最该抓的情况，所以运行中容器单独查一遍。
 
 `+dirty` 标记：工作区脏时构建，镜像不配声称自己是那个 commit。
+
+---
+
+## 四之三、系统性审查（CODEX 停止后，2026-08-06）
+
+对本轮全部改动（14 个产品文件、约 1600 行 diff）做了一次系统审查，
+查出 **6 个缺陷 + 1 条被证伪的结论**。全部**先复现再动手**。
+
+### 最严重：新增返回值，四个调用点无人更新
+
+`resolve_preferred_ac_snapshot` 增加了 `source="persisted_ac_alternative"`，
+而 SLD、排布、AC 三个页面都在写 `source == "persisted_run_snapshot"`。
+又因为我给 AC 保存加了"选中刚存的方案"，**这个新值变成了常态而不是边角**。
+
+实测后果：
+
+| 页面 | 选中方案后 |
+| --- | --- |
+| SLD | `force_draft=True`，**每张图都被打成 draft/override 并标记未达正式条件** |
+| 排布 | 警告"session compatibility fallback，请先持久化 AC" —— **数据明明已持久化** |
+| AC | 快照不被采纳，切换会话/案例后**表单一片空白** |
+
+**修法不是各加一个 `or`** —— 根因是字符串型契约。
+服务侧给出 `PERSISTED_SOURCES` 与 `AcSnapshotResolution.is_persisted`，
+页面问属性。新增来源必须在**唯一一处**分类，否则
+`test_every_source_the_service_can_return_is_classified` 直接失败。
+
+### 其余五个
+
+| 缺陷 | 后果 | 修法 |
+| --- | --- | --- |
+| `calb-diagnose.sh` 第 5 节没带 `--dry-run` | **号称"生产可安全运行的只读诊断"，实际删产物行/文件/快照/审计/oplog** | 加 `--dry-run`；测试遍历脚本每一行 |
+| `clear_downstream=False` 连同图纸一起保留 | 报告标着"AC Alternative B"，里面却是 A 的 SLD | 新增 `adopt_saved_ac_run()`：**保留 AC 状态、清掉图纸**；并删除 `clear_downstream` 参数，不留误用余地 |
+| dry-run 只数不量 | `unreferenced_files=1` 却报 `bytes_freed=0`，"先看数字再删"失去意义 | 三处补上字节统计（实测 4096 字节现在如实上报） |
+| 路径映射失效时会全盘误删 | 库被恢复 / outputs 搬家 → legacy 绝对路径全失效 → **磁盘上所有文件被判为垃圾** | `BrokenArtifactPathsError`：**过半行解析不到就拒绝执行** |
+| `external_layout_service` 未传 `ac_run_id` | 对外导出仍用"最后保存的那套" | **维持现状**（对外接口只给 run_id，无方案上下文），已在 §六 记录 |
+
+### 一条被证伪的审查结论
+
+审查说"孤儿行清理先跑，清空注册表，文件清扫随后全删"。
+**机制不成立**：孤儿行清理只删*文件已不存在*的行，
+这种行本来就不保护任何现存文件。按此写的测试**确实失败了**，
+于是撤掉了那个没有依据的重排理由，改成针对真实风险（路径映射失效）的护栏。
+`run_maintenance` 的顺序保留，但注释改成"这是整洁性，不是那道保护"。
+
+**教训**：审查结论也要复现才能采信 —— 照单全收会写出一个防不住真实风险、
+却让人以为已经防住的"修复"。
+
+回归锁：新增 11 条，含两处"撤掉修复测试必须失败"的反向验证。
+`tests/` 总计 **705 passed, 2 skipped**。
 
 ---
 

@@ -51,7 +51,7 @@ from calb_sizing_tool.services.sld_data_source_service import persist_ac_runtime
 from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.state.project_state import bump_run_id_ac, get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
-from calb_sizing_tool.state.workspace_state import get_workspace_context, set_active_ac_run
+from calb_sizing_tool.state.workspace_state import adopt_saved_ac_run, get_workspace_context
 
 # Transformer topology is now selected explicitly. A two-winding transformer
 # can serve any supported PCS count on one common LV busbar; a three-winding
@@ -291,7 +291,10 @@ def show():
         shared_state=state,
         session_state=st.session_state,
     )
-    if ac_resolution.source == "persisted_run_snapshot" and ac_resolution.snapshot is not None:
+    # is_persisted, not one source string: with an alternative selected the
+    # form would otherwise come up EMPTY after a session or case switch,
+    # because the persisted configuration was there and simply not adopted.
+    if ac_resolution.is_persisted:
         _hydrate_ac_runtime_snapshot(
             ac_resolution.snapshot,
             ac_inputs=ac_inputs,
@@ -1119,9 +1122,12 @@ def show():
                     # their drawings from the SELECTED alternative, and leaving
                     # the selection on the previous one would regenerate from a
                     # configuration the user just replaced.
-                    # clear_downstream=False: the session already HOLDS this
-                    # alternative's results — clearing would wipe the save.
-                    set_active_ac_run(_ac_run.run_id, clear_downstream=False)
+                    #
+                    # adopt_saved_ac_run keeps the AC state (the session IS this
+                    # alternative's result) while dropping the SLD/arrangement on
+                    # screen, which came from the PREVIOUS configuration — a
+                    # report headed "AC Alternative B" must not embed A's SLD.
+                    adopt_saved_ac_run(_ac_run.run_id)
                 if _ac_run is None:
                     st.info("Configuration saved.")
                 elif _ac_run.reused:

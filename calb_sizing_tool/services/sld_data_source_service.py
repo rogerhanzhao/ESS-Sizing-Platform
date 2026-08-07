@@ -17,10 +17,29 @@ from calb_sizing_tool.schemas.run_snapshot import RunOutputSnapshotSchema
 AC_RUNTIME_SNAPSHOT_KIND = "ac_runtime_snapshot_v1"
 
 
+#: Sources that came out of the DATABASE. A page must branch on this set, never
+#: on one member of it: adding "persisted_ac_alternative" while three pages
+#: compared `source == "persisted_run_snapshot"` silently demoted every SLD to
+#: draft mode and made the arrangement page claim persisted data was a session
+#: fallback. A new source must be classified HERE, once.
+PERSISTED_SOURCES = frozenset({"persisted_run_snapshot", "persisted_ac_alternative"})
+
+
 @dataclass(frozen=True)
 class AcSnapshotResolution:
     snapshot: AcSnapshot | None
     source: str
+
+    @property
+    def is_persisted(self) -> bool:
+        """Did this configuration come from the database rather than session state?
+
+        This is the question every consumer actually has — whether the data is
+        authoritative enough to render a formal drawing from. Ask it instead of
+        matching a source string, so a new source cannot quietly reclassify a
+        page's behaviour.
+        """
+        return self.snapshot is not None and self.source in PERSISTED_SOURCES
 
 
 def _hash_payload(payload: dict[str, Any]) -> str:

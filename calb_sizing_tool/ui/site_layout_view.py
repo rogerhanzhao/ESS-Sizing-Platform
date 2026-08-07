@@ -98,7 +98,12 @@ def _layout_ac_source_message(resolution: AcSnapshotResolution) -> tuple[str, st
             "warning",
             "AC snapshot not found. Run AC sizing before generating a Typical AC Block Arrangement.",
         )
-    if resolution.source == "persisted_run_snapshot":
+    if resolution.is_persisted:
+        if resolution.source == "persisted_ac_alternative":
+            return (
+                "caption",
+                "Arrangement data source: persisted AC snapshot of the selected AC alternative.",
+            )
         return (
             "caption",
             "Arrangement data source: persisted AC snapshot attached to the active run.",

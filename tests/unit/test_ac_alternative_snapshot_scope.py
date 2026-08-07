@@ -16,6 +16,8 @@ Two directions are load-bearing and both are locked here:
 """
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from calb_sizing_tool.infra.db.base import Base
@@ -147,23 +149,44 @@ def test_a_selection_from_another_dc_run_is_ignored(db):
     assert resolution.snapshot.output["source_run_id"] == "dc-1"
 
 
-def test_saving_on_the_ac_page_points_the_selection_at_what_was_saved():
+def test_saving_on_the_ac_page_adopts_what_was_saved():
     """Otherwise the next page regenerates from the alternative just replaced."""
     src = open("calb_sizing_tool/ui/ac_view.py", encoding="utf-8-sig").read()
-    assert "set_active_ac_run(_ac_run.run_id, clear_downstream=False)" in src, (
-        "AC sizing must select the alternative it just saved, and must NOT clear "
-        "downstream state doing so — that state IS this alternative's"
+    assert "adopt_saved_ac_run(_ac_run.run_id)" in src, (
+        "AC sizing must select the alternative it just saved"
     )
 
 
-def test_switching_alternatives_still_clears_stale_state():
-    """clear_downstream defaults to True: a real switch invalidates the screen."""
+def test_adopting_keeps_the_ac_state_and_drops_the_stale_drawings():
+    """Two kinds of state, two answers — and getting this wrong mislabels a report.
+
+    The AC results in session ARE this alternative's, computed moments ago, so
+    clearing them would wipe the save. The SLD and arrangement on screen came
+    from the PREVIOUS configuration, so keeping them lets a proposal headed
+    "AC Alternative B" embed A's single-line diagram.
+    """
     import inspect
 
-    from calb_sizing_tool.state.workspace_state import set_active_ac_run
+    from calb_sizing_tool.state import workspace_state
 
-    params = inspect.signature(set_active_ac_run).parameters
-    assert params["clear_downstream"].default is True
+    src = inspect.getsource(workspace_state.adopt_saved_ac_run)
+    assert "_clear_sld_runtime_state()" in src
+    assert "_clear_layout_runtime_state()" in src
+    assert "_clear_ac_runtime_state" not in src, "the save being adopted must survive"
+
+
+def test_switching_alternatives_clears_everything():
+    """A real switch invalidates all of it — nothing on screen is this branch's."""
+    import inspect
+
+    from calb_sizing_tool.state import workspace_state
+
+    src = inspect.getsource(workspace_state.set_active_ac_run)
+    assert "_clear_downstream_runtime_state()" in src
+    # No flag to skip it: the two situations differ in WHAT must survive, and a
+    # boolean would let a caller keep drawings belonging to another config.
+    params = inspect.signature(workspace_state.set_active_ac_run).parameters
+    assert "clear_downstream" not in params
 
 
 # --------------------------------------------------------------------------
@@ -244,3 +267,74 @@ def test_snapshot_pruning_keeps_the_dedup_lookup_working(db):
     )
     snapshot = load_persisted_ac_snapshot("dc-1", ac_run_id=a.run_id, db_url=db)
     assert snapshot.output["source_case_name"] == "99"
+
+
+# --------------------------------------------------------------------------
+# A new source must not silently reclassify a page's behaviour
+# --------------------------------------------------------------------------
+#
+# Adding "persisted_ac_alternative" while three pages compared
+# `source == "persisted_run_snapshot"` demoted EVERY SLD to draft/override and
+# made the arrangement page warn that persisted data was a session fallback —
+# and because ac_view now selects an alternative after every save, that became
+# the common case rather than a corner one.
+
+
+def test_every_source_the_service_can_return_is_classified():
+    """Enumerated from the service, so a new source cannot be forgotten here."""
+    import inspect
+
+    from calb_sizing_tool.services import sld_data_source_service as svc
+
+    emitted = set(re.findall(r'source="([a-z_]+)"', inspect.getsource(svc)))
+    assert emitted, "could not find the sources — has the resolver changed shape?"
+    classified = svc.PERSISTED_SOURCES | {"compatibility_adapter", "session_cache", "none"}
+    assert emitted <= classified, (
+        f"unclassified source(s) {emitted - classified}: decide in "
+        f"PERSISTED_SOURCES whether they are authoritative, or the pages will "
+        f"treat them as a session fallback by default"
+    )
+
+
+@pytest.mark.parametrize("source,persisted", [
+    ("persisted_run_snapshot", True),
+    ("persisted_ac_alternative", True),
+    ("compatibility_adapter", False),
+    ("session_cache", False),
+])
+def test_the_pages_agree_on_what_counts_as_persisted(source, persisted):
+    from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot
+    from calb_sizing_tool.services.sld_data_source_service import AcSnapshotResolution
+    from calb_sizing_tool.ui.single_line_diagram_view import _resolve_sld_runtime_source_status
+    from calb_sizing_tool.ui.site_layout_view import _layout_ac_source_message
+
+    snapshot = AcSnapshot(inputs={}, output={"num_blocks": 4}, results={})
+    resolution = AcSnapshotResolution(snapshot=snapshot, source=source)
+
+    assert resolution.is_persisted is persisted
+    status = _resolve_sld_runtime_source_status(resolution)
+    assert status.is_authoritative is persisted
+    assert status.force_draft is not persisted, (
+        "a persisted configuration must not force the SLD into draft/override"
+    )
+    level, _message = _layout_ac_source_message(resolution)
+    assert level == ("caption" if persisted else "warning")
+
+
+def test_no_page_matches_the_persisted_source_by_string():
+    """The trap itself: one member of the set, hard-coded in a branch."""
+    import pathlib
+
+    for name in ("single_line_diagram_view", "site_layout_view", "ac_view"):
+        path = pathlib.Path("calb_sizing_tool/ui") / f"{name}.py"
+        source = path.read_text(encoding="utf-8-sig")
+        assert '== "persisted_run_snapshot"' not in source, (
+            f"{name} branches on one source string; ask resolution.is_persisted "
+            f"so a new source is classified in ONE place"
+        )
+
+
+def test_a_snapshotless_resolution_is_never_persisted():
+    from calb_sizing_tool.services.sld_data_source_service import AcSnapshotResolution
+
+    assert AcSnapshotResolution(snapshot=None, source="persisted_run_snapshot").is_persisted is False

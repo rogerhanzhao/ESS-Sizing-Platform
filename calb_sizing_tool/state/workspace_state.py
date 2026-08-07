@@ -133,22 +133,41 @@ def get_workspace_context() -> dict[str, Any]:
     }
 
 
-def set_active_ac_run(ac_run_id: str | None, *, clear_downstream: bool = True) -> None:
-    """Select which AC alternative the downstream pages work from.
+def set_active_ac_run(ac_run_id: str | None) -> None:
+    """SWITCH to an alternative, e.g. from the workbench picker.
 
-    SWITCHING to an alternative invalidates what is on screen — that state came
-    from a different alternative — so the same runtime state is cleared as when
-    the run itself changes.
+    Everything on screen came from a different alternative, so all of it goes —
+    the same runtime state that is cleared when the run itself changes.
 
-    ``clear_downstream=False`` is for the one case where the session ALREADY
-    holds this alternative's state: AC sizing pointing the selection at the
-    configuration it just saved. Clearing there would wipe the very results the
-    user just produced.
+    For the other case, where AC sizing has just PRODUCED this alternative and
+    the session already holds its results, use ``adopt_saved_ac_run``. There is
+    deliberately no flag here to skip the clearing: the two situations differ in
+    what must survive, not in how much to clear, and a boolean would let a caller
+    keep drawings that belong to another configuration.
     """
     current = st.session_state.get("active_ac_run_id")
-    if clear_downstream and current != ac_run_id:
+    if current != ac_run_id:
         _clear_downstream_runtime_state()
     st.session_state["active_ac_run_id"] = ac_run_id
+
+
+def adopt_saved_ac_run(ac_run_id: str | None) -> None:
+    """Point the selection at the alternative AC sizing has just saved.
+
+    Two different pieces of state, two different answers:
+
+    - the AC state in session IS this alternative's result, computed moments ago
+      — clearing it would wipe the save the user just made;
+    - the SLD and arrangement on screen were rendered from the PREVIOUS
+      configuration, and they are now stale.
+
+    Keeping both would be the bug worth avoiding: the report labels itself with
+    the alternative, so leaving the old drawings lets a proposal headed "AC
+    Alternative B" embed A's single-line diagram.
+    """
+    st.session_state["active_ac_run_id"] = ac_run_id
+    _clear_sld_runtime_state()
+    _clear_layout_runtime_state()
 
 
 def get_active_ac_run_id() -> str | None:

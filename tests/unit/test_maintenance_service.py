@@ -513,3 +513,89 @@ def test_the_cleanup_script_contract_holds(tmp_path, monkeypatch):
     assert re.search(r'CALB_PRUNE_UNREFERENCED_FILES\s*=\s*""', script), (
         "the measuring pass must explicitly blank the deletion flag"
     )
+
+
+# ---------------------------------------------------------------------------
+# Re-review 2026-08-06: three more defects in the sweep
+# ---------------------------------------------------------------------------
+
+def test_a_registry_whose_paths_do_not_match_deletes_nothing(db_url, tmp_path, monkeypatch):
+    """A database restored onto a MOVED outputs directory.
+
+    Every legacy absolute file_path still points at the old host, so every file
+    at the new path looks unreferenced and the sweep would delete the lot. The
+    registry is not telling us what is referenced — it is telling us the mapping
+    is broken, and the only safe answer is to refuse.
+
+    Note what does NOT protect this: run_maintenance's ordering. The orphan pass
+    only removes rows whose file is ALREADY missing, so it can never make an
+    existing file unreferenced. That mechanism was checked and does not hold.
+    """
+    out = _outputs(tmp_path, monkeypatch)
+    keeper = out / "artifacts" / "r1" / "plug" / "keep.svg"
+    _old_file(keeper, 40)
+    with session_scope(db_url) as session:
+        for n in range(3):
+            _artifact(session, "r1", "sld_svg", f"/gone/old-host/{n}.svg")
+
+    with pytest.raises(ms.BrokenArtifactPathsError):
+        ms.find_unreferenced_artifact_files(db_url=db_url)
+
+    monkeypatch.setenv("CALB_PRUNE_UNREFERENCED_FILES", "1")
+    report = ms.run_maintenance(db_url=db_url)
+    assert keeper.exists(), "a broken path mapping must not authorise deletion"
+    assert any("unreferenced sweep skipped" in n for n in report.notes)
+
+
+def test_a_few_dangling_rows_do_not_disable_the_sweep(db_url, tmp_path, monkeypatch):
+    """A healthy server always has some, between the file sweep and the row sweep."""
+    out = _outputs(tmp_path, monkeypatch)
+    junk = out / "artifacts" / "r1" / "plug" / "junk.svg"
+    _old_file(junk, 40)
+    live = out / "artifacts" / "r1" / "plug" / "live.svg"
+    _old_file(live, 40)
+    with session_scope(db_url) as session:
+        _artifact(session, "r1", "sld_svg", "artifacts/r1/plug/live.svg")
+        _artifact(session, "r1", "layout_svg", "artifacts/r1/plug/live.svg")
+        _artifact(session, "r1", "old_svg", "/gone/one-dangler.svg")
+
+    found = ms.find_unreferenced_artifact_files(db_url=db_url)
+    assert found == [junk], "one dangling row in three must not stop the sweep"
+
+
+def test_a_dry_run_reports_the_space_it_would_reclaim(db_url, tmp_path, monkeypatch):
+    """"Look at the number, then delete" needs the number to exist."""
+    out = _outputs(tmp_path, monkeypatch)
+    junk = out / "artifacts" / "r1" / "plug" / "junk.svg"
+    junk.write_bytes(b"x" * 4096)
+    stamp = (datetime.datetime.now() - datetime.timedelta(days=40)).timestamp()
+    os.utime(junk, (stamp, stamp))
+
+    report = ms.run_maintenance(db_url=db_url, dry_run=True)
+    assert report.unreferenced_files == 1
+    assert report.bytes_freed == 4096, "a dry run reporting 0 bytes tells nobody anything"
+    assert junk.exists(), "and it must still be a dry run"
+
+
+def test_aged_artifacts_are_measured_in_a_dry_run_too(db_url, tmp_path, monkeypatch):
+    out = _outputs(tmp_path, monkeypatch)
+    aged = out / "artifacts" / "r1" / "plug" / "aged.svg"
+    aged.write_bytes(b"y" * 2048)
+    with session_scope(db_url) as session:
+        _artifact(session, "r1", "sld_svg", "artifacts/r1/plug/aged.svg", age_days=90)
+
+    report = ms.prune_artifacts_older_than(db_url=db_url, dry_run=True)
+    assert report.artifact_rows == 1
+    assert report.bytes_freed == 2048
+    assert aged.exists()
+
+
+def test_the_diagnostic_script_really_is_read_only():
+    """Its header promises production-safe. It was running the sweep for real."""
+    script = open("deploy/scripts/calb-diagnose.sh", encoding="utf-8").read()
+    for line in script.splitlines():
+        if "maintenance_service" in line and not line.strip().startswith("#"):
+            assert "--dry-run" in line, (
+                "a diagnostic that deletes artifact rows, files, snapshots, audit "
+                "rows and oplogs is not a diagnostic"
+            )

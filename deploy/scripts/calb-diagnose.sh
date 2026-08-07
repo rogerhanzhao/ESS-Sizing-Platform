@@ -98,13 +98,16 @@ echo "      unreferenced-file sweep cannot be enabled. Fix: git pull, then"
 echo "      'docker compose -p $PROJECT_NAME up -d --force-recreate app'."
 
 section "5. What the sweep WOULD prune (counts only, deletes nothing)"
+# --dry-run is what makes this section honest. Without it the sweep really
+# deletes artifact rows and files, snapshot generations, audit rows and oplogs —
+# on a production host, from a script whose header promises it is read-only.
+# Blanking CALB_PRUNE_UNREFERENCED_FILES alone held back ONLY the file sweep.
 docker compose -p "$PROJECT_NAME" exec -T "$SERVICE" \
   env CALB_PRUNE_UNREFERENCED_FILES= \
-  python -m calb_sizing_tool.services.maintenance_service 2>/dev/null \
-  || echo "(could not run the sweep — container down, or image predates it)"
-echo "NOTE: this run DOES apply the row/age/generation retention (that is the"
-echo "      normal weekly behaviour). Only the unreferenced-FILE sweep is held"
-echo "      to counting, because CALB_PRUNE_UNREFERENCED_FILES is blank above."
+  python -m calb_sizing_tool.services.maintenance_service --dry-run 2>/dev/null \
+  || echo "(could not run the sweep — container down, or an image predating --dry-run)"
+echo "NOTE: nothing above was deleted. The weekly timer runs the same sweep"
+echo "      WITHOUT --dry-run; these are the numbers it would act on."
 
 section "6. Docker's own disk usage"
 docker system df 2>/dev/null || echo "(docker not reachable)"

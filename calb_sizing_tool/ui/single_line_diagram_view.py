@@ -145,13 +145,18 @@ def _resolve_sld_runtime_source_status(ac_resolution: AcSnapshotResolution) -> S
             force_draft=False,
             message="SLD runtime data source: unavailable. Generate or restore run data before creating SLD.",
         )
-    if source == "persisted_run_snapshot":
+    # Any PERSISTED source is authoritative, whether it came from the run or
+    # from the AC alternative selected under it. Matching one source string here
+    # is what made every SLD draft-only once alternatives existed.
+    if ac_resolution.is_persisted:
+        detail = ("the selected AC alternative" if source == "persisted_ac_alternative"
+                  else "persisted run AC snapshot")
         return SldRuntimeSourceStatus(
             source=source,
             mode="authoritative_persisted",
             is_authoritative=True,
             force_draft=False,
-            message="SLD runtime data source: authoritative persisted mode (persisted run AC snapshot).",
+            message=f"SLD runtime data source: authoritative persisted mode ({detail}).",
         )
     if source == "compatibility_adapter":
         return SldRuntimeSourceStatus(

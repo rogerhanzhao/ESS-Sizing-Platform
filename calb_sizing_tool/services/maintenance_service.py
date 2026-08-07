@@ -135,6 +135,17 @@ def _cutoff(days: int) -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
 
 
+def _file_size(stored_path: str) -> int:
+    """Bytes this artifact occupies, or 0 if it is already gone."""
+    if not stored_path:
+        return 0
+    try:
+        path = resolve_artifact_path(stored_path)
+        return path.stat().st_size if path.is_file() else 0
+    except OSError:
+        return 0
+
+
 def _delete_file(stored_path: str) -> int:
     """Remove an artifact file; return the bytes freed."""
     if not stored_path:
@@ -201,6 +212,13 @@ def prune_artifacts_older_than(days: int | None = None, *, db_url: str | None = 
             for row in rows:
                 report.artifact_rows += 1
                 if dry_run:
+                    # Measure without touching. A dry run that reported 0 bytes
+                    # while megabytes were reclaimable would defeat the whole
+                    # "look at the number, then delete" order.
+                    size = _file_size(str(row.file_path or ""))
+                    if size:
+                        report.artifact_files += 1
+                        report.bytes_freed += size
                     continue
                 freed = _delete_file(str(row.file_path or ""))
                 if freed:
@@ -291,12 +309,20 @@ def prune_oplog(days: int | None = None, *, dry_run: bool = False,
         try:
             if path.stat().st_mtime < cutoff:
                 report.oplog_files += 1
+                report.bytes_freed += path.stat().st_size
                 if not dry_run:
-                    report.bytes_freed += path.stat().st_size
                     path.unlink()
         except OSError:
             pass
     return report
+
+
+class BrokenArtifactPathsError(RuntimeError):
+    """The registry's paths do not match this outputs directory.
+
+    Raised instead of returning candidates, because in this state EVERY file
+    looks unreferenced and the sweep would delete the lot.
+    """
 
 
 def find_unreferenced_artifact_files(*, db_url: str | None = None,
@@ -325,6 +351,8 @@ def find_unreferenced_artifact_files(*, db_url: str | None = None,
         return []
 
     referenced: set[Path] = set()
+    total_rows = 0
+    unresolvable_rows = 0
     with session_scope(db_url) as session:
         # Deliberately NOT guarded against OperationalError: if the registry
         # cannot be read we must not conclude "nothing is referenced" and hand
@@ -333,10 +361,33 @@ def find_unreferenced_artifact_files(*, db_url: str | None = None,
             stored = str(row.file_path or "")
             if not stored:
                 continue
+            total_rows += 1
             try:
-                referenced.add(resolve_artifact_path(stored).resolve())
+                resolved = resolve_artifact_path(stored).resolve()
             except OSError:
-                pass
+                unresolvable_rows += 1
+                continue
+            referenced.add(resolved)
+            if not resolved.is_file():
+                unresolvable_rows += 1
+
+    # A registry whose paths mostly do not resolve is not telling us what is
+    # referenced — it is telling us the path mapping is broken. That is what a
+    # database restored onto a MOVED outputs directory looks like: every legacy
+    # absolute file_path points at the old host, so every file at the new path
+    # would be classified as garbage and deleted in one pass.
+    #
+    # A healthy server has a few dangling rows between sweeps, so the test is a
+    # majority, not "any". Refusing here is the only guard for this case: the
+    # ordering in run_maintenance does not help, because the orphan pass only
+    # ever removes rows whose file is ALREADY missing.
+    if total_rows and unresolvable_rows * 2 > total_rows:
+        raise BrokenArtifactPathsError(
+            f"{unresolvable_rows} of {total_rows} artifact_registry rows do not "
+            f"resolve to a file. The registry and this outputs directory do not "
+            f"match (restored database, or CALB_OUTPUTS_DIR moved). Refusing to "
+            f"classify files as unreferenced."
+        )
 
     cutoff = _cutoff(grace).timestamp()
     candidates: list[Path] = []
@@ -372,11 +423,17 @@ def prune_unreferenced_artifact_files(*, db_url: str | None = None,
     except OperationalError as exc:
         report.notes.append(f"unreferenced sweep skipped, registry unreadable: {exc}")
         return report
+    except BrokenArtifactPathsError as exc:
+        report.notes.append(f"unreferenced sweep skipped: {exc}")
+        return report
 
     report.unreferenced_files = len(candidates)
     if dry_run:
         if candidates:
             total = sum(p.stat().st_size for p in candidates if p.exists())
+            # Into bytes_freed as well, not only the note: a caller reading the
+            # JSON must see the size it would reclaim without parsing prose.
+            report.bytes_freed += total
             report.notes.append(
                 f"{len(candidates)} unreferenced artifact files ({total / 1048576:.1f} MB) "
                 f"— set CALB_PRUNE_UNREFERENCED_FILES=1 to delete"
@@ -441,19 +498,20 @@ def storage_report(*, db_url: str | None = None) -> dict[str, Any]:
 
 
 def run_maintenance(*, db_url: str | None = None, dry_run: bool = False) -> PruneReport:
-    """One sweep: orphans first, then age, then generations, then logs.
+    """One sweep: files judged first, then orphans, age, generations, logs.
 
-    ``dry_run`` measures every policy without changing rows or files. Orphans go
-    first during a real run so the age pass is not slowed by rows it would delete.
+    ``dry_run`` measures every policy without changing rows or files.
+
+    The file sweep runs BEFORE the row passes so that a file is only ever
+    condemned on evidence that predates this run. Note this ordering is a
+    tidiness property, NOT the protection against a broken path mapping — the
+    orphan pass only ever deletes rows whose file is already missing, so it
+    cannot make an existing file unreferenced. What protects that case is the
+    resolvable-fraction guard inside ``find_unreferenced_artifact_files``.
     """
     report = PruneReport()
     if dry_run:
         report.notes.append("dry run — no rows or files were deleted")
-    prune_orphaned_artifacts(db_url=db_url, dry_run=dry_run, report=report)
-    prune_artifacts_older_than(db_url=db_url, dry_run=dry_run, report=report)
-    prune_snapshot_generations(db_url=db_url, dry_run=dry_run, report=report)
-    prune_audit_log(db_url=db_url, dry_run=dry_run, report=report)
-    prune_oplog(dry_run=dry_run, report=report)
     # Files whose rows are gone. COUNTED, not deleted, unless explicitly enabled
     # — see prune_unreferenced_artifact_files for why that default is not timidity.
     prune_unreferenced_artifact_files(
@@ -461,6 +519,11 @@ def run_maintenance(*, db_url: str | None = None, dry_run: bool = False) -> Prun
         dry_run=dry_run or not _env_flag("CALB_PRUNE_UNREFERENCED_FILES"),
         report=report,
     )
+    prune_orphaned_artifacts(db_url=db_url, dry_run=dry_run, report=report)
+    prune_artifacts_older_than(db_url=db_url, dry_run=dry_run, report=report)
+    prune_snapshot_generations(db_url=db_url, dry_run=dry_run, report=report)
+    prune_audit_log(db_url=db_url, dry_run=dry_run, report=report)
+    prune_oplog(dry_run=dry_run, report=report)
     return report
 
 
