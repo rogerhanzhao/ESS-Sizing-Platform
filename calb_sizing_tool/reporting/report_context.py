@@ -460,6 +460,8 @@ def build_report_context(
         if not candidate.exists():
             return None
         data, error = retry_read(candidate.read_bytes)
+        if isinstance(error, FileNotFoundError):
+            return None          # vanished mid-read: gone, not unreadable
         if error is not None:
             artifact_read_failures.append(f"{name} could not be read ({error})")
             return None

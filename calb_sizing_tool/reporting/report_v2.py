@@ -806,7 +806,34 @@ def _add_concept_figure(doc, png_bytes: bytes, *, width=None, height=None) -> No
         doc.add_picture(io.BytesIO(stamped))
 
 
-def _missing_figure_note(ctx: ReportContext, absent: str, where: str) -> str:
+#: Prefixes that identify which figure a read failure belongs to. A message
+#: that starts with none of them named no figure (the registry query itself
+#: failed), so it concerns every figure that was being looked for.
+_FIGURE_TOKENS = ("sld", "layout")
+
+
+def _read_failures_for(ctx: ReportContext, prefix: str) -> list[str]:
+    """The read failures that concern ONE figure.
+
+    `ctx.artifact_read_failures` is site-wide. Filtering matters: a layout that
+    could not be read must not make §7 announce that the SLD exists — that is
+    the same false claim as "not generated", pointing the other way.
+
+    Messages are `"<artifact_kind>: …"` from the registry reader
+    (`sld_png`, `layout_svg`, …) or `"<file name> could not be read …"` from
+    the legacy flat-file fallback (`sld_latest.png`); both start with the
+    figure's name. `"artifact registry unreadable: …"` names no figure and so
+    counts for all of them.
+    """
+    mine = []
+    for message in ctx.artifact_read_failures:
+        token = message.split(":", 1)[0].strip().split(" ", 1)[0].lower()
+        if token.startswith(prefix) or not token.startswith(_FIGURE_TOKENS):
+            mine.append(message)
+    return mine
+
+
+def _missing_figure_note(ctx: ReportContext, absent: str, where: str, *, kind: str) -> str:
     """What to say when a figure is not in the document.
 
     "Not generated" is a claim about the run, and it is FALSE when the figure
@@ -815,9 +842,13 @@ def _missing_figure_note(ctx: ReportContext, absent: str, where: str) -> str:
     same locked database or unreadable file. `ctx.artifact_read_failures` holds
     the reads that survived their retries (artifact_service.retry_read), so the
     two cases can be told apart and the reader is told which one they are in.
+
+    `kind` is the figure's own prefix ("sld", "layout"): only ITS failures may
+    be cited, never another figure's.
     """
-    if ctx.artifact_read_failures:
-        detail = "; ".join(ctx.artifact_read_failures[:3])
+    failures = _read_failures_for(ctx, kind)
+    if failures:
+        detail = "; ".join(failures[:3])
         return (
             f"{absent} could not be read when this report was built, so it has been "
             f"omitted — it is NOT missing from the run. Retry the export; if it "
@@ -856,7 +887,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     )
 
     # --- Document Provenance (DB linkage) ---
-    # _add_cover_page already ends with a page break; no second break needed here.
+    # _add_cover_page_v2 already ends with a page break; no second break needed here.
     doc.add_heading("Document Provenance", level=2)
     dc_source = "Saved (database)" if ctx.run_id else "Live session (unsaved)"
     ac_source = (
@@ -1398,7 +1429,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             sld_embedded = True
     if not sld_embedded:
         doc.add_paragraph(_missing_figure_note(
-            ctx, "SLD", "Please generate in the Single Line Diagram page."))
+            ctx, "SLD", "Please generate in the Single Line Diagram page.", kind="sld"))
 
     # --- Section 8: Typical AC Block Arrangement ---
     # Primary figure is the rule-based L1 drawing (spacing from the
@@ -1485,7 +1516,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         else:
             doc.add_paragraph(_missing_figure_note(
                 ctx, "Typical AC Block Arrangement",
-                "Generate it from the corresponding concept page."))
+                "Generate it from the corresponding concept page.", kind="layout"))
 
     # --- Section 9: Concept Site Layout + Provisional Equipment Schedule ---
     # For a governed run, draw the whole-site concept layout (every governed AC

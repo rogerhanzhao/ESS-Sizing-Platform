@@ -935,6 +935,61 @@ baseline builds       :  108097 bytes
 
 ---
 
+## 四之十三、自审：本轮我自己引入的两个缺陷（owner「再认真审查一次」，2026-08-08）
+
+复审四之十一 ~ 四之十二 的改动，找到**两个我自己写进去的缺陷**，都属于
+「和我要修的那类假陈述同一性质，只是方向反过来」。两个都已修复并做反向验证。
+
+### 13.1 一个图的读取失败替另一个图说话
+
+`ReportContext.artifact_read_failures` 是**站点级**清单，而 `_missing_figure_note`
+不加过滤就引用它。后果实测：
+
+```
+场景：layout 读取失败；SLD 从未生成
+§7 输出：SLD could not be read … it is NOT missing from the run …
+         (layout_png: /out/layout.png could not be read (locked))
+```
+
+SLD 根本不存在，报告却声称它存在、读不出来，还拿 **layout** 的失败当证据。
+这正是「四之十一」要消灭的那种假陈述。
+
+修复：新增 `_read_failures_for(ctx, prefix)`，按图归属过滤 ——
+消息以 `sld_*` / `layout_*` 开头的归各自的图；**不指名任何图**的（注册表查询本身
+失败）对两张图都成立。`_missing_figure_note` 改为必须传 `kind="sld"|"layout"`。
+`ui/report_export_view` 的三态状态位有**同一个 bug**（两个 chip 读同一个全局清单），
+一并拆成 `sld_read_failures` / `layout_read_failures`。
+
+对我实际会产生的**全部 10 种消息格式**逐条验证归属正确，不是靠推断。
+
+### 13.2 `FileNotFoundError` 是 `OSError`
+
+`retry_read` 把 `OSError` 当瞬时失败重试。但 `FileNotFoundError` 继承自 `OSError` ——
+文件在 `exists()` 与 `read_bytes()` 之间消失时，会被重试 3 次，然后报成
+「存在但读不出」。又是同一句假话。
+
+修复：`FileNotFoundError` 一次即返回，调用方按「已消失」处理（与 `not exists()`
+同一分支），不进失败清单。顺带修掉 `attempts: int = _READ_ATTEMPTS` 的**导入期绑定**
+—— 默认值在 def 时就固定了，改模块常量不生效；改为调用时读取。
+
+### 13.3 其余复查项（均无问题，列出以便复核）
+
+| 检查 | 结果 |
+| --- | --- |
+| 已删名称是否还有代码引用 | `create_ac_report` / `create_combined_report` / `extract_dc_equipment_spec` / `build_v1_report_bytes` / 五个死校验 / `qc_checks` —— 代码中零引用，剩余命中全是文档与 docstring 叙述 |
+| `report_context` 新增的模块级 import 是否造成循环 | 无。`artifact_service` 不引用 `reporting`；两种导入顺序均通过 |
+| `snapshots[active_mode]` 是否可能 KeyError | 不能：`active_mode` 取自过滤后的 `ok_results`，而 `ok_results ⊆ snapshots` 的键 |
+| `regress_export` CLI 删掉 `--docx-out` 后能否跑 | 能，exit 0，权威 golden（`tests/golden/case01|case02`）逐字节一致 |
+| `tests/fixtures/v1_case01_container_summary.json` 与 CLI 输出有一个数不同 | **非本轮引入**：该文件不被任何测试读取，是过期残留；权威 golden 在 `tests/golden/` 且通过 |
+| 水印豁免名单两项是否仍有效 | 是，`add_header_logo` 与 `_append_dc_report_sections` 都还在，且都不是工程图 |
+| 四个受影响页面真渲染 | DC Sizing / AC Sizing / SLD / Report Export 全部无异常 |
+
+顺带修掉 `report_v2` 里一句失效注释（提到已不存在的 `_add_cover_page`，实为 `_add_cover_page_v2`）。
+
+全量 **725 passed**，冻结正典哈希未变。
+
+---
+
 ## 五、尚未执行的两件事（均因**访问权限**受阻，非技术阻塞）
 
 会话运行在 Anthropic 云上的隔离容器：**`ssh` 未安装**，出站仅一个 HTTPS 代理，

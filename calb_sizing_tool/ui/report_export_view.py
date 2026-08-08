@@ -174,13 +174,16 @@ def show():
     # Reads that failed after their retries. A figure this page could not read is
     # NOT a figure the run never made, and the page must not offer "generate it"
     # as the remedy for a locked database.
-    read_failures: list[str] = []
+    # Kept per figure: a layout that could not be read must not make the SLD
+    # chip claim the SLD exists. Same rule as report_v2._read_failures_for.
+    sld_read_failures: list[str] = []
+    layout_read_failures: list[str] = []
     sld_png = sld_svg = None
     if _active_run_id:
         _db_sld, _sld_failures = load_artifact_bytes_with_failures(
             _active_run_id, ["sld_png", "sld_svg"]
         )
-        read_failures.extend(_sld_failures)
+        sld_read_failures.extend(_sld_failures)
         sld_png = _db_sld.get("sld_png")
         sld_svg = _db_sld.get("sld_svg")
         if sld_png is not None:
@@ -214,7 +217,7 @@ def show():
         if candidate.exists():
             sld_png, _err = retry_read(candidate.read_bytes)
             if _err is not None:
-                read_failures.append(f"{candidate.name} could not be read ({_err})")
+                sld_read_failures.append(f"{candidate.name} could not be read ({_err})")
             else:
                 _log.info("SLD source: filesystem (%s)", candidate)
     if sld_svg is None:
@@ -222,7 +225,7 @@ def show():
         if candidate.exists():
             sld_svg, _err = retry_read(candidate.read_bytes)
             if _err is not None:
-                read_failures.append(f"{candidate.name} could not be read ({_err})")
+                sld_read_failures.append(f"{candidate.name} could not be read ({_err})")
     if sld_png is None:
         _log.warning("SLD: no image resolved from any source")
 
@@ -232,7 +235,7 @@ def show():
         _db_layout, _layout_failures = load_artifact_bytes_with_failures(
             _active_run_id, ["layout_png", "layout_svg"]
         )
-        read_failures.extend(_layout_failures)
+        layout_read_failures.extend(_layout_failures)
         layout_png = _db_layout.get("layout_png")
         layout_svg = _db_layout.get("layout_svg")
         if layout_png is not None:
@@ -368,16 +371,17 @@ def show():
     rc2.success("✓  AC Sizing")
     if sld_png or sld_svg:
         rc3.success("✓  SLD Image")
-    elif read_failures:
+    elif sld_read_failures:
         rc3.warning("!  SLD (exists, could not be read)")
     else:
         rc3.info("○  SLD (not generated)")
     if layout_png or layout_svg:
         rc4.success("✓  Typical AC Block Arrangement (Concept Only)")
-    elif read_failures:
+    elif layout_read_failures:
         rc4.warning("!  Layout (exists, could not be read)")
     else:
         rc4.info("○  Layout (not generated)")
+    read_failures = sld_read_failures + layout_read_failures
     if read_failures:
         st.warning(
             "A stored figure could not be read after retrying. It has NOT been lost — "

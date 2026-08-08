@@ -209,7 +209,7 @@ def _ctx(**overrides):
 def test_the_report_says_not_generated_when_nothing_was_generated():
     from calb_sizing_tool.reporting.report_v2 import _missing_figure_note
 
-    note = _missing_figure_note(_ctx(), "SLD", "Please generate in the SLD page.")
+    note = _missing_figure_note(_ctx(), "SLD", "Please generate in the SLD page.", kind="sld")
     assert note == "SLD not generated. Please generate in the SLD page."
 
 
@@ -220,6 +220,7 @@ def test_the_report_does_not_say_not_generated_when_the_read_failed():
         _ctx(artifact_read_failures=["sld_png: /outputs/sld.png could not be read (locked)"]),
         "SLD",
         "Please generate in the SLD page.",
+        kind="sld",
     )
 
     assert "not generated" not in note, (
@@ -263,3 +264,87 @@ def test_the_context_carries_read_failures_from_the_reader(tmp_path, monkeypatch
 
     assert ctx.artifact_read_failures, "the failure did not reach the report context"
     assert "database is locked" in ctx.artifact_read_failures[0]
+
+
+def test_one_figures_failure_never_speaks_for_another():
+    """Self-review 2026-08-08: the first version of this note got it backwards.
+
+    artifact_read_failures is site-wide. Citing it unfiltered made section 7
+    announce that the SLD "is NOT missing from the run" — evidenced by a LAYOUT
+    failure — for a run that never generated an SLD at all. That is the same
+    false claim as "not generated", pointing the other way.
+    """
+    from calb_sizing_tool.reporting.report_v2 import _missing_figure_note
+
+    ctx = _ctx(artifact_read_failures=["layout_png: /out/layout.png could not be read (locked)"])
+
+    sld_note = _missing_figure_note(ctx, "SLD", "Generate it.", kind="sld")
+    assert sld_note == "SLD not generated. Generate it.", (
+        "a layout read failure must not make section 7 claim the SLD exists"
+    )
+
+    layout_note = _missing_figure_note(ctx, "Layout", "Generate it.", kind="layout")
+    assert "could not be read" in layout_note
+    assert "layout_png" in layout_note
+
+
+def test_a_registry_failure_names_no_figure_so_it_counts_for_both():
+    """If the query itself failed, nothing is known about either figure."""
+    from calb_sizing_tool.reporting.report_v2 import _missing_figure_note
+
+    ctx = _ctx(artifact_read_failures=["artifact registry unreadable: database is locked"])
+    for kind, label in (("sld", "SLD"), ("layout", "Layout")):
+        note = _missing_figure_note(ctx, label, "Generate it.", kind=kind)
+        assert "could not be read" in note, kind
+        assert "not generated" not in note, kind
+
+
+def test_the_legacy_flat_file_failure_is_attributed_to_its_own_figure():
+    """The flat fallback names a FILE, not an artifact kind."""
+    from calb_sizing_tool.reporting.report_v2 import _missing_figure_note
+
+    ctx = _ctx(artifact_read_failures=["sld_latest.png could not be read (Input/output error)"])
+    assert "could not be read" in _missing_figure_note(ctx, "SLD", "Go.", kind="sld")
+    assert _missing_figure_note(ctx, "Layout", "Go.", kind="layout") == "Layout not generated. Go."
+
+
+def test_a_file_that_vanished_mid_read_is_gone_not_unreadable(run_with_sld, monkeypatch):
+    """Self-review 2026-08-08: FileNotFoundError is an OSError.
+
+    Retrying it three times cannot bring the file back, and reporting it as a
+    read failure would claim the figure exists — the very statement the retry
+    was added to prevent. It has to read as absent, exactly like a row whose
+    file was already gone.
+    """
+    real_read_bytes = Path.read_bytes
+    calls = {"n": 0}
+
+    def vanishing_read_bytes(self):
+        if self.name == "sld.svg":
+            calls["n"] += 1
+            raise FileNotFoundError(2, "No such file or directory", str(self))
+        return real_read_bytes(self)
+
+    monkeypatch.setattr("pathlib.Path.read_bytes", vanishing_read_bytes)
+
+    found, failures = load_artifact_bytes_with_failures(
+        "run-1", ["sld_svg"], db_url=run_with_sld
+    )
+
+    assert found == {}
+    assert failures == [], "a vanished file was reported as unreadable"
+    assert calls["n"] == 1, "a missing file was retried; nothing to wait for"
+
+
+def test_the_attempt_count_is_read_at_call_time(monkeypatch):
+    """A default bound at import would ignore the module constant."""
+    monkeypatch.setattr(artifact_service, "_READ_BACKOFF_S", 0)
+    monkeypatch.setattr(artifact_service, "_READ_ATTEMPTS", 5)
+    attempts = {"n": 0}
+
+    def always_locked():
+        attempts["n"] += 1
+        raise OSError("Input/output error")
+
+    retry_read(always_locked)
+    assert attempts["n"] == 5

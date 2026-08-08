@@ -209,19 +209,31 @@ _READ_ATTEMPTS = 3
 _READ_BACKOFF_S = 0.1
 
 
-def retry_read(read, *, attempts: int = _READ_ATTEMPTS):
+def retry_read(read, *, attempts: int | None = None):
     """Call ``read`` again on a transient failure. Returns (value, error).
 
     ``error`` is the last exception when every attempt failed, else None. Only
-    the failure modes that a retry can actually clear are retried — a lock, a
-    busy database, an I/O error. Anything else is a bug that will fail the same
-    way three times, so it is reported after one attempt.
+    the failure modes a retry can actually clear are retried — a lock, a busy
+    database, an I/O error. Two kinds are returned after ONE attempt:
+
+    * a bug (TypeError, and anything else non-transient): it will fail the same
+      way three times, so waiting is pure cost;
+    * FileNotFoundError: the file is GONE, not unreadable. Retrying cannot
+      bring it back, and — more importantly — a caller that treats it as a read
+      failure would claim a figure exists when it does not, which is the exact
+      false statement this retry exists to prevent.
+
+    ``attempts`` is read at call time, not bound at import, so the module
+    constant stays the single place that sets it.
     """
+    attempts = _READ_ATTEMPTS if attempts is None else attempts
     transient = (OperationalError, OSError)
     last: Exception | None = None
     for attempt in range(max(1, attempts)):
         try:
             return read(), None
+        except FileNotFoundError as exc:
+            return None, exc
         except transient as exc:
             last = exc
             if attempt + 1 < attempts:
@@ -293,6 +305,10 @@ def load_artifact_bytes_with_failures(
             # sweep owns that case; it is not a read failure.
             continue
         data, read_error = retry_read(file_path.read_bytes)
+        if isinstance(read_error, FileNotFoundError):
+            # It vanished between the exists() check and the read. Gone, not
+            # unreadable — same as the branch above.
+            continue
         if read_error is not None:
             failures.append(f"{kind}: {file_path} could not be read ({read_error})")
             continue
