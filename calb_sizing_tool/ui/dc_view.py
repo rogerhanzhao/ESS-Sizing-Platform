@@ -358,13 +358,20 @@ def size_with_guarantee(stage1: dict,
         k_max=k_max,
         max_iter=max_iter,
     )
-    s2 = snapshot.stage2.to_legacy_dict()
-    s3_df = snapshot.stage3.dataframe()
-    s3_meta = snapshot.stage3.meta.to_legacy_dict()
+    return snapshot_to_legacy_tuple(snapshot)
+
+
+def snapshot_to_legacy_tuple(snapshot: DcPipelineRunSnapshot):
+    """The (s2, s3_df, s3_meta, iterations, poi@guarantee, converged) view of a run.
+
+    The page displays this tuple and persists the snapshot it came from, so the
+    two must be the same run. `show()` therefore keeps the snapshot and derives
+    the tuple here rather than sizing a second time for the DB.
+    """
     return (
-        s2,
-        s3_df,
-        s3_meta,
+        snapshot.stage2.to_legacy_dict(),
+        snapshot.stage3.dataframe(),
+        snapshot.stage3.meta.to_legacy_dict(),
         snapshot.iteration_count,
         snapshot.poi_usable_energy_mwh_at_guarantee_year,
         snapshot.converged,
@@ -1124,7 +1131,6 @@ def show():
         
     # --- Logic Execution ---
     if run_btn:
-        bump_run_id_dc()
         poi_mv_kv = float(poi_nominal_voltage_kv)
         st.session_state["poi_nominal_voltage_kv"] = poi_mv_kv
         st.session_state["grid_kv"] = poi_mv_kv
@@ -1197,6 +1203,10 @@ def show():
             )
             st.stop()
 
+        # Only a run that actually starts takes a run id. Bumping before the
+        # guard burned an id on every rejected submission.
+        bump_run_id_dc()
+
         with st.spinner("Running DC sizing…"):
             s1 = run_stage1(inputs, defaults)
             modes_to_run = ["container_only"]
@@ -1204,18 +1214,31 @@ def show():
                 modes_to_run.insert(0, "cabinet_only")
             if enable_hybrid:
                 modes_to_run.insert(0, "hybrid")
+            # Size each mode ONCE. The snapshot is what gets persisted and the
+            # tuple derived from it is what gets displayed, so the DB and the
+            # screen can only ever show the same run.
+            master_bundle = DcExcelMasterDataBundle(
+                workbook_path=Path(DC_DATA_PATH),
+                defaults=defaults,
+                df_blocks=df_blocks.copy(),
+                df_soh_profile=df_soh_profile.copy(),
+                df_soh_curve=df_soh_curve.copy(),
+                df_rte_profile=df_rte_profile.copy(),
+                df_rte_curve=df_rte_curve.copy(),
+                raw_sheets={},
+            )
+            stage1_model = Stage1Result.model_validate(s1)
+            snapshots = {}
             results = {}
             for mode in modes_to_run:
                 try:
-                    results[mode] = size_with_guarantee(
-                        s1, mode,
-                        df_blocks,
-                        df_soh_profile, df_soh_curve,
-                        df_rte_profile, df_rte_curve,
-                        k_max=K_MAX_FIXED
+                    snapshots[mode] = service_size_with_guarantee(
+                        stage1_model, mode, master_bundle, k_max=K_MAX_FIXED
                     )
                 except Exception as e:
                     results[mode] = ("ERROR", str(e))
+                    continue
+                results[mode] = snapshot_to_legacy_tuple(snapshots[mode])
 
         # Stage 1 Display
         with st.container(border=True):
@@ -1268,22 +1291,8 @@ def show():
         active_snapshot = None
         if active_mode:
             try:
-                bundle = DcExcelMasterDataBundle(
-                    workbook_path=Path(DC_DATA_PATH),
-                    defaults=defaults,
-                    df_blocks=df_blocks.copy(),
-                    df_soh_profile=df_soh_profile.copy(),
-                    df_soh_curve=df_soh_curve.copy(),
-                    df_rte_profile=df_rte_profile.copy(),
-                    df_rte_curve=df_rte_curve.copy(),
-                    raw_sheets={},
-                )
-                active_snapshot = service_size_with_guarantee(
-                    Stage1Result.model_validate(s1),
-                    active_mode,
-                    bundle,
-                    k_max=K_MAX_FIXED,
-                )
+                # The run already computed above — never a second sizing pass.
+                active_snapshot = snapshots[active_mode]
                 case_input = dict(case_input_base)
                 case_input["scenario_id"] = active_mode
                 if auth_context.is_guest:
@@ -1481,14 +1490,16 @@ div[data-testid="stDataFrame"] div[role="rowheader"] {
                     st.error(f"Error: {res[1]}")
         # Export Button
         if DOCX_AVAILABLE:
-            ok_results = {k: v for k, v in results.items() if v[0] != "ERROR"}
-            report_order = [(k, k.replace("_", " ").title()) for k in modes_to_run if k in ok_results]
-            report_bytes = build_report_bytes(s1, ok_results, report_order)
-            
-            if report_bytes:
-                if auth_context.is_guest:
-                    st.info("🔒 Report export requires sign-in. Guest mode — session sizing only.", icon=None)
-                else:
+            if auth_context.is_guest:
+                # Build nothing a guest cannot download — the DOCX is the most
+                # expensive thing on the page after sizing itself.
+                st.info("🔒 Report export requires sign-in. Guest mode — session sizing only.", icon=None)
+            else:
+                ok_results = {k: v for k, v in results.items() if v[0] != "ERROR"}
+                report_order = [(k, k.replace("_", " ").title()) for k in modes_to_run if k in ok_results]
+                report_bytes = build_report_bytes(s1, ok_results, report_order)
+
+                if report_bytes:
                     st.download_button(
                         "Export Technical Sizing Report",
                         data=report_bytes,

@@ -75,7 +75,11 @@ class ProductAdminService:
             return row is not None
 
     def df_blocks_as_sizing_dataframe(self) -> pd.DataFrame:
-        """Convert active ProductDCBlock records to the df_blocks schema expected by stage2 sizing.
+        """Convert ProductDCBlock records to the df_blocks schema expected by stage2 sizing.
+
+        Every record is carried, active or not, with its state in `Is_Active` —
+        `stage2_service.pick_dc_block` is the one place that filters on it, so
+        the caller must not pre-filter and call the result the sizing input.
 
         Required columns: Dc_Block_Code, Dc_Block_Name, Block_Form,
                           Block_Nameplate_Capacity_Mwh, Is_Active, Is_Default_Option

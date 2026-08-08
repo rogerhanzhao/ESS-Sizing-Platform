@@ -761,6 +761,82 @@ owner 在看过取证清单后说「继续」，据此退役。**`git revert c06
 
 ---
 
+## 四之十一、report_v2 / dc_view 逻辑审查（owner「继续审核一下」，2026-08-08）
+
+前十轮清的是**死代码**；这一轮查的是**逻辑缺陷**，对象是仅存的两个超大活文件：
+`reporting/report_v2.py`（1797 行）与 `ui/dc_view.py`（1512 行）。
+约束：owner 2026-08-08「DC SIZING 等公式坚决不能动」——本轮未触碰任何 sizing 公式，
+冻结正典七个模块的哈希未变。
+
+### 11.1 报告校验层是死的（owner 裁定：删）
+
+`report_v2._validate_efficiency_chain` / `_validate_report_consistency` /
+`_aggregate_ac_block_configs`、`report_context.validate_report_context`，
+以及 `ReportContext.qc_checks` 字段——**产品代码零调用**。`qc_checks` 每次建报告都算，
+无人读取。四个测试文件在测它们，制造了"有覆盖"的假象。
+
+而且算术本身是错的：全部假设电站均匀（expected PCS = blocks × per_block，
+total MW = blocks × block_size_mw），而 mixed governed 站故意用 HEAD 组的 per-block
+数值配 SITE 级 rollup。实测 92 DC 用例（12 AC Block / 92 PCS / 115 MW，尺寸正确）：
+
+```
+AC total power (120.00 MW) does not match POI requirement (115.00 MW)
+PCS module count mismatch: expected 96 (blocks x per_block), got 92
+```
+
+两条皆误报，且 120 MW 这个数在设计里不存在。`_aggregate_ac_block_configs` 声称按签名
+聚合，实际永远返回一行，把 5 MW/4-PCS 尾块也计成 10 MW/8-PCS。
+
+删而不修的理由：报告正文已经通过 §6 / §6.1 / §9 的 schedule 正确披露混合站
+（读 `governed_groups` 与 `ac_block_breakdown`）；再养一套算错的平行逻辑没有价值。
+输入校验留在上游 `dc_input_guard_service`——它**拦住**一次运行，而不是事后描述它。
+顺带删掉随之失效的 `_parse_template_count` 及 `math` / `re` import。
+
+### 11.2 DC 页面对同一 mode 跑了两遍 sizing（owner 裁定：改）
+
+`show()` 原先为胜出的 mode 调用两次流水线：一次经 `dc_view.size_with_guarantee`
+产出屏幕上的 tuple，一次经 `dc_pipeline_service.size_with_guarantee` 产出写库的
+snapshot。同样输入的两次独立执行——结果一致，但**没有任何机制保证它一致**，
+且页面最重的运算白跑一遍。
+
+改法：每个 mode 只算一次 snapshot，显示用的 tuple 由 `snapshot_to_legacy_tuple`
+从同一个 snapshot 派生。公式一行未动，只是不再重算。
+写库的 snapshot 与改动前逐字节相同（bundle 仍带 `defaults=defaults`）。
+
+### 11.3 已修的其余三项
+
+| 位置 | 问题 | 处理 |
+| --- | --- | --- |
+| `dc_view._docx_add_lifetime_table` | 在**调用方的** Stage 3 DataFrame 上补缺失列；该 frame 是 `dc_results["results_dict"]` 里的活对象，导出报告会改写页面正在显示的结果 | 改为在副本上补（`a4a05bd`） |
+| `dc_view.show()` 导出按钮 | 给游客也构建整份 DOCX，再丢弃换成"请登录"提示 | 先判身份，游客不构建 |
+| `dc_view.show()` 运行按钮 | `bump_run_id_dc()` 在输入闸门之前，被拒绝的提交也消耗一个 run id | 移到闸门之后 |
+| `product_admin_service.df_blocks_as_sizing_dataframe` | docstring 称"Convert active records"，实际返回全部 | 改正 docstring，并写明过滤由 `stage2_service.pick_dc_block` 独家负责（行为无害，已核实） |
+
+### 11.4 新增测试
+
+| 文件 | 锁住什么 |
+| --- | --- |
+| `tests/unit/test_report_export_does_not_edit_the_run.py` | 导出不得改写它所报告的运行结果 |
+| `tests/unit/test_dc_page_sizes_each_mode_once.py` | tuple 与 snapshot 同源；AST 断言 `show()` 只调用一次流水线；并证明 `bundle.defaults` 不影响结果（即复用为何安全） |
+| `tests/test_dc_page_run_smoke.py` | 已登录路径首次被真正按下 Run Sizing：持久化 + 导出按钮出现；被拒绝的运行不消耗 run id |
+
+三者均做了**反向验证**：撤掉修复，对应测试失败。
+
+### 11.5 验证
+
+| 项 | 结果 |
+| --- | --- |
+| 全量测试 | **713 passed, 0 skipped**（721 → 707 删掉 16 个死校验测试 → 713 补回 6 个新测试） |
+| 冻结正典 | 哈希未变，`test_frozen_canon_guard` 通过 |
+| DC 页面真渲染 | 游客与已登录两条路径均经 AppTest 按下 Run Sizing，无异常 |
+
+### 11.6 仍未处理（记录在案，未改）
+
+报告在 SLD 读取失败被吞掉时仍写"SLD not generated"——措辞误导。属文案问题，
+需 owner 决定改成什么口径。
+
+---
+
 ## 五、尚未执行的两件事（均因**访问权限**受阻，非技术阻塞）
 
 会话运行在 Anthropic 云上的隔离容器：**`ssh` 未安装**，出站仅一个 HTTPS 代理，
