@@ -4,7 +4,10 @@ import json
 from typing import Any
 
 from calb_sizing_tool.plugins.base import ArtifactPayload, json_bytes
-from calb_sizing_tool.services.artifact_service import load_artifact_bytes_from_db, persist_artifacts
+from calb_sizing_tool.services.artifact_service import (
+    load_artifact_bytes_with_failures,
+    persist_artifacts,
+)
 from calb_sizing_tool.services.site_constraint_readiness_service import (
     SITE_CONSTRAINT_SCHEMA_VERSION,
     assess_site_constraint_readiness,
@@ -84,13 +87,32 @@ def register_site_constraint_set(
     }
 
 
+class SiteConstraintSetReadError(RuntimeError):
+    """A Site Constraint Set the run HAS could not be retrieved.
+
+    Distinct from "there is none": the read was already retried
+    (artifact_service.retry_read), so this is a retrieval problem the caller
+    must surface and retry rather than cache as an absence.
+    """
+
+
 def load_persisted_site_constraint_set(
     run_id: str,
     *,
     db_url: str | None = None,
 ) -> dict[str, Any] | None:
-    """Load the most recently registered Site Constraint Set for a run."""
-    artifacts = load_artifact_bytes_from_db(run_id, [_ARTIFACT_KIND], db_url=db_url)
+    """Load the most recently registered Site Constraint Set for a run.
+
+    Returns None when the run has none. Raises ``SiteConstraintSetReadError``
+    when it HAS one that could not be retrieved — the two must not look alike to
+    the caller, which caches its result for the session (owner ruling
+    2026-08-08, 读取失败重新读取: a cached failure would never be retried).
+    """
+    artifacts, failures = load_artifact_bytes_with_failures(
+        run_id, [_ARTIFACT_KIND], db_url=db_url
+    )
+    if failures:
+        raise SiteConstraintSetReadError("; ".join(failures))
     payload = artifacts.get(_ARTIFACT_KIND)
     if not payload:
         return None

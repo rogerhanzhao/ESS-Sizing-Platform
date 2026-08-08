@@ -510,6 +510,39 @@ def show():
             scenario_ids=stage13_output.get("selected_scenario", "container_only"),
         )
         brand = BRAND_PROFILES[report_template]
+        # Confirm the figures were RETRIEVED before building anything.
+        #
+        # Owner ruling 2026-08-08: reaching this page means the drawing was
+        # generated and confirmed on its own page already. So a figure the
+        # registry HAS but this process could not read is a retrieval problem,
+        # never a missing drawing — and a proposal that silently omits a
+        # confirmed drawing is worse than no proposal. Fail closed: the reads
+        # were already retried (artifact_service.retry_read); what survived
+        # that stops the export instead of shaping the document.
+        #
+        # A figure that was genuinely never generated does NOT stop anything —
+        # that is the "not generated" note in sections 7/8, unchanged.
+        blocking_failures = sld_read_failures + layout_read_failures + [
+            message
+            for message in ctx.artifact_read_failures
+            if message not in sld_read_failures and message not in layout_read_failures
+        ]
+        if blocking_failures:
+            st.error(
+                "**Report not generated — a figure this run HAS could not be retrieved.**\n\n"
+                "This is not a missing drawing: the run recorded it, and it was "
+                "confirmed on its own page before you got here. The read was already "
+                "retried automatically. Generating now would ship a proposal with a "
+                "confirmed drawing silently absent, so the export stops here.\n\n"
+                + "\n".join(f"- {message}" for message in blocking_failures[:5])
+            )
+            st.caption(
+                "Retry below. If it keeps failing, the stored figure needs attention "
+                "(outputs directory or run registry) — regenerating the drawing is not the fix."
+            )
+            st.button("Retry retrieving the figures", key="report_retry_artifact_fetch")
+            return
+
         try:
             comb_bytes = export_report_v2_1(ctx, brand=brand)
         except BrandAssetMissingError as exc:

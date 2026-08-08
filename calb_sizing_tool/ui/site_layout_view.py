@@ -41,6 +41,7 @@ from calb_sizing_tool.services.site_constraint_readiness_service import (
     build_site_constraint_template,
 )
 from calb_sizing_tool.services.site_constraint_set_service import (
+    SiteConstraintSetReadError,
     load_persisted_site_constraint_set,
     register_site_constraint_set,
 )
@@ -67,7 +68,20 @@ def _load_persisted_constraint_set_cached(run_id: str) -> dict | None:
     cache = st.session_state.get(_PERSISTED_CONSTRAINT_CACHE_KEY)
     if isinstance(cache, dict) and cache.get("run_id") == run_id:
         return cache.get("data")
-    data = load_persisted_site_constraint_set(run_id)
+    try:
+        data = load_persisted_site_constraint_set(run_id)
+    except SiteConstraintSetReadError as exc:
+        # A set this run HAS, that could not be retrieved after retries. Do NOT
+        # cache it: caching would freeze the failure for the whole session and
+        # the page would keep reporting "no constraint set" until the run
+        # changed (owner ruling 2026-08-08, 读取失败重新读取). Say so, and let
+        # the next rerun try again.
+        st.warning(
+            "This run has a Site Constraint Set, but it could not be retrieved. "
+            "It has NOT been lost — re-registering is not the fix. "
+            f"Retry, and if it persists check the outputs directory. ({exc})"
+        )
+        return None
     st.session_state[_PERSISTED_CONSTRAINT_CACHE_KEY] = {"run_id": run_id, "data": data}
     return data
 

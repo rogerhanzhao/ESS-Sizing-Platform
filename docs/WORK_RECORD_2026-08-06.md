@@ -1136,6 +1136,53 @@ Stage 3 缺失时不再静默替换，而是在 `stage3_meta["error"]` 里如实
 
 ---
 
+## 四之十六、取到才生成：报告导出的取图闸门（owner 裁定 2026-08-08）
+
+owner 裁定原文：
+
+> 读取失败重读，要确认是没有生成还是读不到？如果走到了报告生成这一步，就是
+> 网页上是已经确认了生成才往下的！所以要确认清楚，获取成功再生成报告！
+
+这比四之十一做的更进一步。四之十一解决的是**措辞**（读不到不许说成没有）；
+这一条解决的是**行为**：走到导出页说明图已经在各自页面生成并确认过了，
+所以「读不到」是取回问题，而带着缺图生成的提案比不生成更糟。
+
+### 16.1 硬闸门（`ui/report_export_view`）
+
+生成调用之前先确认取回成功。失败清单来自已经重试过的读取
+（`artifact_service.retry_read`），**幸存下来的失败直接中止导出**：
+
+- 明确告知这不是缺图：「the run recorded it, and it was confirmed on its own page」
+- 给出重试按钮（Streamlit rerun 即重新读取，不存在缓存挡路）
+- 提示不要去重新生成图 —— 那治不了取回失败
+
+**「从未生成」不拦任何东西** —— 那仍然是 §7/§8 的 "not generated" 说明，行为不变。
+
+### 16.2 同一原则应用到 Site Layout（四之十四遗留项）
+
+`load_persisted_site_constraint_set` 原本把「读不出」和「没有」都返回 `None`，
+而 `site_layout_view` 会把结果**缓存整个会话** —— 一次失败会被冻住，
+页面此后一直说「没有约束集」，且建议的补救（重新登记）是错的，因为 run 明明有。
+
+改为：新增 `SiteConstraintSetReadError`；有但取不回时抛出；页面捕获后**不写缓存**，
+给出告警并让下次 rerun 重试。
+
+### 16.3 新增测试
+
+| 文件 | 锁住什么 |
+| --- | --- |
+| `tests/test_report_export_requires_the_figures.py` | 真页面驱动：①无图的 run 仍能导出 ②有图但读不出 → 无下载按钮 + 明确报错 + 重试按钮 ③图可读 → 放行 |
+| `tests/unit/test_constraint_set_read_failure_is_not_an_absence.py` | 没有 / 有且可读 / 有但读不出（抛异常）三态；并用 AST 断言页面的失败分支不写缓存 |
+
+反向验证：关掉闸门 → 拦截测试失败。
+
+### 16.4 验证
+
+全量 **743 passed**；六个页面（DC / AC / SLD / Site Layout / Report Export /
+Workbench）真渲染无异常；冻结正典哈希未变。
+
+---
+
 ## 五、尚未执行的两件事（均因**访问权限**受阻，非技术阻塞）
 
 会话运行在 Anthropic 云上的隔离容器：**`ssh` 未安装**，出站仅一个 HTTPS 代理，
