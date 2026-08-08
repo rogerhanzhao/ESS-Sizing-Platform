@@ -28,7 +28,6 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from calb_sizing_tool.common.allocation import evenly_distribute
 from calb_sizing_tool.config import AC_DATA_PATH, DC_DATA_PATH
-from calb_sizing_tool.reporting import export_docx
 from calb_sizing_tool.ui import dc_view
 
 
@@ -171,18 +170,6 @@ def run_ac_sizing(fixture: dict, stage1: dict, stage2: dict) -> dict:
     }
 
 
-def build_v1_report_bytes(dc_output: dict, ac_output: dict):
-    ctx = {
-        "project_name": ac_output.get("project_name"),
-        "inputs": {
-            "Selected DC Scenario": dc_output.get("selected_scenario"),
-            "Grid Voltage (kV)": f"{ac_output.get('grid_kv', 0.0):.1f}",
-            "Standard AC Block Size (MW)": f"{ac_output.get('block_size_mw', 0.0):.2f}",
-        },
-    }
-    return export_docx.create_combined_report(dc_output, ac_output, ctx)
-
-
 def build_summary(fixture: dict) -> dict:
     dc_results = run_dc_sizing(fixture)
     stage1 = dc_results["stage1"]
@@ -215,7 +202,6 @@ def build_summary(fixture: dict) -> dict:
         "report_order": [(scenario_id, scenario_id.replace("_", " ").title())],
     }
 
-    _ = build_v1_report_bytes(dc_output, ac_output)
 
     stage3_year0 = stage3_df[stage3_df["Year_Index"] == 0]["POI_Usable_Energy_MWh"].iloc[0]
 
@@ -251,51 +237,21 @@ def build_summary_from_fixture_path(path: Path) -> dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate V1 report and summary from fixtures.")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Regression summary from a fixture. The V1 DOCX output was removed with "
+            "export_docx.create_combined_report (owner ruling 2026-08-08): the only "
+            "customer-facing report is report_v2.export_report_v2_1, and the DC page's "
+            "own export is held by tests/test_report.py."
+        )
+    )
     parser.add_argument("--fixture", type=Path, required=True, help="Path to fixture input JSON.")
     parser.add_argument("--summary-out", type=Path, required=True, help="Path to output summary JSON.")
-    parser.add_argument("--docx-out", type=Path, default=None, help="Path to write V1 DOCX report.")
     args = parser.parse_args()
 
     summary = build_summary_from_fixture_path(args.fixture)
     args.summary_out.parent.mkdir(parents=True, exist_ok=True)
     args.summary_out.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
-
-    docx_out = args.docx_out
-    if docx_out is None:
-        docx_out = args.summary_out.with_name("v1_report.docx")
-
-    fixture = load_fixture(args.fixture)
-    dc_results = run_dc_sizing(fixture)
-    stage1 = dc_results["stage1"]
-    stage2 = dc_results["stage2"]
-    stage3_df = dc_results["stage3_df"]
-    scenario_id = dc_results["scenario_id"]
-    ac_output = run_ac_sizing(fixture, stage1, stage2)
-    block_code, block_name = _extract_block_identity(stage2)
-
-    dc_output = {
-        "stage1": stage1,
-        "selected_scenario": scenario_id,
-        "dc_block_total_qty": int(stage2.get("container_count", 0)) + int(stage2.get("cabinet_count", 0)),
-        "container_count": int(stage2.get("container_count", 0)),
-        "block_code": block_code,
-        "block_name": block_name,
-        "results_dict": {
-            scenario_id: (
-                stage2,
-                stage3_df,
-                dc_results["stage3_meta"],
-                dc_results["iter_count"],
-                dc_results["poi_g"],
-                dc_results["converged"],
-            )
-        },
-        "report_order": [(scenario_id, scenario_id.replace("_", " ").title())],
-    }
-    report_bytes = build_v1_report_bytes(dc_output, ac_output)
-    docx_out.parent.mkdir(parents=True, exist_ok=True)
-    docx_out.write_bytes(report_bytes)
 
 
 if __name__ == "__main__":

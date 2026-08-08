@@ -1,4 +1,4 @@
-﻿# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Personal Open-Source Notice
 #
 # Copyright (c) 2026 Alex.Zhao. All rights reserved.
@@ -21,7 +21,6 @@ import io
 import re
 from pathlib import Path
 
-import pandas as pd
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt, RGBColor
@@ -50,7 +49,7 @@ try:
 except Exception:
     pass
 
-from calb_sizing_tool.config import AC_DATA_PATH, DC_DATA_PATH, PROJECT_ROOT
+from calb_sizing_tool.config import DC_DATA_PATH, PROJECT_ROOT
 
 # ----------------------------------------
 # Shared DOCX helpers (match DC report style)
@@ -185,15 +184,6 @@ def _setup_header(
     _apply_footer(doc, footer_lines)
 
 
-def _format_float(value, decimals):
-    if value is None:
-        return ""
-    try:
-        return f"{float(value):.{decimals}f}"
-    except Exception:
-        return str(value)
-
-
 def _cant_split_row(row) -> None:
     """Prevent a table row from splitting across a page boundary."""
     from docx.oxml import OxmlElement
@@ -316,33 +306,6 @@ def _doc_to_bytes(doc: Document) -> bytes:
     return buf.getvalue()
 
 
-def _svg_bytes_to_png(svg_bytes: bytes) -> bytes | None:
-    if not svg_bytes:
-        return None
-    try:
-        import cairosvg
-    except Exception:
-        return None
-    try:
-        from calb_sizing_tool.common.render_lock import RENDER_LOCK
-        with RENDER_LOCK:
-            return cairosvg.svg2png(bytestring=svg_bytes)
-    except Exception:
-        return None
-
-
-def _resolve_diagram_bytes(ctx: dict | None, png_key: str, svg_key: str) -> bytes | None:
-    if not ctx:
-        return None
-    png_bytes = ctx.get(png_key)
-    if png_bytes:
-        return png_bytes
-    svg_bytes = ctx.get(svg_key)
-    if svg_bytes:
-        return _svg_bytes_to_png(svg_bytes)
-    return None
-
-
 # ----------------------------------------
 # Cover + Appendix helpers
 # ----------------------------------------
@@ -364,190 +327,9 @@ def _get_commit_hash():
         return "unknown"
 
 
-def _resolve_tool_version(ctx: dict):
-    if ctx and ctx.get("tool_version"):
-        return str(ctx.get("tool_version"))
-    return "V1.0"
-
-
-def _add_cover_page(doc: Document, title: str, project_name: str, ctx: dict):
-    tool_version = _resolve_tool_version(ctx)
-
-    heading = doc.add_heading(title, level=1)
-    heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p = doc.add_paragraph(
-        f"Project: {project_name}\n"
-        f"Date: {datetime.datetime.now().strftime('%Y-%m-%d')}\n"
-        f"Tool Version: {tool_version}"
-    )
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_page_break()
-
-
-def _add_appendix(doc: Document, ctx: dict):
-    return
-
-
 # ----------------------------------------
 # DC dictionary extraction
 # ----------------------------------------
-
-
-def _match_pack_from_block_name(packs: pd.DataFrame, block_name: str, block_code: str):
-    if packs is None or packs.empty:
-        return None
-
-    candidates = packs.copy()
-    if "Is_Active" in candidates.columns:
-        active = candidates[candidates["Is_Active"] == 1]
-        if not active.empty:
-            candidates = active
-
-    search = f"{block_name} {block_code}".lower()
-    for _, row in candidates.iterrows():
-        model = str(row.get("Pack_Model", "")).lower()
-        if model and model in search:
-            return row
-        tail = model.split("calb_")[-1] if "calb_" in model else model
-        if tail and tail in search:
-            return row
-
-    return candidates.iloc[0] if not candidates.empty else None
-
-
-def _voltage_range_from_row(row: pd.Series):
-    if row is None:
-        return None
-
-    min_col = None
-    max_col = None
-    for col in row.index:
-        label = str(col).lower()
-        if "voltage" in label and "min" in label:
-            min_col = col
-        if "voltage" in label and "max" in label:
-            max_col = col
-
-    if min_col and max_col:
-        try:
-            v_min = float(row[min_col])
-            v_max = float(row[max_col])
-            if v_min > 0 and v_max > 0:
-                return f"{v_min:.0f}-{v_max:.0f} V DC"
-        except Exception:
-            return None
-
-    return None
-
-
-def extract_dc_equipment_spec(block_code=None, block_name=None, data_path=None):
-    data_path = Path(data_path) if data_path else Path(DC_DATA_PATH)
-    if not data_path.exists():
-        raise FileNotFoundError(f"DC dictionary not found at {data_path}")
-
-    xls = pd.ExcelFile(data_path)
-    blocks = pd.read_excel(xls, "dc_block_template_314_data")
-    racks = pd.read_excel(xls, "rack_type_314_data")
-    packs = pd.read_excel(xls, "pack_type_314_data")
-    cells = pd.read_excel(xls, "battery_cell_type_314_data")
-
-    if "Is_Active" in blocks.columns:
-        blocks = blocks[blocks["Is_Active"] == 1]
-
-    match = pd.DataFrame()
-    if block_code and "Dc_Block_Code" in blocks.columns:
-        match = blocks[blocks["Dc_Block_Code"] == block_code]
-    if match.empty and block_name and "Dc_Block_Name" in blocks.columns:
-        match = blocks[blocks["Dc_Block_Name"] == block_name]
-    if match.empty:
-        default = blocks[blocks.get("Is_Default_Option", 0) == 1]
-        if not default.empty:
-            container = default[default["Block_Form"].astype(str).str.lower() == "container"]
-            match = container if not container.empty else default
-    if match.empty:
-        match = blocks.head(1)
-    if match.empty:
-        return {
-            "container_model": "",
-            "cell_type": "",
-            "configuration": "",
-            "unit_capacity_mwh": None,
-            "nominal_voltage_v": None,
-            "voltage_range_v": None,
-        }
-
-    block_row = match.iloc[0]
-    rack_row = None
-    pack_row = None
-
-    rack_type_id = block_row.get("Rack_Type_Id")
-    if pd.notna(rack_type_id) and "Rack_Type_Id" in racks.columns:
-        rack = racks[racks["Rack_Type_Id"] == rack_type_id]
-        if not rack.empty:
-            rack_row = rack.iloc[0]
-            pack_type_id = rack_row.get("Pack_Type_Id")
-            if pd.notna(pack_type_id) and "Pack_Type_Id" in packs.columns:
-                pack = packs[packs["Pack_Type_Id"] == pack_type_id]
-                if not pack.empty:
-                    pack_row = pack.iloc[0]
-
-    if pack_row is None:
-        pack_row = _match_pack_from_block_name(
-            packs,
-            str(block_row.get("Dc_Block_Name", "")),
-            str(block_row.get("Dc_Block_Code", "")),
-        )
-
-    cell_row = None
-    if pack_row is not None and "Cell_Type_Id" in packs.columns:
-        cell_type_id = pack_row.get("Cell_Type_Id")
-        if pd.notna(cell_type_id) and "Cell_Type_Id" in cells.columns:
-            cell = cells[cells["Cell_Type_Id"] == cell_type_id]
-            if not cell.empty:
-                cell_row = cell.iloc[0]
-
-    container_model = str(block_row.get("Dc_Block_Name") or block_row.get("Dc_Block_Code") or "")
-    cell_type = str(cell_row.get("Cell_Model")) if cell_row is not None else ""
-
-    configuration = ""
-    racks_per_block = block_row.get("Racks_Per_Block")
-    packs_per_block = block_row.get("Packs_Per_Block")
-    if pd.notna(racks_per_block):
-        configuration = f"{int(racks_per_block)} Racks"
-    elif pd.notna(packs_per_block):
-        configuration = f"{int(packs_per_block)} Packs"
-
-    unit_capacity_mwh = None
-    if pd.notna(block_row.get("Block_Nameplate_Capacity_Mwh")):
-        unit_capacity_mwh = float(block_row.get("Block_Nameplate_Capacity_Mwh"))
-
-    nominal_voltage_v = None
-    pack_nominal = None
-    if pack_row is not None and pd.notna(pack_row.get("Pack_Nominal_Voltage_V")):
-        pack_nominal = float(pack_row.get("Pack_Nominal_Voltage_V"))
-
-    if pack_nominal is not None:
-        packs_per_rack = rack_row.get("Packs_Per_Rack") if rack_row is not None else None
-        if pd.notna(packs_per_rack):
-            nominal_voltage_v = pack_nominal * float(packs_per_rack)
-        elif pd.notna(packs_per_block):
-            nominal_voltage_v = pack_nominal * float(packs_per_block)
-        else:
-            nominal_voltage_v = pack_nominal
-
-    voltage_range = _voltage_range_from_row(block_row)
-    if voltage_range is None and pack_row is not None:
-        voltage_range = _voltage_range_from_row(pack_row)
-
-    return {
-        "container_model": container_model,
-        "cell_type": cell_type,
-        "configuration": configuration,
-        "unit_capacity_mwh": unit_capacity_mwh,
-        "nominal_voltage_v": nominal_voltage_v,
-        "voltage_range_v": voltage_range,
-        "block_code": str(block_row.get("Dc_Block_Code", "")),
-    }
 
 
 # ----------------------------------------
@@ -714,101 +496,6 @@ def _append_dc_report_sections(doc: Document, dc_output: dict, ctx: dict, chapte
 # ----------------------------------------
 
 
-def _ac_section_heading(chapter_prefix: str, index: int, title: str):
-    if str(chapter_prefix) == "1":
-        return f"{index}. {title}"
-    return f"{chapter_prefix}.{index} {title}"
-
-
-def _build_ac_exec_summary_rows(ac_output: dict):
-    rows = [
-        ("POI Power (MW)", _format_float(ac_output.get("poi_power_mw"), 2)),
-    ]
-    if ac_output.get("poi_energy_mwh") is not None:
-        rows.append(("POI Energy (MWh)", _format_float(ac_output.get("poi_energy_mwh"), 2)))
-    rows.extend(
-        [
-            ("Total AC Blocks", _format_float(ac_output.get("num_blocks"), 0)),
-            ("Total PCS Modules", _format_float(ac_output.get("total_pcs"), 0)),
-            ("Transformer Count", _format_float(ac_output.get("transformer_count"), 0)),
-            ("MV Level (kV)", _format_float(ac_output.get("grid_kv"), 1)),
-        ]
-    )
-    return rows
-
-
-def _build_ac_inputs_rows(ac_output: dict, ctx: dict):
-    rows = []
-    if ctx and ctx.get("inputs"):
-        for key, value in ctx.get("inputs").items():
-            rows.append((key, value))
-    else:
-        rows = [
-            ("Project Name", ac_output.get("project_name", "")),
-            ("POI Power Requirement (MW)", _format_float(ac_output.get("poi_power_mw"), 2)),
-            ("POI Energy Requirement (MWh)", _format_float(ac_output.get("poi_energy_mwh"), 2)),
-            ("Grid Voltage (kV)", _format_float(ac_output.get("grid_kv"), 1)),
-            ("PCS AC Output Voltage (V_LL,rms)", _format_float(ac_output.get("inverter_lv_v"), 0)),
-            ("Standard AC Block Size (MW)", _format_float(ac_output.get("block_size_mw"), 2)),
-        ]
-    return rows
-
-
-def _build_ac_results_rows(ac_output: dict):
-    rows = [
-        ("AC Blocks", _format_float(ac_output.get("num_blocks"), 0)),
-        ("Total AC Power (MW)", _format_float(ac_output.get("total_ac_mw"), 2)),
-        ("Overhead Margin (MW)", _format_float(ac_output.get("overhead_mw"), 2)),
-        ("Total PCS Modules", _format_float(ac_output.get("total_pcs"), 0)),
-        ("Transformer Count", _format_float(ac_output.get("transformer_count"), 0)),
-    ]
-    if ac_output.get("dc_blocks_per_ac") is not None:
-        rows.append(("DC Blocks per AC Block", _format_float(ac_output.get("dc_blocks_per_ac"), 0)))
-    return rows
-
-
-def _build_ac_equipment_rows(ac_output: dict):
-    return [
-        ("Standard AC Block Size (MW)", _format_float(ac_output.get("block_size_mw"), 3)),
-        ("PCS Rating (kW)", _format_float(ac_output.get("pcs_power_kw"), 0)),
-        ("PCS per AC Block", _format_float(ac_output.get("pcs_per_block"), 0)),
-        ("Transformer Rating (kVA)", _format_float(ac_output.get("transformer_kva"), 0)),
-        ("MV Voltage Level (kV)", _format_float(ac_output.get("grid_kv"), 1)),
-        ("LV Voltage Level (V)", _format_float(ac_output.get("inverter_lv_v"), 0)),
-    ]
-
-
-def _append_ac_report_sections(doc: Document, ac_output: dict, ctx: dict, chapter_prefix: str = "1"):
-    heading_level = 2 if str(chapter_prefix) == "1" else 3
-
-    doc.add_heading(
-        _ac_section_heading(chapter_prefix, 1, "Executive Summary"),
-        level=heading_level,
-    )
-    _add_table(doc, _build_ac_exec_summary_rows(ac_output), ["Metric", "Value"])
-    doc.add_paragraph("")
-
-    doc.add_heading(
-        _ac_section_heading(chapter_prefix, 2, "Project Inputs & Assumptions"),
-        level=heading_level,
-    )
-    _add_table(doc, _build_ac_inputs_rows(ac_output, ctx), ["Parameter", "Value"])
-    doc.add_paragraph("")
-
-    doc.add_heading(
-        _ac_section_heading(chapter_prefix, 3, "AC Sizing Results"),
-        level=heading_level,
-    )
-    _add_table(doc, _build_ac_results_rows(ac_output), ["Metric", "Value"])
-    doc.add_paragraph("")
-
-    doc.add_heading(
-        _ac_section_heading(chapter_prefix, 4, "AC Equipment Specification"),
-        level=heading_level,
-    )
-    _add_table(doc, _build_ac_equipment_rows(ac_output), ["Item", "Specification"])
-
-
 # ----------------------------------------
 # Public report generators
 # ----------------------------------------
@@ -851,7 +538,18 @@ def make_proposal_filename(project_name: str | None, version: str = "V2.1",
 
 
 def create_dc_report(dc_output: dict, ctx: dict) -> bytes:
-    """Internal DC-only generator for regression testing against dc_view."""
+    """REGRESSION BASELINE for the DC page's export — not a product path.
+
+    Nothing in the application calls this. It exists so
+    `tests/test_report.py::test_dc_report_unchanged_paragraphs` can hold
+    `dc_view.build_report_bytes` — the DOCX behind the DC Sizing page's
+    "Export Technical Sizing Report" button, which IS customer-facing — to a
+    fixed set of paragraphs. Change this only in step with that page.
+
+    The customer-facing proposal is `report_v2.export_report_v2_1`, reached
+    from the Report Export page. Owner ruling 2026-08-08 kept this baseline and
+    deleted the AC and combined generators, which anchored nothing.
+    """
     doc = Document()
     _setup_margins(doc)
     _setup_header(doc)
@@ -868,141 +566,6 @@ def create_dc_report(dc_output: dict, ctx: dict) -> bytes:
     doc.add_paragraph("")
 
     _append_dc_report_sections(doc, dc_output, ctx, chapter_prefix="1")
-    return _doc_to_bytes(doc)
-
-
-def create_ac_report(ac_output: dict, ctx: dict) -> bytes:
-    doc = Document()
-    _setup_margins(doc)
-    _setup_header(doc)
-
-    project_name = ac_output.get("project_name") or (ctx or {}).get("project_name") or "CALB ESS Project"
-    _add_cover_page(doc, "CALB Utility-Scale ESS AC Sizing Report", project_name, ctx or {})
-
-    _append_ac_report_sections(doc, ac_output, ctx or {}, chapter_prefix="1")
-    _add_appendix(doc, ctx or {})
-
-    return _doc_to_bytes(doc)
-
-
-def create_combined_report(dc_output: dict, ac_output: dict, ctx: dict) -> bytes:
-    doc = Document()
-    _setup_margins(doc)
-    _setup_header(doc)
-
-    project_name = ac_output.get("project_name") or (ctx or {}).get("project_name") or "CALB ESS Project"
-    _add_cover_page(doc, "CALB Utility-Scale ESS Combined Sizing Report", project_name, ctx or {})
-
-    doc.add_heading("1. Executive Summary", level=2)
-    dc_block_count = dc_output.get("dc_block_total_qty")
-    if dc_block_count is None:
-        dc_block_count = dc_output.get("container_count")
-    combined_rows = [
-        ("POI Power (MW)", _format_float(ac_output.get("poi_power_mw"), 2)),
-    ]
-    if ac_output.get("poi_energy_mwh") is not None:
-        combined_rows.append(("POI Energy (MWh)", _format_float(ac_output.get("poi_energy_mwh"), 2)))
-    combined_rows.extend(
-        [
-            ("DC Blocks", _format_float(dc_block_count, 0)),
-            ("AC Blocks", _format_float(ac_output.get("num_blocks"), 0)),
-            ("Total PCS Modules", _format_float(ac_output.get("total_pcs"), 0)),
-            ("Transformer Count", _format_float(ac_output.get("transformer_count"), 0)),
-            ("MV Level (kV)", _format_float(ac_output.get("grid_kv"), 1)),
-        ]
-    )
-    _add_table(doc, combined_rows, ["Metric", "Value"])
-    doc.add_paragraph("")
-
-    doc.add_heading("2. Project Inputs & Assumptions", level=2)
-    input_rows = []
-    if ctx and ctx.get("inputs"):
-        for key, value in ctx.get("inputs").items():
-            input_rows.append((key, value))
-    if not input_rows:
-        input_rows = _build_ac_inputs_rows(ac_output, ctx)
-    _add_table(doc, input_rows, ["Parameter", "Value"])
-    doc.add_paragraph("")
-
-    doc.add_heading("3. DC Sizing Results", level=2)
-    _append_dc_report_sections(doc, dc_output or {}, ctx or {}, chapter_prefix="3")
-    doc.add_paragraph("")
-
-    doc.add_heading("4. AC Sizing Results", level=2)
-    _append_ac_report_sections(doc, ac_output, ctx or {}, chapter_prefix="4")
-    doc.add_paragraph("")
-
-    doc.add_heading("5. Combined Configuration Summary", level=2)
-    dc_spec = extract_dc_equipment_spec(
-        block_code=dc_output.get("block_code") if dc_output else None,
-        block_name=dc_output.get("block_name") if dc_output else None,
-    )
-
-    dc_total_qty = dc_output.get("dc_block_total_qty") if dc_output else None
-    if dc_total_qty is None:
-        dc_total_qty = dc_output.get("container_count") if dc_output else None
-    dc_total_qty = int(dc_total_qty) if dc_total_qty is not None else None
-
-    dc_unit = dc_spec.get("unit_capacity_mwh")
-    dc_total_energy = None
-    if dc_total_qty is not None and dc_unit is not None:
-        dc_total_energy = dc_total_qty * dc_unit
-
-    dc_voltage = dc_spec.get("voltage_range_v")
-    if not dc_voltage and dc_spec.get("nominal_voltage_v") is not None:
-        dc_voltage = f"{dc_spec.get('nominal_voltage_v'):.0f} V DC"
-
-    combined_config_rows = [
-        ("DC Container Model", dc_spec.get("container_model", ""), ""),
-        ("DC Configuration", dc_spec.get("configuration", ""), ""),
-        ("DC Unit Capacity (MWh)", _format_float(dc_unit, 3), ""),
-        ("DC Total Quantity", dc_total_qty if dc_total_qty is not None else "", ""),
-        ("DC Total Energy (MWh)", _format_float(dc_total_energy, 3), ""),
-        ("DC Voltage", dc_voltage or "", ""),
-        ("AC Block Size (MW)", "", _format_float(ac_output.get("block_size_mw"), 3)),
-        ("AC Blocks", "", _format_float(ac_output.get("num_blocks"), 0)),
-        ("Total AC Power (MW)", "", _format_float(ac_output.get("total_ac_mw"), 2)),
-        ("Total PCS Modules", "", _format_float(ac_output.get("total_pcs"), 0)),
-        ("Transformer Rating (kVA)", "", _format_float(ac_output.get("transformer_kva"), 0)),
-        ("MV Level (kV)", "", _format_float(ac_output.get("grid_kv"), 1)),
-    ]
-    _add_table(doc, combined_config_rows, ["Metric", "DC", "AC"])
-    doc.add_paragraph("")
-
-    figure_index = 1
-
-    # The NOT-FOR-CONSTRUCTION stamp is mandatory on every engineering drawing,
-    # and report_v2._add_concept_figure is the ONE place that applies it —
-    # fail-closed, raising rather than embedding an unmarked figure. Imported
-    # inside the function because report_v2 imports this module at load time.
-    #
-    # This generator is currently reached only from tests; the UI exports
-    # export_report_v2_1. It embedded drawings UNSTAMPED, which made it a loaded
-    # gun: wiring it back to a button would have shipped unmarked engineering
-    # figures. Routing it through the same choke point removes that.
-    from calb_sizing_tool.reporting.report_v2 import _add_concept_figure
-
-    doc.add_heading("6. Single Line Diagram", level=2)
-    sld_png = _resolve_diagram_bytes(ctx or {}, "sld_png_bytes", "sld_svg_bytes")
-    if sld_png:
-        _add_concept_figure(doc, sld_png, width=Inches(6.7))
-        doc.add_paragraph(f"Figure {figure_index} - Single Line Diagram (auto-generated)")
-        figure_index += 1
-    else:
-        doc.add_paragraph("SLD not generated. Please generate in Single Line Diagram page.")
-    doc.add_paragraph("")
-
-    doc.add_heading("7. Typical AC Block Arrangement (Concept Only)", level=2)
-    layout_png = _resolve_diagram_bytes(ctx or {}, "layout_png_bytes", "layout_svg_bytes")
-    if layout_png:
-        _add_concept_figure(doc, layout_png, width=Inches(6.7))
-        doc.add_paragraph(f"Figure {figure_index} - Typical AC Block Arrangement (concept only)")
-        figure_index += 1
-    else:
-        doc.add_paragraph("Typical AC Block Arrangement not generated. Generate it from the corresponding concept page.")
-    doc.add_paragraph("")
-
-    _add_appendix(doc, ctx or {})
     return _doc_to_bytes(doc)
 
 

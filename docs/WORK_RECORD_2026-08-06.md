@@ -871,6 +871,70 @@ outputs 目录在网络共享上，`database is locked` 与瞬时 OSError 都是
 
 ---
 
+## 四之十二、export_docx 收口（owner 裁定「2」，2026-08-08）
+
+### 12.1 查清的事实
+
+项目里有**两个**面向客户的 DOCX 出口，不是一个：
+
+| 出口 | 生成器 | 状态 |
+| --- | --- | --- |
+| Report Export 页 | `report_v2.export_report_v2_1` | 活，正式提案报告 |
+| **DC Sizing 页**「Export Technical Sizing Report」 | `dc_view.build_report_bytes` | **也是活的**，另一份独立 DOCX |
+| — | `export_docx.create_dc_report` / `create_ac_report` / `create_combined_report` | 产品代码零调用 |
+
+AST 可达性分析（从 `app.py` 出发）：`export_docx.py` 41 个函数中，21 个 / 580 行
+只能从那三个 builder 到达；三者只有 `tests/test_report.py` 与 `tools/regress_export.py` 在用。
+
+但**不能照搬"四之十一"的删法**，两个实测理由：
+
+1. `create_dc_report` 是**活功能的回归基准** ——
+   `test_report.py::test_dc_report_unchanged_paragraphs` 用它逐段落锁住
+   `dc_view.build_report_bytes`（DC 页面那个客户会点的按钮）。删了它，那份活报告
+   的措辞就无人盯守。
+2. 它进了水印治理豁免名单（`test_watermark_choke_point.ALLOWED_UNSTAMPED`），
+   动它必须同步改治理测试。
+
+### 12.2 owner 裁定「2」——保留基准，删掉无锚的两个
+
+删除 `create_ac_report` / `create_combined_report`，以及**仅**它们可达的
+17 个函数 / 413 行：`extract_dc_equipment_spec`、`_append_ac_report_sections`、
+四个 `_build_ac_*_rows`、`_add_cover_page`、`_add_appendix`、`_resolve_diagram_bytes`、
+`_svg_bytes_to_png`、`_voltage_range_from_row`、`_match_pack_from_block_name` 等。
+`export_docx.py` 1008 → 553 行。连带清掉失效的 `pandas` 与 `AC_DATA_PATH` import。
+
+保留 `create_dc_report`，并在其 docstring 写明：**这是回归基准，不是产品路径**，
+客户看到的提案是 `report_v2.export_report_v2_1`，改它必须与 DC 页面同步。
+
+### 12.3 连带处理
+
+| 位置 | 处理 |
+| --- | --- |
+| `tools/regress_export.py` | 删 `build_v1_report_bytes` 及 `main()` 的 `--docx-out`。**后果已确认**：该工具不再产出 V1 DOCX；测试用到的只有 `run_dc_sizing` / `run_ac_sizing` / `build_summary_from_fixture_path`，均未受影响，`docs/` 里对它的唯一引用也只提这三个 |
+| `tests/test_report.py` | 删 `test_dc_dictionary_extraction_keys`、`test_combined_report_structure`、`test_report_generation_bytes`；保留 `test_dc_report_unchanged_paragraphs`（就是那条基准锚） |
+| `tests/unit/test_watermark_choke_point.py` | 原断言「legacy generator 给它的图盖章」失效。改成**更强**的保证：`export_docx` 里不得出现 `sld_png` / `sld_svg` / `layout_png` / `layout_svg` / `_add_concept_figure` —— 它现在**一张工程图都不嵌**，工程图只能走 `report_v2` 的盖章闸门 |
+| `ui/ac_view.py` | 五个从未使用的 import（`Path` / `pandas` / `make_report_filename` / `export_report_v2_1` / `render_static_table`），AST + grep 双重核实后删除（`841408a`） |
+
+### 12.4 验证（真产物，非断言推测）
+
+```
+report_v2 V2.1        :  162621 bytes, 52 paragraphs, 8 tables
+dc_view page export   :   86044 bytes, 20 paragraphs, 2 tables
+baseline builds       :  108097 bytes
+```
+
+两个活出口都真的生成了文档，基准也仍能构建并与 DC 页面逐段落一致。
+全量 **720 passed**（723 → 删掉 3 个只测已删 builder 的测试）。
+
+### 12.5 顺带回答上一轮的悬案
+
+「`export_docx` 那两句 not generated 要不要也改三态」——**不需要**：那条路径
+自己不做任何读取（拿到的是别人读好的 bytes 字典），没有可重试的读；而且
+`create_combined_report` 已随本次删除消失，那两句话中的 SLD 一句也一并没了。
+真正的读发生在 `report_export_view`，四之十一已修完。
+
+---
+
 ## 五、尚未执行的两件事（均因**访问权限**受阻，非技术阻塞）
 
 会话运行在 Anthropic 云上的隔离容器：**`ssh` 未安装**，出站仅一个 HTTPS 代理，

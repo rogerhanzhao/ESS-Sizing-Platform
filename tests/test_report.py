@@ -69,19 +69,6 @@ def test_setup_header_callable():
     assert callable(export_docx._setup_header)
 
 
-def test_dc_dictionary_extraction_keys():
-    spec = export_docx.extract_dc_equipment_spec()
-    required = {
-        "container_model",
-        "cell_type",
-        "configuration",
-        "unit_capacity_mwh",
-        "nominal_voltage_v",
-        "voltage_range_v",
-    }
-    assert required.issubset(spec.keys())
-
-
 def test_dc_report_unchanged_paragraphs():
     stage1, df_blocks, df_soh_profile, df_soh_curve, df_rte_profile, df_rte_curve = _build_stage1()
     selected = "container_only"
@@ -109,114 +96,6 @@ def test_dc_report_unchanged_paragraphs():
     baseline_texts = _strip_timestamp_lines(_paragraph_texts(baseline_doc))
     updated_texts = _strip_timestamp_lines(_paragraph_texts(updated_doc))
     assert baseline_texts == updated_texts
-
-
-def test_combined_report_structure():
-    stage1, *_ = _build_stage1()
-    dc_output = {
-        "stage1": stage1,
-        "selected_scenario": "container_only",
-        "dc_block_total_qty": 20,
-    }
-
-    ac_output = {
-        "project_name": "Unit Test Project",
-        "poi_power_mw": 100.0,
-        "poi_energy_mwh": 400.0,
-        "grid_kv": 33.0,
-        "inverter_lv_v": 800.0,
-        "block_size_mw": 5.0,
-        "num_blocks": 20,
-        "total_ac_mw": 100.0,
-        "overhead_mw": 0.0,
-        "pcs_power_kw": 2500.0,
-        "pcs_per_block": 2,
-        "total_pcs": 40,
-        "transformer_kva": 5555.0,
-        "transformer_count": 20,
-        "dc_blocks_per_ac": 1,
-        "mv_level_kv": 33.0,
-    }
-
-    ctx = {
-        "project_name": "Unit Test Project",
-        "inputs": {
-            "Selected DC Scenario": "container_only",
-            "Grid Voltage (kV)": "33",
-            "Standard AC Block Size (MW)": "5.0",
-        },
-    }
-
-    combined_bytes = export_docx.create_combined_report(dc_output, ac_output, ctx)
-    combined_doc = _doc_from_bytes(combined_bytes)
-    texts = _paragraph_texts(combined_doc)
-
-    assert texts.count("1. Executive Summary") == 1
-    assert texts.count("2. Project Inputs & Assumptions") == 1
-    assert texts.count("3. DC Sizing Results") == 1
-
-    assert "3.1 Project Summary" in texts
-    assert "3.2 Equipment Summary (DC Blocks)" in texts
-    assert "3.3 Lifetime POI Usable Energy & SOH (Per Configuration)" in texts
-
-    assert "1. Project Summary" not in texts
-    assert "2. Equipment Summary (DC Blocks)" not in texts
-    assert "3. Lifetime POI Usable Energy & SOH (Per Configuration)" not in texts
-
-
-def test_report_generation_bytes():
-    ac_output = {
-        "project_name": "Test Project",
-        "poi_power_mw": 100.0,
-        "poi_energy_mwh": 400.0,
-        "grid_kv": 33.0,
-        "inverter_lv_v": 800.0,
-        "block_size_mw": 5.0,
-        "num_blocks": 20,
-        "total_ac_mw": 100.0,
-        "overhead_mw": 0.0,
-        "pcs_power_kw": 2500.0,
-        "pcs_per_block": 2,
-        "total_pcs": 40,
-        "transformer_kva": 5555.0,
-        "transformer_count": 20,
-        "dc_blocks_per_ac": 1,
-        "mv_level_kv": 33.0,
-    }
-
-    report_context = {
-        "project_name": "Test Project",
-        "inputs": {
-            "Grid Voltage (kV)": "33",
-            "Standard AC Block Size (MW)": "5.0",
-        },
-    }
-
-    dc_output = {
-        "stage1": {
-            "project_name": "Test Project",
-            "poi_power_req_mw": 100.0,
-            "poi_energy_req_mwh": 400.0,
-            "project_life_years": 20,
-            "cycles_per_year": 365,
-            "poi_guarantee_year": 0,
-            "eff_dc_to_poi_frac": 0.95,
-            "sc_loss_frac": 0.0,
-            "dod_frac": 0.97,
-            "dc_energy_capacity_required_mwh": 450.0,
-            "dc_power_required_mw": 105.0,
-        },
-        "selected_scenario": "container_only",
-        "dc_block_total_qty": 20,
-    }
-
-    ac_bytes = export_docx.create_ac_report(ac_output, report_context)
-    assert isinstance(ac_bytes, (bytes, bytearray))
-    assert len(ac_bytes) > 0
-
-    combined_bytes = export_docx.create_combined_report(dc_output, ac_output, report_context)
-    assert isinstance(combined_bytes, (bytes, bytearray))
-    assert len(combined_bytes) > 0
 
 
 if __name__ == "__main__":

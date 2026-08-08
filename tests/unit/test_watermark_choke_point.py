@@ -108,11 +108,24 @@ def test_it_raises_when_even_the_placeholder_cannot_be_built(monkeypatch):
         report_v2._stamp_not_for_construction(b"this is not a PNG")
 
 
-def test_the_legacy_generator_stamps_its_drawings():
-    """The specific hole this file was written for."""
+def test_the_legacy_generator_embeds_no_engineering_drawing_at_all():
+    """Stronger than the rule this file was written for.
+
+    export_docx used to embed the SLD and the layout inside
+    `create_combined_report`, which made it a second place a drawing could
+    reach a document — the hole this file exists to close. That generator had
+    no caller and was deleted (owner ruling 2026-08-08); what remains embeds
+    the brand logo and the DC lifetime charts, neither of which is an
+    engineering drawing.
+
+    So the guarantee is no longer "it stamps its drawings" but "it has none".
+    If a drawing is ever embedded here again — stamped or not — this fails, and
+    whoever adds it has to route through report_v2._add_concept_figure instead.
+    """
     source = (REPORTING / "export_docx.py").read_text(encoding="utf-8-sig")
-    for name in ("sld_png", "layout_png"):
-        assert f"doc.add_picture(io.BytesIO({name})" not in source, (
-            f"{name} is embedded unstamped again"
+    for name in ("sld_png", "sld_svg", "layout_png", "layout_svg"):
+        assert name not in source, (
+            f"export_docx handles {name} again; engineering drawings belong to "
+            f"report_v2, behind the {CHOKE_POINT} stamp"
         )
-        assert f"_add_concept_figure(doc, {name}" in source
+    assert "_add_concept_figure" not in source
