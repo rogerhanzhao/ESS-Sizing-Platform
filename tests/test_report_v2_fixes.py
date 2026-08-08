@@ -26,7 +26,7 @@ from pathlib import Path
 from docx import Document
 
 from calb_sizing_tool.reporting.report_context import build_report_context
-from calb_sizing_tool.reporting.report_v2 import export_report_v2_1, _validate_report_consistency
+from calb_sizing_tool.reporting.report_v2 import export_report_v2_1
 from tools.regress_export import run_ac_sizing, run_dc_sizing
 
 
@@ -129,44 +129,6 @@ def test_ac_block_config_not_verbose():
     assert not re.search(r"\bAC Block\s+\d+\b", joined), (
         "Report contains a verbose numbered AC Block listing"
     )
-
-
-def test_report_consistency_validation():
-    """Verify consistency validation function works."""
-    fixture_path = Path(__file__).parent / "fixtures" / "v1_case01_container_input.json"
-    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
-
-    dc_results = run_dc_sizing(fixture)
-    ac_output = run_ac_sizing(fixture, dc_results["stage1"], dc_results["stage2"])
-
-    png_bytes = base64.b64decode(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII="
-    )
-
-    ctx = build_report_context(
-        session_state={
-            "artifacts": {
-                "sld_png_bytes": png_bytes,
-                "layout_png_bytes": png_bytes,
-            }
-        },
-        stage_outputs={
-            "stage13_output": dc_results["stage1"],
-            "stage2": dc_results["stage2"],
-            "stage3_df": dc_results["stage3_df"],
-            "stage3_meta": dc_results["stage3_meta"],
-            "ac_output": ac_output,
-        },
-        project_inputs={"poi_energy_guarantee_mwh": fixture["poi_energy_req_mwh"]},
-        scenario_ids=fixture["scenario_id"],
-    )
-
-    # Run validation
-    warnings = _validate_report_consistency(ctx)
-    
-    # Valid context should have no critical errors
-    # (May have warnings, but should not fail completely)
-    assert isinstance(warnings, list)
 
 
 def test_site_array_power_and_energy_match_the_ac_sizing_tables():

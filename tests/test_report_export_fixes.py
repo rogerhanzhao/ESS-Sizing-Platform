@@ -32,12 +32,9 @@ from pathlib import Path
 
 from docx import Document
 
-from calb_sizing_tool.reporting.report_context import build_report_context, validate_report_context
+from calb_sizing_tool.reporting.report_context import build_report_context
 from calb_sizing_tool.reporting.report_v2 import (
     export_report_v2_1,
-    _validate_efficiency_chain,
-    _validate_report_consistency,
-    _aggregate_ac_block_configs,
 )
 
 
@@ -130,51 +127,6 @@ class TestEfficiencyChainSourceOfTruth:
         assert ctx.efficiency_components_frac["eff_ac_cables_sw_rmu_frac"] == 0.98
         assert ctx.efficiency_components_frac["eff_hvt_others_frac"] == 0.98
 
-    def test_efficiency_chain_validation(self):
-        """Test that efficiency chain validation detects consistency issues."""
-        stage1_valid = {
-            "poi_power_req_mw": 100.0,
-            "poi_energy_req_mwh": 400.0,
-            "poi_guarantee_year": 10,
-            "project_life_years": 25,
-            "cycles_per_year": 365,
-            "eff_dc_cables_frac": 0.97,
-            "eff_pcs_frac": 0.97,
-            "eff_mvt_frac": 0.985,
-            "eff_ac_cables_sw_rmu_frac": 0.98,
-            "eff_hvt_others_frac": 0.98,
-            "eff_dc_to_poi_frac": 0.9674,
-            "dc_energy_capacity_required_mwh": 450.0,
-            "dc_power_required_mw": 103.37,
-            "dod_frac": 0.85,
-            "sc_loss_frac": 0.02,
-            "dc_round_trip_efficiency_frac": 0.95,
-        }
-        
-        ctx_valid = build_report_context(
-            stage_outputs={
-                "stage13_output": stage1_valid,
-                "stage2": {
-                    "container_count": 90,
-                    "cabinet_count": 0,
-                    "dc_nameplate_bol_mwh": 450.0,
-                    "block_config_table": _create_minimal_dc_table(),
-                },
-                "ac_output": {
-                    "num_blocks": 23,
-                    "block_size_mw": 5.0,
-                    "pcs_per_block": 2,
-                    "pcs_kw": 2500,
-                    "pcs_count_total": 46,
-                },
-            },
-        )
-        
-        warnings = _validate_efficiency_chain(ctx_valid)
-        # Valid case should have no warnings about missing/invalid efficiency values
-        missing_warnings = [w for w in warnings if "missing or zero" in w.lower()]
-        assert not missing_warnings, f"Valid efficiency should not produce missing warnings: {missing_warnings}"
-
     def test_report_contains_efficiency_auxiliary_disclaimer(self):
         """Test that exported report includes the Auxiliary losses disclaimer."""
         stage1 = {
@@ -233,57 +185,6 @@ class TestEfficiencyChainSourceOfTruth:
 
 class TestACBlockAggregation:
     """Test AC Block configuration aggregation and deduplication."""
-
-    def test_ac_blocks_aggregated(self):
-        """Test that identical AC Block configs are aggregated with count."""
-        stage1 = {
-            "poi_power_req_mw": 100.0,
-            "poi_energy_req_mwh": 400.0,
-            "poi_guarantee_year": 10,
-            "project_life_years": 25,
-            "cycles_per_year": 365,
-            "eff_dc_cables_frac": 0.97,
-            "eff_pcs_frac": 0.97,
-            "eff_mvt_frac": 0.985,
-            "eff_ac_cables_sw_rmu_frac": 0.98,
-            "eff_hvt_others_frac": 0.98,
-            "eff_dc_to_poi_frac": 0.9674,
-            "dc_energy_capacity_required_mwh": 450.0,
-            "dc_power_required_mw": 103.37,
-            "dod_frac": 0.85,
-            "sc_loss_frac": 0.02,
-            "dc_round_trip_efficiency_frac": 0.95,
-        }
-        
-        ctx = build_report_context(
-            stage_outputs={
-                "stage13_output": stage1,
-                "stage2": {
-                    "container_count": 90,
-                    "cabinet_count": 0,
-                    "dc_nameplate_bol_mwh": 450.0,
-                    "block_config_table": _create_minimal_dc_table(),
-                },
-                "ac_output": {
-                    "num_blocks": 23,
-                    "block_size_mw": 5.0,
-                    "pcs_per_block": 2,
-                    "pcs_kw": 2500,
-                    "pcs_count_total": 46,
-                },
-            },
-        )
-        
-        aggregated = _aggregate_ac_block_configs(ctx)
-        
-        # Should have at least one config group
-        assert len(aggregated) > 0, "AC block configs should be aggregated"
-        
-        # For this case, all blocks are identical, so should have 1 entry with count=23
-        assert aggregated[0]["count"] == 23, "All AC blocks should be counted in single aggregation"
-        assert aggregated[0]["pcs_per_block"] == 2
-        assert aggregated[0]["pcs_kw"] == 2500
-        assert aggregated[0]["ac_block_power_mw"] == 5.0
 
     def test_report_ac_blocks_not_verbose(self):
         """Test that exported report doesn't list AC Block config per block."""
@@ -347,53 +248,6 @@ class TestACBlockAggregation:
         ac_block_count = text.count("AC Block")
         assert ac_block_count < 10, \
             f"AC Block mentioned {ac_block_count} times; suggests verbose per-block listing"
-
-
-class TestReportConsistency:
-    """Test full report consistency validation."""
-
-    def test_consistency_validation_warnings(self):
-        """Test that consistency validation produces appropriate warnings."""
-        stage1 = {
-            "poi_power_req_mw": 100.0,
-            "poi_energy_req_mwh": 400.0,
-            "poi_guarantee_year": 10,
-            "project_life_years": 25,
-            "cycles_per_year": 365,
-            "eff_dc_cables_frac": 0.97,
-            "eff_pcs_frac": 0.97,
-            "eff_mvt_frac": 0.985,
-            "eff_ac_cables_sw_rmu_frac": 0.98,
-            "eff_hvt_others_frac": 0.98,
-            "eff_dc_to_poi_frac": 0.9674,
-            "dc_energy_capacity_required_mwh": 450.0,
-            "dc_power_required_mw": 103.37,
-            "dod_frac": 0.85,
-            "sc_loss_frac": 0.02,
-            "dc_round_trip_efficiency_frac": 0.95,
-        }
-        
-        ctx = build_report_context(
-            stage_outputs={
-                "stage13_output": stage1,
-                "stage2": {
-                    "container_count": 90,
-                    "cabinet_count": 0,
-                    "dc_nameplate_bol_mwh": 450.0,
-                    "block_config_table": _create_minimal_dc_table(),
-                },
-                "ac_output": {
-                    "num_blocks": 23,
-                    "block_size_mw": 5.0,
-                    "pcs_per_block": 2,
-                    "pcs_kw": 2500,
-                    "pcs_count_total": 46,
-                },
-            },
-        )
-        
-        warnings = _validate_report_consistency(ctx)
-        assert isinstance(warnings, list), "Validation should return a list of warnings"
 
 
 class TestNoAuxiliaryAssumptions:

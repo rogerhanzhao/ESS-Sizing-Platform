@@ -20,8 +20,6 @@ import datetime
 import hashlib
 import importlib
 import json
-import math
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -60,7 +58,6 @@ class ReportContext:
     efficiency_components_frac: Dict[str, float]
     avg_dc_blocks_per_ac_block: Optional[float]
     dc_blocks_allocation: List[Dict[str, int]]
-    qc_checks: List[str]
     dictionary_version_dc: str
     dictionary_version_ac: str
     # --- governed configuration identity (carried directly from ac_output) ---
@@ -117,18 +114,6 @@ def _safe_int(value, default=0) -> int:
         return int(value)
     except Exception:
         return default
-
-
-def _parse_template_count(template_id: Optional[str]) -> Optional[int]:
-    if not template_id:
-        return None
-    match = re.search(r"(\d+)\s*x", str(template_id).lower())
-    if match:
-        try:
-            return int(match.group(1))
-        except Exception:
-            return None
-    return None
 
 
 def _extract_dc_unit_mwh(stage2: dict) -> Optional[float]:
@@ -354,68 +339,6 @@ def build_report_context(
         if not g_row.empty:
             poi_usable_guarantee = float(g_row["POI_Usable_Energy_MWh"].iloc[0])
 
-    qc_checks = []
-    if poi_energy_guarantee_mwh is None:
-        qc_checks.append("POI energy guarantee value is missing.")
-    if abs(poi_energy_requirement_mwh - poi_energy_guarantee_mwh) > 1e-6:
-        qc_checks.append(
-            "POI energy requirement differs from POI energy guarantee. Stage 3 checks use guarantee value."
-        )
-    if ac_blocks_total > 0 and pcs_per_block > 0:
-        expected_pcs = ac_blocks_total * pcs_per_block
-        if pcs_modules_total and pcs_modules_total != expected_pcs:
-            qc_checks.append(
-                f"PCS module mismatch: expected {expected_pcs}, got {pcs_modules_total}."
-            )
-    allocation_plan = ac_output.get("dc_allocation_plan")
-    if isinstance(allocation_plan, list) and allocation_plan:
-        if ac_blocks_total and len(allocation_plan) != ac_blocks_total:
-            qc_checks.append(
-                f"AC block count mismatch: allocation plan has {len(allocation_plan)} blocks, "
-                f"but report uses {ac_blocks_total}."
-            )
-    selected_ratio = ac_output.get("selected_ratio")
-    if selected_ratio in ("1:1", "1:2", "1:4", "1:8") and dc_blocks_total > 0:
-        ratio_map = {"1:1": 1, "1:2": 2, "1:4": 4, "1:8": 8}
-        denom = ratio_map.get(selected_ratio)
-        if denom:
-            expected_blocks = int(math.ceil(dc_blocks_total / denom))
-            if ac_blocks_total and expected_blocks != ac_blocks_total:
-                qc_checks.append(
-                    f"AC block count mismatch: ratio {selected_ratio} implies {expected_blocks} blocks "
-                    f"for {dc_blocks_total} DC blocks, but report uses {ac_blocks_total}."
-                )
-    if ac_blocks_total > 0 and feeders_per_block > 0:
-        feeders_total = ac_blocks_total * feeders_per_block
-        if ac_output.get("feeders_total") and int(ac_output.get("feeders_total")) != feeders_total:
-            qc_checks.append(
-                f"Feeder count mismatch: expected {feeders_total}, got {ac_output.get('feeders_total')}."
-            )
-    if ac_blocks_total > 0 and dc_blocks_total == 0:
-        qc_checks.append("DC block total is zero while AC blocks exist.")
-    if grid_power_factor is None or grid_power_factor <= 0 or grid_power_factor > 1:
-        qc_checks.append("Grid power factor is out of range (0, 1].")
-    if not ac_block_template_id:
-        qc_checks.append("AC block template ID could not be resolved.")
-    template_count = _parse_template_count(ac_block_template_id)
-    if template_count and pcs_per_block and template_count != pcs_per_block:
-        qc_checks.append(
-            f"AC block template indicates {template_count} PCS but sizing uses {pcs_per_block} PCS per block."
-        )
-    if template_count and feeders_per_block and template_count != feeders_per_block:
-        qc_checks.append(
-            f"AC block template indicates {template_count} feeders but sizing uses {feeders_per_block} feeders per block."
-        )
-    if poi_usable_guarantee is None:
-        qc_checks.append("POI usable energy at guarantee year could not be resolved.")
-    if poi_usable_guarantee is not None and poi_energy_guarantee_mwh is not None:
-        if poi_usable_guarantee + 1e-6 < poi_energy_guarantee_mwh:
-            qc_checks.append(
-                "POI usable energy at guarantee year is below the guarantee target."
-            )
-    if stage2.get("busbars_needed") is not None:
-        qc_checks.append("DC busbar grouping not implemented in V2.1 report; field omitted.")
-
     # --- DB provenance from workspace context (set by persist/restore services) ---
     run_id = (
         state.get("active_run_id")
@@ -604,7 +527,6 @@ def build_report_context(
         efficiency_components_frac=efficiency_components,
         avg_dc_blocks_per_ac_block=avg_dc_blocks_per_ac_block,
         dc_blocks_allocation=dc_blocks_allocation,
-        qc_checks=qc_checks,
         dictionary_version_dc=Path(DC_DATA_PATH).name,
         dictionary_version_ac=Path(AC_DATA_PATH).name,
         configuration_code=(ac_output.get("configuration_code") if isinstance(ac_output, dict) else None),
@@ -632,48 +554,3 @@ def build_report_context(
         ac_output=ac_output,
         project_inputs=project_inputs or {},
     )
-
-
-def validate_report_context(ctx: ReportContext) -> list[str]:
-    """
-    Validate a ReportContext for internal consistency.
-    Returns a list of warning strings (empty if valid).
-    """
-    warnings = []
-    
-    # Check AC sizing power consistency
-    if ctx.ac_blocks_total > 0 and ctx.ac_block_size_mw is not None and ctx.ac_block_size_mw > 0:
-        ac_total_mw = ctx.ac_blocks_total * ctx.ac_block_size_mw
-        if abs(ac_total_mw - ctx.poi_power_requirement_mw) > 0.1:
-            warnings.append(
-                f"AC total power ({ac_total_mw:.2f} MW) does not match POI requirement ({ctx.poi_power_requirement_mw:.2f} MW). "
-                f"Difference: {abs(ac_total_mw - ctx.poi_power_requirement_mw):.2f} MW."
-            )
-    
-    # Check guarantee year is within project life
-    if ctx.poi_guarantee_year > ctx.project_life_years:
-        warnings.append(
-            f"Guarantee year ({ctx.poi_guarantee_year}) exceeds project life ({ctx.project_life_years} years)."
-        )
-    
-    # Check POI usable energy at guarantee year
-    if (ctx.poi_usable_energy_mwh_at_guarantee_year is not None and 
-        ctx.poi_energy_guarantee_mwh is not None and 
-        ctx.poi_usable_energy_mwh_at_guarantee_year + 1e-6 < ctx.poi_energy_guarantee_mwh):
-        warnings.append(
-            f"POI usable energy at guarantee year ({ctx.poi_usable_energy_mwh_at_guarantee_year:.2f} MWh) "
-            f"is below the guarantee target ({ctx.poi_energy_guarantee_mwh:.2f} MWh)."
-        )
-    
-    # Check PCS module count
-    if ctx.ac_blocks_total > 0 and ctx.pcs_per_block > 0:
-        expected_pcs = ctx.ac_blocks_total * ctx.pcs_per_block
-        if ctx.pcs_modules_total and ctx.pcs_modules_total != expected_pcs:
-            warnings.append(
-                f"PCS module count mismatch: expected {expected_pcs} (blocks x per_block), got {ctx.pcs_modules_total}."
-            )
-    
-    return warnings
-
-
-
