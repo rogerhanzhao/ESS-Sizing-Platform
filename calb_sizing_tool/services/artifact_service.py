@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import time
 from pathlib import Path
 from typing import Iterable
 
@@ -199,28 +200,58 @@ def _artifact_run_chain(session, run_id: str, depth: int = 4) -> list[str]:
     return chain
 
 
-def load_artifact_bytes_from_db(
+#: Owner ruling 2026-08-08 — 读取失败重新读取. A failed read is not the same as
+#: nothing to read: the outputs directory sits on a network share on the server
+#: and the registry lives in a WAL-mode SQLite file several sessions share, so
+#: "database is locked" and a transient OSError are both things that succeed on
+#: a second look. Only a genuinely absent row or file means "not generated".
+_READ_ATTEMPTS = 3
+_READ_BACKOFF_S = 0.1
+
+
+def retry_read(read, *, attempts: int = _READ_ATTEMPTS):
+    """Call ``read`` again on a transient failure. Returns (value, error).
+
+    ``error`` is the last exception when every attempt failed, else None. Only
+    the failure modes that a retry can actually clear are retried — a lock, a
+    busy database, an I/O error. Anything else is a bug that will fail the same
+    way three times, so it is reported after one attempt.
+    """
+    transient = (OperationalError, OSError)
+    last: Exception | None = None
+    for attempt in range(max(1, attempts)):
+        try:
+            return read(), None
+        except transient as exc:
+            last = exc
+            if attempt + 1 < attempts:
+                time.sleep(_READ_BACKOFF_S * (2 ** attempt))
+        except Exception as exc:
+            return None, exc
+    return None, last
+
+
+def load_artifact_bytes_with_failures(
     run_id: str,
     artifact_kinds: list[str],
     *,
     db_url: str | None = None,
     include_ancestors: bool = True,
-) -> dict[str, bytes]:
-    """Load artifact file bytes from disk using paths recorded in artifact_registry.
+) -> tuple[dict[str, bytes], list[str]]:
+    """``load_artifact_bytes_from_db``, plus what could not be read and why.
 
-    Returns a dict mapping artifact_kind → file bytes for each kind found.
-    Missing or unreadable artifacts are silently omitted.
-
-    ``include_ancestors`` walks up ``parent_run_id`` for kinds this run does not
-    have of its own, NEAREST FIRST — so an AC alternative's own drawing always
-    wins, and one it never produced falls back to the DC run's. Pass False to
-    read strictly this run.
+    The second element is empty when every recorded artifact was read. A
+    non-empty list means a figure EXISTS but this process could not get at it —
+    which a caller must not report as "not generated". Kinds with no registry
+    row at all are absent from both: nothing was recorded, nothing failed.
     """
     result: dict[str, bytes] = {}
+    failures: list[str] = []
     if not run_id or not artifact_kinds:
-        return result
+        return result, failures
     kinds_set = set(artifact_kinds)
-    try:
+
+    def _query_registry():
         with session_scope(db_url) as session:
             chain = _artifact_run_chain(session, run_id) if include_ancestors else [run_id]
             rows = (
@@ -240,20 +271,55 @@ def load_artifact_bytes_from_db(
             # Nearest run wins; within one run, newest wins. Sorting by rank only
             # is stable, so the created_at order above is preserved inside a run.
             rows = sorted(rows, key=lambda row: rank.get(str(row[0]), len(chain)))
-            artifact_paths = [(str(row[1]), str(row[2])) for row in rows]
-        seen: set[str] = set()
-        for kind, file_path_value in artifact_paths:
-            if kind in seen:
-                continue
-            seen.add(kind)
-            try:
-                file_path = resolve_artifact_path(file_path_value)
-                if file_path.exists():
-                    result[kind] = file_path.read_bytes()
-            except Exception:
-                pass
-    except OperationalError:
-        pass
-    except Exception:
-        pass
+            return [(str(row[1]), str(row[2])) for row in rows]
+
+    artifact_paths, query_error = retry_read(_query_registry)
+    if query_error is not None:
+        failures.append(f"artifact registry unreadable: {query_error}")
+        return result, failures
+
+    seen: set[str] = set()
+    for kind, file_path_value in artifact_paths or []:
+        if kind in seen:
+            continue
+        seen.add(kind)
+        try:
+            file_path = resolve_artifact_path(file_path_value)
+        except Exception as exc:
+            failures.append(f"{kind}: unusable stored path {file_path_value!r} ({exc})")
+            continue
+        if not file_path.exists():
+            # Nothing to retry — the row outlived its file. The maintenance
+            # sweep owns that case; it is not a read failure.
+            continue
+        data, read_error = retry_read(file_path.read_bytes)
+        if read_error is not None:
+            failures.append(f"{kind}: {file_path} could not be read ({read_error})")
+            continue
+        result[kind] = data
+    return result, failures
+
+
+def load_artifact_bytes_from_db(
+    run_id: str,
+    artifact_kinds: list[str],
+    *,
+    db_url: str | None = None,
+    include_ancestors: bool = True,
+) -> dict[str, bytes]:
+    """Load artifact file bytes from disk using paths recorded in artifact_registry.
+
+    Returns a dict mapping artifact_kind → file bytes for each kind found. A
+    transient failure is retried before the kind is dropped; use
+    ``load_artifact_bytes_with_failures`` when the caller has to tell "could not
+    read it" apart from "it was never made".
+
+    ``include_ancestors`` walks up ``parent_run_id`` for kinds this run does not
+    have of its own, NEAREST FIRST — so an AC alternative's own drawing always
+    wins, and one it never produced falls back to the DC run's. Pass False to
+    read strictly this run.
+    """
+    result, _failures = load_artifact_bytes_with_failures(
+        run_id, artifact_kinds, db_url=db_url, include_ancestors=include_ancestors
+    )
     return result

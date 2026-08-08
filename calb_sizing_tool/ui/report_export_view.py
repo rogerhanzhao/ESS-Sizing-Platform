@@ -33,7 +33,10 @@ from calb_sizing_tool.state.project_state import get_project_state, init_project
 from calb_sizing_tool.state.session_state import init_shared_state
 from calb_sizing_tool.state.workspace_state import artifact_run_id, get_workspace_context
 from calb_sizing_tool.services.sld_data_source_service import AcSnapshotResolution, resolve_preferred_ac_snapshot
-from calb_sizing_tool.services.artifact_service import load_artifact_bytes_from_db
+from calb_sizing_tool.services.artifact_service import (
+    load_artifact_bytes_with_failures,
+    retry_read,
+)
 from calb_sizing_tool.services.governed_ac_block_service import governed_poi_power_closure_issue
 
 
@@ -168,9 +171,16 @@ def show():
     _active_run_id = artifact_run_id()
 
     # --- SLD bytes: DB artifact_registry → plugin bundle → old artifacts dict → old diagram_results → file ---
+    # Reads that failed after their retries. A figure this page could not read is
+    # NOT a figure the run never made, and the page must not offer "generate it"
+    # as the remedy for a locked database.
+    read_failures: list[str] = []
     sld_png = sld_svg = None
     if _active_run_id:
-        _db_sld = load_artifact_bytes_from_db(_active_run_id, ["sld_png", "sld_svg"])
+        _db_sld, _sld_failures = load_artifact_bytes_with_failures(
+            _active_run_id, ["sld_png", "sld_svg"]
+        )
+        read_failures.extend(_sld_failures)
         sld_png = _db_sld.get("sld_png")
         sld_svg = _db_sld.get("sld_svg")
         if sld_png is not None:
@@ -202,19 +212,27 @@ def show():
     if sld_png is None:
         candidate = outputs_dir / "sld_latest.png"
         if candidate.exists():
-            sld_png = candidate.read_bytes()
-            _log.info("SLD source: filesystem (%s)", candidate)
+            sld_png, _err = retry_read(candidate.read_bytes)
+            if _err is not None:
+                read_failures.append(f"{candidate.name} could not be read ({_err})")
+            else:
+                _log.info("SLD source: filesystem (%s)", candidate)
     if sld_svg is None:
         candidate = outputs_dir / "sld_latest.svg"
         if candidate.exists():
-            sld_svg = candidate.read_bytes()
+            sld_svg, _err = retry_read(candidate.read_bytes)
+            if _err is not None:
+                read_failures.append(f"{candidate.name} could not be read ({_err})")
     if sld_png is None:
         _log.warning("SLD: no image resolved from any source")
 
     # --- Layout bytes: same DB-first priority chain ---
     layout_png = layout_svg = None
     if _active_run_id:
-        _db_layout = load_artifact_bytes_from_db(_active_run_id, ["layout_png", "layout_svg"])
+        _db_layout, _layout_failures = load_artifact_bytes_with_failures(
+            _active_run_id, ["layout_png", "layout_svg"]
+        )
+        read_failures.extend(_layout_failures)
         layout_png = _db_layout.get("layout_png")
         layout_svg = _db_layout.get("layout_svg")
         if layout_png is not None:
@@ -350,12 +368,23 @@ def show():
     rc2.success("✓  AC Sizing")
     if sld_png or sld_svg:
         rc3.success("✓  SLD Image")
+    elif read_failures:
+        rc3.warning("!  SLD (exists, could not be read)")
     else:
         rc3.info("○  SLD (not generated)")
     if layout_png or layout_svg:
         rc4.success("✓  Typical AC Block Arrangement (Concept Only)")
+    elif read_failures:
+        rc4.warning("!  Layout (exists, could not be read)")
     else:
         rc4.info("○  Layout (not generated)")
+    if read_failures:
+        st.warning(
+            "A stored figure could not be read after retrying. It has NOT been lost — "
+            "regenerating is not the fix. Retry the export, and if it persists check "
+            "the outputs directory and the run registry:\n\n"
+            + "\n".join(f"- {message}" for message in read_failures[:5])
+        )
 
     st.divider()
 

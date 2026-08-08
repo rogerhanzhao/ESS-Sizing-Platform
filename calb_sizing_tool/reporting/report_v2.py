@@ -806,6 +806,27 @@ def _add_concept_figure(doc, png_bytes: bytes, *, width=None, height=None) -> No
         doc.add_picture(io.BytesIO(stamped))
 
 
+def _missing_figure_note(ctx: ReportContext, absent: str, where: str) -> str:
+    """What to say when a figure is not in the document.
+
+    "Not generated" is a claim about the run, and it is FALSE when the figure
+    exists and this build simply could not read it — the reader is then sent to
+    regenerate a drawing that is already there, and the second attempt hits the
+    same locked database or unreadable file. `ctx.artifact_read_failures` holds
+    the reads that survived their retries (artifact_service.retry_read), so the
+    two cases can be told apart and the reader is told which one they are in.
+    """
+    if ctx.artifact_read_failures:
+        detail = "; ".join(ctx.artifact_read_failures[:3])
+        return (
+            f"{absent} could not be read when this report was built, so it has been "
+            f"omitted — it is NOT missing from the run. Retry the export; if it "
+            f"persists, the stored figure needs attention rather than regenerating. "
+            f"({detail})"
+        )
+    return f"{absent} not generated. {where}"
+
+
 def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) -> bytes:
     if brand is None:
         brand = CALB_BRAND
@@ -1376,7 +1397,8 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             figure_index += 1
             sld_embedded = True
     if not sld_embedded:
-        doc.add_paragraph("SLD not generated. Please generate in the Single Line Diagram page.")
+        doc.add_paragraph(_missing_figure_note(
+            ctx, "SLD", "Please generate in the Single Line Diagram page."))
 
     # --- Section 8: Typical AC Block Arrangement ---
     # Primary figure is the rule-based L1 drawing (spacing from the
@@ -1461,9 +1483,9 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             doc.add_paragraph(
                 f"Figure {figure_index}: Typical AC Block Arrangement — Concept Only · NOT FOR CONSTRUCTION")
         else:
-            doc.add_paragraph(
-                "Typical AC Block Arrangement not generated. "
-                "Generate it from the corresponding concept page.")
+            doc.add_paragraph(_missing_figure_note(
+                ctx, "Typical AC Block Arrangement",
+                "Generate it from the corresponding concept page."))
 
     # --- Section 9: Concept Site Layout + Provisional Equipment Schedule ---
     # For a governed run, draw the whole-site concept layout (every governed AC

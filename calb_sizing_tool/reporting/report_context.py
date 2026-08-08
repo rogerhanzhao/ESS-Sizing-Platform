@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from calb_sizing_tool.common.ac_block import derive_ac_template_fields
+from calb_sizing_tool.services.artifact_service import retry_read
 from calb_sizing_tool.config import AC_DATA_PATH, DC_DATA_PATH
 from calb_sizing_tool.runtime_paths import get_outputs_dir
 
@@ -86,6 +87,11 @@ class ReportContext:
     sld_pro_png_bytes: Optional[bytes] = None
     layout_png_bytes: Optional[bytes] = None
     layout_svg_bytes: Optional[bytes] = None
+    #: Figures that EXIST but this build could not read, after retries. Read by
+    #: report_v2 sections 7 and 8 so a read failure is never reported to the
+    #: customer as "not generated" — which would send them to regenerate a
+    #: drawing that is already there.
+    artifact_read_failures: List[str] = field(default_factory=list)
     stage1: Dict[str, Any] = field(default_factory=dict)
     stage2: Dict[str, Any] = field(default_factory=dict)
     stage3_df: Any = None
@@ -440,24 +446,33 @@ def build_report_context(
     except Exception:
         pass
 
+    # Every figure this build could not read, though something claimed to have
+    # one. Kept apart from "there is no figure": the report must not tell a
+    # reader to go generate a drawing that already exists.
+    artifact_read_failures: List[str] = []
+
     # Priority 4: flat file fallbacks (written by old pipeline)
     outputs_dir = get_outputs_dir()
+
+    def _read_flat_file(name: str) -> Optional[bytes]:
+        """A legacy flat artifact, retried before it is given up on."""
+        candidate = outputs_dir / name
+        if not candidate.exists():
+            return None
+        data, error = retry_read(candidate.read_bytes)
+        if error is not None:
+            artifact_read_failures.append(f"{name} could not be read ({error})")
+            return None
+        return data
+
     if sld_pro_png_bytes is None:
-        candidate = outputs_dir / "sld_latest.png"
-        if candidate.exists():
-            sld_pro_png_bytes = candidate.read_bytes()
+        sld_pro_png_bytes = _read_flat_file("sld_latest.png")
     if sld_preview_svg_bytes is None:
-        candidate = outputs_dir / "sld_latest.svg"
-        if candidate.exists():
-            sld_preview_svg_bytes = candidate.read_bytes()
+        sld_preview_svg_bytes = _read_flat_file("sld_latest.svg")
     if layout_png_bytes is None:
-        candidate = outputs_dir / "layout_latest.png"
-        if candidate.exists():
-            layout_png_bytes = candidate.read_bytes()
+        layout_png_bytes = _read_flat_file("layout_latest.png")
     if layout_svg_bytes is None:
-        candidate = outputs_dir / "layout_latest.svg"
-        if candidate.exists():
-            layout_svg_bytes = candidate.read_bytes()
+        layout_svg_bytes = _read_flat_file("layout_latest.svg")
 
     # Priority 5: DB artifact_registry (enables recovery after run restore)
     # Artifacts are read at the AC ALTERNATIVE when one is selected. The reader
@@ -480,20 +495,27 @@ def build_report_context(
             _ac_alternative_label = None
     if (sld_pro_png_bytes is None or layout_png_bytes is None) and _artifact_run_id:
         try:
-            from calb_sizing_tool.services.artifact_service import load_artifact_bytes_from_db
+            from calb_sizing_tool.services.artifact_service import (
+                load_artifact_bytes_with_failures,
+            )
             _needed = []
             if sld_pro_png_bytes is None:
                 _needed += ["sld_png", "sld_svg"]
             if layout_png_bytes is None:
                 _needed += ["layout_png", "layout_svg"]
             if _needed:
-                _db_art = load_artifact_bytes_from_db(_artifact_run_id, _needed)
+                # The reader retries a locked database or a transient I/O error
+                # itself; what comes back in _read_failures survived the retries.
+                _db_art, _read_failures = load_artifact_bytes_with_failures(
+                    _artifact_run_id, _needed
+                )
+                artifact_read_failures.extend(_read_failures)
                 sld_pro_png_bytes = sld_pro_png_bytes or _db_art.get("sld_png")
                 sld_preview_svg_bytes = sld_preview_svg_bytes or _db_art.get("sld_svg")
                 layout_png_bytes = layout_png_bytes or _db_art.get("layout_png")
                 layout_svg_bytes = layout_svg_bytes or _db_art.get("layout_svg")
-        except Exception:
-            pass
+        except Exception as exc:
+            artifact_read_failures.append(f"stored figures could not be read ({exc})")
 
     return ReportContext(
         project_name=project_name,
@@ -547,6 +569,7 @@ def build_report_context(
         sld_pro_png_bytes=sld_pro_png_bytes,
         layout_png_bytes=layout_png_bytes,
         layout_svg_bytes=layout_svg_bytes,
+        artifact_read_failures=artifact_read_failures,
         stage1=stage1,
         stage2=stage2,
         stage3_df=stage3_df,

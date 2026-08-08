@@ -830,10 +830,44 @@ snapshot。同样输入的两次独立执行——结果一致，但**没有任�
 | 冻结正典 | 哈希未变，`test_frozen_canon_guard` 通过 |
 | DC 页面真渲染 | 游客与已登录两条路径均经 AppTest 按下 Run Sizing，无异常 |
 
-### 11.6 仍未处理（记录在案，未改）
+### 11.6 读取失败重新读取（owner 裁定 2026-08-08）
 
-报告在 SLD 读取失败被吞掉时仍写"SLD not generated"——措辞误导。属文案问题，
-需 owner 决定改成什么口径。
+原 11.6 记的"措辞误导"，owner 定的方向是：**读取失败就重新读取**。
+
+根因在 `artifact_service.load_artifact_bytes_from_db`，两层吞异常：
+`except OperationalError: pass` 吞掉整个注册表查询失败，逐文件的
+`except Exception: pass` 吞掉单个文件读失败。两种情况都退化成"没有图"，
+于是报告写出与事实相反的一句 "SLD not generated. Please generate in the
+Single Line Diagram page." —— 图就在注册表里，而且重新生成治不了数据库被锁。
+
+这在服务器上不是假想：`var/calb_sizing.db` 是 WAL 模式、多会话共享，
+outputs 目录在网络共享上，`database is locked` 与瞬时 OSError 都是**再读一次就好**的。
+
+改动：
+
+| 位置 | 改法 |
+| --- | --- |
+| `artifact_service.retry_read()` | 新增。仅重试**重试能解决**的失败（`OperationalError` / `OSError`），3 次，退避 0.1/0.2s；`TypeError` 这类 bug 只试一次就上报，不白等 |
+| `artifact_service.load_artifact_bytes_with_failures()` | 新增。返回 `(bytes 字典, 失败清单)`。**行不存在**和**文件已被清掉**都不算失败（那是维护清扫的事，重试无用）；只有"记录在案却读不出来"才进清单 |
+| `load_artifact_bytes_from_db()` | 保留原签名，改为薄封装，四个调用点自动获得重试 |
+| `report_context` | 新增 `ReportContext.artifact_read_failures` 字段；旧 pipeline 的扁平文件读取（原先**连 try 都没有**，读失败会直接炸掉整个导出）也走重试 |
+| `report_v2._missing_figure_note()` | §7 / §8 共用。无失败 → 保持原句"not generated"；有失败 → 改写为"could not be read … NOT missing from the run … 重试导出，而不是重新生成"，并附实际原因 |
+| `ui/report_export_view` | 状态位由两态改三态：`✓ 已生成` / `! 存在但读不出` / `○ 未生成`；读失败时页面给出明确告警，说明**不要**重新生成 |
+
+实测（真 DOCX，非断言推测）：
+
+```
+无失败   -> SLD not generated. Please generate in the Single Line Diagram page.
+读取失败 -> SLD could not be read when this report was built, so it has been
+            omitted — it is NOT missing from the run. Retry the export; …
+            (sld_png: … could not be read (database is locked))
+```
+
+新增 `tests/unit/test_artifact_read_failure_is_retried.py`（10 项），覆盖重试本身、
+读取器四种结果（读到 / 读不出 / 行在文件没了 / 根本没登记）、以及报告两种措辞。
+反向验证：把 `_READ_ATTEMPTS` 改回 1，重试测试失败；让措辞忽略失败清单，措辞测试失败。
+
+`ui/report_export_view` 已用 AppTest 真渲染，无异常。全量 **723 passed**。
 
 ---
 
