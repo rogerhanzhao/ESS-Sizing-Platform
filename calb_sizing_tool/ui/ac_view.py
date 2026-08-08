@@ -1,4 +1,4 @@
-﻿# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Personal Open-Source Notice
 #
 # Copyright (c) 2026 Alex.Zhao. All rights reserved.
@@ -20,15 +20,10 @@
 AC SIZING V2 - DC block based recommendation engine.
 Supports 1:1, 1:2, 1:4, and 1:8 grouping options.
 """
-from pathlib import Path
-
-import pandas as pd
 import streamlit as st
 
 from calb_sizing_tool.common.nameplate import get_standard_container_mwh
 from calb_sizing_tool.models import DCBlockResult
-from calb_sizing_tool.reporting.export_docx import make_report_filename
-from calb_sizing_tool.reporting.report_v2 import export_report_v2_1
 from calb_sizing_tool.services.ac_sizing_service import (
     build_simplified_ac_block_models,
     build_dc_allocation_plan,
@@ -306,7 +301,6 @@ def show():
         compact_note,
         page_header,
         render_pipeline_next_steps,
-        render_static_table,
         section_header,
         workspace_status_bar,
     )
