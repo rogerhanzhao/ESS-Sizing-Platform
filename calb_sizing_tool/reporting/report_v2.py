@@ -658,6 +658,14 @@ def _svg_bytes_to_png(svg_bytes: bytes, width_px: int = 900) -> Optional[bytes]:
 # concept / proposal document and is never a construction-issue drawing set.
 # The text, colour and format match the existing SLD-pipeline watermark
 # (_concept_safe_svg): #B42318 at 0.28 opacity, bold, horizontal-centred.
+#: The guarantee comparison's slack, copied from SIZING_LOGIC_CANON_V1 §9 and
+#: from dc_pipeline_service, which applies it to decide `converged`. It is a
+#: float-comparison guard, NOT an engineering allowance: at 1e-6 MWh no real
+#: design changes verdict because of it. The report must not widen it — doing so
+#: would pass a design the engine failed, in a contractual statement.
+#: tests/unit/test_guarantee_verdict_matches_the_canon.py holds the two equal.
+GUARANTEE_EPSILON_MWH = 1e-6
+
 NOT_FOR_CONSTRUCTION_STAMP = "DRAFT / OVERRIDE - NOT FOR CONSTRUCTION"
 _STAMP_FILL = (180, 35, 24, 71)  # #B42318 @ ~0.28 opacity
 _STAMP_RED = (180, 35, 24)  # #B42318 opaque — placeholder border/text
@@ -880,10 +888,25 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     # Shared derived values used across multiple sections
     gyr_target = ctx.poi_energy_guarantee_mwh
     poi_usable_at_gyr = ctx.poi_usable_energy_mwh_at_guarantee_year
+    # The guarantee verdict is the CANON's, not one this layer invents.
+    #
+    # SIZING_LOGIC_CANON_V1 §9 ("Guarantee-year 扩容规则不可变") fixes the test at
+    # `poi_usable + 1e-6 >= poi_energy_req`, and dc_pipeline_service applies it
+    # verbatim to decide `converged`. In the product the report's target IS that
+    # requirement — report_export_view sets poi_energy_guarantee_mwh to
+    # stage13_output["poi_energy_req_mwh"] — so the two are the same comparison
+    # on the same number.
+    #
+    # This line used to allow `- 0.1` MWh. Nothing anywhere justified it: not the
+    # canon, not the report specs, not the git history (both criteria entered
+    # with the squashed initial import). It made section 1 the ONLY one of six
+    # verdicts in the codebase that could pass a design the engine had failed —
+    # and, on the same page, print "delivers 399.95 MWh against a guarantee
+    # target of 400.00 MWh — guarantee met" while section 5's own table said No.
     meets_guarantee = (
         "Yes"
         if (poi_usable_at_gyr is not None and gyr_target is not None
-            and poi_usable_at_gyr >= gyr_target - 0.1)
+            and poi_usable_at_gyr + GUARANTEE_EPSILON_MWH >= gyr_target)
         else "No"
     )
 
@@ -1192,7 +1215,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         # The contractual guarantee is evaluated at the guarantee year only;
         # showing Yes/No for every year misreads as a 20-year failure list.
         s3_df["Meets_Guarantee"] = [
-            ("Yes" if float(poi) >= float(gyr_target or 0.0) else "No")
+            ("Yes" if float(poi) + GUARANTEE_EPSILON_MWH >= float(gyr_target or 0.0) else "No")
             if int(year) == guarantee_year_int else "—"
             for year, poi in zip(s3_df["Year_Index"], s3_df["POI_Usable_Energy_MWh"])
         ]

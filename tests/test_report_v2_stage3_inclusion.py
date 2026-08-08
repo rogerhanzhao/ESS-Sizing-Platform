@@ -70,10 +70,28 @@ def test_build_report_context_uses_embedded_stage3_df():
     assert int(ctx.poi_usable_energy_mwh_at_year0) == 999
 
 
-def test_build_report_context_recomputes_stage3_when_missing():
+def test_build_report_context_never_recomputes_stage3():
+    """Owner ruling 2026-08-08: the report CONSUMES Stage 3, it does not compute it.
+
+    This used to assert the opposite — that a context built without a Stage 3
+    frame silently recomputed one. The recompute read the SOH/RTE curves from the
+    EXCEL workbook, while dc_view.show() prefers the DB curves once the admin has
+    migrated them, so it was a second calculation scheme presenting itself as the
+    run's own result. SIZING_LOGIC_CANON_V1 "权威边界" forbids reporting/* from
+    recomputing sizing at all.
+
+    Measured before removal: it fired 0 times in the live DC-run path and 0
+    times in the restore-a-saved-run path. A caller that supplies no Stage 3 now
+    gets a context that says so, instead of numbers from other curves.
+    """
     _inject_dummy_dc_view()
 
+    from calb_sizing_tool.reporting import report_context
     from calb_sizing_tool.reporting.report_context import build_report_context
+
+    assert not hasattr(report_context, "_get_stage3_df"), (
+        "the Excel recompute is back; the report must consume Stage 3, not compute it"
+    )
 
     stage1 = {
         "project_name": "p",
@@ -84,7 +102,6 @@ def test_build_report_context_recomputes_stage3_when_missing():
         "poi_guarantee_year": 0,
     }
     stage2 = {"dc_nameplate_bol_mwh": 500.0, "container_count": 10, "cabinet_count": 0}
-
     stage13_output = {**stage1, "stage2_raw": stage2, "stage3_meta": {"eff": 1.0}}
 
     ctx = build_report_context(
@@ -94,5 +111,10 @@ def test_build_report_context_recomputes_stage3_when_missing():
         scenario_ids=stage13_output.get("selected_scenario"),
     )
 
-    # Dummy run_stage3 returns 123.45 for year0
-    assert ctx.poi_usable_energy_mwh_at_year0 == 123.45
+    # The dummy dc_view would have produced 123.45 had anything called it.
+    assert ctx.stage3_df is None
+    assert ctx.poi_usable_energy_mwh_at_year0 is None
+    assert ctx.poi_usable_energy_mwh_at_guarantee_year is None
+    assert "does not recompute" in ctx.stage3_meta.get("error", ""), (
+        "the missing Stage 3 must be stated, not silently substituted"
+    )

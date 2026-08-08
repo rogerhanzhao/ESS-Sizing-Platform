@@ -1054,6 +1054,88 @@ proposal"，与 §1 再次冲突。
 
 ---
 
+## 四之十五、追查「不同计算方案」并收口（owner 裁定 2026-08-08）
+
+owner 指出：**「DC SIZING 计算逻辑已定义，数学问题不存在计算差异，除非引用了不同的
+计算方案」**。据此把两处差异追到底，结论分两半。
+
+### 15.1 保证判据的差异：不是不同方案，就是那一行 0.1
+
+用探针跑真实流程验证（不是读代码推断）：
+
+```
+实时 DC run   -> stage13_output 带 stage3_df: True   Excel 重算触发 0 次
+                报告的 stage3_df 就是 run 的那个对象: True
+恢复已保存 run -> stage13_output 带 stage3_df: True   Excel 重算触发 0 次
+```
+
+§1 与 §5 读的是**同一个 DataFrame 的同一列同一行**；两个目标值也是同一个数
+（`report_export_view:497` 把 `poi_energy_guarantee_mwh` 直接赋成
+`poi_energy_req_mwh`）。所以那里没有第二套方案 —— 差异纯粹是 `- 0.1`。
+
+来源追查结果：**查无依据**。git 历史查不到（两条判据都随 `2cb294c` 整库压缩导入
+进来）；`docs/` 全树没有任何文档提到过 0.1 MWh 容差；而 canon 第 9 节
+「Guarantee-year 扩容规则不可变」把判据定死为 `+1e-6`。全库六处「是否达标」判断，
+五处走 canon，只有 §1 不走。
+
+**处理**：新增 `GUARANTEE_EPSILON_MWH = 1e-6`，§1 与 §5 共用，与引擎、与 canon 一致。
+新增 `tests/unit/test_guarantee_verdict_matches_the_canon.py`（8 项）——
+其中一项用正则从 `dc_pipeline_service` 源码里**取出引擎实际用的 epsilon**
+与报告的常量比对，两份副本不会再漂开；另有 5 组参数化用例从**真 DOCX**
+里读回 §1 与 §5 的结论，断言两者永远相同。
+
+**对外后果**：缺口落在 `(0, 0.1]` MWh 的既有设计，§1 结论由 Yes 翻成 No。
+本来就该是 No —— 引擎判它未收敛，DC 页面已在打 "NOT CONVERGED"，§5 已印 No。
+
+### 15.2 真正的「不同计算方案」在别处（已删）
+
+`report_context._get_stage3_df` **自己重算 Stage 3**：
+
+```python
+_, _, df_soh_profile, df_soh_curve, ... = dc_view.load_data(DC_DATA_PATH)   # 只读 Excel
+return dc_view.run_stage3(stage1, stage2, ...)
+```
+
+而 `dc_view.show()`：
+
+```python
+_db_curves = _load_db_soh_rte()
+if _db_curves is not None:
+    df_soh_profile, df_soh_curve, ... = _db_curves      # DB 优先
+```
+
+**同一个冻结正典公式，不同的曲线数据** —— 这才是 owner 说的「引用了不同的计算方案」。
+
+查证结果：
+
+| 问题 | 结论 |
+| --- | --- |
+| 产品里会触发吗 | 实时与恢复两条路径**各 0 次**（探针实测） |
+| 谁在覆盖它 | 只有 `test_report_v2_stage3_inclusion` 里一个专测它的用例 |
+| DB 曲线来源 | 仅 Admin Portal「Migrate SoH/RTE from Excel」写入，逐字复制 |
+| DB 与 Excel 会分叉吗 | **会** —— 换新版数据字典而未重新迁移即分叉 |
+| Admin 能直接改 sizing 曲线吗 | 不能。portal 里可编辑的 `RTECurve` 是产品目录表，与 sizing 用的 `SohProfile` / `RteProfile` 是不同模型 |
+
+即哑火的地雷：今天不触发，但存在、静默，且违反 canon「权威边界」——
+「`reporting/*` 只能消费 sizing 结果，不能私自重算 sizing」。
+
+**处理**：删除 `_get_stage3_df`（连带失效的 `importlib` import）。
+Stage 3 缺失时不再静默替换，而是在 `stage3_meta["error"]` 里如实说明并要求
+重跑或恢复 run。原来那个「缺失时会重算」的测试改写为「**永不重算**」，
+并断言 `_get_stage3_df` 不得回来。
+
+### 15.3 验证
+
+| 项 | 结果 |
+| --- | --- |
+| 全量测试 | **736 passed** |
+| 冻结正典 | 哈希未变（`stage1/2/3_service`、`dc_pipeline_service` 一字节未动） |
+| 两条真实路径复测 | 实时 / 恢复均 `stage3_df rows=21`、`poi@guarantee=402.95`、`error=none`，两路数字一致 |
+| 五个页面真渲染 | DC / AC / SLD / Site Layout / Report Export 全部无异常 |
+| 反向验证 | 恢复 0.1 容差 → 3 项测试失败；重算函数若回来 → 测试失败 |
+
+---
+
 ## 五、尚未执行的两件事（均因**访问权限**受阻，非技术阻塞）
 
 会话运行在 Anthropic 云上的隔离容器：**`ssh` 未安装**，出站仅一个 HTTPS 代理，

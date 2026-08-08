@@ -18,7 +18,6 @@
 
 import datetime
 import hashlib
-import importlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -161,20 +160,6 @@ def _pick_scenario_id(stage13_output: dict, scenario_ids):
     return stage13_output.get("selected_scenario", "container_only")
 
 
-def _get_stage3_df(stage1: dict, stage2: dict):
-    try:
-        dc_view = importlib.import_module("calb_sizing_tool.ui.dc_view")
-        _, _, df_soh_profile, df_soh_curve, df_rte_profile, df_rte_curve = dc_view.load_data(DC_DATA_PATH)
-        return dc_view.run_stage3(stage1, stage2, df_soh_profile, df_soh_curve, df_rte_profile, df_rte_curve)
-    except Exception as exc:
-        # Capture and return an error message so the report can surface the root cause
-        try:
-            msg = str(exc)
-        except Exception:
-            msg = "Unknown error while computing Stage 3"
-        return None, {"error": msg}
-
-
 def build_report_context(
     session_state: Optional[dict] = None,
     stage_outputs: Optional[dict] = None,
@@ -196,14 +181,34 @@ def build_report_context(
 
     stage1 = stage13_output
     stage2 = outputs.get("stage2") or stage13_output.get("stage2_raw") or {}
-    # Prefer an explicit stage3_df passed in outputs, then any stage3_df embedded in
-    # the stage13_output (packaged by DC UI). If none, attempt to recompute.
+    # Stage 3 is CONSUMED, never recomputed here.
+    #
+    # SIZING_LOGIC_CANON_V1 "权威边界": reporting/* may only consume sizing
+    # results. This used to fall back to recomputing Stage 3 from the Excel
+    # workbook when no frame was supplied — same canon formula, but always the
+    # EXCEL curves, while dc_view.show() prefers the DB curves when the admin
+    # has migrated them (`_load_db_soh_rte`). Two schemes, one claimed
+    # quantity: the report could have presented figures from curves the run
+    # never used, silently, the day the workbook and the database diverged.
+    #
+    # Measured 2026-08-08 before removal: the fallback fired 0 times in the
+    # live DC-run path and 0 times in the restore-a-saved-run path — both
+    # producers of stage13_output (dc_view.pack_stage13_output and
+    # workspace_state.build_stage13_output) carry the run's own frame. A caller
+    # that supplies no Stage 3 now gets a report that SAYS so.
     stage3_df = outputs.get("stage3_df")
     if stage3_df is None:
         stage3_df = stage13_output.get("stage3_df")
     stage3_meta = outputs.get("stage3_meta") or stage13_output.get("stage3_meta") or {}
-    if stage3_df is None:
-        stage3_df, stage3_meta = _get_stage3_df(stage1, stage2)
+    if stage3_df is None and not stage3_meta.get("error"):
+        stage3_meta = {
+            **stage3_meta,
+            "error": (
+                "Stage 3 was not supplied with this run. The report does not "
+                "recompute it — re-run DC sizing, or restore the saved run, so "
+                "the figures come from the sizing result itself."
+            ),
+        }
 
     ac_results = state.get("ac_results") if isinstance(state, dict) else {}
     ac_output = outputs.get("ac_output") or ac_results or state.get("ac_output") or {}
