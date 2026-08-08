@@ -990,6 +990,70 @@ SLD 根本不存在，报告却声称它存在、读不出来，还拿 **layout*
 
 ---
 
+## 四之十四、审查 export_report_v2_1 本体（owner「请继续 审查 仔细分析」，2026-08-08）
+
+前几轮审的是辅助函数和死代码；这一轮审**客户真正看到的那份报告的正文**
+（`export_report_v2_1`，850 行）。三个发现，全部有实测复现，不是推断。
+
+### 14.1 §3 的公式与它自己印出的数字对不上（已修）
+
+§3 用散文写出 sizing 公式，紧接着印出四个参数值。**用它印的数字套它印的公式，
+算不出它印的答案**：
+
+```
+报告印出：S&C 2.00%  DoD 95.00%  DC RTE 94.00%  one-way chain 96.74%
+报告印出：DC Energy Capacity Required = 458.09 MWh
+
+读者照 §3 原文计算：POI / ((1-S&C) x DoD x DC_RTE x chain) = 472.49 MWh   差 -14.39 MWh (3.1%)
+引擎实际计算：      POI / ((1-S&C) x DoD x sqrt(DC_RTE) x chain) = 458.09 MWh   差  0.00 MWh
+```
+
+根因：分母取的是 **√(往返 RTE)** —— 往返值包含一充一放，只有放电那一半把能量
+送到 POI。散文把它叫作 "DC RTE (discharge)"，但下一行印出的是**往返值** 94.00%。
+
+**公式本身完全正确，冻结正典未动**（owner「DC SIZING 等公式坚决不能动」）。
+改的只是报告对公式的陈述：明确写出 √、同时印出往返值与放电值两个数。
+
+新增 `tests/unit/test_report_stage1_formula_reconciles.py` —— 把数字从生成的
+DOCX 里**解析回来**再复算，是能写的最强锁。反向验证：把放电值改回往返值，测试失败。
+
+### 14.2 同一份文档对同一个保证给出两个相反结论（未修，待裁定）
+
+| 位置 | 判据 |
+| --- | --- |
+| §1 执行摘要 / Guarantee Compliance | `poi_usable >= target - 0.1`（0.1 MWh 容差） |
+| §5 生命周期表 `Meets_Guarantee` | `poi_usable >= target`（精确） |
+| 引擎 `dc_pipeline_service` 收敛判据 | `poi_g + 1e-6 >= req`（精确） |
+
+实测：目标 400.00、保证年实得 399.95（差 0.05 MWh）时，**同一份 DOCX**：
+
+```
+§1: The proposed system delivers 399.95 MWh ... against a guarantee target of
+    400.00 MWh — guarantee met.
+§1: Guarantee Compliance -> Yes
+§5: Year 10: POI 399.95   Meets_Guarantee -> No
+```
+
+§1 把「未达标」印成「met / Yes」，而且**数字就并排印在同一句话里**，自相矛盾。
+同时 DC 页面会依引擎判据打出 "NOT CONVERGED: Do not use this result for a
+proposal"，与 §1 再次冲突。
+
+这是合同性结论，收紧容差会让部分既有设计由 Yes 翻成 No，**属 owner 裁决**，
+故只报告不擅改。
+
+### 14.3 `site_layout_view` 缓存了失败的读取（未修，同族）
+
+`_load_persisted_constraint_set_cached` 把 `None` 也写进会话缓存。
+读取失败（重试后仍失败 / JSON 损坏 / schema 版本不符）与「从未登记」不可区分，
+且**整个会话不会再重试**，除非切换 run —— 违反 owner「读取失败重新读取」的原则。
+影响面比 SLD 那条小（Site Layout 页），修法与四之十一同构。
+
+### 14.4 验证
+
+全量 **728 passed**，冻结正典哈希未变。
+
+---
+
 ## 五、尚未执行的两件事（均因**访问权限**受阻，非技术阻塞）
 
 会话运行在 Anthropic 云上的隔离容器：**`ssh` 未安装**，出站仅一个 HTTPS 代理，

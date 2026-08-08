@@ -18,6 +18,7 @@
 
 import datetime
 import io
+import math
 import re
 from typing import Optional
 
@@ -1017,15 +1018,30 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     # --- Section 3: Stage 1 - DC Energy Sizing ---
     doc.add_page_break()
     doc.add_heading("3.  Stage 1 – DC Energy Sizing", level=2)
+    # The formula and the figures under it must reconcile: a reader who puts
+    # these numbers into this expression has to arrive at the DC Energy Capacity
+    # Required printed below. It is the ROOT of the round-trip RTE that enters
+    # the denominator — the round-trip figure covers a charge and a discharge,
+    # and only the discharge half delivers energy to the POI. Stating the
+    # round-trip value beside an expression that reads "DC RTE" overstated the
+    # requirement by ~3% for anyone who checked the arithmetic.
+    _rte_round_trip = float(ctx.stage1.get("dc_round_trip_efficiency_frac") or 0.0)
+    _rte_discharge = math.sqrt(_rte_round_trip) if _rte_round_trip > 0 else 0.0
     _keep_next_para(doc.add_paragraph(
         "DC Energy Required (MWh) = POI Energy Requirement ÷ "
-        "((1 − S&C loss) × DoD × DC RTE (discharge) × One-way Efficiency)"
+        "((1 − S&C loss) × DoD × DC RTE (one-way discharge) × One-way Efficiency)"
+    ))
+    _keep_next_para(doc.add_paragraph(
+        "DC RTE (one-way discharge) = √(DC RTE round-trip): the round-trip figure "
+        "covers a charge and a discharge, and only the discharge half delivers "
+        "energy to the POI."
     ))
     _keep_next_para(doc.add_paragraph(
         f"One-way Efficiency (DC→POI): {format_percent(ctx.efficiency_chain_oneway_frac, input_is_fraction=True)}  |  "
         f"S&C loss: {format_percent(ctx.stage1.get('sc_loss_frac') or 0.0, input_is_fraction=True)}  |  "
         f"DoD: {format_percent(ctx.stage1.get('dod_frac') or 0.0, input_is_fraction=True)}  |  "
-        f"DC RTE: {format_percent(ctx.stage1.get('dc_round_trip_efficiency_frac') or 0.0, input_is_fraction=True)}"
+        f"DC RTE (round-trip): {format_percent(_rte_round_trip, input_is_fraction=True)}  |  "
+        f"DC RTE (one-way discharge): {format_percent(_rte_discharge, input_is_fraction=True)}"
     ))
     rte_adj = float(ctx.stage1.get("rte_curve_adjust_pp") or 0.0)
     if rte_adj != 0.0:
