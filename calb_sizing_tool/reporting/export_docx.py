@@ -515,7 +515,7 @@ def sanitize_filename(text: str, max_length: int = 80) -> str:
     return cleaned
 
 
-def make_proposal_filename(project_name: str | None, version: str = "V2.1",
+def make_proposal_filename(project_name: str | None, version: str = "V2.2",
                            prefix: str = "CALB",
                            ac_alternative: str | None = None) -> str:
     """Proposal file name, optionally naming the AC alternative it reports.
@@ -528,7 +528,7 @@ def make_proposal_filename(project_name: str | None, version: str = "V2.1",
     """
     stamp = datetime.date.today().strftime("%Y%m%d")
     safe_project = sanitize_filename(project_name or "")
-    safe_version = sanitize_filename(version or "", max_length=12) or "V2.1"
+    safe_version = sanitize_filename(version or "", max_length=12) or "V2.2"
     safe_prefix = sanitize_filename(prefix or "", max_length=16) or "CALB"
     safe_alt = sanitize_filename(ac_alternative or "", max_length=8)
     suffix = f"_{safe_version}_AC-{safe_alt}" if safe_alt else f"_{safe_version}"

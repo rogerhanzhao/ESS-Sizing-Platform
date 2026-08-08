@@ -16,7 +16,7 @@
 # of any company or organization.
 # -----------------------------------------------------------------------------
 
-"""Brand profiles for the V2.1 report export.
+"""Brand profiles for the V2.2 report export.
 
 Every customer-visible branded string in the report MUST come from a
 BrandProfile field.  Do not add per-call-site fallback strings in
@@ -77,16 +77,16 @@ class BrandProfile:
 
 CALB_BRAND = BrandProfile(
     key="calb",
-    display_name="V2.1 (Beta)",
+    display_name="V2.2 (Beta)",
     company_legal_name="CALB Group Co., Ltd.",
-    header_title="Confidential Sizing Report (V2.1 Beta)",
+    header_title="Confidential Sizing Report (V2.2 Beta)",
     header_lines=(
         "CALB Group Co., Ltd.",
         "Utility-Scale Energy Storage Systems",
-        "Confidential Sizing Report (V2.1 Beta)",
+        "Confidential Sizing Report (V2.2 Beta)",
     ),
     footer_lines=(),
-    cover_title="CALB Utility-Scale ESS Sizing Report (V2.1 Beta)",
+    cover_title="CALB Utility-Scale ESS Sizing Report (V2.2 Beta)",
     issuer_lines=(
         "Prepared by: CALB Group Co., Ltd.",
         "Utility-Scale Energy Storage Systems",
@@ -94,28 +94,28 @@ CALB_BRAND = BrandProfile(
     confidentiality_notice=_confidentiality_notice("CALB Group Co., Ltd."),
     logo_path=None,
     logo_required=False,
-    tool_version_label="V2.1 Beta",
+    tool_version_label="V2.2 Beta",
     filename_prefix="CALB",
-    version_tag="V2.1",
+    version_tag="V2.2",
     neutralize_equipment_names=False,
     scrub_terms=("Guoxia", "GUOXIA", "Hanchu", "HANCHU"),
 )
 
 GUOXIA_BRAND = BrandProfile(
     key="guoxia",
-    display_name="V2.1 (Guoxia)",
+    display_name="V2.2 (Guoxia)",
     company_legal_name="Guoxia Technology Co., Ltd.",
-    header_title="Confidential Sizing Report (V2.1 Guoxia)",
+    header_title="Confidential Sizing Report (V2.2 Guoxia)",
     header_lines=(
         "Guoxia Technology Co., Ltd.",
         "HKEX: 02655 (GUOXIA TECH)",
-        "Confidential Sizing Report (V2.1 Guoxia)",
+        "Confidential Sizing Report (V2.2 Guoxia)",
     ),
     footer_lines=(
         "(c) 2026 Guoxia Technology Co., Ltd. All rights reserved.",
         "HKEX: 02655 (GUOXIA TECH) | Document Classification: Confidential",
     ),
-    cover_title="Guoxia Technology Utility-Scale ESS Sizing Report (V2.1)",
+    cover_title="Guoxia Technology Utility-Scale ESS Sizing Report (V2.2)",
     issuer_lines=(
         "Prepared by: Guoxia Technology Co., Ltd.",
         "HKEX: 02655 (GUOXIA TECH)",
@@ -124,9 +124,9 @@ GUOXIA_BRAND = BrandProfile(
     # Dual-brand (Guoxia Technology + HANCHU ESS) horizontal logo.
     logo_path=PROJECT_ROOT / "GUOXIA-LOGO2.png",
     logo_required=True,
-    tool_version_label="V2.1 Guoxia",
+    tool_version_label="V2.2 Guoxia",
     filename_prefix="GUOXIA",
-    version_tag="V2.1-GUOXIA",
+    version_tag="V2.2-GUOXIA",
     neutralize_equipment_names=True,
     scrub_terms=("CALB",),
 )

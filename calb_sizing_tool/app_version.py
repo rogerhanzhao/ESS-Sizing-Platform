@@ -56,7 +56,7 @@ _VERSION_FILE = _PROJECT_ROOT / "VERSION"
 
 #: Shown when the release version cannot be read at all. Deliberately not a
 #: plausible-looking number — an operator must be able to tell "unknown" from
-#: "2.1" at a glance.
+#: "2.2" at a glance.
 UNKNOWN_VERSION = "V?"
 #: Shown when the build revision is unavailable: a developer checkout without
 #: git, or an image built before the build argument existed.
@@ -66,7 +66,7 @@ UNKNOWN_REVISION = "dev"
 def release_version() -> str:
     """The release, ALWAYS with a capital V (owner, 2026-08-06: "V 请大写").
 
-    The VERSION file holds the bare number ("2.1"); the V is applied here so it
+    The VERSION file holds the bare number ("2.2"); the V is applied here so it
     cannot drift between call sites. A file that already carries a v/V prefix is
     normalised rather than doubled.
 
@@ -157,7 +157,7 @@ def build_time() -> str:
 
 
 def version_label() -> str:
-    """Release and revision together: ``V2.1 · a1b2c3d``.
+    """Release and revision together: ``V2.2 · a1b2c3d``.
 
     This is what the sidebar's last line shows. The revision is what an operator
     watches across an upgrade — compare it with the head commit of

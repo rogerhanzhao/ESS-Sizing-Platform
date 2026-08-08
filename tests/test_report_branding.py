@@ -154,4 +154,16 @@ def test_guoxia_logo_asset_exists():
 
 
 def test_profile_registry_matches_ui_labels():
-    assert list(BRAND_PROFILES.keys()) == ["V2.1 (Beta)", "V2.1 (Guoxia)"]
+    """Two profiles, named for the release — the number is not hand-written here.
+
+    This used to pin the literals "V2.1 (Beta)" / "V2.1 (Guoxia)", so a release
+    bump had to be applied in one more place or the suite went red for no
+    engineering reason. The release now comes from VERSION, which
+    test_app_version.test_the_report_cannot_drift_from_the_release_file already
+    holds equal to every brand's version_tag; what this test owns is the SHAPE:
+    exactly two profiles, Beta first, each labelled with the running release.
+    """
+    from calb_sizing_tool import app_version
+
+    release = app_version.release_version()
+    assert list(BRAND_PROFILES.keys()) == [f"{release} (Beta)", f"{release} (Guoxia)"]

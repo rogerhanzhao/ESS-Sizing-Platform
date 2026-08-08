@@ -1183,6 +1183,60 @@ Workbench）真渲染无异常；冻结正典哈希未变。
 
 ---
 
+## 四之十七、V2.1 → V2.2（owner 定版 2026-08-08）
+
+owner 判定本轮「算得上一次大版本升级」，定版 **V2.2**（报告版式未换代，
+变的是正确性与行为，故走小版本而非 3.0）。
+
+### 17.1 改了哪些出口
+
+`VERSION` 一处是源头，但报告标识**不是**从它派生的 ——
+`test_app_version.test_the_report_cannot_drift_from_the_release_file` 的注释写明：
+封面标题与提案文件名是发给客户的，改动方式属 owner 决定，不是重构。
+所以品牌档随之手工同步，由那条守卫保证不会漏：
+
+| 文件 | 改动 |
+| --- | --- |
+| `VERSION` | `2.1` → `2.2` |
+| `reporting/brand_profiles.py` | 13 处 `V2.1` → `V2.2`（`display_name` / `header_title` / `cover_title` / `tool_version_label` / `version_tag`，两个品牌） |
+| `reporting/export_docx.make_proposal_filename` | 默认值与兜底字面量 |
+| `ui/report_export_view` | 「AC Report generation moved to V2.2 format only.」 |
+| `app_version.py` | 文档串里的示例版本号 |
+
+### 17.2 顺带清掉一处同族重复
+
+`tests/test_report_branding.test_profile_registry_matches_ui_labels` 把
+`["V2.1 (Beta)", "V2.1 (Guoxia)"]` 写死在断言里 —— 每次发版都要多改一处，
+否则测试无故变红。改为从 `app_version.release_version()` 推导；
+版本一致性本来就由 `test_app_version` 那条守卫负责，这条测试只管**形状**：
+恰好两个品牌、Beta 在前、各自带当前发布号。
+
+### 17.3 端到端验证（三个出口都真的带上了新版本）
+
+```
+1) 侧边栏      : V2.2 · 6744af2 · CALB ESS Sizing Platform · db:20260804_0009
+2) 提案文件名  : CALB_Demo_Project_BESS_Proposal_20260808_V2.2.docx
+3) 报告封面    : CALB Utility-Scale ESS Sizing Report (V2.2 Beta)
+```
+
+全量 **743 passed**；冻结正典 7 项通过、哈希未变；Report Export 页真渲染无异常。
+
+### 17.4 本轮（V2.2）变更总览
+
+| 类别 | 内容 |
+| --- | --- |
+| **删除** | 报告校验层（零调用且算错混合站）；`create_ac_report` / `create_combined_report` + 仅其可达的 413 行；`_get_stage3_df`（Excel 重算，违反权威边界）；`ac_view` 五个死 import |
+| **修正** | §3 公式陈述（读者按报告自己的数字复算差 3.1%）；§1 保证判据（全库唯一不守 canon 者）；导出改写活 Stage 3；DC 页面对同一 mode 重复 sizing |
+| **加固** | 读取重试 + 「读不到」与「没有」分离；**取到才生成**的导出闸门；Site Layout 不再缓存失败读取；`bump_run_id_dc` 移到输入闸门之后；游客不再白建 DOCX |
+| **自纠** | 本轮自己引入的两个缺陷（失败清单跨图串用、`FileNotFoundError` 被当瞬时失败重试） |
+
+**唯一对外可见的行为反转**：缺口落在 `(0, 0.1]` MWh 的既有设计，报告 §1 由
+Yes 变 No —— 与引擎、DC 页面、§5 本来就一致。
+
+**冻结正典自始至终一字节未动。**
+
+---
+
 ## 五、尚未执行的两件事（均因**访问权限**受阻，非技术阻塞）
 
 会话运行在 Anthropic 云上的隔离容器：**`ssh` 未安装**，出站仅一个 HTTPS 代理，

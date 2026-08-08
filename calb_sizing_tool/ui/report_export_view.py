@@ -475,7 +475,7 @@ def show():
 
     st.subheader("Downloads")
 
-    # V2.1 is now the standard report format (with an optional Guoxia branded variant).
+    # V2.2 is now the standard report format (with an optional Guoxia branded variant).
     # All branded copy lives in reporting/brand_profiles.py — never inline brand text here.
     report_template = st.selectbox(
         "Report Template",
@@ -483,7 +483,7 @@ def show():
         index=0,
     )
     
-    st.info("AC Report generation moved to V2.1 format only.")
+    st.info("AC Report generation moved to V2.2 format only.")
 
     with st.container(border=True):
         stage2_raw = stage13_output.get("stage2_raw", {})
