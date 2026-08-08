@@ -1,4 +1,4 @@
-﻿# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Personal Open-Source Notice
 #
 # Copyright (c) 2026 Alex.Zhao. All rights reserved.
@@ -26,14 +26,13 @@ from pathlib import Path
 # --- Adapted imports for refactor ---
 from calb_sizing_tool.adapters.excel_loader_adapter import bundle_to_legacy_tuple, load_dc_excel_bundle_from_path
 from calb_sizing_tool.config import DC_DATA_PATH, DC_DATA_IS_LEGACY, PROJECT_ROOT
-from calb_sizing_tool.common.nameplate import apply_block_nameplate_recalc, get_standard_container_mwh
+from calb_sizing_tool.common.nameplate import get_standard_container_mwh
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.schemas.case import SizingCaseInput
 from calb_sizing_tool.schemas.master_data import DcExcelMasterDataBundle
 from calb_sizing_tool.schemas.run_snapshot import DcPipelineRunSnapshot
 from calb_sizing_tool.schemas.stage1 import Stage1Result
 from calb_sizing_tool.schemas.stage2 import Stage2Result
-from calb_sizing_tool.schemas.stage3 import Stage3Result
 from calb_sizing_tool.services.access_control_service import AccessControlService
 from calb_sizing_tool.services.dc_input_guard_service import (
     validate_dc_inputs,

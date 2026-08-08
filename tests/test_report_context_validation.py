@@ -20,7 +20,6 @@
 Test suite for report context and validation.
 Ensures report data sources are consistent and complete.
 """
-import pytest
 from calb_sizing_tool.reporting.report_context import (
     build_report_context,
 )

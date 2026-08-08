@@ -25,7 +25,6 @@ import streamlit as st
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.plugins.registry import get_plugin_registry
 from calb_sizing_tool.services.layout_service import ARRANGEMENT_PLUGIN_ID
-from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot
 from calb_sizing_tool.schemas.layout_inputs import LayoutRenderOptions
 from calb_sizing_tool.services.access_control_service import AccessControlService
 from calb_sizing_tool.services.external_layout_service import (
