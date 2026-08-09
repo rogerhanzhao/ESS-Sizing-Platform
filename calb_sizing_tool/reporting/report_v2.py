@@ -31,6 +31,7 @@ from calb_sizing_tool.reporting.export_docx import (
     _add_table,
     _doc_to_bytes,
     _keep_next_para,
+    set_inline_shape_alt_text,
     _setup_header,
     _setup_margins,
 )
@@ -56,6 +57,7 @@ from calb_sizing_tool.reporting.brand_profiles import (
 )
 from calb_sizing_tool.reporting.formatter import format_percent, format_value
 from calb_sizing_tool.reporting.report_context import ReportContext
+from calb_sizing_tool.services.sld_pipeline_service import scrub_unconfirmed_sld_values
 
 try:
     from matplotlib.figure import Figure
@@ -804,15 +806,41 @@ def _stamp_not_for_construction(png_bytes: Optional[bytes]) -> Optional[bytes]:
         ) from exc
 
 
-def _add_concept_figure(doc, png_bytes: bytes, *, width=None, height=None) -> None:
-    """Embed a concept figure with the mandatory NOT-FOR-CONSTRUCTION watermark."""
-    stamped = _stamp_not_for_construction(png_bytes)
+def _add_concept_figure(
+    doc,
+    png_bytes: bytes,
+    *,
+    width=None,
+    height=None,
+    source_has_status_watermark: bool = False,
+    alt_text: str = "Concept engineering figure — NOT FOR CONSTRUCTION",
+) -> None:
+    """Embed a concept figure with one mandatory NOT-FOR-CONSTRUCTION watermark.
+
+    Pipeline-generated non-formal SLDs already contain their visible document
+    status watermark.  Reusing that verified source preserves the mandatory
+    mark without creating a second, offset overlay in the report.
+    """
+    stamped = png_bytes if source_has_status_watermark else _stamp_not_for_construction(png_bytes)
     if width is not None:
-        doc.add_picture(io.BytesIO(stamped), width=width)
+        picture = doc.add_picture(io.BytesIO(stamped), width=width)
     elif height is not None:
-        doc.add_picture(io.BytesIO(stamped), height=height)
+        picture = doc.add_picture(io.BytesIO(stamped), height=height)
     else:
-        doc.add_picture(io.BytesIO(stamped))
+        picture = doc.add_picture(io.BytesIO(stamped))
+    set_inline_shape_alt_text(picture, alt_text)
+
+
+def _sld_png_for_report(ctx: ReportContext) -> bytes | None:
+    """Return the SLD figure, repairing non-formal SVG placeholders if possible."""
+    if (
+        ctx.sld_preview_svg_bytes
+        and ctx.sld_document_status in {"concept", "draft_override"}
+    ):
+        png_bytes = _svg_bytes_to_png(scrub_unconfirmed_sld_values(ctx.sld_preview_svg_bytes))
+        if png_bytes:
+            return png_bytes
+    return ctx.sld_pro_png_bytes
 
 
 #: Prefixes that identify which figure a read failure belongs to. A message
@@ -1228,7 +1256,11 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             title="Installed DC Energy vs. Deliverable POI Energy at Key Milestones",
         )
         if capacity_chart is not None and capacity_chart.getbuffer().nbytes > 0:
-            doc.add_picture(capacity_chart, width=Inches(6.7))
+            picture = doc.add_picture(capacity_chart, width=Inches(6.7))
+            set_inline_shape_alt_text(
+                picture,
+                "Installed DC nameplate energy versus deliverable POI energy chart",
+            )
             _keep_next_para(doc.paragraphs[-1])  # keep picture paragraph with its caption
             _keep_next_para(doc.add_paragraph(
                 f"Figure 1: Installed DC nameplate energy (dark, DC side) versus deliverable "
@@ -1246,7 +1278,11 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             title=f"POI Usable Energy vs. Year  (guarantee target = red line, Year {ctx.poi_guarantee_year})",
         )
         if chart is not None and chart.getbuffer().nbytes > 0:
-            doc.add_picture(chart, width=Inches(6.7))
+            picture = doc.add_picture(chart, width=Inches(6.7))
+            set_inline_shape_alt_text(
+                picture,
+                "POI usable energy by year from COD chart",
+            )
             _keep_next_para(doc.paragraphs[-1])  # keep picture paragraph with its caption
             _keep_next_para(doc.add_paragraph(
                 f"Figure 2: POI Usable Energy (MWh) by year from COD. "
@@ -1452,8 +1488,15 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     ))
     figure_index = 3  # Figures 1-2 used by Stage 3 milestone + POI charts above
     sld_embedded = False
-    if ctx.sld_pro_png_bytes:
-        _add_concept_figure(doc, ctx.sld_pro_png_bytes, width=Inches(6.7))
+    sld_png_bytes = _sld_png_for_report(ctx)
+    if sld_png_bytes:
+        _add_concept_figure(
+            doc,
+            sld_png_bytes,
+            width=Inches(6.7),
+            source_has_status_watermark=ctx.sld_source_has_status_watermark,
+            alt_text="Single line diagram — NOT FOR CONSTRUCTION",
+        )
         _keep_next_para(doc.paragraphs[-1])
         doc.add_paragraph(f"Figure {figure_index}: Single Line Diagram – System Electrical Configuration — NOT FOR CONSTRUCTION")
         figure_index += 1
@@ -1461,7 +1504,13 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     elif ctx.sld_preview_svg_bytes:
         png_bytes = _svg_bytes_to_png(ctx.sld_preview_svg_bytes)
         if png_bytes:
-            _add_concept_figure(doc, png_bytes, width=Inches(6.7))
+            _add_concept_figure(
+                doc,
+                png_bytes,
+                width=Inches(6.7),
+                source_has_status_watermark=ctx.sld_source_has_status_watermark,
+                alt_text="Single line diagram — NOT FOR CONSTRUCTION",
+            )
             _keep_next_para(doc.paragraphs[-1])
             doc.add_paragraph(f"Figure {figure_index}: Single Line Diagram – System Electrical Configuration — NOT FOR CONSTRUCTION")
             figure_index += 1
@@ -1506,7 +1555,10 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             f"per PCS). The Typical AC Block Arrangement page renders this "
             f"identical drawing:"
         ))
-        _add_concept_figure(doc, plan_png, width=Inches(6.7))
+        _add_concept_figure(
+            doc, plan_png, width=Inches(6.7),
+            alt_text="Typical AC block arrangement — NOT FOR CONSTRUCTION",
+        )
         _keep_next_para(doc.paragraphs[-1])
         _keep_next_para(doc.add_paragraph(
             f"Figure {figure_index}: Typical AC Block Arrangement — equipment envelope ≈ "
@@ -1528,7 +1580,10 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             f"Rule-based typical arrangement ({dc_per_ac} × DC per block, "
             f"mirrored back-to-back pairs, doors facing outward aisles):"
         ))
-        _add_concept_figure(doc, plan_png, width=Inches(6.7))
+        _add_concept_figure(
+            doc, plan_png, width=Inches(6.7),
+            alt_text="Typical AC block arrangement — NOT FOR CONSTRUCTION",
+        )
         _keep_next_para(doc.paragraphs[-1])
         _keep_next_para(doc.add_paragraph(
             f"Figure {figure_index}: Typical AC Block Arrangement (rule-based) — "
@@ -1548,7 +1603,10 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         if not layout_png_bytes and ctx.layout_svg_bytes:
             layout_png_bytes = _svg_bytes_to_png(ctx.layout_svg_bytes)
         if layout_png_bytes:
-            _add_concept_figure(doc, layout_png_bytes, width=Inches(6.7))
+            _add_concept_figure(
+                doc, layout_png_bytes, width=Inches(6.7),
+                alt_text="Typical AC block arrangement — NOT FOR CONSTRUCTION",
+            )
             _keep_next_para(doc.paragraphs[-1])
             doc.add_paragraph(
                 f"Figure {figure_index}: Typical AC Block Arrangement — Concept Only · NOT FOR CONSTRUCTION")
@@ -1583,7 +1641,10 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 f"total. Blocks are placed at their actual product footprint; this is a concept "
                 f"arrangement, not a construction site layout against a project boundary."
             ))
-            _add_concept_figure(doc, site_png, width=Inches(6.7))
+            _add_concept_figure(
+                doc, site_png, width=Inches(6.7),
+                alt_text="Concept site layout — NOT FOR CONSTRUCTION",
+            )
             _keep_next_para(doc.paragraphs[-1])
             _keep_next_para(doc.add_paragraph(
                 f"Figure {figure_index}: Concept Site Layout (actual product footprints) — Concept Only · NOT FOR CONSTRUCTION"

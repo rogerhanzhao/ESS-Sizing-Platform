@@ -78,6 +78,16 @@ def _setup_margins(doc: Document):
     section.bottom_margin = Inches(0.8)
 
 
+def set_inline_shape_alt_text(shape, description: str) -> None:
+    """Give a Word inline image a meaningful, non-empty accessibility label."""
+    if shape is None:
+        return
+    text = str(description or "Concept report figure").strip()
+    doc_props = shape._inline.docPr
+    doc_props.set("descr", text)
+    doc_props.set("title", text)
+
+
 def add_header_logo(document: Document, logo_path_or_bytes, width=Inches(1.2)) -> list:
     tables = []
     for section in document.sections:
@@ -86,14 +96,16 @@ def add_header_logo(document: Document, logo_path_or_bytes, width=Inches(1.2)) -
         for para in list(header.paragraphs):
             para._element.getparent().remove(para._element)
         header_table = header.add_table(rows=1, cols=2, width=Inches(6.9))
+        _repeat_header_row(header_table.rows[0])
         tables.append(header_table)
         if logo_path_or_bytes:
             p_logo = header_table.rows[0].cells[0].paragraphs[0]
             run_logo = p_logo.add_run()
             if isinstance(logo_path_or_bytes, (str, Path)):
-                run_logo.add_picture(str(logo_path_or_bytes), width=width)
+                picture = run_logo.add_picture(str(logo_path_or_bytes), width=width)
             else:
-                run_logo.add_picture(io.BytesIO(logo_path_or_bytes), width=width)
+                picture = run_logo.add_picture(io.BytesIO(logo_path_or_bytes), width=width)
+            set_inline_shape_alt_text(picture, "Company logo")
     return tables
 
 

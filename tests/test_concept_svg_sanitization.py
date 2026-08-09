@@ -38,9 +38,11 @@ def test_concept_handles_multiple_markers():
     assert out.count("Not specified - concept only") == 2
 
 
-def test_draft_override_adds_watermark_without_missing_scrub_label():
-    out = _concept_safe_svg(_svg("<text>value</text>"), "draft_override").decode()
+def test_draft_override_adds_watermark_and_scrubs_missing_marker():
+    out = _concept_safe_svg(_svg("<text>MISSING: Transformer MVA</text>"), "draft_override").decode()
     assert "DRAFT / OVERRIDE - NOT FOR CONSTRUCTION" in out
+    assert "missing:" not in out.lower()
+    assert "Not specified - concept only" in out
 
 
 def test_malformed_svg_raises():

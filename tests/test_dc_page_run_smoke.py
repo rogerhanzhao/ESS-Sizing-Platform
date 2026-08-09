@@ -103,8 +103,26 @@ def test_a_signed_in_run_persists_and_offers_the_export(signed_in_workspace):
     assert not app.exception
     assert _state(app, "dc_result_summary"), "the run produced no DC summary"
     assert any(
-        button.label == "Export Technical Sizing Report" for button in app.download_button
+        button.label == "Export Technical Sizing Report" for button in app.get("download_button")
     ), "a signed-in user must be offered the report download"
+
+
+def test_ac_sizing_restores_the_active_persisted_dc_run(signed_in_workspace):
+    """A page reload must not make an already-saved DC run require a rerun."""
+    sized = _run_sizing(signed_in_workspace())
+    run_id = _dc_run_id(sized)
+    assert run_id
+
+    # A separate AppTest models a new Streamlit session: it has the selected
+    # project/case and run id, but none of the transient DC-result dictionaries.
+    restored = signed_in_workspace()
+    restored.session_state["active_run_id"] = run_id
+    restored.session_state["main_nav"] = "AC Sizing"
+    restored = restored.run()
+
+    assert not restored.exception
+    assert _state(restored, "dc_result_summary"), "the persisted DC handoff was not restored"
+    assert not any("DC sizing results not found" in str(item.value) for item in restored.warning)
 
 
 def test_a_rejected_run_does_not_consume_a_run_id(signed_in_workspace):

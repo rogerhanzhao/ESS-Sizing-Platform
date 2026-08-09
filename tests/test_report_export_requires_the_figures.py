@@ -26,6 +26,7 @@ from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.plugins.base import ArtifactPayload
 from calb_sizing_tool.repositories.case_repository import CaseRepository
 from calb_sizing_tool.services import artifact_service
+from calb_sizing_tool.services.ac_run_service import persist_ac_run
 from calb_sizing_tool.services.auth_service import AuthService
 
 pytest.importorskip("docx")
@@ -35,6 +36,17 @@ _DOWNLOAD_LABEL_FRAGMENT = "Download Combined Report"
 
 def _app() -> AppTest:
     return AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py", default_timeout=180)
+
+
+def _ac_output(run_id: str) -> dict:
+    """A complete AC result tied to the DC parent run."""
+    return {
+        "source_run_id": run_id,
+        "project_name": "Gate", "num_blocks": 20, "block_size_mw": 5.0,
+        "pcs_per_block": 2, "pcs_kw": 2500, "pcs_count_total": 40,
+        "grid_kv": 33.0, "mv_kv": 33.0, "lv_voltage_v": 800.0,
+        "transformer_kva": 5555.0, "dc_blocks_per_ac": 4,
+    }
 
 
 @pytest.fixture
@@ -86,7 +98,7 @@ def session_with_a_finished_run(tmp_path, monkeypatch):
     run_id = sizing.session_state["dc_last_run_id"]
     stage13_output = sizing.session_state["stage13_output"]
 
-    def open_export() -> AppTest:
+    def open_export(active_ac_run_id: str | None = None) -> AppTest:
         app = _app()
         app.session_state["auth_context"] = auth_context
         app.session_state["active_project_id"] = ids[0]
@@ -97,16 +109,11 @@ def session_with_a_finished_run(tmp_path, monkeypatch):
         # An AC result is required before the page offers an export at all.
         # `ac_results` is what the compatibility resolver reads (the page does
         # not take session `ac_output` directly).
-        ac = {
-            # The resolver only accepts a snapshot that names this DC run.
-            "source_run_id": run_id,
-            "project_name": "Gate", "num_blocks": 20, "block_size_mw": 5.0,
-            "pcs_per_block": 2, "pcs_kw": 2500, "pcs_count_total": 40,
-            "grid_kv": 33.0, "mv_kv": 33.0, "lv_voltage_v": 800.0,
-            "transformer_kva": 5555.0, "dc_blocks_per_ac": 4,
-        }
+        ac = _ac_output(run_id)
         app.session_state["ac_results"] = ac
         app.session_state["ac_inputs"] = {"grid_kv": 33.0, "mv_kv": 33.0, "lv_voltage_v": 800.0}
+        if active_ac_run_id:
+            app.session_state["active_ac_run_id"] = active_ac_run_id
         app.session_state["main_nav"] = "Report Export"
         app.run()
         return app
@@ -135,7 +142,7 @@ def _record_an_sld(run_id: str) -> Path:
 
 
 def _download_offered(app: AppTest) -> bool:
-    return any(_DOWNLOAD_LABEL_FRAGMENT in b.label for b in app.download_button)
+    return any(_DOWNLOAD_LABEL_FRAGMENT in b.label for b in app.get("download_button"))
 
 
 def _errors(app: AppTest) -> str:
@@ -190,3 +197,25 @@ def test_the_export_recovers_once_the_figure_can_be_read(session_with_a_finished
     assert not app.exception
     assert "could not be retrieved" not in _errors(app)
     assert _download_offered(app), "a readable figure must let the export through"
+
+
+def test_a_selected_ac_alternative_resolves_from_its_dc_parent(session_with_a_finished_run):
+    """Selecting an AC child must not make Report Export call it the DC run.
+
+    The alternative's ``source_run_id`` is its DC parent.  Artifacts attach to
+    the child, but ``resolve_preferred_ac_snapshot`` must receive the parent so
+    its cross-run guard accepts the selected configuration.
+    """
+    open_export, run_id = session_with_a_finished_run
+    alternative = persist_ac_run(
+        dc_run_id=run_id,
+        ac_inputs={"grid_kv": 33.0, "mv_kv": 33.0, "lv_voltage_v": 800.0},
+        ac_output=_ac_output(run_id),
+    )
+    assert alternative is not None
+
+    app = open_export(active_ac_run_id=alternative.run_id)
+
+    assert not app.exception
+    assert "AC sizing is missing" not in "\n".join(message.value for message in app.info)
+    assert _download_offered(app), "the selected AC alternative must enable export"

@@ -68,6 +68,23 @@ def _svg_to_png(svg_bytes: bytes) -> bytes:
         return cairosvg.svg2png(bytestring=svg_bytes, background_color="white")
 
 
+def scrub_unconfirmed_sld_values(svg_bytes: bytes) -> bytes:
+    """Replace renderer-internal missing-value markers in a non-formal SLD.
+
+    The marker is useful while constructing a drawing, but it is not suitable
+    for a concept or draft/override deliverable.  Keeping this operation
+    separate from the status overlay also lets report export repair a stored
+    non-formal SVG before it embeds the matching PNG.
+    """
+    svg_text = svg_bytes.decode("utf-8")
+    return re.sub(
+        r"MISSING\s*:\s*[^<]*",
+        "Not specified - concept only",
+        svg_text,
+        flags=re.IGNORECASE,
+    ).encode("utf-8")
+
+
 def _concept_safe_svg(svg_bytes: bytes, document_status: str) -> bytes:
     """Overlay non-formal drawings and remove false-looking equipment values.
 
@@ -78,19 +95,13 @@ def _concept_safe_svg(svg_bytes: bytes, document_status: str) -> bytes:
     if document_status == "official":
         return svg_bytes
 
-    svg_text = svg_bytes.decode("utf-8")
+    # The renderer marks unsupplied engineering values as "MISSING: <label>".
+    # Match the marker pattern rather than each label so renderer label changes
+    # cannot silently leak a raw marker into any non-formal deliverable.  Draft
+    # override is non-formal too: its watermark is not a reason to publish
+    # construction-facing placeholder text.
+    svg_text = scrub_unconfirmed_sld_values(svg_bytes).decode("utf-8")
     if document_status == "concept":
-        # The renderer marks unsupplied engineering values as "MISSING: <label>".
-        # Match the marker pattern rather than each label so renderer label
-        # changes cannot silently leak a MISSING marker into a concept issue.
-        # Case/whitespace-insensitive so a formatting drift ("Missing :", …)
-        # cannot leak a raw marker into a NOT-FOR-CONSTRUCTION concept drawing.
-        svg_text = re.sub(
-            r"MISSING\s*:\s*[^<]*",
-            "Not specified - concept only",
-            svg_text,
-            flags=re.IGNORECASE,
-        )
         status_label = "CONCEPT ONLY - NOT FOR CONSTRUCTION"
     else:
         status_label = "DRAFT / OVERRIDE - NOT FOR CONSTRUCTION"

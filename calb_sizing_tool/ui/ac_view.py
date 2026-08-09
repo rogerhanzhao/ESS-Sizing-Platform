@@ -23,6 +23,7 @@ Supports 1:1, 1:2, 1:4, and 1:8 grouping options.
 import streamlit as st
 
 from calb_sizing_tool.common.nameplate import get_standard_container_mwh
+from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.models import DCBlockResult
 from calb_sizing_tool.services.ac_sizing_service import (
     build_simplified_ac_block_models,
@@ -41,12 +42,17 @@ from calb_sizing_tool.services.ac_mixed_station import (
     validate_ac_block_rows,
 )
 from calb_sizing_tool.schemas.diagram_inputs import AcSnapshot
+from calb_sizing_tool.services.access_control_service import AccessControlService
 from calb_sizing_tool.services.ac_run_service import persist_ac_run
 from calb_sizing_tool.services.sld_data_source_service import persist_ac_runtime_snapshot, resolve_preferred_ac_snapshot
-from calb_sizing_tool.state.auth_state import get_auth_context
+from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import bump_run_id_ac, get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
-from calb_sizing_tool.state.workspace_state import adopt_saved_ac_run, get_workspace_context
+from calb_sizing_tool.state.workspace_state import (
+    adopt_saved_ac_run,
+    get_workspace_context,
+    restore_run_bundle_to_session,
+)
 
 # Transformer topology is now selected explicitly. A two-winding transformer
 # can serve any supported PCS count on one common LV busbar; a three-winding
@@ -154,6 +160,40 @@ def _snapshot_output_matches_run(ac_output: dict | None, run_id: str | None) -> 
     if not expected:
         return True
     return str(ac_output.get("source_run_id") or "").strip() == expected
+
+
+def _restore_active_dc_run_if_needed(active_run_id: str | None) -> bool:
+    """Reload the signed-in user's active persisted DC run when session data is gone.
+
+    A Streamlit refresh, restart, or a page rerun that starts with incomplete
+    session state must not force the user to repeat DC sizing.  The run is
+    restored only through the access-controlled service, and only when the DC
+    handoff required by AC sizing is actually absent.
+    """
+    has_dc_handoff = bool(
+        st.session_state.get("dc_result_summary")
+        or (isinstance(st.session_state.get("dc_results"), dict)
+            and st.session_state["dc_results"].get("dc_result_summary"))
+    )
+    run_id = str(active_run_id or "").strip()
+    auth_context = get_auth_context()
+    auth_user = get_auth_user()
+    if has_dc_handoff or not run_id or auth_context is None or auth_context.is_guest or auth_user is None:
+        return False
+
+    try:
+        with session_scope() as session:
+            bundle = AccessControlService(session, auth_user).load_dc_run_bundle(run_id)
+    except Exception:
+        # Keep the existing dependency message below.  In particular, a run
+        # outside the current user's scope must never be exposed here.
+        return False
+
+    if bundle is None:
+        return False
+
+    restore_run_bundle_to_session(bundle, run_id, queue_widget_restore=False)
+    return True
 
 
 def _hydrate_ac_runtime_snapshot(
@@ -279,6 +319,13 @@ def show():
         or st.session_state.get("dc_last_run_id")
         or project_state.get("dc", {}).get("run_id")
     )
+
+    if _restore_active_dc_run_if_needed(active_run_id):
+        # The restore may also fill project/case metadata that was absent from
+        # a lightweight page reload, so resolve the workspace again before it
+        # is shown or used by the AC persistence flow.
+        workspace = get_workspace_context()
+        active_run_id = workspace.get("run_id") or active_run_id
 
     ac_resolution = resolve_preferred_ac_snapshot(
         active_run_id,

@@ -84,6 +84,11 @@ class ReportContext:
     sld_group_index: Optional[int] = None
     sld_preview_svg_bytes: Optional[bytes] = None
     sld_pro_png_bytes: Optional[bytes] = None
+    # A non-formal SLD emitted by the pipeline already carries its own visible
+    # document-status watermark.  The report uses this provenance to avoid
+    # overlaying an identical second watermark at a different vertical offset.
+    sld_document_status: Optional[str] = None
+    sld_source_has_status_watermark: bool = False
     layout_png_bytes: Optional[bytes] = None
     layout_svg_bytes: Optional[bytes] = None
     #: Figures that EXIST but this build could not read, after retries. Read by
@@ -112,6 +117,30 @@ class ReportContext:
 def _snapshot_hash(snapshot: dict) -> str:
     payload = json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+
+
+_NONFORMAL_SLD_STATUSES = {"concept", "draft_override"}
+
+
+def _sld_document_status_from_mapping(value: Any) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    status = str(value.get("document_status") or value.get("artifact_mode") or "").strip()
+    return status or None
+
+
+def _sld_document_status_from_svg(svg_bytes: bytes | None) -> str | None:
+    if not svg_bytes:
+        return None
+    try:
+        svg_text = svg_bytes.decode("utf-8")
+    except Exception:
+        return None
+    if "DRAFT / OVERRIDE - NOT FOR CONSTRUCTION" in svg_text:
+        return "draft_override"
+    if "CONCEPT ONLY - NOT FOR CONSTRUCTION" in svg_text:
+        return "concept"
+    return None
 
 
 def _safe_int(value, default=0) -> int:
@@ -383,6 +412,9 @@ def build_report_context(
 
     sld_preview_svg_bytes = None
     sld_pro_png_bytes = None
+    sld_document_status = _sld_document_status_from_mapping(
+        state.get("sld_pipeline_meta") if hasattr(state, "get") else None
+    )
     layout_png_bytes = None
     layout_svg_bytes = None
 
@@ -411,6 +443,10 @@ def build_report_context(
         _sld_bundle = state.get("sld_artifacts")
         if _sld_bundle is not None:
             sld_pro_png_bytes, sld_preview_svg_bytes = _extract_bundle(_sld_bundle)
+            sld_document_status = (
+                _sld_document_status_from_mapping(getattr(_sld_bundle, "metadata", None))
+                or sld_document_status
+            )
 
         _layout_bundle = state.get("layout_artifacts")
         if _layout_bundle is not None:
@@ -421,6 +457,10 @@ def build_report_context(
         if isinstance(_artifacts, dict):
             sld_pro_png_bytes = sld_pro_png_bytes or _artifacts.get("sld_png_bytes")
             sld_preview_svg_bytes = sld_preview_svg_bytes or _artifacts.get("sld_svg_bytes")
+            sld_document_status = (
+                _sld_document_status_from_mapping(_artifacts.get("sld_meta"))
+                or sld_document_status
+            )
             layout_png_bytes = layout_png_bytes or _artifacts.get("layout_png_bytes")
             layout_svg_bytes = layout_svg_bytes or _artifacts.get("layout_svg_bytes")
 
@@ -524,6 +564,11 @@ def build_report_context(
         except Exception as exc:
             artifact_read_failures.append(f"stored figures could not be read ({exc})")
 
+    # The source SVG is authoritative evidence of an existing visible stamp.
+    # Prefer it over stale session metadata when both are available.
+    sld_document_status = _sld_document_status_from_svg(sld_preview_svg_bytes) or sld_document_status
+    sld_source_has_status_watermark = sld_document_status in _NONFORMAL_SLD_STATUSES
+
     return ReportContext(
         project_name=project_name,
         scenario_id=scenario_id,
@@ -574,6 +619,8 @@ def build_report_context(
         sld_group_index=sld_group_index,
         sld_preview_svg_bytes=sld_preview_svg_bytes,
         sld_pro_png_bytes=sld_pro_png_bytes,
+        sld_document_status=sld_document_status,
+        sld_source_has_status_watermark=sld_source_has_status_watermark,
         layout_png_bytes=layout_png_bytes,
         layout_svg_bytes=layout_svg_bytes,
         artifact_read_failures=artifact_read_failures,

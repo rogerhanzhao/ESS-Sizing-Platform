@@ -1503,7 +1503,12 @@ div[data-testid="stDataFrame"] div[role="rowheader"] {
                         "Export Technical Sizing Report",
                         data=report_bytes,
                         file_name=make_report_filename(project_name),
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        # A report download must not rerun the page: this view
+                        # renders the detailed DC result only in the Run Sizing
+                        # branch, so Streamlit's default rerun made the result
+                        # appear to disappear immediately after export.
+                        on_click="ignore",
                     )
         
     has_dc_result = bool(st.session_state.get("dc_result_summary") or dc_results.get("dc_result_summary"))

@@ -47,6 +47,7 @@ class BrandAssetMissingError(RuntimeError):
 
 
 def _confidentiality_notice(owner: str) -> str:
+    owner = owner.rstrip(".")
     return (
         f"CONFIDENTIAL — This document contains proprietary information of {owner}. "
         "It is provided for evaluation purposes only and shall not be reproduced or "

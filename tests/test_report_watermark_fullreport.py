@@ -150,6 +150,42 @@ def test_full_report_watermarks_every_concept_figure_nongoverned():
     assert _stamp_not_for_construction(sld_src) in set(_media_images(report_bytes))
 
 
+def test_report_reuses_an_sld_with_a_verified_source_status_watermark():
+    """A draft SLD must not receive a second, vertically offset report stamp."""
+    from tools.regress_export import run_ac_sizing, run_dc_sizing
+
+    fixture = json.loads(
+        (Path(__file__).parent / "fixtures" / "v1_case01_container_input.json").read_text("utf-8")
+    )
+    dc = run_dc_sizing(fixture)
+    ac = run_ac_sizing(fixture, dc["stage1"], dc["stage2"])
+    stamped_sld = _stamp_not_for_construction(_white_png(900, 500))
+    ctx = build_report_context(
+        session_state={
+            "artifacts": {"sld_png_bytes": stamped_sld},
+            "sld_pipeline_meta": {
+                "document_status": "draft_override",
+                "not_for_construction": True,
+            },
+        },
+        stage_outputs={
+            "stage13_output": dc["stage1"],
+            "stage2": dc["stage2"],
+            "stage3_df": dc["stage3_df"],
+            "stage3_meta": dc["stage3_meta"],
+            "ac_output": ac,
+        },
+        project_inputs={"poi_energy_guarantee_mwh": fixture["poi_energy_req_mwh"]},
+        scenario_ids=fixture["scenario_id"],
+    )
+
+    assert ctx.sld_source_has_status_watermark is True
+    report_bytes = export_report_v2_1(ctx)
+    media = set(_media_images(report_bytes))
+    assert stamped_sld in media
+    assert _stamp_not_for_construction(stamped_sld) not in media
+
+
 def _governed_ctx(container_count: int, *, poi_power_mw: float, poi_energy_mwh: float,
                   sld_src: bytes):
     from calb_sizing_tool.services.governed_ac_block_service import (

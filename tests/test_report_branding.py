@@ -28,6 +28,7 @@ import base64
 import dataclasses
 import io
 import json
+import re
 import zipfile
 from pathlib import Path
 
@@ -124,6 +125,20 @@ def test_default_brand_is_calb(report_ctx):
     assert "CALB Group Co., Ltd." in _rendered_xml_parts(default_bytes)["word/document.xml"]
 
 
+def test_report_images_have_accessible_descriptions(report_ctx):
+    """Every inline picture, including the header logo, names its content."""
+    report_bytes = export_report_v2_1(report_ctx, brand=CALB_BRAND)
+    parts = _rendered_xml_parts(report_bytes)
+    image_properties = []
+    for xml in parts.values():
+        image_properties.extend(re.findall(r"<wp:docPr\b[^>]*>", xml))
+
+    assert image_properties, "expected inline images in the report"
+    for props in image_properties:
+        assert re.search(r'\bdescr="[^"]+"', props), props
+        assert re.search(r'\btitle="[^"]+"', props), props
+
+
 def test_equipment_name_neutralization():
     assert (
         neutralize_equipment_text("CALB_5MWh_20FT_12R", GUOXIA_BRAND) == "5MWh_20FT_12R"
@@ -151,6 +166,11 @@ def test_missing_required_logo_blocks_export():
 def test_guoxia_logo_asset_exists():
     """The dual-brand logo referenced by the profile must ship with the repo."""
     assert GUOXIA_BRAND.logo_path is not None and GUOXIA_BRAND.logo_path.exists()
+
+
+@pytest.mark.parametrize("profile", (CALB_BRAND, GUOXIA_BRAND), ids=lambda value: value.key)
+def test_confidentiality_notice_has_no_double_terminal_period(profile):
+    assert "Ltd.." not in profile.confidentiality_notice
 
 
 def test_profile_registry_matches_ui_labels():

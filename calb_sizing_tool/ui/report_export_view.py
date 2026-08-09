@@ -164,6 +164,15 @@ def show():
     ac_results = state.ac_results or {}
     artifacts = state.artifacts
     outputs_dir = get_outputs_dir()
+    # The report resolves its AC configuration FROM the DC parent run.  This is
+    # deliberately distinct from ``_active_run_id`` below: when an AC
+    # alternative is selected, artifacts belong to that child run, while the
+    # alternative snapshot still names the DC run in ``source_run_id``.  Passing
+    # the child ID to the resolver makes its cross-run safety check reject the
+    # very alternative the user selected and falsely report that AC sizing is
+    # missing.
+    workspace = get_workspace_context()
+    _dc_run_id = workspace.get("run_id")
     # Read artifacts at the AC alternative when one is selected. The reader walks
     # up parent_run_id, so an alternative that never produced a given figure still
     # shows the DC run's — and a database written before AC runs existed is
@@ -293,7 +302,7 @@ def show():
         or {}
     )
     ac_resolution = _resolve_report_ac_snapshot(
-        _active_run_id,
+        _dc_run_id,
         state=state,
         project_state=project_state,
         session_state=st.session_state,
@@ -393,7 +402,6 @@ def show():
     st.divider()
 
     # --- Database Provenance Panel ---
-    workspace = get_workspace_context()
     active_run_id = workspace.get("run_id")
     active_project_code = workspace.get("project_code")
     active_case_code = workspace.get("case_code")
