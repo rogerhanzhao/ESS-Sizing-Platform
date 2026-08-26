@@ -25,7 +25,12 @@ _log = logging.getLogger(__name__)
 from calb_sizing_tool.reporting.export_docx import (
     make_proposal_filename,
 )
-from calb_sizing_tool.reporting.brand_profiles import BRAND_PROFILES, BrandAssetMissingError
+from calb_sizing_tool.reporting.brand_profiles import (
+    BRAND_PROFILES,
+    BrandAssetMissingError,
+    BrandLeakError,
+    neutralize_brand_text,
+)
 from calb_sizing_tool.reporting.report_context import build_report_context
 from calb_sizing_tool.reporting.report_v2 import export_report_v2_1
 from calb_sizing_tool.runtime_paths import get_outputs_dir
@@ -331,6 +336,16 @@ def show():
         st.error(f"Report export blocked: {power_closure_issue}")
         return
 
+    # Brand is an export boundary, not a late cover-page decoration. Select it
+    # before resolving customer-visible defaults or building ReportContext.
+    report_template = st.selectbox(
+        "Report Template",
+        list(BRAND_PROFILES.keys()),
+        index=0,
+        key="report_template_brand",
+    )
+    brand = BRAND_PROFILES[report_template]
+
     project_name = None
     project = st.session_state.get("project")
     if isinstance(project, dict):
@@ -340,7 +355,7 @@ def show():
         or st.session_state.get("project_name")
         or stage13_output.get("project_name")
         or ac_output.get("project_name")
-        or "CALB ESS Project"
+        or "Untitled ESS Project"
     )
     st.session_state["project_name"] = project_name
 
@@ -483,14 +498,6 @@ def show():
 
     st.subheader("Downloads")
 
-    # V2.2 is now the standard report format (with an optional Guoxia branded variant).
-    # All branded copy lives in reporting/brand_profiles.py — never inline brand text here.
-    report_template = st.selectbox(
-        "Report Template",
-        list(BRAND_PROFILES.keys()),
-        index=0,
-    )
-    
     st.info("AC Report generation moved to V2.2 format only.")
 
     with st.container(border=True):
@@ -517,7 +524,6 @@ def show():
             project_inputs=project_inputs_for_report,
             scenario_ids=stage13_output.get("selected_scenario", "container_only"),
         )
-        brand = BRAND_PROFILES[report_template]
         # Confirm the figures were RETRIEVED before building anything.
         #
         # Owner ruling 2026-08-08: reaching this page means the drawing was
@@ -553,15 +559,21 @@ def show():
 
         try:
             comb_bytes = export_report_v2_1(ctx, brand=brand)
-        except BrandAssetMissingError as exc:
-            # Never fall back to another brand's assets in a white-label report.
+        except (BrandAssetMissingError, BrandLeakError) as exc:
+            # Never fall back to another brand's assets or unverified raster
+            # drawings in a white-label report.
             st.error(str(exc))
         else:
             # Naming the alternative keeps two AC branches of one DC run from
             # downloading as the same file. ctx.ac_alternative_label is None when
             # there is only one, so the ordinary report name is unchanged.
+            proposal_project_name = neutralize_brand_text(
+                project_name, brand, fallback="Untitled ESS Project"
+            )
             proposal_filename = make_proposal_filename(
-                project_name, version=brand.version_tag, prefix=brand.filename_prefix,
+                proposal_project_name,
+                version=brand.version_tag,
+                prefix=brand.filename_prefix,
                 ac_alternative=ctx.ac_alternative_label,
             )
             st.download_button(

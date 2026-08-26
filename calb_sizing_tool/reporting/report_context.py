@@ -249,7 +249,7 @@ def build_report_context(
         or stage1.get("project_name")
         or ac_output.get("project_name")
         or (project_inputs or {}).get("project_name")
-        or "CALB ESS Project"
+        or "Untitled ESS Project"
     )
     if project_inputs is None:
         project_inputs = {}

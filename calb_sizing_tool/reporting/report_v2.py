@@ -20,6 +20,7 @@ import datetime
 import io
 import math
 import re
+from dataclasses import replace
 from typing import Optional
 
 import pandas as pd
@@ -50,9 +51,14 @@ from calb_diagrams.site_array_concept import (
     render_site_svg,
 )
 from calb_sizing_tool.reporting.brand_profiles import (
+    BrandLeakError,
     BrandProfile,
     CALB_BRAND,
+    assert_brand_clean_docx,
+    neutralize_brand_payload,
+    neutralize_brand_text,
     neutralize_equipment_text,
+    neutralize_svg_visible_text,
     require_brand_assets,
 )
 from calb_sizing_tool.reporting.formatter import format_percent, format_value
@@ -831,8 +837,25 @@ def _add_concept_figure(
     set_inline_shape_alt_text(picture, alt_text)
 
 
-def _sld_png_for_report(ctx: ReportContext) -> bytes | None:
+def _sld_png_for_report(ctx: ReportContext, brand: BrandProfile) -> bytes | None:
     """Return the SLD figure, repairing non-formal SVG placeholders if possible."""
+    if brand.neutralize_equipment_names:
+        if ctx.sld_preview_svg_bytes:
+            svg_bytes = ctx.sld_preview_svg_bytes
+            if ctx.sld_document_status in {"concept", "draft_override"}:
+                svg_bytes = scrub_unconfirmed_sld_values(svg_bytes)
+            png_bytes = _svg_bytes_to_png(svg_bytes)
+            if png_bytes:
+                return png_bytes
+            raise BrandLeakError(
+                "White-label report blocked: the brand-safe SLD SVG could not be rendered."
+            )
+        if ctx.sld_pro_png_bytes:
+            raise BrandLeakError(
+                "White-label report blocked: this SLD has only a raster image. "
+                "A readable SVG source is required so visible brand text can be audited."
+            )
+        return None
     if (
         ctx.sld_preview_svg_bytes
         and ctx.sld_document_status in {"concept", "draft_override"}
@@ -841,6 +864,49 @@ def _sld_png_for_report(ctx: ReportContext) -> bytes | None:
         if png_bytes:
             return png_bytes
     return ctx.sld_pro_png_bytes
+
+
+def _optional_brand_text(value, brand: BrandProfile):
+    if value is None:
+        return None
+    return neutralize_brand_text(value, brand)
+
+
+def _report_context_for_brand(ctx: ReportContext, brand: BrandProfile) -> ReportContext:
+    """Create a customer-visible alias of the run without editing stored data."""
+    if not brand.neutralize_equipment_names:
+        return ctx
+    return replace(
+        ctx,
+        project_name=neutralize_brand_text(
+            ctx.project_name, brand, fallback="Untitled ESS Project"
+        ),
+        case_name=_optional_brand_text(ctx.case_name, brand),
+        ac_block_template_id=neutralize_brand_text(ctx.ac_block_template_id, brand),
+        configuration_code=_optional_brand_text(ctx.configuration_code, brand),
+        layout_variant=_optional_brand_text(ctx.layout_variant, brand),
+        project_code=_optional_brand_text(ctx.project_code, brand),
+        case_code=_optional_brand_text(ctx.case_code, brand),
+        dictionary_version_dc=neutralize_brand_text(ctx.dictionary_version_dc, brand),
+        dictionary_version_ac=neutralize_brand_text(ctx.dictionary_version_ac, brand),
+        dc_blocks_allocation=neutralize_brand_payload(ctx.dc_blocks_allocation, brand),
+        stage1=neutralize_brand_payload(ctx.stage1, brand),
+        stage2=neutralize_brand_payload(ctx.stage2, brand),
+        stage3_df=neutralize_brand_payload(ctx.stage3_df, brand),
+        stage3_meta=neutralize_brand_payload(ctx.stage3_meta, brand),
+        ac_output=neutralize_brand_payload(ctx.ac_output, brand),
+        project_inputs=neutralize_brand_payload(ctx.project_inputs, brand),
+        sld_preview_svg_bytes=(
+            neutralize_svg_visible_text(ctx.sld_preview_svg_bytes, brand)
+            if ctx.sld_preview_svg_bytes
+            else None
+        ),
+        layout_svg_bytes=(
+            neutralize_svg_visible_text(ctx.layout_svg_bytes, brand)
+            if ctx.layout_svg_bytes
+            else None
+        ),
+    )
 
 
 #: Prefixes that identify which figure a read failure belongs to. A message
@@ -899,6 +965,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     if brand is None:
         brand = CALB_BRAND
     require_brand_assets(brand)
+    ctx = _report_context_for_brand(ctx, brand)
 
     doc = Document()
     _setup_margins(doc)
@@ -1488,7 +1555,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     ))
     figure_index = 3  # Figures 1-2 used by Stage 3 milestone + POI charts above
     sld_embedded = False
-    sld_png_bytes = _sld_png_for_report(ctx)
+    sld_png_bytes = _sld_png_for_report(ctx, brand)
     if sld_png_bytes:
         _add_concept_figure(
             doc,
@@ -1599,9 +1666,25 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             "Arrangement rule profile", ARRANGEMENT_PROFILE.market_label))
         _add_table(doc, basis_rows, ["Spacing parameter", "Value & code basis"])
     else:
-        layout_png_bytes = ctx.layout_png_bytes
-        if not layout_png_bytes and ctx.layout_svg_bytes:
-            layout_png_bytes = _svg_bytes_to_png(ctx.layout_svg_bytes)
+        if brand.neutralize_equipment_names:
+            if ctx.layout_svg_bytes:
+                layout_png_bytes = _svg_bytes_to_png(ctx.layout_svg_bytes)
+                if not layout_png_bytes:
+                    raise BrandLeakError(
+                        "White-label report blocked: the brand-safe layout SVG "
+                        "could not be rendered."
+                    )
+            elif ctx.layout_png_bytes:
+                raise BrandLeakError(
+                    "White-label report blocked: this layout has only a raster image. "
+                    "A readable SVG source is required so visible brand text can be audited."
+                )
+            else:
+                layout_png_bytes = None
+        else:
+            layout_png_bytes = ctx.layout_png_bytes
+            if not layout_png_bytes and ctx.layout_svg_bytes:
+                layout_png_bytes = _svg_bytes_to_png(ctx.layout_svg_bytes)
         if layout_png_bytes:
             _add_concept_figure(
                 doc, layout_png_bytes, width=Inches(6.7),
@@ -1807,7 +1890,9 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 for item, value, basis in SITE_PROFILE.basis
             )
             _add_table(doc, site_rows, ["Site parameter", "Value & code basis"])
-    return _doc_to_bytes(doc)
+    report_bytes = _doc_to_bytes(doc)
+    assert_brand_clean_docx(report_bytes, brand)
+    return report_bytes
 
 
 export_report_v2 = export_report_v2_1

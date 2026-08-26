@@ -31,10 +31,13 @@ and asserts that no scrub term of one brand leaks into the other.
 
 from __future__ import annotations
 
+import io
 import re
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Mapping, Optional, Tuple
+from xml.etree import ElementTree as ET
 
 from calb_sizing_tool.config import PROJECT_ROOT
 
@@ -44,6 +47,10 @@ class BrandAssetMissingError(RuntimeError):
 
     White-label exports must never fall back to another brand's assets.
     """
+
+
+class BrandLeakError(RuntimeError):
+    """A white-label export still contains a forbidden brand token."""
 
 
 def _confidentiality_notice(owner: str) -> str:
@@ -153,20 +160,177 @@ def neutralize_equipment_text(value, brand: BrandProfile) -> str:
     'CALB 5MWh 20ft Container - 12 Racks' -> '5MWh 20ft Container - 12 Racks'.
     Returns the original text unchanged for profiles that do not neutralize.
     """
+    return neutralize_brand_text(value, brand, fallback="Unbranded equipment")
+
+
+def _term_pattern(term: str) -> re.Pattern[str]:
+    # ``\b`` does not split ``CALB_5MWh`` because underscore is a word
+    # character. The explicit letter guards cover spaces, underscores and
+    # punctuation while leaving an unrelated word such as ``SCALB`` intact.
+    return re.compile(
+        rf"(?<![A-Za-z]){re.escape(term)}(?![A-Za-z])[ _-]*",
+        flags=re.IGNORECASE,
+    )
+
+
+def _brand_terms_in_text(value: Any, brand: BrandProfile) -> list[str]:
+    text = "" if value is None else str(value)
+    return [term for term in brand.scrub_terms if _term_pattern(term).search(text)]
+
+
+def neutralize_brand_text(
+    value: Any,
+    brand: BrandProfile,
+    *,
+    fallback: str = "Unbranded",
+) -> str:
+    """Return customer-visible text with the other publisher's tokens removed.
+
+    This is an output alias only. It never edits the stored project, case or
+    product identity. If the whole value is a forbidden token, a neutral label
+    is returned instead of reintroducing the original token.
+    """
     if value is None:
         return ""
     original = str(value)
-    text = original
     if not brand.neutralize_equipment_names:
-        return text
+        return original
+    if not _brand_terms_in_text(original, brand):
+        return original
+
+    text = original
     for term in brand.scrub_terms:
-        # \b fails on 'CALB_5MWh' (underscore is a word char), so use explicit
-        # letter lookarounds and swallow trailing separators.
-        text = re.sub(
-            rf"(?<![A-Za-z]){re.escape(term)}(?![A-Za-z])[ _-]*",
-            "",
-            text,
-            flags=re.IGNORECASE,
-        )
+        text = _term_pattern(term).sub("", text)
     cleaned = text.strip(" _-")
-    return cleaned if cleaned else original
+    return cleaned if cleaned else fallback
+
+
+def neutralize_brand_payload(value: Any, brand: BrandProfile) -> Any:
+    """Copy a report payload while neutralizing every customer-visible string."""
+    if not brand.neutralize_equipment_names:
+        return value
+    if isinstance(value, str):
+        return neutralize_brand_text(value, brand)
+    if isinstance(value, Mapping):
+        return {key: neutralize_brand_payload(item, brand) for key, item in value.items()}
+    if isinstance(value, list):
+        return [neutralize_brand_payload(item, brand) for item in value]
+    if isinstance(value, tuple):
+        return tuple(neutralize_brand_payload(item, brand) for item in value)
+    if isinstance(value, set):
+        return {neutralize_brand_payload(item, brand) for item in value}
+
+    # Stage 2/3 tables are pandas objects, but keep this module import-light and
+    # detect them locally. Only string cells are aliases; numeric engineering
+    # values and dtypes remain unchanged.
+    try:
+        import pandas as pd
+
+        if isinstance(value, pd.DataFrame):
+            result = value.copy(deep=True)
+            for column in result.columns:
+                result[column] = result[column].map(
+                    lambda item: neutralize_brand_text(item, brand)
+                    if isinstance(item, str)
+                    else item
+                )
+            return result
+        if isinstance(value, pd.Series):
+            return value.map(
+                lambda item: neutralize_brand_text(item, brand)
+                if isinstance(item, str)
+                else item
+            )
+    except ImportError:
+        pass
+    return value
+
+
+_HUMAN_XML_ATTRIBUTES = {
+    "alt",
+    "description",
+    "descr",
+    "label",
+    "name",
+    "title",
+}
+
+
+def neutralize_svg_visible_text(svg_bytes: bytes, brand: BrandProfile) -> bytes:
+    """Neutralize visible SVG text before a white-label figure is rasterized."""
+    if not brand.neutralize_equipment_names:
+        return svg_bytes
+    try:
+        root = ET.fromstring(svg_bytes)
+    except (ET.ParseError, ValueError) as exc:
+        raise BrandLeakError(
+            f"Brand-safe export requires a readable SVG source ({exc})."
+        ) from exc
+
+    for element in root.iter():
+        local_tag = element.tag.rsplit("}", 1)[-1].lower()
+        # CSS selectors and script identifiers are implementation details, not
+        # customer-visible copy. Rewriting them can disconnect a selector from
+        # its class/id and damage the figure.
+        if element.text and local_tag not in {"style", "script"}:
+            element.text = neutralize_brand_text(element.text, brand)
+        if element.tail:
+            element.tail = neutralize_brand_text(element.tail, brand, fallback="")
+        for attr_name, attr_value in list(element.attrib.items()):
+            local_name = attr_name.rsplit("}", 1)[-1].lower()
+            if local_name in _HUMAN_XML_ATTRIBUTES:
+                element.attrib[attr_name] = neutralize_brand_text(attr_value, brand)
+    return ET.tostring(root, encoding="utf-8")
+
+
+def assert_brand_clean_docx(report_bytes: bytes, brand: BrandProfile) -> None:
+    """Fail closed if a generated DOCX still exposes another publisher brand.
+
+    Every textual OOXML/SVG part is parsed so body copy, headers, footers,
+    document properties and accessibility labels are covered without mistaking
+    relationship IDs or internal element IDs for visible branding. Raster
+    figures are controlled earlier by requiring and sanitizing their SVG source.
+    """
+    if not brand.neutralize_equipment_names or not brand.scrub_terms:
+        return
+
+    leaks: list[str] = []
+    try:
+        with zipfile.ZipFile(io.BytesIO(report_bytes)) as archive:
+            for name in archive.namelist():
+                if not name.lower().endswith((".xml", ".rels", ".svg")):
+                    continue
+                payload = archive.read(name)
+                try:
+                    root = ET.fromstring(payload)
+                except ET.ParseError:
+                    text_values = [payload.decode("utf-8", errors="replace")]
+                else:
+                    text_values = []
+                    for element in root.iter():
+                        local_tag = element.tag.rsplit("}", 1)[-1].lower()
+                        if element.text and local_tag not in {"style", "script"}:
+                            text_values.append(element.text)
+                        if element.tail:
+                            text_values.append(element.tail)
+                        for attr_name, attr_value in element.attrib.items():
+                            local_name = attr_name.rsplit("}", 1)[-1].lower()
+                            if local_name in _HUMAN_XML_ATTRIBUTES:
+                                text_values.append(attr_value)
+                for text_value in text_values:
+                    for term in _brand_terms_in_text(text_value, brand):
+                        leaks.append(f"{name}: {term}")
+                        if len(leaks) >= 5:
+                            break
+                    if len(leaks) >= 5:
+                        break
+                if len(leaks) >= 5:
+                    break
+    except (zipfile.BadZipFile, OSError) as exc:
+        raise BrandLeakError(f"Generated report package could not be audited ({exc}).") from exc
+
+    if leaks:
+        raise BrandLeakError(
+            "White-label report blocked because forbidden brand text remains: "
+            + "; ".join(leaks)
+        )
