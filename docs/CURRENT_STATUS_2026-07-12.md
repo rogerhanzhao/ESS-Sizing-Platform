@@ -398,6 +398,12 @@ seams; maintenance should exploit them instead of scanning everything.
 
 ### 4.1b Data model — owner rulings 2026-08-04
 
+2026-10-13 addition to the Web UI / data-review domain: the existing admin
+Degradation page calls `ui/supplier_degradation_preview.py`; its read-only
+parser is `services/supplier_degradation_service.py`. It retains supplier
+SOC/Power Rate labels, source-cell provenance, missing years and source hash.
+It does not publish curves, replace SOH/RTE master data or change sizing.
+
 **Project → Case → Run**, and what each layer means:
 
 | Layer | Meaning | Mutability |

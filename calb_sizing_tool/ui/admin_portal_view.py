@@ -1165,6 +1165,9 @@ def _section_assets(service: ProductAdminService, snapshot: dict[str, Any]) -> N
 def _section_degradation(service: ProductAdminService, snapshot: dict[str, Any]) -> None:
     st.subheader("Degradation Library")
     st.caption("SoH vs cycle/calendar curves under specific operating conditions.")
+    with st.expander("Supplier workbook review", expanded=False):
+        from calb_sizing_tool.ui.supplier_degradation_preview import render_supplier_degradation_preview
+        render_supplier_degradation_preview()
 
     render_static_table(
         _rows(
