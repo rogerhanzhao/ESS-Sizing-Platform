@@ -404,6 +404,16 @@ parser is `services/supplier_degradation_service.py`. It retains supplier
 SOC/Power Rate labels, source-cell provenance, missing years and source hash.
 It does not publish curves, replace SOH/RTE master data or change sizing.
 
+2026-10-13 candidate-persistence extension (owner requested): the same UI uses
+`services/supplier_degradation_library_service.py` to save/reopen immutable
+source versions in `infra/db/models/supplier_degradation_import.py`, migration
+`20261013_0010`. Original XLSX bytes, normalized source curves, hash, actor and
+audit are stored atomically; duplicate file hashes reuse the existing version.
+Review exports contain annual CSV matrices, source-point provenance, conditional
+duty timing checks and a source note. This responsibility belongs to admin data
+management / Platform, never Stage 1/2/3. Candidate-only DB constraint and no
+activation API keep the existing SOH/RTE and sizing selection untouched.
+
 **Project → Case → Run**, and what each layer means:
 
 | Layer | Meaning | Mutability |

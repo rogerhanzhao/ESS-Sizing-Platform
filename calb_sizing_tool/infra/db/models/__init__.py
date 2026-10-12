@@ -29,8 +29,10 @@ from calb_sizing_tool.infra.db.models.soh_profile import SohProfile
 from calb_sizing_tool.infra.db.models.user_account import UserAccount
 from calb_sizing_tool.infra.db.models.user_role_binding import UserRoleBinding
 from calb_sizing_tool.infra.db.models.layout_review import LayoutReview
+from calb_sizing_tool.infra.db.models.supplier_degradation_import import SupplierDegradationImport
 
 __all__ = [
+    "SupplierDegradationImport",
     "ArtifactRegistry",
     "AuditLog",
     "BatteryCellType",
