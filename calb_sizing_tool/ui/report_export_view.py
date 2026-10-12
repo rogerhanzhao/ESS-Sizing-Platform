@@ -135,6 +135,13 @@ def _resolve_report_ac_snapshot(
     )
 
 
+def _log_figure_resolution(kind, png, svg, failures, *, dc_run_id, artifact_run_id):
+    status = "read_failed" if failures else ("available" if png or svg else "unavailable")
+    log = _log.warning if status != "available" else _log.info
+    log("Report figure: kind=%s status=%s dc_run=%s artifact_run=%s details=%s",
+        kind, status, dc_run_id, artifact_run_id, failures or [])
+
+
 def show():
     from calb_sizing_tool.state.auth_state import get_auth_context, clear_auth_context
     _auth = get_auth_context()
@@ -240,8 +247,8 @@ def show():
             sld_svg, _err = retry_read(candidate.read_bytes)
             if _err is not None:
                 sld_read_failures.append(f"{candidate.name} could not be read ({_err})")
-    if sld_png is None:
-        _log.warning("SLD: no image resolved from any source")
+    _log_figure_resolution("SLD", sld_png, sld_svg, sld_read_failures,
+                           dc_run_id=_dc_run_id, artifact_run_id=_active_run_id)
 
     # --- Layout bytes: same DB-first priority chain ---
     layout_png = layout_svg = None
@@ -286,8 +293,8 @@ def show():
         candidate = outputs_dir / "layout_latest.svg"
         if candidate.exists():
             layout_svg = candidate.read_bytes()
-    if layout_png is None:
-        _log.warning("Layout: no image resolved from any source")
+    _log_figure_resolution("Layout", layout_png, layout_svg, layout_read_failures,
+                           dc_run_id=_dc_run_id, artifact_run_id=_active_run_id)
 
     # Write resolved bytes back into the artifacts dict so build_report_context() picks them up
     if sld_png:
@@ -398,18 +405,24 @@ def show():
     elif sld_read_failures:
         rc3.warning("!  SLD (exists, could not be read)")
     else:
-        rc3.info("○  SLD (not generated)")
+        rc3.info("○  SLD (no available image)")
     if layout_png or layout_svg:
         rc4.success("✓  Typical AC Block Arrangement (Concept Only)")
     elif layout_read_failures:
         rc4.warning("!  Layout (exists, could not be read)")
     else:
-        rc4.info("○  Layout (not generated)")
+        rc4.info("○  Layout (no available image)")
+    if not (sld_png or sld_svg) or not (layout_png or layout_svg):
+        st.caption(
+            "No available image can mean it has not been generated for the selected configuration "
+            "or is no longer retained. Check the SLD and arrangement pages for this selection. "
+            "Read failures are listed separately below."
+        )
     read_failures = sld_read_failures + layout_read_failures
     if read_failures:
         st.warning(
-            "A stored figure could not be read after retrying. It has NOT been lost — "
-            "regenerating is not the fix. Retry the export, and if it persists check "
+            "A stored figure could not be read after retrying. Its availability has not been confirmed. "
+            "Retry the export, and if it persists check "
             "the outputs directory and the run registry:\n\n"
             + "\n".join(f"- {message}" for message in read_failures[:5])
         )

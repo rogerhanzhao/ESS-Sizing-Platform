@@ -95,3 +95,27 @@ def test_run_restore_from_history(sample_excel_path, tmp_path):
     assert restored.stage3.meta.dc_usable_cod_mwh == snapshot.stage3.meta.dc_usable_cod_mwh
     assert restored.poi_usable_energy_mwh_at_guarantee_year == snapshot.poi_usable_energy_mwh_at_guarantee_year
     assert restored.iteration_count == snapshot.iteration_count
+
+    # A newer AC alternative must not replace its parent in either DC-history
+    # surface. Production used to feed this AC payload into Stage1Result.
+    import pytest
+    from calb_sizing_tool.services.auth_service import AuthUser
+    from calb_sizing_tool.services.access_control_service import AccessControlService
+    from calb_sizing_tool.services.run_restore_service import RunRestoreError
+    from calb_sizing_tool.schemas.run_snapshot import RunOutputSnapshotSchema
+
+    user = AuthUser(user_id="test-admin", username="admin", display_name="Admin", roles=["admin"])
+    with session_scope(db_url) as session:
+        repo = RunRepository(session)
+        child = repo.create_run(project_id=project_id, sizing_case_id=sizing_case_id,
+                                run_type="ac_sizing", status="succeeded", parent_run_id=run_id)
+        session.flush()
+        child_id = child.sizing_run_id
+        repo.add_output_snapshot(child_id, RunOutputSnapshotSchema(snapshot_kind="ac_sizing_output", payload={"num_blocks": 4}))
+    with session_scope(db_url) as session:
+        access = AccessControlService(session, user)
+        assert access.list_runs_by_case(sizing_case_id)[0].sizing_run_id == child_id
+        assert [r.sizing_run_id for r in access.list_dc_runs_by_case(sizing_case_id)] == [run_id]
+    with pytest.raises(RunRestoreError, match="Select a DC sizing run"):
+        load_dc_run_bundle(child_id, db_url=db_url)
+    assert load_dc_run_bundle(run_id, db_url=db_url).snapshot.stage1 == restored.stage1

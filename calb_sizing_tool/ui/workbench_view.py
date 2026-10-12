@@ -3,6 +3,7 @@ from __future__ import annotations
 from html import escape
 
 import streamlit as st
+from calb_sizing_tool.services.run_restore_service import RunRestoreError
 from sqlalchemy.exc import IntegrityError
 
 from calb_sizing_tool.domain.enums import StageScope
@@ -369,8 +370,12 @@ def _onboarding_aside_html(title: str, copy: str) -> str:
 
 
 def _restore_run(run_id: str, auth_user) -> None:
-    with session_scope() as session:
-        bundle = AccessControlService(session, auth_user).load_dc_run_bundle(run_id)
+    try:
+        with session_scope() as session:
+            bundle = AccessControlService(session, auth_user).load_dc_run_bundle(run_id)
+    except (RunRestoreError, PermissionError) as exc:
+        st.error(str(exc))
+        return
     if not bundle:
         st.error("Run not found.")
         return
@@ -428,7 +433,7 @@ def _load_runs(auth_user, case_id: str | None) -> list[dict]:
                     "margin_mwh": (r.output_summary_json or {}).get("margin_mwh"),
                     "converged": (r.output_summary_json or {}).get("converged"),
                 }
-                for r in access.list_runs_by_case(case_id)
+                for r in access.list_dc_runs_by_case(case_id)
             ]
         except PermissionError:
             return []

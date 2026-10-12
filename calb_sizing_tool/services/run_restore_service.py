@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import ValidationError
+
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.repositories.run_repository import RunRepository
 from calb_sizing_tool.schemas.run_bundle import DcRunBundle
@@ -9,6 +11,10 @@ from calb_sizing_tool.schemas.run_snapshot import DcPipelineRunSnapshot, RunInpu
 from calb_sizing_tool.schemas.stage1 import Stage1Result
 from calb_sizing_tool.schemas.stage2 import Stage2Result
 from calb_sizing_tool.schemas.stage3 import Stage3Result
+
+
+class RunRestoreError(ValueError):
+    """A saved run cannot be restored through the DC history workflow."""
 
 
 def _build_snapshot_from_payload(payload: dict[str, Any]) -> DcPipelineRunSnapshot:
@@ -34,13 +40,24 @@ def load_dc_run_bundle(run_id: str, *, db_url: str | None = None) -> DcRunBundle
             return None
 
         run = bundle.get("run")
+        if getattr(run, "run_type", None) != "dc_pipeline":
+            raise RunRestoreError(
+                "Select a DC sizing run to restore. AC alternatives are available after restoring their DC run."
+            )
         sizing_case = bundle.get("case")
         project = bundle.get("project")
         input_snapshot = bundle.get("input_snapshot")
         output_snapshot = bundle.get("output_snapshot")
 
-        output_payload = output_snapshot.snapshot_json if output_snapshot else {}
-        snapshot = _build_snapshot_from_payload(output_payload)
+        if output_snapshot is None or output_snapshot.snapshot_kind != "dc_pipeline_output":
+            raise RunRestoreError("This run has no saved DC result. Select another DC sizing run.")
+        output_payload = output_snapshot.snapshot_json
+        try:
+            snapshot = _build_snapshot_from_payload(output_payload)
+        except (ValidationError, TypeError, AttributeError) as exc:
+            raise RunRestoreError(
+                "This saved DC result is incomplete and cannot be restored. Select another run or contact support."
+            ) from exc
         input_schema = (
             RunInputSnapshotSchema(
                 snapshot_kind=input_snapshot.snapshot_kind,

@@ -156,3 +156,34 @@ def test_duplicate_case_is_rejected_without_a_technical_exception(monkeypatch):
     assert [item.value for item in app.error] == [
         "A case with the same name already exists in this project."
     ]
+
+
+def _restore_rejected_app():
+    import streamlit as st
+    from calb_sizing_tool.ui import workbench_view
+    if st.button("Restore Latest Run"):
+        workbench_view._restore_run("ac-child", None)
+
+
+def test_restore_error_keeps_workbench_alive(monkeypatch):
+    from contextlib import contextmanager
+    from calb_sizing_tool.ui import workbench_view
+    from calb_sizing_tool.services.run_restore_service import RunRestoreError
+
+    @contextmanager
+    def session():
+        yield object()
+
+    class Access:
+        def __init__(self, *_args):
+            pass
+
+        def load_dc_run_bundle(self, _run_id):
+            raise RunRestoreError("Select a DC sizing run to restore.")
+
+    monkeypatch.setattr(workbench_view, "session_scope", session)
+    monkeypatch.setattr(workbench_view, "AccessControlService", Access)
+    app = AppTest.from_function(_restore_rejected_app).run()
+    app.button[0].click().run()
+    assert not app.exception
+    assert app.error[0].value == "Select a DC sizing run to restore."

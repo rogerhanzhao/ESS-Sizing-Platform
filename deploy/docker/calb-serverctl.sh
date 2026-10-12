@@ -171,6 +171,16 @@ ensure_git_clean() {
   fi
 }
 
+preserve_recovery_point() {
+  load_env
+  local container_id image_id
+  container_id="$(docker ps --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME:-$DEFAULT_PROJECT_NAME}" --filter label=com.docker.compose.service=app --quiet)"
+  [ -z "$container_id" ] && return 0
+  python3 "${REPO_ROOT}/deploy/docker/calb_backup.py" --label predeploy
+  image_id="$(docker inspect --format '{{.Image}}' "$container_id")"
+  docker tag "$image_id" "${CALB_IMAGE_NAME:-calb-sizingtool}:rollback-previous"
+}
+
 update_repo() {
   require_command git
   if [ ! -d "${REPO_ROOT}/.git" ]; then
@@ -239,6 +249,7 @@ print_ngrok_url() {
 case "$ACTION" in
   start)
     ensure_runtime_dirs
+    preserve_recovery_point
     compose up -d --build
     print_internal_urls
     compose ps
@@ -249,6 +260,7 @@ case "$ACTION" in
     ;;
   restart)
     ensure_runtime_dirs
+    preserve_recovery_point
     compose up -d --build
     print_internal_urls
     compose ps
@@ -277,6 +289,7 @@ case "$ACTION" in
     print_internal_urls
     ;;
   update)
+    preserve_recovery_point
     update_repo "$TARGET_BRANCH"
     ensure_runtime_dirs
     compose up -d --build

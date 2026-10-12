@@ -5,6 +5,7 @@ import streamlit as st
 
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.services.access_control_service import AccessControlService
+from calb_sizing_tool.services.run_restore_service import RunRestoreError
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import init_project_state
 from calb_sizing_tool.state.workspace_state import (
@@ -57,7 +58,7 @@ def show() -> None:
                     "input_summary_json": r.input_summary_json or {},
                     "output_summary_json": r.output_summary_json or {},
                 }
-                for r in access.list_runs_by_case(case_id)
+                for r in access.list_dc_runs_by_case(case_id)
             ]
         except PermissionError:
             st.error("You do not have access to this case.")
@@ -118,6 +119,9 @@ def show() -> None:
                         bundle = access.load_dc_run_bundle(run["sizing_run_id"])
                     except PermissionError:
                         st.error("You do not have access to this run.")
+                        return
+                    except RunRestoreError as exc:
+                        st.error(str(exc))
                         return
                 if not bundle:
                     st.error("Run not found.")

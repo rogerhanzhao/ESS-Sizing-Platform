@@ -48,6 +48,10 @@ class AccessControlService:
         self.ensure_project_access(sizing_case.project_id)
         return self.run_repo.list_runs_by_case(sizing_case_id)
 
+    def list_dc_runs_by_case(self, sizing_case_id: str):
+        """Only DC parent runs can be restored by the DC history surfaces."""
+        return [run for run in self.list_runs_by_case(sizing_case_id) if run.run_type == "dc_pipeline"]
+
     def load_dc_run_bundle(self, run_id: str) -> DcRunBundle | None:
         bundle = self.run_repo.get_run_bundle(run_id)
         if bundle is None:

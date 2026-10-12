@@ -89,6 +89,7 @@ cleanup_old_calb_images() {
   local image_name="${CALB_IMAGE_NAME:-$DEFAULT_IMAGE_NAME}"
   local running_container_id
   local running_image_id=""
+  local protected_ids=""
 
   running_container_id="$(docker ps \
     --filter "label=com.docker.compose.project=${project_name}" \
@@ -99,10 +100,14 @@ cleanup_old_calb_images() {
     running_image_id="$(docker inspect --format '{{.Image}}' "$running_container_id")"
   fi
 
-  mapfile -t image_ids < <(docker images "$image_name" --format '{{.ID}}' | awk '!seen[$0]++')
+  # Use full IDs on BOTH sides. Explicit rollback tags survive cleanup even
+  # when another unprotected tag names the same image.
+  protected_ids="$(docker images "$image_name" --no-trunc --format '{{.ID}} {{.Tag}}' | awk '$2 ~ /^rollback-/ {print $1}')"
+  mapfile -t image_ids < <(docker images "$image_name" --no-trunc --format '{{.ID}}' | awk '!seen[$0]++')
   for image_id in "${image_ids[@]}"; do
     [ -z "$image_id" ] && continue
     [ "$image_id" = "$running_image_id" ] && continue
+    if grep -Fxq "$image_id" <<< "$protected_ids"; then continue; fi
     echo "Removing unused CALB image ${image_id}"
     docker image rm "$image_id" >/dev/null 2>&1 || true
   done
@@ -124,6 +129,10 @@ maybe_vacuum_global_journal() {
 main() {
   require_command docker
   load_env
+
+  # A failed backup stops cleanup. Never expire the only recoverable copy.
+  require_command python3
+  python3 "${REPO_ROOT}/deploy/docker/calb_backup.py" --label scheduled
 
   cleanup_database_retention
   cleanup_outputs
