@@ -409,8 +409,10 @@ It does not publish curves, replace SOH/RTE master data or change sizing.
 source versions in `infra/db/models/supplier_degradation_import.py`, migration
 `20261013_0010`. Original XLSX bytes, normalized source curves, hash, actor and
 audit are stored atomically; duplicate file hashes reuse the existing version.
-Review exports contain annual CSV matrices, source-point provenance, conditional
-duty timing checks and a source note. This responsibility belongs to admin data
+Review exports now use `services/supplier_degradation_export_service.py` for
+formatted XLSX: annual tables with 0.00% number formats, charts, separate common
+and extended cases, source-point detail and conditional duty timing checks.
+Long IDs stay in the database, not the presentation workbook. This responsibility belongs to admin data
 management / Platform, never Stage 1/2/3. Candidate-only DB constraint and no
 activation API keep the existing SOH/RTE and sizing selection untouched.
 

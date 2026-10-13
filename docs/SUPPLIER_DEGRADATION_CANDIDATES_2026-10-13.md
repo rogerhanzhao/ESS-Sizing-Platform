@@ -12,11 +12,18 @@ of the currently plotted subset. The same file is idempotent by SHA-256; changed
 bytes create a separate immutable candidate. A renamed identical file reuses the
 first import's provenance. Refresh/new sessions reopen via **Review source**.
 
-Download the unchanged original XLSX, all-curves review ZIP, or the selected
-cases ZIP. Each ZIP contains `annual_retention.csv`, `source_points.csv`,
-`duty_review.csv`, and `README.json`. CSV uses UTF-8 BOM for Excel and explicit
-percentage units (100 means 100%). Blank source points remain missing; the
-annual matrix uses N/A. Exported source text is escaped against Excel formulas.
+Download all-curves or selected-case formatted XLSX. Both use the same exporter,
+with a linked contents page, annual tables alongside editable charts, separate
+SOC/series and common/extended worksheets, annual detail and duty review tables.
+SOC50 appears first; Power Rate 0.25/0.33/0.5 with <=2 cycles/day is the common
+presentation group, not a confirmation of feasible operation. Rates have separate
+printable sections. 0.1 and >2/day remain available in extended worksheets.
+Retention and SOC use numeric fractions with `0.00%` display (0.7899 = 78.99%).
+Missing points stay N/A; charts do not extend missing checkpoints. Long hashes,
+import IDs and actor IDs are not exported. Source sheet/cell references remain
+in the detailed analysis worksheet. Text is explicitly stored as text, never a
+spreadsheet formula. The unchanged supplier original remains in a separately
+labelled source-verification expander; it is not a formatted presentation export.
 
 ## Storage and activation boundary
 
@@ -38,13 +45,20 @@ This change does not implement that mapping or relax the frozen canon.
 
 ## Validation
 
-Compile check passed; full suite 772 passed. Candidate/parser/frozen targeted
-checks: 17 passed. Real `app.py` AppTest with a production database copy and the
+Compile check passed; full suite 774 passed (235.12 s). Export/library/parser
+targeted checks: 12 passed; frozen guards are included in the full suite.
+Real `app.py` AppTest with a production database copy and the
 original supplier XLSX passed save + fresh-session reopen: 160 curves, 965 missing
 points, original-byte equality, unchanged active-table counts (12 SOH profiles,
 252 SOH points, 3 RTE profiles, 57 RTE bands, 12 catalogue degradation records).
 The browser-based AC smoke script could not run because Playwright was missing;
 AppTest verification is not a substitute for a completed human browser test.
+
+Formatted XLSX examples were also generated from the saved Supplier-2026.10
+source (160 curves, 4,160 annual positions, 965 missing points). All numeric
+retention cells have `0.00%` format, no source/import/actor hashes are exported,
+and chart references preserve source values and gaps. Cell-style/chart-data
+layout projections were visually inspected; this is not native Excel rendering.
 
 The timing table assumes 100% cycle depth, equal compatible nominal rates and
 two 30-minute rests. Its result is a conditional arithmetic screen, not verified

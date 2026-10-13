@@ -1,14 +1,12 @@
 """Supplier curve review on the existing admin Degradation page."""
 from __future__ import annotations
 
-import csv
-from io import StringIO
-
 import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
 from calb_sizing_tool.services.supplier_degradation_service import parse_supplier_degradation
-from calb_sizing_tool.services.supplier_degradation_library_service import SupplierDegradationLibraryService, review_attachment
+from calb_sizing_tool.services.supplier_degradation_library_service import SupplierDegradationLibraryService
+from calb_sizing_tool.services.supplier_degradation_export_service import export_supplier_review_workbook
 from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.ui._ui import render_static_table
 from calb_sizing_tool.utils.files import upload_exceeds_limit
@@ -17,6 +15,11 @@ from calb_sizing_tool.utils.files import upload_exceeds_limit
 @st.cache_data(max_entries=4, show_spinner=False)
 def _parse(data):
     return parse_supplier_degradation(data)
+
+
+@st.cache_data(max_entries=8, show_spinner=False)
+def _export(dataset, curves=None, metadata=None):
+    return export_supplier_review_workbook(dataset, curves, metadata)
 
 
 def render_supplier_degradation_preview(db_url=None):
@@ -35,13 +38,12 @@ def render_supplier_degradation_preview(db_url=None):
             st.warning("Candidate storage is unavailable. Complete the database migration before saving; upload preview remains available.")
     if versions:
         render_static_table([{"Version": v["version_label"], "File": v["filename"], "Status": v["status"],
-            "Curves": v["curve_count"], "Missing points": v["missing_points"], "Imported at (UTC)": v["created_at"],
-            "SHA-256": v["source_sha256"]} for v in versions])
+            "Curves": v["curve_count"], "Missing points": v["missing_points"], "Imported at (UTC)": v["created_at"][:16].replace("T", " ")} for v in versions])
     else:
         st.caption("No saved candidate versions.")
     options = {v["import_id"]: v for v in versions}
     source = st.selectbox("Review source", ["upload", *options],
-        format_func=lambda key: "New upload / preview" if key == "upload" else f'{options[key]["version_label"]} · {options[key]["source_sha256"][:12]}',
+        format_func=lambda key: "New upload / preview" if key == "upload" else f'{options[key]["version_label"]} · {options[key]["created_at"][:16].replace("T", " ")}',
         key="supplier_curve_review_source")
     metadata = None
     if source != "upload":
@@ -51,8 +53,10 @@ def render_supplier_degradation_preview(db_url=None):
             st.error(str(exc))
             return
         st.success(f'Saved candidate: {metadata["version_label"]}. Not activated for sizing.')
-        st.download_button("Download original supplier workbook", original, file_name=metadata["filename"],
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="supplier_curve_original")
+        with st.expander("Original source file — unchanged supplier format", expanded=False):
+            st.caption("For source verification only. Use the formatted Excel exports below for reading and analysis.")
+            st.download_button("Download original supplier workbook", original, file_name=metadata["filename"],
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="supplier_curve_original")
         _render_dataset(dataset, metadata)
         return
     upload = st.file_uploader("Supplier degradation workbook", type=["xlsx"], key="supplier_curve_preview_upload")
@@ -85,10 +89,10 @@ def render_supplier_degradation_preview(db_url=None):
 
 def _render_dataset(dataset, metadata=None):
     st.info(("Saved candidate only. " if metadata else "Preview only. ") + "SOC is reproduced as a source label; its standby/window meaning and the Power Rate definition are unconfirmed. These values have not been applied to sizing or a system warranty.")
-    st.caption(f"{len(dataset.curves)} source curves · SHA-256 {dataset.source_sha256}")
-    st.download_button("Download all curves and review tables (ZIP)", review_attachment(dataset, metadata=metadata),
-        file_name=f"CALB_candidate_all_{dataset.source_sha256[:12]}.zip", mime="application/zip", key="supplier_curve_all_export")
-    st.caption("ZIP contains annual tables, original cell references, duty checks and source notes. CSV tables open in Excel; all curves include both series and extended frequencies.")
+    st.caption(f"{len(dataset.curves)} source curves. Source provenance is retained in the database.")
+    st.download_button("Download all curves — formatted Excel", _export(dataset, metadata=metadata),
+        file_name="CALB_Capacity_Retention_All.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="supplier_curve_all_export")
+    st.caption("Excel includes annual percentage tables and charts. SOC50 is listed first; common and extended cases are on separate worksheets. Missing supplier values remain N/A.")
     if not dataset.rte_numeric_values or not dataset.calendar_numeric_values:
         st.caption("This workbook has no numeric RTE data or no separate calendar-aging table. Existing platform RTE data are not replaced; the source's calendar-aging treatment remains unconfirmed.")
     basis = st.selectbox("Source series", ["lower_limit", "mean"], format_func=lambda v: {"lower_limit": "Lower limit", "mean": "Mean"}[v], key="supplier_curve_basis")
@@ -104,8 +108,9 @@ def _render_dataset(dataset, metadata=None):
     if not curves:
         st.info("Select at least one daily frequency.")
         return
-    st.download_button("Download selected curves and review tables (ZIP)", review_attachment(dataset, curves, metadata),
-        file_name=f"CALB_candidate_selected_{dataset.source_sha256[:12]}.zip", mime="application/zip", key="supplier_curve_selected_export")
+    st.download_button("Download selected curves — formatted Excel", _export(dataset, tuple(curves), metadata),
+        file_name=f"CALB_Capacity_Retention_SOC{soc:g}_{'Lower' if basis == 'lower_limit' else 'Mean'}_Rate{rate:g}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="supplier_curve_selected_export")
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(figsize=(8, 3.6))
     for curve in curves:
@@ -128,10 +133,3 @@ def _render_dataset(dataset, metadata=None):
         if hours > 24:
             st.warning(f"{curve.cycles_per_day:g} cycles/day would need {hours:.2f} h/day at 100% depth, equal charge/discharge rates and two 30-minute rests per cycle. That assumed schedule does not fit 24 hours.")
     st.caption("The timing screen assumes Power Rate is a compatible nominal charge/discharge rate; the supplier has not confirmed that basis or actual cycle depth. Calendar and cycling losses are not recombined here.")
-    csv_text = StringIO()
-    writer = csv.writer(csv_text)
-    writer.writerow(["source_sha256", "sheet", "source_soc_pct", "source_power_rate", "cycles_per_day", "year", "retention_pct", "source_cell"])
-    for c in curves:
-        for year, value, cell in zip(c.years, c.retention_pct, c.source_cells):
-            writer.writerow([dataset.source_sha256, c.sheet, c.soc_pct, c.power_rate, c.cycles_per_day, year, value if value is not None else "", cell])
-    st.download_button("Download selected reference data (CSV)", csv_text.getvalue().encode("utf-8-sig"), file_name="supplier_degradation_reference.csv", mime="text/csv", key="supplier_curve_csv")

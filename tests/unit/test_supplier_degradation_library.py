@@ -1,7 +1,3 @@
-import csv
-from io import BytesIO, StringIO
-import json
-from zipfile import ZipFile
 
 import pytest
 from sqlalchemy import select
@@ -11,7 +7,7 @@ from calb_sizing_tool.infra.db.base import Base
 from calb_sizing_tool.infra.db.models import AuditLog, SupplierDegradationImport, SohProfile, DegradationCurve
 from calb_sizing_tool.infra.db.session import create_engine_for_url, session_scope
 from calb_sizing_tool.services.auth_service import AuthService
-from calb_sizing_tool.services.supplier_degradation_library_service import SupplierDegradationLibraryService, review_attachment
+from calb_sizing_tool.services.supplier_degradation_library_service import SupplierDegradationLibraryService
 from test_supplier_degradation_preview import workbook_bytes
 
 
@@ -63,23 +59,6 @@ def test_non_admin_cannot_save_read_or_export_source(library):
             action()
 
 
-def test_exports_reconcile_values_units_missing_cells_and_series(library):
-    service, user = library
-    row, _ = service.save_candidate(workbook_bytes(), 'supplier.xlsx', 'v1', user.user_id)
-    metadata, dataset, _ = service.load_version(row['import_id'], user.user_id)
-    with ZipFile(BytesIO(review_attachment(dataset, metadata=metadata))) as archive:
-        assert set(archive.namelist()) == {'annual_retention.csv', 'source_points.csv', 'duty_review.csv', 'README.json'}
-        points = list(csv.DictReader(StringIO(archive.read('source_points.csv').decode('utf-8-sig'))))
-        assert len(points) == 6
-        assert {p['source_series'] for p in points} == {'mean', 'lower_limit'}
-        lower = [p for p in points if p['source_series'] == 'lower_limit']
-        assert [p['retention_pct'] for p in lower] == ['100.0', '93.0', '']
-        assert lower[-1]['source_cell'] == 'C7' and lower[-1]['value_status'] == 'missing'
-        assert 'N/A' in archive.read('annual_retention.csv').decode('utf-8-sig')
-        assert json.loads(archive.read('README.json'))['source_sha256'] == dataset.source_sha256
-    with ZipFile(BytesIO(review_attachment(dataset, [dataset.curves[0]]))) as archive:
-        assert json.loads(archive.read('README.json'))['exported_curves'] == 1
-
 
 def test_source_checksum_failure_is_explicit(library):
     service, user = library
@@ -126,5 +105,5 @@ def test_page_save_then_reopen_in_new_session_without_upload(library, monkeypatc
     assert any('Saved candidate' in x.value for x in fresh.success)
     labels = [x.label for x in fresh.get('download_button')]
     assert 'Download original supplier workbook' in labels
-    assert 'Download all curves and review tables (ZIP)' in labels
+    assert 'Download all curves — formatted Excel' in labels
     assert any('93.00%' in x.value and 'N/A' in x.value for x in fresh.markdown)

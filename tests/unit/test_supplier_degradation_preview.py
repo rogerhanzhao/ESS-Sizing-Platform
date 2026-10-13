@@ -74,4 +74,4 @@ def test_preview_renders_source_curves_and_preserves_missing_values_without_data
     assert any('N/A' in item.value and '93.00%' in item.value for item in app.markdown)
     assert any('Preview only' in item.value for item in app.info)
     assert len(app.get('imgs')) or len(app.get('image'))
-    assert any('Download selected reference data' in item.label for item in app.get('download_button'))
+    assert any('Download selected curves — formatted Excel' in item.label for item in app.get('download_button'))

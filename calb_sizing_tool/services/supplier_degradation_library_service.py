@@ -1,10 +1,6 @@
 """Candidate import, provenance and review exports; no active SOH writes."""
 from dataclasses import asdict
 from hashlib import sha256
-from io import BytesIO, StringIO
-import csv
-import json
-from zipfile import ZipFile, ZIP_DEFLATED
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -91,46 +87,3 @@ class SupplierDegradationLibraryService:
             if dataset != parse_supplier_degradation(raw):
                 raise ValueError("Stored curve data do not match the original workbook.")
             return _summary(row), dataset, raw
-
-
-def _csv(rows):
-    output = StringIO(newline="")
-    writer = csv.writer(output)
-    for row in rows:
-        # Supplier sheet/file text remains inert when opened in Excel.
-        writer.writerow([("'" + v) if isinstance(v, str) and v.startswith(("=", "+", "-", "@", "\t", "\r")) else v for v in row])
-    return output.getvalue().encode("utf-8-sig")
-
-
-def review_attachment(dataset, curves=None, metadata=None):
-    """Excel-readable CSV bundle: annual matrix, point provenance and duty screen."""
-    curves = tuple(dataset.curves if curves is None else curves)
-    if not curves:
-        raise ValueError("Select at least one source curve.")
-    years = sorted({y for c in curves for y in c.years})
-    prefix = ["source_sha256", "source_sheet", "source_series", "source_SOC_label_pct", "source_Power_Rate", "cycles_per_day"]
-    annual = [prefix + [f"Year {y} retention_pct" for y in years]]
-    points = [prefix + ["year", "retention_pct", "source_cell", "value_status"]]
-    duties = [prefix + ["last_source_year", "missing_points", "assumed_hours_per_day", "assumed_24h_screen", "source_issues"]]
-    for c in curves:
-        identity = [dataset.source_sha256, c.sheet, c.basis, c.soc_pct, c.power_rate, c.cycles_per_day]
-        values = dict(zip(c.years, c.retention_pct))
-        annual.append(identity + [values.get(y) if values.get(y) is not None else "N/A" for y in years])
-        for y, v, cell in zip(c.years, c.retention_pct, c.source_cells):
-            points.append(identity + [y, v if v is not None else "", cell, "source_value" if v is not None else "missing"])
-        hours = c.cycles_per_day * (2 / c.power_rate + 1)
-        duties.append(identity + [c.last_supported_year, sum(v is None for v in c.retention_pct), hours,
-                      "exceeds_24h" if hours > 24 else "fits_assumptions_only", " | ".join(c.issues)])
-    info = {**(metadata or {}), "source_sha256": dataset.source_sha256, "exported_curves": len(curves),
-            "capacity_unit": "percent: 100 means 100%", "status": "candidate/reference; not active for sizing",
-            "SOC": "source label only; standby SOC versus cycling window unconfirmed; not relabelled as DOD",
-            "series": "Mean and Lower limit are supplier sheet labels; statistical and warranty meaning unconfirmed",
-            "time_screen": "Assumes 100% cycle depth, equal nominal charge/discharge rate and two 30-minute rests per cycle. This is not confirmed duty feasibility.",
-            "missing_values": "N/A in annual matrix, empty retention_pct with missing status in points; no interpolation or extrapolation",
-            "calendar_and_RTE": "No recombination or replacement of platform data", "parser_version": "supplier_v1"}
-    output = BytesIO()
-    with ZipFile(output, "w", ZIP_DEFLATED) as archive:
-        for name, rows in [("annual_retention.csv", annual), ("source_points.csv", points), ("duty_review.csv", duties)]:
-            archive.writestr(name, _csv(rows))
-        archive.writestr("README.json", json.dumps(info, ensure_ascii=False, indent=2))
-    return output.getvalue()
