@@ -4,11 +4,13 @@ from __future__ import annotations
 import hashlib
 import io
 import mimetypes
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 import streamlit as st
+from sqlalchemy.exc import IntegrityError
 
 from calb_sizing_tool.services.auth_service import AuthService
 from calb_sizing_tool.services.product_admin_service import ProductAdminService
@@ -162,6 +164,16 @@ def _render_admin_css() -> None:
     )
 
 
+@contextmanager
+def _friendly_duplicate_save():
+    try:
+        yield
+    except IntegrityError as exc:
+        if "UNIQUE constraint failed" not in str(exc.orig):
+            raise
+        st.error("A record with this code already exists. Open the existing record to edit it, or enter a different code.")
+
+
 def show() -> None:
     auth_context = get_auth_context()
     if auth_context is None or not auth_context.is_admin:
@@ -189,7 +201,7 @@ def show() -> None:
             )
         selected = next(name for name, label in _SECTIONS if label == selected_label)
 
-    with content_col:
+    with content_col, _friendly_duplicate_save():
         if selected == "Overview":
             _section_overview(snapshot)
         elif selected == "Cell Products":
