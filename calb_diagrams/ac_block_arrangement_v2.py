@@ -48,6 +48,8 @@ from the same viewpoint. Do not fork a private copy.
 
 from __future__ import annotations
 
+import textwrap
+
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 from xml.sax.saxutils import escape as _xml_escape
@@ -456,6 +458,12 @@ def render_plan_svg(dc_count: int,
     margin_l, margin_r = 70.0, 40.0
     margin_t, margin_b = 64.0, 96.0
     width = margin_l + (layout.envelope_w_m + 1.2) * s + margin_r
+    heading = block_label + f"  ·  {profile.market_label}"
+    heading_lines = textwrap.wrap(
+        heading, width=max(1, int((width - margin_l - margin_r - 8) / (13 * 0.65))),
+    ) or [""]
+    # Extend only the page header, never the physical arrangement dimensions.
+    margin_t += 18.0 * (len(heading_lines) - 1)
     depth_m = layout.envelope_d_m
     height = margin_t + (depth_m + 1.2) * s + margin_b
 
@@ -506,8 +514,9 @@ def render_plan_svg(dc_count: int,
     # would otherwise carry its label a full 3 m off centre.
     _text(parts, mv_x + layout.station_length_m * s / 2, mv_y - 10,
           "PCS & MV STATION", size=12)
-    _text(parts, margin_l + 4, 30, block_label + f"  ·  {profile.market_label}",
-          size=13, anchor="start")
+    for line_index, line in enumerate(heading_lines):
+        _text(parts, margin_l + 4, 30 + 18 * line_index, line,
+              size=13, anchor="start")
     _text(parts, margin_l + 4, height - 16,
           "CONCEPT ONLY — NOT FOR CONSTRUCTION", size=10.5, anchor="start",
           weight=600, fill="#5b6367")
