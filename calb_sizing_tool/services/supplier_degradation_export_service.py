@@ -4,6 +4,7 @@ from io import BytesIO
 
 from openpyxl import Workbook
 from openpyxl.chart import ScatterChart, Series, Reference
+from openpyxl.chart.data_source import NumData, NumVal
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.worksheet.pagebreak import Break
 from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -46,7 +47,6 @@ def _note(sheet, row, text, last=15, height=28):
 def _setup(sheet, *, last="O", landscape=True):
     sheet.sheet_view.showGridLines = False
     sheet.sheet_view.zoomScale = 90
-    sheet.freeze_panes = "B7"
     sheet.sheet_properties.pageSetUpPr.fitToPage = True
     sheet.page_setup.orientation = "landscape" if landscape else "portrait"
     sheet.page_setup.paperSize = sheet.PAPERSIZE_A4
@@ -71,6 +71,7 @@ def _common(curve):
 def _curve_sheet(book, name, curves, *, extended=False):
     sheet = book.create_sheet(name)
     _setup(sheet)
+    sheet.freeze_panes = "B7"
     if extended:
         sheet.sheet_properties.tabColor = "C38B32"
     grouped = defaultdict(list)
@@ -123,6 +124,12 @@ def _curve_sheet(book, name, curves, *, extended=False):
         xref = Reference(sheet, min_col=1, min_row=first, max_row=last)
         for col, c in enumerate(cases, 2):
             series = Series(Reference(sheet, min_col=col, min_row=first, max_row=last), xref, title=f"{c.cycles_per_day:g} cycle{'s' if c.cycles_per_day != 1 else ''}/day")
+            # Native Excel can render immediately, without recalculating refs.
+            series.xVal.numRef.numCache = NumData(formatCode="0", ptCount=len(years),
+                pt=[NumVal(idx=i, v=y) for i, y in enumerate(years)])
+            source_values = dict(zip(c.years, c.retention_pct))
+            series.yVal.numRef.numCache = NumData(formatCode=PERCENT, ptCount=len(years),
+                pt=[NumVal(idx=i, v=source_values[y] / 100) for i, y in enumerate(years) if source_values.get(y) is not None])
             series.graphicalProperties.line.solidFill = COLORS[(col - 2) % len(COLORS)]
             series.graphicalProperties.line.width = 24000
             series.marker.symbol = "none"
