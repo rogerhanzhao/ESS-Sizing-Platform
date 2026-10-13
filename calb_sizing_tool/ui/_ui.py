@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from html import escape
+from uuid import UUID
 from typing import Any, Iterable
 
 import pandas as pd
@@ -66,7 +67,14 @@ def workspace_status_bar(items: Iterable[tuple[str, object]]) -> None:
     """Render a compact label/value workspace status strip."""
     cells: list[str] = []
     for label, value in items:
-        value_text = "None" if value in (None, "") else str(value)
+        value_text = "Not selected" if value in (None, "", "None") else str(value)
+        if label == "Run" and value_text != "Not selected":
+            try:
+                UUID(value_text)
+            except (ValueError, TypeError):
+                pass
+            else:
+                value_text = f"Run · {value_text[-8:]}"
         cells.append(
             '<div class="calb-status-cell">'
             f'<span class="calb-status-label">{escape(str(label))}</span>'

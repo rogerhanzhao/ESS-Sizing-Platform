@@ -125,7 +125,7 @@ def show() -> None:
         c1, c2, c3 = st.columns(3)
         c1.metric("Settings Source", _source_label(source))
         c2.metric("MV Voltage Basis", f"{mv_nominal_voltage_kv:.1f} kV" if mv_nominal_voltage_kv else "Unavailable")
-        c3.metric("Case", case_info["case_code"])
+        c3.metric("Case", case_info["case_name"])
         if source == "legacy_case_json":
             st.warning(
                 "This case is still reading legacy JSON settings. Saving from this page will move the active settings "

@@ -71,18 +71,19 @@ def show() -> None:
     ])
     render_static_table(df)
 
-    case_options = [c["case_name"] for c in cases]
+    case_map = {c["sizing_case_id"]: c for c in cases}
+    case_options = list(case_map)
     active_index = next(
         (i for i, c in enumerate(cases) if c["sizing_case_id"] == active_case_id),
         0,
     )
-    selected_name = st.selectbox(
+    selected_id = st.selectbox(
         "Select case to open",
         case_options,
         index=active_index,
-        label_visibility="collapsed",
+        format_func=lambda cid: f"{case_map[cid]['case_name']} · {case_map[cid]['case_code']}",
     )
-    selected = next(c for c in cases if c["case_name"] == selected_name)
+    selected = case_map[selected_id]
     is_active = selected["sizing_case_id"] == active_case_id
     if st.button("Open Case", disabled=is_active, use_container_width=True):
         set_active_case(

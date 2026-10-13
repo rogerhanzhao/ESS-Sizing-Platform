@@ -771,7 +771,7 @@ def _run_registry_table_html(rows: list[dict[str, str]]) -> str:
     selector below. Keeping its rendering outside ``st.dataframe`` prevents a
     native PyArrow failure from terminating every Streamlit session.
     """
-    columns = ("Run", "Power", "Energy", "Scenario", "OK", "Status")
+    columns = ("Run", "Power", "Energy", "Scenario", "OK", "Current selection")
     header_html = "".join(f"<th>{escape(column)}</th>" for column in columns)
     body_html = "".join(
         "<tr>"
@@ -810,7 +810,7 @@ def _render_run_registry(runs: list[dict], context: dict, auth_user) -> None:
                 "Energy": _fmt_value(item["poi_energy_req_mwh"], " MWh"),
                 "Scenario": scenario_str,
                 "OK": "Yes" if item["converged"] else "No",
-                "Status": "Active" if is_active_run else "Not selected",
+                "Current selection": "Selected" if is_active_run else "—",
             }
         )
         options[label] = item["sizing_run_id"]

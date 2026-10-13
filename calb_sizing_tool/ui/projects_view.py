@@ -41,6 +41,23 @@ def show() -> None:
             navigate_now("Workbench")
         return
 
+    project_map = {p["project_id"]: p for p in projects}
+    current_id = st.session_state.get("active_project_id")
+    project_ids = list(project_map)
+    selected_id = st.selectbox(
+        "Select project to open", project_ids,
+        index=project_ids.index(current_id) if current_id in project_ids else 0,
+        format_func=lambda pid: f"{project_map[pid]['project_name']} 路 {project_map[pid]['project_code']}",
+    )
+    selected = project_map[selected_id]
+    if st.button("Open Project", use_container_width=True):
+        set_active_project(
+            project_id=selected["project_id"],
+            project_code=selected["project_code"],
+            project_name=selected["project_name"],
+        )
+        navigate_now("Workbench")
+
     df = pd.DataFrame([
         {
             "Project Name": p["project_name"],
@@ -50,14 +67,3 @@ def show() -> None:
         for p in projects
     ])
     render_static_table(df)
-
-    project_names = [p["project_name"] for p in projects]
-    selected_name = st.selectbox("Select project to open", project_names, label_visibility="collapsed")
-    selected = next(p for p in projects if p["project_name"] == selected_name)
-    if st.button("Open Project", use_container_width=True):
-        set_active_project(
-            project_id=selected["project_id"],
-            project_code=selected["project_code"],
-            project_name=selected["project_name"],
-        )
-        navigate_now("Workbench")

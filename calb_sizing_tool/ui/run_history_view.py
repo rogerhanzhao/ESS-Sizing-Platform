@@ -24,6 +24,15 @@ def _run_label(index: int, created_at) -> str:
     return f"#{index}  {ts}"
 
 
+def _display_number(value) -> str:
+    if value is None:
+        return "—"
+    try:
+        return f"{float(value):,.3f}"
+    except (TypeError, ValueError):
+        return "—"
+
+
 def show() -> None:
     init_project_state()
 
@@ -77,11 +86,11 @@ def show() -> None:
         rows.append({
             "Run": label,
             "Scenario": SCENARIO_LABELS.get(inp.get("scenario_id"), inp.get("scenario_id") or "—"),
-            "POI MW": inp.get("poi_power_req_mw") or "—",
-            "POI MWh": inp.get("poi_energy_req_mwh") or "—",
-            "DC Req MWh": summary.get("dc_energy_capacity_required_mwh") or "—",
-            "Guarantee MWh": summary.get("guarantee_year_poi_usable_mwh") or "—",
-            "Margin MWh": summary.get("margin_mwh") or "—",
+            "POI MW": _display_number(inp.get("poi_power_req_mw")),
+            "POI MWh": _display_number(inp.get("poi_energy_req_mwh")),
+            "DC Req MWh": _display_number(summary.get("dc_energy_capacity_required_mwh")),
+            "Guarantee MWh": _display_number(summary.get("guarantee_year_poi_usable_mwh")),
+            "Margin MWh": _display_number(summary.get("margin_mwh")),
             "Converged": "Yes" if summary.get("converged") else "No",
         })
 
