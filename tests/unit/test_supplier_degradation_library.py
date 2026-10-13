@@ -96,11 +96,13 @@ def test_page_save_then_reopen_in_new_session_without_upload(library, monkeypatc
     app.button(key='supplier_curve_save').click().run()
     assert not app.exception
     version = service.list_versions(user.user_id)[0]
+    assert app.selectbox(key='supplier_curve_review_source').value == version['import_id']
     monkeypatch.setattr(st, 'file_uploader', lambda *a, **k: None)
     fresh = AppTest.from_function(_app, default_timeout=30)
     fresh.session_state['auth_context'] = auth
     fresh.run()
-    fresh.selectbox(key='supplier_curve_review_source').select(version['import_id']).run()
+    assert fresh.selectbox(key='supplier_curve_review_source').value == version['import_id']
+    assert fresh.selectbox(key='supplier_curve_soc').options == ['50.00%']
     assert not fresh.exception
     assert any('Saved candidate' in x.value for x in fresh.success)
     labels = [x.label for x in fresh.get('download_button')]

@@ -416,6 +416,12 @@ Long IDs stay in the database, not the presentation workbook. This responsibilit
 management / Platform, never Stage 1/2/3. Candidate-only DB constraint and no
 activation API keep the existing SOH/RTE and sizing selection untouched.
 
+2026-10-13 browser UX follow-up: `UI_REVIEW_2026-10-13.md` records native browser
+observations and scoped fixes in admin / Workbench / app sidebar. Saved source
+versions reopen by default, source filters and percentage display are compact,
+and catalogue/source definitions remain separate. These are presentation and
+session-navigation changes, not active curve selection or sizing parameters.
+
 **Project → Case → Run**, and what each layer means:
 
 | Layer | Meaning | Mutability |

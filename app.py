@@ -151,6 +151,12 @@ with st.sidebar:
         st.session_state.pop("__admin_portal__", None)
         st.rerun()
 
+    if auth_context.is_admin and not _ADMIN_PORTAL_ACTIVE:
+        st.caption("ADMINISTRATION")
+        if st.button("⚙ Product & Database", use_container_width=True):
+            st.session_state["__admin_portal__"] = True
+            st.rerun()
+
     if not auth_context.is_guest:
         workspace_context = get_workspace_context()
         _run_id = workspace_context.get("run_id")
@@ -215,14 +221,6 @@ with st.sidebar:
                 else:
                     if st.button(_page, use_container_width=True, key=f"nav_btn_{_page}"):
                         navigate_now(_page)
-
-    if auth_context.is_admin:
-        st.markdown("---")
-        st.caption("ADMINISTRATION")
-        _admin_btn_label = "← Back to Sizing" if _ADMIN_PORTAL_ACTIVE else "⚙ Product & Database"
-        if not _ADMIN_PORTAL_ACTIVE and st.button("⚙ Product & Database", use_container_width=True):
-            st.session_state["__admin_portal__"] = True
-            st.rerun()
 
     st.markdown("---")
     # The revision moves on every deploy — that is what makes this line usable

@@ -441,7 +441,7 @@ def _load_runs(auth_user, case_id: str | None) -> list[dict]:
 
 def _active_run_label(active_run_id: str | None, runs: list[dict]) -> str:
     if not active_run_id:
-        return "None"
+        return "Not selected"
     for idx, item in enumerate(runs, start=1):
         if item["sizing_run_id"] == active_run_id:
             return _run_label(idx, item["created_at"])
@@ -810,7 +810,7 @@ def _render_run_registry(runs: list[dict], context: dict, auth_user) -> None:
                 "Energy": _fmt_value(item["poi_energy_req_mwh"], " MWh"),
                 "Scenario": scenario_str,
                 "OK": "Yes" if item["converged"] else "No",
-                "Status": "Active" if is_active_run else "",
+                "Status": "Active" if is_active_run else "Not selected",
             }
         )
         options[label] = item["sizing_run_id"]

@@ -75,3 +75,36 @@ def test_preview_renders_source_curves_and_preserves_missing_values_without_data
     assert any('Preview only' in item.value for item in app.info)
     assert len(app.get('imgs')) or len(app.get('image'))
     assert any('Download selected curves — formatted Excel' in item.label for item in app.get('download_button'))
+
+
+def test_extended_frequency_toggle_preserves_common_selection_and_removes_hidden_cases(monkeypatch):
+    import streamlit as st
+    from openpyxl import load_workbook
+    book = load_workbook(BytesIO(workbook_bytes()))
+    for sheet in [s for s in book if s.title.startswith('Degradation')]:
+        sheet['D4'] = 3
+        sheet['D5'] = 1
+        sheet['D6'] = .95 if '均值' in sheet.title else .93
+        sheet['D5'].number_format = sheet['D6'].number_format = '0.00%'
+    output = BytesIO()
+    book.save(output)
+    book.close()
+    data = output.getvalue()
+
+    class Upload:
+        name = 'timing.xlsx'
+        size = len(data)
+        def getvalue(self):
+            return data
+
+    monkeypatch.setattr(st, 'file_uploader', lambda *a, **k: Upload())
+    app = AppTest.from_function(_preview_app, default_timeout=30).run()
+    app.checkbox(key='supplier_curve_extended').set_value(True).run()
+    app.multiselect[0].set_value([1, 3]).run()
+    assert not app.exception
+    assert any('27.00 h/day' in item.value for item in app.warning)
+    app.checkbox(key='supplier_curve_extended').set_value(False).run()
+    assert not app.exception
+    assert app.multiselect[0].value == [1]
+    assert not any('27.00 h/day' in item.value for item in app.warning)
+    assert not any('default value' in item.value for item in app.warning)

@@ -388,7 +388,7 @@ def _render_edit_form(
 
 def _section_overview(snapshot: dict[str, Any]) -> None:
     st.subheader("Overview")
-    st.caption("Phase B product database status.")
+    st.caption("Product catalogue records. Supplier reference versions are listed under Degradation.")
     counts = snapshot["counts"]
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Cell Products", counts["product_cell"])
@@ -396,14 +396,14 @@ def _section_overview(snapshot: dict[str, Any]) -> None:
     c3.metric("AC Block Templates", counts["product_ac_block"])
     c4.metric("Product Assets", counts["product_asset"])
     c5, c6, c7 = st.columns(3)
-    c5.metric("Degradation Curves", counts["degradation_curve"])
-    c6.metric("RTE Curves", counts["rte_curve"])
+    c5.metric("Catalogue Curve Headers", counts["degradation_curve"])
+    c6.metric("Catalogue RTE Records", counts["rte_curve"])
     c7.metric("Plugins", counts["degradation_plugin"])
 
     st.markdown("---")
     st.info(
-        "These Phase B tables are independent from the legacy imported master-data tables. "
-        "They are the maintained source for Admin Portal product records."
+        "These totals describe product catalogue records, not the active sizing SOH/RTE data. "
+        "Saved supplier reference versions are available under Degradation; sizing data are managed under Sizing Data."
     )
 
 
@@ -1164,13 +1164,15 @@ def _section_assets(service: ProductAdminService, snapshot: dict[str, Any]) -> N
 
 def _section_degradation(service: ProductAdminService, snapshot: dict[str, Any]) -> None:
     st.subheader("Degradation Library")
-    st.caption("SoH vs cycle/calendar curves under specific operating conditions.")
-    with st.expander("Supplier curve candidates — import, review & export", expanded=True):
-        from calb_sizing_tool.ui.supplier_degradation_preview import render_supplier_degradation_preview
-        render_supplier_degradation_preview(service.db_url)
+    from calb_sizing_tool.ui.supplier_degradation_preview import render_supplier_degradation_preview
+    render_supplier_degradation_preview(service.db_url)
+    with st.expander("Catalogue curve headers — separate from sizing SOH data", expanded=False):
+        st.caption("These are catalogue header records. Their Enabled flag does not activate a supplier candidate in sizing.")
+        _render_catalogue_degradation(service, snapshot)
 
-    render_static_table(
-        _rows(
+
+def _render_catalogue_degradation(service: ProductAdminService, snapshot: dict[str, Any]) -> None:
+    rows = _rows(
             snapshot["degradation_curves"],
             [
                 ("Code", "curve_code"),
@@ -1183,10 +1185,17 @@ def _section_degradation(service: ProductAdminService, snapshot: dict[str, Any])
                 ("Years", "calendar_years"),
                 ("EOL SoH %", "end_of_life_soh_pct"),
                 ("Source", "source"),
-                ("Active", "is_active"),
+                ("Enabled", "is_active"),
             ],
-        ),
-    )
+        )
+    for row in rows:
+        for label in ("DoD %", "EOL SoH %"):
+            value = row[label]
+            row[label] = f"{value:.2f}%" if isinstance(value, (int, float)) else "N/A"
+        row["Enabled"] = "Yes" if row["Enabled"] else "No"
+        row["Source"] = str(row["Source"] or "—").replace("\\", "/").rsplit("/", 1)[-1]
+        row["Status"] = str(row["Status"] or "—").replace("_", " ")
+    render_static_table(rows)
 
     _render_edit_form(
         service=service,
