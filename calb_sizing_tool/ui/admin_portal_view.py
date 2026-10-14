@@ -1287,22 +1287,25 @@ def _section_rte(service: ProductAdminService, snapshot: dict[str, Any]) -> None
     st.subheader("RTE Library")
     st.caption("Round-trip efficiency by SoC, temperature and C-rate.")
 
-    render_static_table(
-        _rows(
-            snapshot["rte_curves"],
-            [
-                ("Code", "curve_code"),
-                ("Condition", "condition_label"),
-                ("SoC Min %", "soc_min_pct"),
-                ("SoC Max %", "soc_max_pct"),
-                ("Temp C", "temperature_c"),
-                ("C-rate", "c_rate"),
-                ("RTE %", "rte_pct"),
-                ("Source", "source"),
-                ("Active", "is_active"),
-            ],
-        ),
-    )
+    if snapshot["rte_curves"]:
+        render_static_table(
+            _rows(
+                snapshot["rte_curves"],
+                [
+                    ("Code", "curve_code"),
+                    ("Condition", "condition_label"),
+                    ("SoC Min %", "soc_min_pct"),
+                    ("SoC Max %", "soc_max_pct"),
+                    ("Temp C", "temperature_c"),
+                    ("C-rate", "c_rate"),
+                    ("RTE %", "rte_pct"),
+                    ("Source", "source"),
+                    ("Active", "is_active"),
+                ],
+            ),
+        )
+    else:
+        st.info("No RTE catalogue headers registered. Active sizing RTE data is maintained separately under Sizing Data.")
 
     _render_edit_form(
         service=service,
@@ -1365,20 +1368,23 @@ def _section_plugins(service: ProductAdminService, snapshot: dict[str, Any]) -> 
     st.subheader("Plugin Registry")
     st.caption("Reserved mount points for PyBaMM, GitHub or internal degradation simulation plugins.")
 
-    render_static_table(
-        _rows(
-            snapshot["plugins"],
-            [
-                ("Key", "plugin_key"),
-                ("Name", "name"),
-                ("Version", "plugin_version"),
-                ("Entrypoint", "entrypoint"),
-                ("Schema", "schema_version"),
-                ("Status", "status"),
-                ("Enabled", "enabled"),
-            ],
-        ),
-    )
+    if snapshot["plugins"]:
+        render_static_table(
+            _rows(
+                snapshot["plugins"],
+                [
+                    ("Key", "plugin_key"),
+                    ("Name", "name"),
+                    ("Version", "plugin_version"),
+                    ("Entrypoint", "entrypoint"),
+                    ("Schema", "schema_version"),
+                    ("Status", "status"),
+                    ("Enabled", "enabled"),
+                ],
+            ),
+        )
+    else:
+        st.info("No simulation plugins registered. Register a plugin below when one is available.")
 
     _render_edit_form(
         service=service,

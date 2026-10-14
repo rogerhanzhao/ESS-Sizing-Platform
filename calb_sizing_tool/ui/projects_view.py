@@ -47,7 +47,7 @@ def show() -> None:
     selected_id = st.selectbox(
         "Select project to open", project_ids,
         index=project_ids.index(current_id) if current_id in project_ids else 0,
-        format_func=lambda pid: f"{project_map[pid]['project_name']} 路 {project_map[pid]['project_code']}",
+        format_func=lambda pid: f"{project_map[pid]['project_name']} | {project_map[pid]['project_code']}",
     )
     selected = project_map[selected_id]
     if st.button("Open Project", use_container_width=True):

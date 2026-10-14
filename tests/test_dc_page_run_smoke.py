@@ -138,3 +138,17 @@ def test_a_rejected_run_does_not_consume_a_run_id(signed_in_workspace):
     assert _dc_run_id(app) == before, (
         "a rejected submission consumed a DC run id"
     )
+
+
+def test_restored_ac_capacity_uses_dc_nameplate_not_poi_energy(signed_in_workspace):
+    sized = _run_sizing(signed_in_workspace())
+    restored = signed_in_workspace()
+    restored.session_state["active_run_id"] = _dc_run_id(sized)
+    restored.session_state["main_nav"] = "AC Sizing"
+    restored = restored.run()
+    assert not restored.exception
+    summary = _state(restored, "dc_result_summary")
+    nameplate = summary["dc_nameplate_bol_mwh"]
+    assert nameplate != summary["mwh"], "fixture must distinguish installed and POI energy"
+    capacity = next(metric for metric in restored.metric if metric.label == "DC Capacity")
+    assert capacity.value == f"{nameplate:.1f} MWh"

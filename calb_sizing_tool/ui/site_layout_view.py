@@ -403,13 +403,17 @@ def show() -> None:
                 # The arrangement belongs to the AC alternative it was drawn
                 # from; with none selected this is the DC run, as before.
                 artifact_run_id=artifact_run_id(),
+                persist=not _is_guest,
             )
         except Exception as exc:
             st.error(f"Typical AC Block Arrangement generation failed: {exc}")
             return
 
         st.session_state["layout_artifacts"] = artifact_bundle
-        st.success("Typical AC Block Arrangement generated and registered as CONCEPT ONLY.")
+        st.success(
+            "Concept arrangement generated for this session only; it is not saved to the database."
+            if _is_guest else "Typical AC Block Arrangement generated and registered as CONCEPT ONLY."
+        )
 
     artifact_bundle = st.session_state.get("layout_artifacts")
     if artifact_bundle:

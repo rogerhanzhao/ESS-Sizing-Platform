@@ -372,7 +372,9 @@ def show():
     dc_container_count = int(dc_data.get("container_count", 0) or 0)
     dc_cabinet_count = int(dc_data.get("cabinet_count", 0) or 0)
     dc_total_blocks_hint = int(dc_data.get("total_blocks", 0) or 0)
-    dc_total_mwh_hint = float(dc_data.get("mwh", 0.0) or 0.0)
+    # Restored summaries retain mwh as the POI target for compatibility.
+    # Use the persisted DC nameplate for allocation and energy validation.
+    dc_total_mwh_hint = float(dc_data.get("dc_nameplate_bol_mwh") or dc_data.get("mwh", 0.0) or 0.0)
 
     mv_kv_value = _resolve_mv_kv(stage13_output, ac_inputs)
     st.session_state["grid_kv"] = mv_kv_value

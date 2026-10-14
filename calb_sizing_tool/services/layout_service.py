@@ -25,6 +25,7 @@ def render_layout_from_run_bundle(
     actor: str | None = None,
     db_url: str | None = None,
     artifact_run_id: str | None = None,
+    persist: bool = True,
 ) -> LayoutArtifactBundle:
     registry = get_plugin_registry()
     plugin = registry.get(plugin_id)
@@ -48,15 +49,16 @@ def render_layout_from_run_bundle(
 
     # The arrangement belongs to the AC alternative it was drawn from, when one
     # is selected; otherwise it stays on the DC run.
-    persist_artifacts(
-        run_id=str(artifact_run_id or "").strip() or run_bundle.run_id,
-        artifacts=artifacts,
-        plugin_id=plugin.metadata.plugin_id,
-        plugin_version=plugin.metadata.plugin_version,
-        actor=actor,
-        db_url=db_url,
-        source_ref="layout_service",
-    )
+    if persist:
+        persist_artifacts(
+            run_id=str(artifact_run_id or "").strip() or run_bundle.run_id,
+            artifacts=artifacts,
+            plugin_id=plugin.metadata.plugin_id,
+            plugin_version=plugin.metadata.plugin_version,
+            actor=actor,
+            db_url=db_url,
+            source_ref="layout_service",
+        )
 
     return LayoutArtifactBundle(
         plugin_id=plugin.metadata.plugin_id,
