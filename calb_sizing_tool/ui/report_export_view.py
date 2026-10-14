@@ -36,7 +36,7 @@ from calb_sizing_tool.reporting.report_v2 import export_report_v2_1
 from calb_sizing_tool.runtime_paths import get_outputs_dir
 from calb_sizing_tool.state.project_state import get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state
-from calb_sizing_tool.state.workspace_state import artifact_run_id, get_workspace_context
+from calb_sizing_tool.state.workspace_state import artifact_run_id, get_workspace_context, navigate_now
 from calb_sizing_tool.services.sld_data_source_service import AcSnapshotResolution, resolve_preferred_ac_snapshot
 from calb_sizing_tool.services.artifact_service import (
     load_artifact_bytes_with_failures,
@@ -336,6 +336,12 @@ def show():
                 "DC results found but AC sizing is missing. "
                 "Run AC Sizing on this project/case, or restore a run that includes AC results."
             )
+        target = "AC Sizing" if stage13_output else "DC Sizing"
+        first, second = st.columns(2)
+        if first.button(f"Go to {target}", key="report_missing_sizing", use_container_width=True):
+            navigate_now(target)
+        if second.button("Restore a saved run", key="report_restore_run", use_container_width=True):
+            navigate_now("Run Registry")
         return
 
     power_closure_issue = governed_poi_power_closure_issue(ac_output)

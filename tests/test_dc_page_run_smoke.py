@@ -152,3 +152,24 @@ def test_restored_ac_capacity_uses_dc_nameplate_not_poi_energy(signed_in_workspa
     assert nameplate != summary["mwh"], "fixture must distinguish installed and POI energy"
     capacity = next(metric for metric in restored.metric if metric.label == "DC Capacity")
     assert capacity.value == f"{nameplate:.1f} MWh"
+
+
+def test_report_missing_ac_provides_working_navigation(signed_in_workspace):
+    sized = _run_sizing(signed_in_workspace())
+    # Carry actual run results into a fresh page driver; AppTest retains stale
+    # DC widget IDs if its main_nav is reassigned after Run Sizing.
+    restored = _app()
+    for key in ("auth_context", "active_project_id", "active_project_name", "active_case_id",
+                "active_case_name", "active_run_id", "project_state", "stage13_output",
+                "dc_result_summary", "dc_results"):
+        if key in sized.session_state:
+            restored.session_state[key] = sized.session_state[key]
+    restored.session_state["main_nav"] = "Report Export"
+    restored = restored.run()
+    assert not restored.exception
+    button = next(button for button in restored.button if button.label == "Go to AC Sizing")
+    button.click()
+    restored = restored.run()
+    assert not restored.exception
+    assert restored.session_state["main_nav"] == "AC Sizing"
+    assert _state(restored, "dc_result_summary")

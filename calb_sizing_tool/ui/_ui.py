@@ -95,7 +95,7 @@ def compact_note(text: str) -> None:
     )
 
 
-def static_table_html(data: Any) -> str:
+def static_table_html(data: Any, *, nowrap: bool = False) -> str:
     """Return escaped HTML for a non-Arrow static table.
 
     Streamlit's dataframe and table elements serialize through PyArrow.  The
@@ -131,7 +131,7 @@ def static_table_html(data: Any) -> str:
             text = "" if is_missing else str(value)
             cells.append(
                 '<td style="padding:0.4rem 0.65rem; border-bottom:1px solid #e1e8f0; '
-                'vertical-align:top;">'
+                f'vertical-align:top;{" white-space:nowrap;" if nowrap else ""}">'
                 f"{escape(text)}</td>"
             )
         rows_html.append(f"<tr>{''.join(cells)}</tr>")
@@ -148,9 +148,9 @@ def static_table_html(data: Any) -> str:
     )
 
 
-def render_static_table(data: Any) -> None:
+def render_static_table(data: Any, *, nowrap: bool = False) -> None:
     """Render a read-only table without Streamlit's PyArrow serialization."""
-    st.markdown(static_table_html(data), unsafe_allow_html=True)
+    st.markdown(static_table_html(data, nowrap=nowrap), unsafe_allow_html=True)
 
 
 def render_pipeline_next_steps(current_page: str, *, is_guest: bool) -> None:

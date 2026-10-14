@@ -12,6 +12,7 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy.exc import IntegrityError
 
+from calb_sizing_tool.runtime_paths import get_outputs_dir
 from calb_sizing_tool.services.auth_service import AuthService
 from calb_sizing_tool.services.product_admin_service import ProductAdminService
 from calb_sizing_tool.utils.files import (
@@ -24,7 +25,7 @@ from calb_sizing_tool.utils.files import (
 from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.ui._ui import page_header, render_static_table
 
-_ASSET_STORE = Path("var/assets")
+_ASSET_STORE = get_outputs_dir() / "product_assets"
 
 # ── CSV template column definitions ──────────────────────────────────────────
 
@@ -555,11 +556,80 @@ def _section_users_access() -> None:
                         st.rerun()
 
 
+def _render_catalogue_table(rows: list[dict[str, Any]], *, summary_columns: list[str]) -> None:
+    if not rows:
+        st.info("No products registered yet. Add a product below.")
+        return
+    render_static_table([{key: row.get(key) for key in summary_columns} for row in rows], nowrap=True)
+    with st.expander("View all catalogue parameters", expanded=False):
+        render_static_table(rows, nowrap=True)
+
+
+def _managed_asset_path(asset: dict[str, Any]) -> Path | None:
+    """Only expose uploads from the product asset store, never arbitrary paths."""
+    source = str(asset.get("source_path") or "").strip()
+    if not source:
+        return None
+    try:
+        roots = (_ASSET_STORE.resolve(), Path("var/assets").resolve())
+        path = Path(source).resolve()
+        if any(path.is_relative_to(root) for root in roots) and path.is_file():
+            return path
+    except (OSError, ValueError, RuntimeError):
+        pass
+    return None
+
+
+def _asset_attachment_status(asset: dict[str, Any]) -> str:
+    if _managed_asset_path(asset) is not None:
+        return "Uploaded"
+    if asset.get("storage_uri"):
+        return "External reference"
+    if asset.get("file_name"):
+        return "File unavailable"
+    return "Not uploaded"
+
+
+def _render_asset_download(assets: list[dict[str, Any]]) -> None:
+    if not assets:
+        st.info("No product assets registered. Add an asset below.")
+        return
+    by_id = {row["product_asset_id"]: row for row in assets}
+    selected = st.selectbox(
+        "View attachment", list(by_id), key="admin_asset_attachment",
+        format_func=lambda aid: f"{by_id[aid]['title']} | {by_id[aid]['asset_code']}",
+    )
+    asset = by_id[selected]
+    path = _managed_asset_path(asset)
+    if path is None:
+        if _asset_attachment_status(asset) == "Not uploaded":
+            st.info("This record contains a source reference only. No file has been uploaded; add an uploaded asset below to enable download.")
+        else:
+            st.warning("This attachment is not available in the server upload store. Check the source reference or upload the file.")
+        if asset.get("source_path"):
+            st.caption(f"Source reference: {asset['source_path']}")
+        return
+    try:
+        if path.stat().st_size > MAX_UPLOAD_BYTES:
+            st.warning("This file is too large for an interactive download.")
+            return
+        data = path.read_bytes()
+    except OSError:
+        st.warning("The uploaded file could not be read. Check the server file and try again.")
+        return
+    st.download_button(
+        "Download selected attachment", data,
+        file_name=safe_storage_filename(asset.get("file_name") or path.name),
+        mime=asset.get("mime_type") or "application/octet-stream",
+        key="admin_asset_download",
+    )
+
+
 def _section_cell_products(service: ProductAdminService, snapshot: dict[str, Any]) -> None:
     st.subheader("Cell Products")
     st.caption("LFP, NMC and other cell models with electrical, dimensional and density data.")
 
-    render_static_table(
+    _render_catalogue_table(
         _rows(
             snapshot["cells"],
             [
@@ -577,6 +647,7 @@ def _section_cell_products(service: ProductAdminService, snapshot: dict[str, Any
                 ("Active", "is_active"),
             ],
         ),
+        summary_columns=['Code', 'Model', 'Ah', 'Wh', 'Efficiency %', 'Active'],
     )
 
     _render_edit_form(
@@ -701,7 +772,7 @@ def _section_dc_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
     st.subheader("DC Block Templates")
     st.caption("String/rack/container templates linked to maintained cell products.")
 
-    render_static_table(
+    _render_catalogue_table(
         _rows(
             snapshot["dc_blocks"],
             [
@@ -722,6 +793,7 @@ def _section_dc_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
                 ("Active", "is_active"),
             ],
         ),
+        summary_columns=['Code', 'Name', 'Form', 'Gross MWh', 'Published', 'Active'],
     )
 
     _render_edit_form(
@@ -972,7 +1044,7 @@ def _section_ac_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
                 )
                 st.rerun()
 
-    render_static_table(
+    _render_catalogue_table(
         _rows(
             snapshot["ac_blocks"],
             [
@@ -988,6 +1060,7 @@ def _section_ac_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
                 ("Active", "is_active"),
             ],
         ),
+        summary_columns=['Code', 'Name', 'PCS kW', 'PCS Count', 'Transformer kVA', 'Active'],
     )
 
     _render_edit_form(
@@ -1056,20 +1129,18 @@ def _section_assets(service: ProductAdminService, snapshot: dict[str, Any]) -> N
 
     render_static_table(
         _rows(
-            snapshot["assets"],
+            [dict(row, attachment_status=_asset_attachment_status(row)) for row in snapshot["assets"]],
             [
                 ("Code", "asset_code"),
                 ("Owner", "owner_code"),
-                ("Entity", "owner_entity"),
                 ("Kind", "asset_kind"),
                 ("Title", "title"),
-                ("File", "file_name"),
-                ("Proposal Section", "proposal_section"),
-                ("Primary", "is_primary"),
-                ("Published", "is_published"),
+                ("Attachment", "attachment_status"),
             ],
         ),
     )
+
+    _render_asset_download(snapshot["assets"])
 
     _render_edit_form(
         service=service,
@@ -1109,7 +1180,7 @@ def _section_assets(service: ProductAdminService, snapshot: dict[str, Any]) -> N
                 "Upload File (PDF, image, …)",
                 type=["pdf", "png", "jpg", "jpeg", "svg", "xlsx", "docx", "zip"],
                 key="asset_file_upload",
-                help="File is saved to var/assets/ on this server. SHA-256 and MIME auto-filled.",
+                help="File is saved to persistent product-asset storage on this server. SHA-256 and MIME auto-filled.",
             )
             d1, d2 = st.columns(2)
             file_name = d1.text_input("File Name (auto-filled from upload)")
@@ -1142,11 +1213,11 @@ def _section_assets(service: ProductAdminService, snapshot: dict[str, Any]) -> N
                             or uploaded_asset.type
                             or "application/octet-stream"
                         )
-                        _dest_dir = _ASSET_STORE / safe_storage_filename(asset_code.strip(), fallback="asset")
+                        _dest_dir = _ASSET_STORE / safe_storage_filename(asset_code.strip(), fallback="asset") / _sha256
                         _dest_dir.mkdir(parents=True, exist_ok=True)
                         _dest = safe_child_path(_dest_dir, _file_name or uploaded_asset.name)
                         _dest.write_bytes(_raw)
-                        _source_path = _source_path or str(_dest.resolve())
+                        _source_path = str(_dest.resolve())
 
                     service.create_asset(
                         {
@@ -1169,7 +1240,7 @@ def _section_assets(service: ProductAdminService, snapshot: dict[str, Any]) -> N
                     )
                     st.success(
                         "Product asset saved."
-                        + (f" File stored at `{_source_path}`." if uploaded_asset else "")
+                        + (" File is available from View attachment above." if uploaded_asset else "")
                     )
                     _refresh()
 
