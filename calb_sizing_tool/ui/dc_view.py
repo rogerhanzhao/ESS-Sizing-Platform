@@ -693,6 +693,105 @@ def build_report_bytes(stage1: dict, results_dict: dict, report_order: list):
 # ==========================================
 # 6. MAIN VIEW FUNCTION
 # ==========================================
+def _render_dc_configuration_result(res, poi_energy):
+    s2, s3_df, s3_meta, iter_c, poi_g, conv = res
+    if not conv:
+        st.warning(
+            f"NOT CONVERGED: after {iter_c} augmentation iterations this "
+            "configuration still cannot meet the POI requirement at the "
+            "guarantee year. Do not use this result for a proposal — "
+            "review the POI duty, guarantee year, and product selection."
+        )
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Installed DC Nameplate", f"{s2['dc_nameplate_bol_mwh']:.3f} MWh")
+    c2.metric("Container Count", int(s2.get('container_count', 0)))
+    c3.metric("Cabinet Count", int(s2.get('cabinet_count', 0)))
+
+    render_static_table(s2.get("block_config_table"))
+
+    # Render the chart server-side. Streamlit's Altair element sends the
+    # Pandas frame through PyArrow, which has native-crashed in production
+    # and dropped every authenticated session.
+    s3_df_sorted = s3_df.sort_values("Year_Index").reset_index(drop=True)
+    if MATPLOTLIB_AVAILABLE:
+        chart_png = _plot_poi_usable_png(
+            s3_df_sorted,
+            float(poi_energy),
+            "POI Usable Energy by Year",
+        )
+        st.image(chart_png.getvalue(), use_container_width=True)
+    else:
+        st.info("POI usable-energy chart is unavailable because the server chart renderer is not installed.")
+
+    # --- RESTORED YEARLY DATA TABLE ---
+    with st.expander("Show yearly data table", expanded=False):
+        st.markdown(
+            """
+<style>
+/* Yearly table: left-align headers/cells and hide index column */
+div[data-testid="stDataFrame"] div[role="columnheader"],
+div[data-testid="stDataFrame"] div[role="gridcell"],
+div[data-testid="stDataFrame"] div[role="columnheader"] div,
+div[data-testid="stDataFrame"] div[role="gridcell"] div {
+  justify-content: flex-start !important;
+  text-align: left !important;
+}
+div[data-testid="stDataFrame"] div[role="rowheader"] {
+  display: none !important;
+}
+</style>
+""",
+            unsafe_allow_html=True,
+        )
+
+        def _col_or_nan(df: pd.DataFrame, col: str):
+            if col in df.columns:
+                return df[col]
+            return pd.Series([np.nan] * len(df), index=df.index)
+
+        year_series = _col_or_nan(s3_df_sorted, "Year_Index")
+        year_numeric = pd.to_numeric(year_series, errors="coerce")
+        if year_numeric.isna().all():
+            year_numeric = pd.Series(range(len(s3_df_sorted)), index=s3_df_sorted.index)
+
+        def _fmt_bool_text(val):
+            if pd.isna(val):
+                return ""
+            return "Yes" if bool(val) else "No"
+
+        disp_show = pd.DataFrame({
+            "Year": year_numeric.astype("Int64"),
+            "DC Usable (MWh)": pd.to_numeric(_col_or_nan(s3_df_sorted, "DC_Usable_MWh"), errors="coerce").round(3),
+            "POI Usable (MWh)": pd.to_numeric(_col_or_nan(s3_df_sorted, "POI_Usable_Energy_MWh"), errors="coerce").round(3),
+            "DC RTE (%)": pd.to_numeric(_col_or_nan(s3_df_sorted, "DC_RTE_Pct"), errors="coerce").round(3),
+            "System RTE (%)": pd.to_numeric(_col_or_nan(s3_df_sorted, "System_RTE_Pct"), errors="coerce").round(3),
+            "Meets Req?": _col_or_nan(s3_df_sorted, "Meets_POI_Req").apply(_fmt_bool_text),
+            "Guarantee Year": _col_or_nan(s3_df_sorted, "Is_Guarantee_Year").apply(_fmt_bool_text),
+        }).reset_index(drop=True)
+
+        # Read-only table avoids Streamlit's PyArrow serialization path.
+        render_static_table(disp_show)
+    # ----------------------------------
+
+
+
+def _render_dc_technical_export(s1, results, report_order, project_name, *, is_guest):
+    if not DOCX_AVAILABLE:
+        return
+    if is_guest:
+        st.info("Report export requires sign-in. Guest mode — session sizing only.")
+        return
+    report_bytes = build_report_bytes(s1, results, report_order)
+    if report_bytes:
+        st.download_button(
+            "Export Technical Sizing Report", data=report_bytes,
+            file_name=make_report_filename(project_name),
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            on_click="ignore",
+        )
+
+
 def show():
     init_project_state()
     state = init_shared_state()
@@ -1345,84 +1444,7 @@ def show():
                 if isinstance(res, tuple) and res[0] != "ERROR":
                     s2, s3_df, s3_meta, iter_c, poi_g, conv = res
 
-                    if not conv:
-                        st.warning(
-                            f"NOT CONVERGED: after {iter_c} augmentation iterations this "
-                            "configuration still cannot meet the POI requirement at the "
-                            "guarantee year. Do not use this result for a proposal — "
-                            "review the POI duty, guarantee year, and product selection."
-                        )
-
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("Installed DC Nameplate", f"{s2['dc_nameplate_bol_mwh']:.3f} MWh")
-                    c2.metric("Container Count", int(s2.get('container_count', 0)))
-                    c3.metric("Cabinet Count", int(s2.get('cabinet_count', 0)))
-
-                    render_static_table(s2.get("block_config_table"))
-                    
-                    # Render the chart server-side. Streamlit's Altair element sends the
-                    # Pandas frame through PyArrow, which has native-crashed in production
-                    # and dropped every authenticated session.
-                    s3_df_sorted = s3_df.sort_values("Year_Index").reset_index(drop=True)
-                    if MATPLOTLIB_AVAILABLE:
-                        chart_png = _plot_poi_usable_png(
-                            s3_df_sorted,
-                            float(poi_energy),
-                            "POI Usable Energy by Year",
-                        )
-                        st.image(chart_png.getvalue(), use_container_width=True)
-                    else:
-                        st.info("POI usable-energy chart is unavailable because the server chart renderer is not installed.")
-
-                    # --- RESTORED YEARLY DATA TABLE ---
-                    with st.expander("Show yearly data table", expanded=False):
-                        st.markdown(
-                            """
-<style>
-/* Yearly table: left-align headers/cells and hide index column */
-div[data-testid="stDataFrame"] div[role="columnheader"],
-div[data-testid="stDataFrame"] div[role="gridcell"],
-div[data-testid="stDataFrame"] div[role="columnheader"] div,
-div[data-testid="stDataFrame"] div[role="gridcell"] div {
-  justify-content: flex-start !important;
-  text-align: left !important;
-}
-div[data-testid="stDataFrame"] div[role="rowheader"] {
-  display: none !important;
-}
-</style>
-""",
-                            unsafe_allow_html=True,
-                        )
-
-                        def _col_or_nan(df: pd.DataFrame, col: str):
-                            if col in df.columns:
-                                return df[col]
-                            return pd.Series([np.nan] * len(df), index=df.index)
-
-                        year_series = _col_or_nan(s3_df_sorted, "Year_Index")
-                        year_numeric = pd.to_numeric(year_series, errors="coerce")
-                        if year_numeric.isna().all():
-                            year_numeric = pd.Series(range(len(s3_df_sorted)), index=s3_df_sorted.index)
-
-                        def _fmt_bool_text(val):
-                            if pd.isna(val):
-                                return ""
-                            return "Yes" if bool(val) else "No"
-
-                        disp_show = pd.DataFrame({
-                            "Year": year_numeric.astype("Int64"),
-                            "DC Usable (MWh)": pd.to_numeric(_col_or_nan(s3_df_sorted, "DC_Usable_MWh"), errors="coerce").round(3),
-                            "POI Usable (MWh)": pd.to_numeric(_col_or_nan(s3_df_sorted, "POI_Usable_Energy_MWh"), errors="coerce").round(3),
-                            "DC RTE (%)": pd.to_numeric(_col_or_nan(s3_df_sorted, "DC_RTE_Pct"), errors="coerce").round(3),
-                            "System RTE (%)": pd.to_numeric(_col_or_nan(s3_df_sorted, "System_RTE_Pct"), errors="coerce").round(3),
-                            "Meets Req?": _col_or_nan(s3_df_sorted, "Meets_POI_Req").apply(_fmt_bool_text),
-                            "Guarantee Year": _col_or_nan(s3_df_sorted, "Is_Guarantee_Year").apply(_fmt_bool_text),
-                        }).reset_index(drop=True)
-
-                        # Read-only table avoids Streamlit's PyArrow serialization path.
-                        render_static_table(disp_show)
-                    # ----------------------------------
+                    _render_dc_configuration_result(res, poi_energy)
 
                     # Pack data for Session State (For AC/SLD)
                     # We only pack the FIRST valid result as the 'active' one for now, or the user preferred one
@@ -1487,30 +1509,38 @@ div[data-testid="stDataFrame"] div[role="rowheader"] {
 
                 else:
                     st.error(f"Error: {res[1]}")
-        # Export Button
-        if DOCX_AVAILABLE:
-            if auth_context.is_guest:
-                # Build nothing a guest cannot download — the DOCX is the most
-                # expensive thing on the page after sizing itself.
-                st.info("🔒 Report export requires sign-in. Guest mode — session sizing only.", icon=None)
-            else:
-                ok_results = {k: v for k, v in results.items() if v[0] != "ERROR"}
-                report_order = [(k, k.replace("_", " ").title()) for k in modes_to_run if k in ok_results]
-                report_bytes = build_report_bytes(s1, ok_results, report_order)
+        _render_dc_technical_export(s1, ok_results, report_order, project_name, is_guest=auth_context.is_guest)
 
-                if report_bytes:
-                    st.download_button(
-                        "Export Technical Sizing Report",
-                        data=report_bytes,
-                        file_name=make_report_filename(project_name),
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        # A report download must not rerun the page: this view
-                        # renders the detailed DC result only in the Run Sizing
-                        # branch, so Streamlit's default rerun made the result
-                        # appear to disappear immediately after export.
-                        on_click="ignore",
-                    )
-        
+    else:
+        # Read the selected snapshot, never resize or persist a historical run.
+        snapshot = None
+        if auth_context.is_guest:
+            snapshot = st.session_state.get("guest_dc_run_snapshot")
+        elif workspace.get("run_id"):
+            try:
+                with session_scope() as session:
+                    access = AccessControlService(session, auth_user)
+                    bundle = access.load_dc_run_bundle(workspace["run_id"])
+            except PermissionError:
+                bundle = None
+                st.warning("The selected run is not accessible. Restore an accessible run from Run Registry.")
+            if bundle and bundle.project_id == active_project_id and bundle.sizing_case_id == active_case_id:
+                snapshot = bundle.snapshot
+        if snapshot is not None:
+            section_header("Saved DC Results", eyebrow="Result")
+            st.info(
+                f"Showing the selected saved result for {snapshot.stage1.poi_power_req_mw:.3f} MW / "
+                f"{snapshot.stage1.poi_energy_req_mwh:.3f} MWh. Editing the form does not change this result; "
+                "use Run Sizing to calculate a new result."
+            )
+            _render_dc_configuration_result(snapshot_to_legacy_tuple(snapshot), snapshot.stage1.poi_energy_req_mwh)
+            saved_mode = str(snapshot.stage2.mode)
+            _render_dc_technical_export(
+                snapshot.stage1.to_legacy_dict(), {saved_mode: snapshot_to_legacy_tuple(snapshot)},
+                [(saved_mode, saved_mode.replace("_", " ").title())], project_name,
+                is_guest=auth_context.is_guest,
+            )
+
     has_dc_result = bool(st.session_state.get("dc_result_summary") or dc_results.get("dc_result_summary"))
     if has_dc_result:
         st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)

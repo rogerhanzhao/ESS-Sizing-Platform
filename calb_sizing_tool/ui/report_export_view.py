@@ -401,8 +401,14 @@ def show():
         "layout_svg_bytes": layout_svg,
     }
 
-    st.markdown("#### Report Content")
-    st.subheader("Report Content Preview")
+    st.subheader("Selected Run Summary")
+    summary_power, summary_energy = st.columns(2)
+    poi_power = ac_output.get("poi_power_mw")
+    poi_energy = ac_output.get("poi_energy_mwh")
+    summary_power.metric("POI Power Requirement", f"{float(poi_power):.3f} MW" if poi_power is not None else "N/A")
+    summary_energy.metric("POI Energy Requirement", f"{float(poi_energy):.3f} MWh" if poi_energy is not None else "N/A")
+    st.caption("These requirements belong to the selected run; the case name is a user-defined label.")
+    st.subheader("Report Content")
     rc1, rc2, rc3, rc4 = st.columns(4)
     rc1.success("✓  DC Sizing")
     rc2.success("✓  AC Sizing")
@@ -442,7 +448,7 @@ def show():
     active_case_name = workspace.get("case_name")
     active_project_name = workspace.get("project_name")
 
-    with st.expander("Database Provenance", expanded=True):
+    with st.expander("Run references and data sources", expanded=False):
         p1, p2 = st.columns(2)
         with p1:
             st.caption("Project")
@@ -517,7 +523,6 @@ def show():
 
     st.subheader("Downloads")
 
-    st.info("AC Report generation moved to V2.2 format only.")
 
     with st.container(border=True):
         stage2_raw = stage13_output.get("stage2_raw", {})

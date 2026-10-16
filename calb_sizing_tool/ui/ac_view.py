@@ -429,7 +429,7 @@ def show():
             col1.metric("DC Blocks", f"{dc_blocks_total} x 20ft")
         col2.metric("DC Capacity", f"{total_energy_mwh:.1f} MWh")
         col3.metric("POI Power Req.", f"{target_mw:.1f} MW")
-        col4.metric("POI Energy Req.", f"{target_mwh:.0f} MWh")
+        col4.metric("POI Energy Req.", f"{target_mwh:.3f} MWh")
         if dc_cabinet_count > 0:
             compact_note(
                 f"DC side used a hybrid packaging: {dc_container_count} container(s) + "

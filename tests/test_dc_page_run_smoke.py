@@ -173,3 +173,39 @@ def test_report_missing_ac_provides_working_navigation(signed_in_workspace):
     assert not restored.exception
     assert restored.session_state["main_nav"] == "AC Sizing"
     assert _state(restored, "dc_result_summary")
+
+
+def test_saved_dc_result_renders_without_resizing_or_persisting(signed_in_workspace, monkeypatch):
+    sized = _run_sizing(signed_in_workspace())
+    expected = next(metric.value for metric in sized.metric if metric.label == "Installed DC Nameplate")
+    from calb_sizing_tool.ui import dc_view
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Historical display must not calculate or persist")
+    monkeypatch.setattr(dc_view, "service_size_with_guarantee", forbidden)
+    monkeypatch.setattr(dc_view, "persist_dc_run", forbidden)
+    restored = _app()
+    for key in ("auth_context", "active_project_id", "active_project_name", "active_case_id", "active_case_name"):
+        restored.session_state[key] = sized.session_state[key]
+    restored.session_state["active_run_id"] = _dc_run_id(sized)
+    restored.session_state["main_nav"] = "DC Sizing"
+    restored = restored.run()
+    assert not restored.exception
+    assert next(metric.value for metric in restored.metric if metric.label == "Installed DC Nameplate") == expected
+    assert any(button.label == "Export Technical Sizing Report" for button in restored.get("download_button"))
+    assert any("Showing the selected saved result" in str(item.value) for item in restored.info)
+
+
+def test_ac_requirement_keeps_fractional_mwh(signed_in_workspace):
+    app = signed_in_workspace()
+    app.session_state["dc_inputs.poi_power_req_mw"] = 6.7
+    app.session_state["dc_inputs.poi_energy_req_mwh"] = 21.5
+    sized = _run_sizing(app)
+    assert not sized.exception
+    restored = _app()
+    for key in ("auth_context", "active_project_id", "active_project_name", "active_case_id", "active_case_name"):
+        restored.session_state[key] = sized.session_state[key]
+    restored.session_state["active_run_id"] = _dc_run_id(sized)
+    restored.session_state["main_nav"] = "AC Sizing"
+    restored = restored.run()
+    assert not restored.exception
+    assert next(metric.value for metric in restored.metric if metric.label == "POI Energy Req.") == "21.500 MWh"
