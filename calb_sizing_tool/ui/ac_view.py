@@ -227,6 +227,25 @@ def _render_saved_ac_snapshot(ac_output: dict, *, section_header) -> None:
         if model_name:
             st.caption(f"Saved AC Block model: {model_name}")
 
+        # Replay the same existing comparison used when this configuration is
+        # calculated. Reading a saved run must not hide its sizing warnings.
+        try:
+            comparison = {
+                "total_energy_mwh": float(ac_output["dc_total_mwh"]),
+                "target_energy_mwh": float(ac_output["poi_energy_mwh"]),
+                "total_ac_mw": float(ac_output["total_ac_mw"]),
+                "target_power_mw": float(ac_output["poi_power_mw"]),
+            }
+        except (KeyError, TypeError, ValueError):
+            st.caption("This saved record does not include all values needed for the power/energy comparison.")
+        else:
+            if comparison["target_energy_mwh"] > 0 and comparison["target_power_mw"] > 0:
+                errors, warnings = evaluate_ac_sizing_feasibility(**comparison)
+                for message in errors:
+                    st.error(message)
+                for message in warnings:
+                    st.warning(message)
+
 
 def _saved_pcs_choice_index(ac_output: dict | None, recommendations: list) -> int:
     if not isinstance(ac_output, dict):
