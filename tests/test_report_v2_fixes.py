@@ -79,7 +79,7 @@ def test_efficiency_chain_uses_dc_sizing_values():
 
     # Should NOT contain defaults (e.g., "97.00%" for PCS which is a common default)
     # Should contain the efficiency disclaimer about not including Auxiliary
-    assert "do not include Auxiliary losses" in joined, "Report should state that efficiencies exclude Auxiliary"
+    assert "auxiliary consumption is excluded" in joined.lower(), "Report should state that efficiencies exclude auxiliary consumption"
     
     # Verify Efficiency Chain section exists
     assert "Efficiency Chain" in joined

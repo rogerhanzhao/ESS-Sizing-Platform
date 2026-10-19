@@ -152,9 +152,9 @@ def test_the_alternative_is_named_in_the_document(dc_run_with):
     dc, children = dc_run_with(2)
     text = _text(_ctx({"active_run_id": dc, "active_ac_run_id": children[1]}))
     assert "AC Alternative: B" in text, "the cover must say which alternative this is"
-    assert "AC Alternative" in text and children[1] in text, (
-        "provenance must record the AC run the drawings came from"
-    )
+    assert "AC Alternative" in text and children[1] not in text
+    assert "AC run" not in text
+    assert "Document Information" in text and "Saved (database)" not in text
 
 
 def test_an_ordinary_report_gains_no_alternative_wording(dc_run_with):

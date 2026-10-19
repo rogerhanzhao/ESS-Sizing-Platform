@@ -179,8 +179,8 @@ class TestEfficiencyChainSourceOfTruth:
         text = "\n".join([p.text for p in doc.paragraphs])
         
         # Verify disclaimer is present
-        assert "do not include Auxiliary losses" in text, \
-            "Report should contain disclaimer: 'do not include Auxiliary losses'"
+        assert "auxiliary consumption is excluded" in text.lower(), \
+            "Report must clearly state that auxiliary consumption is excluded"
 
 
 class TestACBlockAggregation:
@@ -309,7 +309,7 @@ class TestNoAuxiliaryAssumptions:
             "Report should not estimate Auxiliary losses"
         
         # Should mention exclusion
-        assert "do not include Auxiliary" in text, \
+        assert "auxiliary consumption is excluded" in text.lower(), \
             "Report should explicitly state Auxiliary losses are excluded"
 
 

@@ -63,6 +63,7 @@ from calb_sizing_tool.reporting.brand_profiles import (
 )
 from calb_sizing_tool.reporting.formatter import format_percent, format_value
 from calb_sizing_tool.reporting.report_context import ReportContext, saved_ac_block_rows
+from calb_sizing_tool.reporting.customer_presentation import customer_text, issue_date, quantity_label, spacing_basis_text
 from calb_sizing_tool.services.sld_pipeline_service import scrub_unconfirmed_sld_values
 from calb_sizing_tool.services.ac_mixed_station import summarize_ac_block_rows
 
@@ -282,19 +283,18 @@ def _add_cover_page_v2(doc: Document, ctx: ReportContext, brand: BrandProfile) -
         subtitle.runs[0].font.size = Pt(13)
 
     doc.add_paragraph("")
-    generated = ctx.report_generated_at or datetime.datetime.now().strftime("%Y-%m-%d")
+    generated = issue_date(ctx.report_generated_at)
     info_lines = [
-        f"Project: {ctx.project_name}",
-        f"Case: {ctx.case_name or '—'}",
+        f"Project: {customer_text(ctx.project_name)}",
+        f"Case: {customer_text(ctx.case_name)}",
     ]
     # Only when the DC run carries more than one AC alternative. A single
     # alternative is the normal case and needs no label — printing one would put
     # a meaningless "AC Alternative: A" on every ordinary cover.
     if ctx.ac_alternative_label:
-        info_lines.append(f"AC Alternative: {ctx.ac_alternative_label}")
+        info_lines.append(f"AC Alternative: {customer_text(ctx.ac_alternative_label)}")
     info_lines += [
         f"Date: {generated}",
-        f"Tool Version: {brand.tool_version_label}",
     ]
     info = doc.add_paragraph("\n".join(info_lines))
     info.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -992,12 +992,10 @@ def _missing_figure_note(ctx: ReportContext, absent: str, where: str, *, kind: s
     """
     failures = _read_failures_for(ctx, kind)
     if failures:
-        detail = "; ".join(failures[:3])
         return (
             f"{absent} could not be read when this report was built, so it has been "
             f"omitted — it is NOT missing from the run. Retry the export; if it "
-            f"persists, the stored figure needs attention rather than regenerating. "
-            f"({detail})"
+            f"persists, the stored figure needs attention rather than regenerating."
         )
     return f"{absent} not generated. {where}"
 
@@ -1047,36 +1045,27 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         else "No"
     )
 
-    # --- Document Provenance (DB linkage) ---
+    # Customer document information. Internal linkage stays in ReportContext/DB.
     # _add_cover_page_v2 already ends with a page break; no second break needed here.
-    doc.add_heading("Document Provenance", level=2)
-    dc_source = "Saved (database)" if ctx.run_id else "Live session (unsaved)"
-    ac_source = (
-        "Saved (database)" if ctx.ac_run_id
-        else ("Linked to DC run" if ctx.run_id else "Live session (unsaved)")
-    )
+    doc.add_heading("Document Information", level=2)
     prov_rows = [
-        ("Project", ctx.project_name),
-        ("Case", ctx.case_name or "—"),
-        ("DC Sizing Data", dc_source),
-        ("AC Sizing Data", ac_source),
+        ("Project", customer_text(ctx.project_name)),
+        ("Case", customer_text(ctx.case_name)),
     ]
     # Which AC branch of this DC run the drawings and schedules came from. Shown
     # only when there is something to tell apart (>= 2 alternatives).
     if ctx.ac_alternative_label:
         prov_rows.append((
             "AC Alternative",
-            f"{ctx.ac_alternative_label} (AC run {ctx.ac_alternative_id})"
-            if ctx.ac_alternative_id else ctx.ac_alternative_label,
+            customer_text(ctx.ac_alternative_label),
         ))
     prov_rows.append(
-        ("Report Generated", ctx.report_generated_at or datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+        ("Issue Date", issue_date(ctx.report_generated_at))
     )
     _add_table(doc, prov_rows, ["Field", "Value"])
     if not ctx.run_id:
         doc.add_paragraph(
-            "NOTE: Sizing data has not been saved to the database. "
-            "Save the DC run before issuing this report for full traceability."
+            "Preliminary sizing basis. Confirm the selected inputs and results before formal issue."
         )
 
     # --- Section 1: Executive Summary ---
@@ -1154,8 +1143,8 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     # governed block has a fixed DC count); §9 shows the governed composition.
     if ctx.dc_blocks_allocation and not ctx.configuration_code:
         alloc_parts = [
-            f"{entry.get('dc_blocks_per_ac_block')} DC Blocks per AC Block × "
-            f"{entry.get('ac_blocks_count')} AC Blocks"
+            f"{quantity_label(int(entry.get('dc_blocks_per_ac_block') or 0), 'DC Block')} per AC Block × "
+            f"{quantity_label(int(entry.get('ac_blocks_count') or 0), 'AC Block')}"
             for entry in ctx.dc_blocks_allocation
         ]
         doc.add_paragraph(f"DC-to-AC allocation: {'; '.join(alloc_parts)}.")
@@ -1165,11 +1154,8 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     # Note: POI power/energy/guarantee values are already in Section 1 — not repeated here.
     doc.add_heading("2.  Project Inputs & Assumptions", level=2)
     _keep_next_para(doc.add_paragraph(
-        "Key design parameters assumed in this sizing. "
-        "Efficiency values are one-way (DC → POI). Loss and DoD values exclude auxiliary loads."
-    ))
-    _keep_next_para(doc.add_paragraph(
-        "The listed efficiency values do not include Auxiliary losses; no Auxiliary loss assumption is applied in this report."
+        "The following assumptions define the sizing basis. Efficiency values apply "
+        "to the one-way DC-to-POI path. Auxiliary consumption is excluded."
     ))
     _dod = ctx.stage1.get("dod_frac") if isinstance(ctx.stage1, dict) else None
     _sc = ctx.stage1.get("sc_loss_frac") if isinstance(ctx.stage1, dict) else None
@@ -1462,9 +1448,9 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         s3_columns = [column for column in s3_columns if column in s3_df.columns]
         _add_dataframe_table(doc, s3_df, s3_columns, s3_headers, s3_formatters, keep_together=False)
         doc.add_paragraph(
-            f"Note: the POI energy guarantee is contractually evaluated at Year "
-            f"{int(ctx.poi_guarantee_year or 0)} only; later years are shown for reference "
-            f"and carry no pass/fail meaning."
+            f"The selected POI energy target is assessed at Year "
+            f"{int(ctx.poi_guarantee_year or 0)} only. Other years are projections "
+            f"and are not assessed against this target."
         )
 
     # --- Section 6: Stage 4 - AC Block Sizing ---
@@ -1505,7 +1491,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             from collections import Counter
             grouped = Counter(int(v) for v in pcs_count_by_block)
             pcs_by_block_text = "; ".join(
-                f"{count} PCS × {n_blocks} blocks" for count, n_blocks in sorted(grouped.items(), reverse=True)
+                f"{count} PCS × {quantity_label(n_blocks, 'block')}" for count, n_blocks in sorted(grouped.items(), reverse=True)
             )
 
     # Transformer sizing basis. A governed run's nameplate is an owner-confirmed
@@ -1575,15 +1561,13 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             f"AC combination: {_mixed_composition_text(mixed_schedule)} "
             f"= {_mixed_nameplate_mw(mixed_schedule):.2f} MW installed PCS nameplate. "
             "Head and Tail identify AC Block models, irrespective of the DC equipment form. "
-            "The schedule below lists the actual saved block allocation."
+            "The schedule below shows the selected equipment allocation."
         ))
         _keep_next_para(doc.add_paragraph(
-            "Concept / draft: a mixed station is a manual engineering adjustment. "
-            "Per-model OEM product and transformer data are not individually confirmed — "
-            "each model's transformer rating below is a MW ÷ PF estimate, not a bound "
-            "product nameplate — and the SLD (§7) renders the representative Head AC Block "
-            "fleet only. Confirm each model's product and transformer data before use as a "
-            "formal engineering result."
+            "Concept / draft: transformer ratings are preliminary estimates based on "
+            "PCS power and power factor. Confirm equipment ratings and interfaces "
+            "during detailed design. Section 7 shows the representative Head AC Block "
+            "only; it does not include the Tail AC Blocks."
         ))
         pf = ctx.grid_power_factor if (ctx.grid_power_factor and ctx.grid_power_factor > 0) else None
         schedule_rows = []
@@ -1744,7 +1728,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             f"Concept only. — NOT FOR CONSTRUCTION"
         ))
         figure_index += 1
-        basis_rows = [(item, f"{value} — {basis}")
+        basis_rows = [(item, f"{value} — {spacing_basis_text(basis)}")
                       for item, value, basis in ARRANGEMENT_PROFILE.basis]
         basis_rows.append((
             "Arrangement rule profile", ARRANGEMENT_PROFILE.market_label))
@@ -2008,7 +1992,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                  f"{'mirrored pairs share the MV corridor' if site_layout.block_mirrorable else 'central-station blocks, full aisle between blocks'}"),
             ]
             site_rows.extend(
-                (item, f"{value} — {basis}")
+                (item, f"{value} — {spacing_basis_text(basis)}")
                 for item, value, basis in SITE_PROFILE.basis
             )
             _add_table(doc, site_rows, ["Site parameter", "Value & code basis"])

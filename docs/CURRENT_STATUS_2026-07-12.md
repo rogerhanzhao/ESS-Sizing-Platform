@@ -723,3 +723,13 @@ by the existing container and cabinet report pages. Generation, readiness and
 document provenance remain with their existing services/pages. No new pipeline
 step, sizing responsibility or production release is introduced. See
 `MIXED_AC_REPORT_LOCAL_REVIEW_2026-10-19.md` for validation and remaining limits.
+
+### Customer report readability — 2026-10-19 follow-up
+
+`reporting/customer_presentation.py` owns customer-visible text cleanup, issue-date
+formatting, quantity grammar and removal of internal decision-history wording.
+`reporting/report_v2.py` prints project/case/alternative/date information without
+database run identifiers or storage state. Internal ReportContext and database
+linkage remain unchanged. Customer report prose distinguishes the selected model
+assessment year from a contractual commitment; sizing formulas, input values,
+numeric schedules, drawing engines and alternative selection are unchanged.

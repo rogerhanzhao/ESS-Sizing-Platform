@@ -209,7 +209,7 @@ def test_belize_mixed_allocation_consumes_saved_4_4_2_not_balanced_4_3_3():
     ]
     text = _doc_text(ctx)
     assert "4 DC Blocks per AC Block × 2 AC Blocks" in text
-    assert "2 DC Blocks per AC Block × 1 AC Blocks" in text
+    assert "2 DC Blocks per AC Block × 1 AC Block" in text
     assert "3 DC Blocks per AC Block" not in text
 
 

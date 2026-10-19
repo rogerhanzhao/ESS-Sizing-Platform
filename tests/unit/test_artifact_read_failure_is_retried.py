@@ -228,7 +228,10 @@ def test_the_report_does_not_say_not_generated_when_the_read_failed():
     )
     assert "could not be read" in note
     assert "NOT missing from the run" in note
-    assert "locked" in note, "the reader needs the actual reason"
+    assert "stored figure needs attention" in note
+    assert "/outputs/" not in note and "locked" not in note, (
+        "customer documents must not print internal filesystem or database diagnostics"
+    )
 
 
 def test_the_context_carries_read_failures_from_the_reader(tmp_path, monkeypatch):
@@ -285,7 +288,9 @@ def test_one_figures_failure_never_speaks_for_another():
 
     layout_note = _missing_figure_note(ctx, "Layout", "Generate it.", kind="layout")
     assert "could not be read" in layout_note
-    assert "layout_png" in layout_note
+    assert layout_note.startswith("Layout could not be read")
+    assert "layout_png" not in layout_note and "/out/" not in layout_note
+    assert "locked" in ctx.artifact_read_failures[0], "internal diagnostics must remain available"
 
 
 def test_a_registry_failure_names_no_figure_so_it_counts_for_both():
