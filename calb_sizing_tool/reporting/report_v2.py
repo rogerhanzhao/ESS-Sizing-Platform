@@ -62,8 +62,9 @@ from calb_sizing_tool.reporting.brand_profiles import (
     require_brand_assets,
 )
 from calb_sizing_tool.reporting.formatter import format_percent, format_value
-from calb_sizing_tool.reporting.report_context import ReportContext
+from calb_sizing_tool.reporting.report_context import ReportContext, saved_ac_block_rows
 from calb_sizing_tool.services.sld_pipeline_service import scrub_unconfirmed_sld_values
+from calb_sizing_tool.services.ac_mixed_station import summarize_ac_block_rows
 
 try:
     from matplotlib.figure import Figure
@@ -313,6 +314,43 @@ def _add_cover_page_v2(doc: Document, ctx: ReportContext, brand: BrandProfile) -
     doc.add_page_break()
 
 
+def _manual_mixed_schedule(ctx: ReportContext) -> list[dict]:
+    """Present the persisted per-block composition, including legacy mirrors.
+
+    Governed groups have their own existing report path. Grouping these saved
+    rows changes neither the selected equipment nor its electrical allocation.
+    """
+    ac_output = ctx.ac_output if isinstance(ctx.ac_output, dict) else {}
+    if ac_output.get("governed_groups"):
+        return []
+    rows = saved_ac_block_rows(ac_output)
+    schedule = summarize_ac_block_rows(rows)
+    if len(schedule) <= 1:
+        # Retain older saved schedules when their individual rows are absent.
+        saved = ac_output.get("ac_block_breakdown")
+        if not rows and ac_output.get("ac_block_mixed") and isinstance(saved, list) and len(saved) > 1:
+            return [dict(entry, ac_block_indices=[]) for entry in saved]
+        return []
+    for entry in schedule:
+        entry["ac_block_indices"] = [
+            index for index, row in enumerate(rows, 1)
+            if (row["pcs_count"], row["pcs_kw"]) == (entry["pcs_count"], entry["pcs_kw"])
+        ]
+    return schedule
+
+
+def _mixed_composition_text(schedule: list[dict]) -> str:
+    return " + ".join(
+        f"{int(entry['count'])} × {float(entry['block_mw']):.2f} MW "
+        f"({int(entry['pcs_count'])} × {float(entry['pcs_kw']):.0f} kW PCS per block)"
+        for entry in schedule
+    )
+
+
+def _mixed_nameplate_mw(schedule: list[dict]) -> float:
+    return sum(int(entry["count"]) * float(entry["block_mw"]) for entry in schedule)
+
+
 def _mixed_head_entry(ctx: ReportContext):
     """The Head AC Block model entry of a genuinely mixed station, else None.
 
@@ -321,9 +359,7 @@ def _mixed_head_entry(ctx: ReportContext):
     back to the plain average.
     """
     ac_output = ctx.ac_output if isinstance(ctx.ac_output, dict) else {}
-    if not ac_output.get("ac_block_mixed"):
-        return None
-    breakdown = ac_output.get("ac_block_breakdown")
+    breakdown = _manual_mixed_schedule(ctx)
     if not isinstance(breakdown, list) or len(breakdown) <= 1:
         return None
     return next((entry for entry in breakdown if entry.get("role") == "Head"), breakdown[0])
@@ -391,9 +427,14 @@ def _arrangement_shape(ctx: ReportContext) -> AcBlockShape:
     # §8 draws the head block, whose DC count comes from the mixed-station
     # schedule rather than the allocation row for block 1.
     ac_output = ctx.ac_output if isinstance(ctx.ac_output, dict) else {}
-    head_override = _representative_dc_per_ac(ctx) if _mixed_head_entry(ctx) else None
+    head = _mixed_head_entry(ctx)
+    if head:
+        indices = head.get("ac_block_indices") or [1]
+        return ac_block_shape_from_ac_output(
+            ac_output, int(indices[0]), dc_blocks_override=_representative_dc_per_ac(ctx),
+        )
     return ac_block_shape_from_ac_output(
-        ac_output, 1, dc_blocks_override=head_override,
+        ac_output, 1,
     )
 
 
@@ -966,6 +1007,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         brand = CALB_BRAND
     require_brand_assets(brand)
     ctx = _report_context_for_brand(ctx, brand)
+    mixed_schedule = _manual_mixed_schedule(ctx)
 
     doc = Document()
     _setup_margins(doc)
@@ -1065,6 +1107,15 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 f"{ctx.ac_blocks_total} AC Blocks · {ctx.pcs_modules_total} PCS modules — "
                 f"{_comp} (see Section 9 for the equipment schedule)."
             )
+        elif mixed_schedule:
+            config_para = doc.add_paragraph(
+                f"Configuration: {ctx.dc_blocks_total} DC Blocks "
+                f"({format_value(ctx.dc_total_energy_mwh, 'MWh')} MWh nameplate @BOL) · "
+                f"{ctx.ac_blocks_total} AC Blocks · {ctx.pcs_modules_total} PCS modules. "
+                f"AC combination: {_mixed_composition_text(mixed_schedule)} "
+                f"= {_mixed_nameplate_mw(mixed_schedule):.2f} MW installed PCS nameplate. "
+                "See Section 6.1 for the block allocation."
+            )
         else:
             config_para = doc.add_paragraph(
                 f"Configuration: {ctx.dc_blocks_total} DC Blocks "
@@ -1083,12 +1134,16 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         ("Guarantee Compliance", meets_guarantee),
         ("DC Blocks Total", f"{ctx.dc_blocks_total:d}"),
         ("DC Nameplate Energy @BOL (MWh)", format_value(ctx.dc_total_energy_mwh, "MWh")),
-        ("AC Block Template", _normalize_template_label(ctx.ac_block_template_id)),
+        ("AC Block Combination" if mixed_schedule else "AC Block Template",
+         _mixed_composition_text(mixed_schedule) if mixed_schedule else _normalize_template_label(ctx.ac_block_template_id)),
         ("AC Blocks Total", f"{ctx.ac_blocks_total:d}"),
         ("Total PCS Modules", f"{ctx.pcs_modules_total:d}"),
-        ("Transformer Rating", _format_transformer_rating(ctx.transformer_rating_kva)),
+        ("Transformer Ratings" if mixed_schedule else "Transformer Rating",
+         "Vary by AC Block model; see Section 6.1" if mixed_schedule else _format_transformer_rating(ctx.transformer_rating_kva)),
     ]
-    site_layout = _compute_site_layout(ctx)
+    if mixed_schedule:
+        exec_rows.insert(-1, ("Installed PCS Nameplate (MW)", f"{_mixed_nameplate_mw(mixed_schedule):.2f}"))
+    site_layout = None if mixed_schedule else _compute_site_layout(ctx)
     if site_layout is not None:
         exec_rows.append((
             "Site Envelope (concept)",
@@ -1132,6 +1187,14 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     if _sc_months is not None:
         site_rows.append(("FAT-to-COD Duration", f"{int(round(_sc_months))} months"))
     _add_table(doc, site_rows, ["Parameter", "Value"])
+    if (mixed_schedule and ctx.project_inputs.get("poi_frequency_hz") is None
+            and ctx.project_inputs.get("saved_ac_frequency_hz")):
+        doc.add_paragraph(
+            "POI frequency remains TBD. The selected AC input uses "
+            f"{float(ctx.project_inputs['saved_ac_frequency_hz']):g} Hz, and the saved "
+            "SLD may reflect this assumption. Confirm the project frequency and "
+            "regenerate affected drawings before formal issue."
+        )
 
     # --- Section 3: Stage 1 - DC Energy Sizing ---
     doc.add_page_break()
@@ -1475,24 +1538,29 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         if (is_governed and isinstance(governed_groups, list) and len(governed_groups) > 1)
         else "Transformer Rating (per block)"
     )
+    if mixed_schedule:
+        transformer_rating_label = "Transformer Rating (representative Head model)"
     s4_rows = [
-        ("AC:DC Ratio", ac_ratio or "—"),
-        ("AC Block Template", _normalize_template_label(ctx.ac_block_template_id)),
-        ("AC Block Size (MW)", format_value(ctx.ac_block_size_mw, "MW")),
-        ("PCS per AC Block", f"{ctx.pcs_per_block:d}"),
+        ("DC Blocks per AC Block" if mixed_schedule else "AC:DC Ratio",
+         "Varies by block; see Section 6.1" if mixed_schedule else ac_ratio or "—"),
+        ("Representative Head Model" if mixed_schedule else "AC Block Template", _normalize_template_label(ctx.ac_block_template_id)),
+        ("Representative Head Size (MW)" if mixed_schedule else "AC Block Size (MW)", format_value(ctx.ac_block_size_mw, "MW")),
+        ("PCS per Head AC Block" if mixed_schedule else "PCS per AC Block", f"{ctx.pcs_per_block:d}"),
     ]
     if pcs_by_block_text:
         s4_rows.append(("PCS Count by Block", pcs_by_block_text))
     if ac_pcs_kw:
-        s4_rows.append(("PCS Unit Rating (kW)", f"{float(ac_pcs_kw):.0f} kW"))
+        s4_rows.append(("PCS Unit Rating (Head model)" if mixed_schedule else "PCS Unit Rating (kW)", f"{float(ac_pcs_kw):.0f} kW"))
     s4_rows += [
-        ("Feeders per AC Block", f"{ctx.feeders_per_block:d}"),
+        ("Feeders per Head AC Block" if mixed_schedule else "Feeders per AC Block", f"{ctx.feeders_per_block:d}"),
         ("PCS AC Output Voltage (V_LL)", format_value(ctx.pcs_lv_voltage_v_ll_rms_ac, "V")),
         ("Total AC Blocks", f"{ctx.ac_blocks_total:d}"),
         ("Total PCS Modules", f"{ctx.pcs_modules_total:d}"),
         (transformer_rating_label, _format_transformer_rating(ctx.transformer_rating_kva)),
-        (transformer_basis_label, transformer_formula),
+        ("Transformer Basis (Head model)" if mixed_schedule else transformer_basis_label, transformer_formula),
     ]
+    if mixed_schedule:
+        s4_rows.append(("Installed PCS Nameplate (MW)", f"{_mixed_nameplate_mw(mixed_schedule):.2f}"))
     _add_table(doc, s4_rows, ["Parameter", "Value"])
 
     # Mixed AC Block station: a head AC Block model plus smaller tail model(s).
@@ -1500,20 +1568,14 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     # off the manual per-AC-Block adjustment in AC Sizing. Uniform stations carry
     # a single-entry breakdown, so the schedule is shown only when it adds
     # information (more than one distinct AC Block model).
-    ac_breakdown = (
-        ctx.ac_output.get("ac_block_breakdown") if isinstance(ctx.ac_output, dict) else None
-    )
-    if (
-        isinstance(ctx.ac_output, dict)
-        and ctx.ac_output.get("ac_block_mixed")
-        and isinstance(ac_breakdown, list)
-        and len(ac_breakdown) > 1
-    ):
+    ac_breakdown = mixed_schedule
+    if ac_breakdown:
         doc.add_heading("6.1  Mixed AC Block Station Schedule", level=3)
         _keep_next_para(doc.add_paragraph(
-            "This station mixes AC Block models: a head model covers most DC Blocks "
-            "and smaller tail model(s) cover the remainder — the AC-side counterpart "
-            "of the DC container + cabinet tail in Section 4."
+            f"AC combination: {_mixed_composition_text(mixed_schedule)} "
+            f"= {_mixed_nameplate_mw(mixed_schedule):.2f} MW installed PCS nameplate. "
+            "Head and Tail identify AC Block models, irrespective of the DC equipment form. "
+            "The schedule below lists the actual saved block allocation."
         ))
         _keep_next_para(doc.add_paragraph(
             "Concept / draft: a mixed station is a manual engineering adjustment. "
@@ -1534,22 +1596,44 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 dc_text = f"{int(dc_each)} per block"
             xf = f"{block_mw / pf:.2f} MVA (est.)" if pf else "TBD"
             schedule_rows.append((
-                str(entry.get("role") or "—"),
+                str(entry.get("role") or "—") + " · " + (
+                    ", ".join(f"AC-{index:02d}" for index in entry["ac_block_indices"])
+                    or "block numbers not recorded"
+                ),
                 f"{int(entry.get('count') or 0)}",
                 f"{int(entry.get('pcs_count') or 0)} × {float(entry.get('pcs_kw') or 0):.0f} kW",
-                f"{block_mw:.2f} MW",
-                dc_text,
+                f"{block_mw:.2f} / {block_mw * int(entry['count']):.2f}",
+                f"{dc_text}; {int(entry.get('dc_blocks_total') or 0)} total",
+                f"{int(entry['pcs_count']) * int(entry['count'])}",
                 xf,
             ))
+        schedule_rows.append((
+            "Total", str(sum(int(e["count"]) for e in ac_breakdown)), "—",
+            f"— / {_mixed_nameplate_mw(mixed_schedule):.2f}",
+            f"{sum(int(e.get('dc_blocks_total') or 0) for e in ac_breakdown)} total",
+            str(sum(int(e["pcs_count"]) * int(e["count"]) for e in ac_breakdown)), "—",
+        ))
         _add_table(
             doc,
             schedule_rows,
-            ["Role", "Qty", "PCS", "AC Block Size", "DC Blocks", "Transformer (per block)"],
+            ["Model / Blocks", "Qty", "PCS per Block", "MW Each / Total", "DC Blocks", "PCS Total", "TX Each (est.)"],
+            col_width_fracs=[0.15, 0.06, 0.17, 0.16, 0.16, 0.11, 0.19],
+        )
+        doc.add_paragraph(
+            "PCS nameplate is the installed converter rating, not a verified net power "
+            f"guarantee at the POI. The selected POI requirement is {ctx.poi_power_requirement_mw:.2f} MW. "
+            "Losses, auxiliary consumption and operating limits require engineering confirmation."
         )
 
     # --- Section 7: Single Line Diagram ---
     doc.add_page_break()
     doc.add_heading("7.  Single Line Diagram", level=2)
+    if mixed_schedule:
+        _keep_next_para(doc.add_paragraph(
+            "Mixed AC Block station: the SLD shows the representative Head AC Block fleet only. "
+            "Tail AC Blocks are not included in this drawing; their quantities and equipment "
+            "are listed in Section 6.1. This drawing is not the complete station SLD."
+        ))
     _keep_next_para(doc.add_paragraph(
         "System electrical configuration: MV bus → RMU → Step-up Transformer → AC Block (DC blocks attached)."
     ))
@@ -1593,6 +1677,12 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     # report never shows two contradictory aisle dimensions.
     doc.add_page_break()
     doc.add_heading("8.  Typical AC Block Arrangement (Concept Only)", level=2)
+    if mixed_schedule:
+        _keep_next_para(doc.add_paragraph(
+            "Mixed AC Block station: this is the representative Head AC Block arrangement. "
+            "Tail AC Blocks are not shown and require their own arrangement confirmation. "
+            "The full equipment allocation is listed in Section 6.1."
+        ))
     plan_png, arrangement = None, None
     # ONE arrangement, shared with the web page. The engine choice, the title and
     # the drawing all live in calb_diagrams.typical_ac_block_arrangement — the
@@ -1637,12 +1727,6 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         for note in getattr(plan_layout, "provisional_notes", ()):
             doc.add_paragraph(f"Provisional: {note}.")
     elif plan_png and plan_layout is not None:
-        if _mixed_head_entry(ctx) is not None:
-            _keep_next_para(doc.add_paragraph(
-                "Mixed AC Block station: the arrangement below is the representative "
-                "Head AC Block. Tail AC Block model(s) differ and are listed in the "
-                "Mixed AC Block Station Schedule (§6.1)."
-            ))
         _keep_next_para(doc.add_paragraph(
             f"Rule-based typical arrangement ({dc_per_ac} × DC per block, "
             f"mirrored back-to-back pairs, doors facing outward aisles):"
@@ -1783,6 +1867,44 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                     "remainder — the AC-side counterpart of the DC cabinet tail in Section 4."
                 ))
         # A governed run does not also draw the linear L2 site array.
+        site_layout = None
+        group_layout = None
+    elif mixed_schedule:
+        # Repeating the Head footprint for every model would depict equipment
+        # absent from the saved run (e.g. 12 DC containers for a 4+4+2 site).
+        # Show the true composition until a mixed footprint layout is available.
+        doc.add_page_break()
+        doc.add_heading("9.  Concept Site Arrangement (Concept Only)", level=2)
+        _keep_next_para(doc.add_paragraph(
+            f"The station comprises {ctx.ac_blocks_total} AC Blocks: "
+            f"{_mixed_composition_text(mixed_schedule)} = "
+            f"{_mixed_nameplate_mw(mixed_schedule):.2f} MW installed PCS nameplate, "
+            f"with {ctx.dc_blocks_total} DC Blocks and "
+            f"{format_value(ctx.dc_total_energy_mwh, 'MWh')} MWh DC nameplate at BOL."
+        ))
+        _add_table(doc, [
+            (
+                ", ".join(f"AC-{index:02d}" for index in entry["ac_block_indices"])
+                or "Not recorded",
+                str(entry["role"]), str(int(entry["count"])),
+                f"{float(entry['block_mw']):.2f} MW",
+                str(int(entry.get("dc_blocks_total") or 0)),
+            )
+            for entry in mixed_schedule
+        ], ["AC Blocks", "Model", "Qty", "PCS Nameplate Each", "DC Blocks Total"])
+        doc.add_paragraph(
+            "This is an equipment composition overview, not a physical site layout. "
+            "The representative Head arrangement in Section 8 must not be repeated "
+            "as if every AC Block had that footprint or DC quantity. Tail footprints, "
+            "MV collection routing, access roads, clearances and equipment interfaces "
+            "must be developed together against the actual project site constraints."
+        )
+        doc.add_paragraph(
+            "A complete dimensioned site arrangement, site envelope and land area are "
+            "not established for this mixed configuration. A full Master Layout "
+            "requires a registered site constraint set and confirmed equipment dimensions. "
+            "Concept only — NOT FOR CONSTRUCTION."
+        )
         site_layout = None
         group_layout = None
     else:

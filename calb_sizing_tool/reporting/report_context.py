@@ -19,6 +19,7 @@
 import datetime
 import hashlib
 import json
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -27,6 +28,20 @@ from calb_sizing_tool.common.ac_block import derive_ac_template_fields
 from calb_sizing_tool.services.artifact_service import retry_read
 from calb_sizing_tool.config import AC_DATA_PATH, DC_DATA_PATH
 from calb_sizing_tool.runtime_paths import get_outputs_dir
+from calb_sizing_tool.services.ac_mixed_station import _rows_from_ac_output, is_mixed_station
+
+
+def saved_ac_block_rows(ac_output: dict) -> list[dict]:
+    """Read saved rows, accepting the older scalar grouping/mirror shape."""
+    if not isinstance(ac_output, dict):
+        return []
+    source = ac_output
+    rows = ac_output.get("ac_block_rows")
+    if not (isinstance(rows, list) and rows) and not isinstance(
+        ac_output.get("dc_blocks_per_ac"), (list, tuple)
+    ):
+        source = dict(ac_output, dc_blocks_per_ac=ac_output.get("dc_blocks_total_by_block") or [])
+    return _rows_from_ac_output(source)
 
 
 @dataclass
@@ -355,7 +370,17 @@ def build_report_context(
 
     avg_dc_blocks_per_ac_block = None
     dc_blocks_allocation = []
-    if ac_blocks_total > 0:
+    saved_ac_rows = saved_ac_block_rows(ac_output)
+    manual_mixed = not ac_output.get("governed_groups") and is_mixed_station(saved_ac_rows)
+    if manual_mixed:
+        # This is a display of the saved allocation, not a new balanced split.
+        dc_blocks_allocation = [
+            {"dc_blocks_per_ac_block": count, "ac_blocks_count": quantity}
+            for count, quantity in sorted(
+                Counter(row["dc_blocks"] for row in saved_ac_rows).items(), reverse=True
+            )
+        ]
+    elif ac_blocks_total > 0:
         avg_dc_blocks_per_ac_block = dc_blocks_total / ac_blocks_total
         base = dc_blocks_total // ac_blocks_total
         remainder = dc_blocks_total % ac_blocks_total

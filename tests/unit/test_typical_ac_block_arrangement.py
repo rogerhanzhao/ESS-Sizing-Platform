@@ -335,3 +335,30 @@ def test_the_station_class_is_named_not_printed_as_a_raw_metre_value():
         AcBlockShape(dc_blocks=6, pcs_count=8, block_power_mw=10.0))
     assert big.label.endswith("40 FT STATION")
     assert "M STATION" not in small.label and "M STATION" not in big.label
+
+
+def test_mixed_manual_selection_uses_saved_equipment_on_both_surfaces():
+    rows = [
+        {"pcs_count": 4, "pcs_kw": 1250, "dc_blocks": 4},
+        {"pcs_count": 4, "pcs_kw": 1250, "dc_blocks": 4},
+        {"pcs_count": 2, "pcs_kw": 1250, "dc_blocks": 2},
+    ]
+    ac = dict(num_blocks=3, pcs_per_block=4, pcs_kw=1250, dc_blocks_total=10,
+              ac_block_rows=rows, ac_block_model_name="4 MW - 2 x 2000 kW PCS")
+    page, report = _matrix_case(ac)
+    assert page == report
+    assert "5.00 MW" in report and "4 × 1250 kW PCS" in report
+    assert "4 MW - 2 x 2000 kW PCS" not in report
+    tail = strip_document_status(_page_svg(ac, block_index=3))
+    assert "2.50 MW" in tail and "2 × 1250 kW PCS" in tail
+
+
+def test_mixed_manual_rows_resolve_distinct_unit_ratings_and_tail_first():
+    from calb_diagrams.typical_ac_block_arrangement import ac_block_shape_from_ac_output
+    ac = dict(ac_block_rows=[
+        {"pcs_count": 2, "pcs_kw": 1000, "dc_blocks": 2},
+        {"pcs_count": 4, "pcs_kw": 1250, "dc_blocks": 4},
+    ], num_blocks=2, dc_blocks_total=6, pcs_kw=1000)
+    assert ac_block_shape_from_ac_output(ac, 1).block_power_mw == 2.0
+    assert ac_block_shape_from_ac_output(ac, 2).block_power_mw == 5.0
+    assert strip_document_status(_page_svg(ac, block_index=2)) == _report_svg(ac)

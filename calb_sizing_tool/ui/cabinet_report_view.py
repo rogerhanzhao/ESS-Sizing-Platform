@@ -8,6 +8,7 @@ from calb_sizing_tool.services.cabinet_report_service import (
 )
 from calb_sizing_tool.ui.cabinet_document_context import cabinet_document_context
 from calb_sizing_tool.state.workspace_state import navigate_now
+from calb_sizing_tool.ui.report_download_panel import render_proposal_download
 
 
 def _render_reference_panels(data, alternative_label):
@@ -96,8 +97,6 @@ def show_cabinet_report(output, *, parent_run_id, workspace, auth_user, authorit
                'grouping. It does not establish a net POI power guarantee or an approved installation design.')
     st.divider()
     _render_reference_panels(data, alternative_label)
-    st.divider()
-    st.subheader('Downloads')
     try:
         report = restore_cabinet_technical_report(sources, brand)
     except CabinetReportNotReady as exc:
@@ -122,7 +121,6 @@ def show_cabinet_report(output, *, parent_run_id, workspace, auth_user, authorit
             return
     if report:
         data, filename, _ = report
-        st.download_button('Download Technical Proposal', data, file_name=filename,
-            mime='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            type='primary', on_click='ignore', key='download_cabinet_report')
+        render_proposal_download(data, filename, template_name=brand.display_name,
+            alternative_label=alternative_label, key='download_cabinet_report')
         st.caption('Concept technical proposal. Body pages are portrait; complete engineering figure sheets are A3 landscape.')

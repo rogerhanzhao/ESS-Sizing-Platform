@@ -409,6 +409,40 @@ def ac_block_shape_from_ac_output(ac_output: Dict[str, Any], block_index: int = 
     """
     ac_output = ac_output if isinstance(ac_output, dict) else {}
     index = max(1, int(block_index or 1))
+    # A manual mixed selection may retain the original dropdown product name.
+    # Its saved per-block rows identify the equipment actually being drawn.
+    # Keep this read/title rule shared by the page and the proposal.
+    rows = ac_output.get("ac_block_rows")
+    if not (isinstance(rows, list) and rows):
+        counts = ac_output.get("pcs_count_by_block")
+        dc_counts = ac_output.get("dc_blocks_per_ac")
+        if not isinstance(dc_counts, (list, tuple)):
+            dc_counts = ac_output.get("dc_blocks_total_by_block")
+        rows = [
+            {"pcs_count": count, "pcs_kw": ac_output.get("pcs_kw"),
+             "dc_blocks": dc_counts[i] if isinstance(dc_counts, (list, tuple)) and i < len(dc_counts) else 0}
+            for i, count in enumerate(counts)
+        ] if isinstance(counts, list) else []
+    models = {
+        (_as_int(row.get("pcs_count")), _as_float(row.get("pcs_kw")))
+        for row in rows if isinstance(row, dict)
+        and _as_int(row.get("pcs_count")) > 0 and _as_float(row.get("pcs_kw")) > 0
+    }
+    if (not ac_output.get("governed_groups") and len(models) > 1
+            and 1 <= index <= len(rows) and isinstance(rows[index - 1], dict)):
+        row = rows[index - 1]
+        pcs = _as_int(row.get("pcs_count"))
+        kw = _as_float(row.get("pcs_kw"))
+        if pcs > 0 and kw > 0:
+            return AcBlockShape(
+                dc_blocks=(int(dc_blocks_override) if dc_blocks_override
+                           else _as_int(row.get("dc_blocks")) or resolve_dc_blocks_for_block(ac_output, index)),
+                pcs_count=pcs,
+                block_power_mw=pcs * kw / 1000.0,
+                block_index=index,
+                model_name=f"AC BLOCK · {pcs * kw / 1000.0:.2f} MW · {pcs} × {kw:.0f} kW PCS",
+                layout_variant=resolve_layout_variant(ac_output),
+            )
     pcs_count = resolve_pcs_for_block(ac_output, index)
     dc_blocks = (int(dc_blocks_override) if dc_blocks_override
                  else resolve_dc_blocks_for_block(ac_output, index))

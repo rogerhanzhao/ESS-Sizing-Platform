@@ -708,3 +708,18 @@ and persistence; `reporting/cabinet_report.py` owns the cabinet-specific DOCX.
 engines and frozen sizing ownership do not move. See
 `CABINET_ARRANGEMENT_REPORT_LOCAL_REVIEW_2026-10-18.md` for local validation and
 the outstanding OneDrive installation-evidence read.
+
+### Mixed AC report presentation and shared download panel — local, 2026-10-19
+
+`reporting/report_context.py` reads actual saved manual mixed AC rows for the
+report allocation summary; it does not rebalance them. `reporting/report_v2.py`
+owns the mixed equipment schedule, representative-figure scope notes and truthful
+mixed site-composition overview. Uniform and governed report paths remain intact.
+`calb_diagrams/typical_ac_block_arrangement.py` remains the sole shape/title owner
+for the page and report; manual mixed rows override a stale pre-adjustment product
+label there, without changing geometry or engine selection.
+`ui/report_download_panel.py` owns the common direct-download presentation used
+by the existing container and cabinet report pages. Generation, readiness and
+document provenance remain with their existing services/pages. No new pipeline
+step, sizing responsibility or production release is introduced. See
+`MIXED_AC_REPORT_LOCAL_REVIEW_2026-10-19.md` for validation and remaining limits.

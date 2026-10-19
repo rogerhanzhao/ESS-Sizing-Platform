@@ -43,6 +43,7 @@ from calb_sizing_tool.services.artifact_service import (
     retry_read,
 )
 from calb_sizing_tool.services.governed_ac_block_service import governed_poi_power_closure_issue
+from calb_sizing_tool.ui.report_download_panel import render_proposal_download
 
 
 def _load_product_assets_for_block(block_code: str | None) -> list[dict[str, Any]]:
@@ -420,6 +421,15 @@ def show():
     summary_power.metric("POI Power Requirement", f"{float(poi_power):.3f} MW" if poi_power is not None else "N/A")
     summary_energy.metric("POI Energy Requirement", f"{float(poi_energy):.3f} MWh" if poi_energy is not None else "N/A")
     st.caption("These requirements belong to the selected run; the case name is a user-defined label.")
+    _saved_ac_frequency = (
+        ac_resolution.snapshot.inputs.get("grid_frequency_hz")
+        if ac_resolution.snapshot is not None else None
+    )
+    if ac_output.get("ac_block_mixed") and stage13_output.get("poi_frequency_hz") is None and _saved_ac_frequency:
+        st.warning(
+            f"POI frequency is TBD. The saved AC input uses {float(_saved_ac_frequency):g} Hz; "
+            "check this assumption and the SLD frequency before issuing the proposal."
+        )
     st.subheader("Report Content")
     rc1, rc2, rc3, rc4 = st.columns(4)
     rc1.success("✓  DC Sizing")
@@ -531,12 +541,7 @@ def show():
                     if _ref:
                         st.caption(f"  Ref: {_ref}")
 
-    st.divider()
-
-    st.subheader("Downloads")
-
-
-    with st.container(border=True):
+    with st.container():
         stage2_raw = stage13_output.get("stage2_raw", {})
         block_code, block_name = _extract_block_identity(stage2_raw)
 
@@ -548,6 +553,7 @@ def show():
             "poi_energy_guarantee_mwh": stage13_output.get("poi_energy_req_mwh"),
             "poi_guarantee_year": stage13_output.get("poi_guarantee_year"),
             "poi_frequency_hz": stage13_output.get("poi_frequency_hz"),
+            "saved_ac_frequency_hz": _saved_ac_frequency,
         }
         ctx = build_report_context(
             session_state=st.session_state,
@@ -612,12 +618,11 @@ def show():
                 prefix=brand.filename_prefix,
                 ac_alternative=ctx.ac_alternative_label,
             )
-            st.download_button(
-                "Download Technical Proposal",
+            render_proposal_download(
                 comb_bytes,
                 proposal_filename,
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                type="primary",
+                template_name=brand.display_name,
+                alternative_label=ctx.ac_alternative_label,
             )
 
     if not sld_png and not sld_svg:

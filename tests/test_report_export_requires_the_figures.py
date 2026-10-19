@@ -157,6 +157,11 @@ def test_a_run_with_no_figures_still_exports(session_with_a_finished_run):
     assert not app.exception
     assert "could not be retrieved" not in _errors(app)
     assert _download_offered(app), "a run without drawings must still produce a report"
+    download = next(button for button in app.get("download_button")
+                    if button.label == _DOWNLOAD_LABEL_FRAGMENT)
+    assert download.proto.ignore_rerun is True
+    assert "Downloads" not in {element.value for element in app.subheader}
+    assert any("Word (.docx)" in element.value for element in app.caption)
 
 
 def test_a_recorded_figure_that_cannot_be_read_blocks_the_export(

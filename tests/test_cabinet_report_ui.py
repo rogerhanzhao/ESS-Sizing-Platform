@@ -94,7 +94,11 @@ def test_ready_saved_sources_offer_direct_download_without_a_generate_step(repor
     assert report_ui.calls["generate"][0][1]["ac_run_id"] == "saved-ac"
 
     headings = {element.value for element in page.subheader}
-    assert {"Selected Run Summary", "Report Content", "Downloads"}.issubset(headings)
+    assert {"Selected Run Summary", "Report Content"}.issubset(headings)
+    assert "Downloads" not in headings
+    assert any("Technical Proposal" in element.value for element in page.markdown)
+    assert any("Word (.docx)" in element.value and "AC Alternative A" in element.value
+               for element in page.caption)
     expanders = {element.label for element in page.expander}
     assert "Run references and data sources" in expanders
     assert "Standard Product Information" in expanders
