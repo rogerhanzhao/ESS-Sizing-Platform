@@ -22,6 +22,9 @@ Supports 1:1, 1:2, 1:4, and 1:8 grouping options.
 """
 import streamlit as st
 
+from calb_sizing_tool.services.cabinet_ac_preview_service import build_cabinet_groups, attach_cabinet_allocation
+from calb_sizing_tool.ui._ui import render_static_table
+
 from calb_sizing_tool.common.nameplate import get_standard_container_mwh
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.models import DCBlockResult
@@ -438,18 +441,52 @@ def show():
 
     total_energy_mwh = dc_total_mwh_hint if dc_total_mwh_hint > 0 else dc_blocks_total * dc_block_mwh
 
+    cabinet_group_plan = None
+    if dc_cabinet_count > 0 and dc_container_count == 0:
+        try:
+            initial_plan = build_cabinet_groups(
+                dc_cabinet_count, total_energy_mwh, dc_data.get("dc_product_codes", [])
+            )
+            minimum_groups = len(initial_plan["groups"])
+            restored_group_count = len((ac_results.get("cabinet_group_contract") or {}).get("groups", []))
+            default_group_count = restored_group_count if minimum_groups <= restored_group_count <= dc_cabinet_count else minimum_groups
+            group_count = int(st.number_input(
+                "Independent cabinet busbar groups", min_value=minimum_groups,
+                max_value=dc_cabinet_count, value=default_group_count, step=1,
+                key=f"cabinet_group_count_{active_run_id}_{dc_cabinet_count}",
+                help="Each independent group contains 1 to 12 cabinets and connects to one PCS."
+            ))
+            cabinet_group_plan = build_cabinet_groups(
+                dc_cabinet_count, total_energy_mwh, dc_data.get("dc_product_codes", []), group_count
+            )
+            dc_blocks_total = group_count
+            dc_block_mwh = total_energy_mwh / group_count
+            render_static_table([{
+                "Independent group": g["group_index"], "Cabinets": g["cabinet_count"],
+                "DC nameplate (MWh)": f'{g["nameplate_mwh"]:.3f}',
+            } for g in cabinet_group_plan["groups"]])
+        except ValueError as exc:
+            st.error(f"Cabinet AC interface cannot be used: {exc}")
+            return
+
     # ========== Display DC System Summary ==========
     with st.container(border=True):
         section_header("DC Sizing Snapshot", "Locked input basis from the active DC sizing result.")
         col1, col2, col3, col4 = st.columns(4)
         if dc_cabinet_count > 0:
-            col1.metric("DC Blocks", f"{dc_blocks_total} total (C{dc_container_count}+B{dc_cabinet_count})")
+            col1.metric("DC Blocks", (f"{dc_blocks_total} independent groups / {dc_cabinet_count} cabinets" if cabinet_group_plan else f"{dc_blocks_total} total (C{dc_container_count}+B{dc_cabinet_count})"))
         else:
             col1.metric("DC Blocks", f"{dc_blocks_total} x 20ft")
         col2.metric("DC Capacity", f"{total_energy_mwh:.1f} MWh")
         col3.metric("POI Power Req.", f"{target_mw:.1f} MW")
         col4.metric("POI Energy Req.", f"{target_mwh:.3f} MWh")
-        if dc_cabinet_count > 0:
+        if dc_cabinet_count > 0 and dc_container_count == 0:
+            compact_note(
+                f"Active DC configuration: Cabinet Only — {dc_cabinet_count} physical cabinets, no containers. "
+                "AC grouping below counts independent busbar groups, with 1 to 12 cabinets per group. "
+                "Each group feeds one PCS; equipment capability and net POI delivery remain to be verified."
+            )
+        elif dc_cabinet_count > 0:
             compact_note(
                 f"DC side used a hybrid packaging: {dc_container_count} container(s) + "
                 f"{dc_cabinet_count} cabinet(s) as the DC tail. The AC mixed station (in the "
@@ -460,6 +497,8 @@ def show():
     st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
 
     saved_ac_output = st.session_state.get("ac_output") if isinstance(st.session_state.get("ac_output"), dict) else ac_results
+    if cabinet_group_plan and saved_ac_output and saved_ac_output.get("dc_unit_kind") != "independent_cabinet_group":
+        st.warning("This saved AC result predates the independent cabinet group interface. Recalculate before generating cabinet drawings or reports.")
     if _snapshot_output_matches_run(saved_ac_output, active_run_id):
         _render_saved_ac_snapshot(saved_ac_output, section_header=section_header)
         st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
@@ -484,34 +523,48 @@ def show():
     with st.container(border=True):
         section_header(
             "AC Block Grouping",
-            "Select how DC Blocks are grouped under AC Blocks. This is separate from PCS count and rating.",
+            ("Select independent cabinet groups per AC Block. One group feeds one PCS." if cabinet_group_plan else "Select how DC Blocks are grouped under AC Blocks. This is separate from PCS count and rating."),
             eyebrow="Step 1",
         )
 
         options = generate_ac_sizing_options(dc_blocks_total, target_mw, target_mwh, dc_block_mwh)
 
+        if cabinet_group_plan:
+            # Uniform original AC path: only intact equal group allocations.
+            options = [opt for opt in options if len(set(opt.dc_blocks_per_ac)) == 1
+                       and opt.dc_blocks_per_ac[0] == int(opt.ratio.split(":")[1])]
         ratio_choices = [opt.ratio for opt in options]
-        recommended_option = next((opt for opt in options if opt.is_recommended), None) or options[1]
+        recommended_option = next((opt for opt in options if opt.is_recommended), None) or options[0]
         saved_ratio = (
             st.session_state.get("selected_ac_block_grouping")
             or st.session_state.get("selected_ac_ratio")
             or saved_ac_output.get("ac_block_grouping_ratio")
             or saved_ac_output.get("selected_ratio")
         )
+        if cabinet_group_plan:
+            recommended_option = next((opt for opt in options if opt.ratio == "1:2"), options[0])
         default_ratio = saved_ratio if saved_ratio in ratio_choices else recommended_option.ratio
 
         choice_ratio = st.segmented_control(
-            "DC Blocks per AC Block",
+            ("Independent Cabinet Groups per AC Block" if cabinet_group_plan else "DC Blocks per AC Block"),
             ratio_choices,
             default=default_ratio,
-            format_func=_ac_block_grouping_label,
-            key="selected_ac_block_grouping",
+            format_func=(lambda ratio: f"{ratio.split(':')[1]} group(s) / AC Block") if cabinet_group_plan else _ac_block_grouping_label,
+            key=(f"cabinet_ac_grouping_{dc_blocks_total}" if cabinet_group_plan else "selected_ac_block_grouping"),
             width="stretch",
         ) or default_ratio
         selected_option = next((opt for opt in options if opt.ratio == choice_ratio), recommended_option)
         st.session_state["selected_ac_ratio"] = selected_option.ratio
 
-        compact_note(_ac_block_grouping_note(selected_option, dc_blocks_total))
+        if cabinet_group_plan:
+            compact_note(
+                f"{dc_cabinet_count} physical cabinets -> {dc_blocks_total} independent DC groups -> "
+                f"{selected_option.ac_block_count} AC Blocks. Each AC Block has "
+                f"{selected_option.dc_blocks_per_ac[0]} group(s) and the same number of PCS. "
+                "These groups are not 20ft DC containers."
+            )
+        else:
+            compact_note(_ac_block_grouping_note(selected_option, dc_blocks_total))
 
     st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
 
@@ -524,7 +577,7 @@ def show():
                 eyebrow="Step 2",
             )
             compact_note(
-                f"Selected AC/DC block grouping: {_ac_block_grouping_label(selected_option.ratio)}. "
+                (f"Selected cabinet grouping: {selected_option.dc_blocks_per_ac[0]} independent group(s) per AC Block. " if cabinet_group_plan else f"Selected AC/DC block grouping: {_ac_block_grouping_label(selected_option.ratio)}. ") +
                 "AC Block quantity comes from Step 1; the model below defines one AC Block only."
             )
             model_options = build_simplified_ac_block_models(
@@ -532,21 +585,33 @@ def show():
                 grouping_ratio=selected_option.ratio,
             )
 
+            if cabinet_group_plan:
+                model_options = [model for model in model_options
+                                 if model.pcs_count == selected_option.dc_blocks_per_ac[0]]
+
             # Model selection lives outside any st.form so a change reruns
             # immediately: picking "Custom..." must reveal the PCS inputs
             # before anything is executed (FT-20260714-12).
             model_labels = [model.readable for model in model_options]
             model_labels.append("Custom AC Block Model...")
             model_widget_key = f"ac_block_model_choice_{selected_option.ratio.replace(':', 'to')}"
+            if cabinet_group_plan:
+                model_widget_key = f"ac_block_model_choice_cabinet_{selected_option.ratio.replace(':', 'to')}"
+
+            model_default_index = _saved_ac_block_model_choice_index(
+                saved_ac_output, model_options, custom_index=len(model_options)
+            )
+            if cabinet_group_plan and not saved_ac_output.get("pcs_kw") and model_options:
+                sufficient = [i for i, model in enumerate(model_options)
+                              if model.block_size_mw * selected_option.ac_block_count >= target_mw]
+                model_default_index = min(sufficient, key=lambda i: model_options[i].block_size_mw) if sufficient else max(
+                    range(len(model_options)), key=lambda i: model_options[i].block_size_mw
+                )
 
             model_choice = st.selectbox(
                 "Select AC Block Model",
                 range(len(model_labels)),
-                index=_saved_ac_block_model_choice_index(
-                    saved_ac_output,
-                    model_options,
-                    custom_index=len(model_options),
-                ),
+                index=model_default_index,
                 format_func=lambda i: model_labels[i],
                 key=model_widget_key,
                 help="Sizing candidate derived from PCS count and rating. It is not a product record and does not lock a catalogue choice.",
@@ -564,12 +629,13 @@ def show():
                 compact_note(f"Selected AC Block model: {chosen_model.display_name}.")
             else:
                 custom_col1, custom_col2 = st.columns(2)
-                if st.session_state.get("custom_pcs_count") not in _CUSTOM_PCS_COUNT_CHOICES:
+                pcs_count_choices = (selected_option.dc_blocks_per_ac[0],) if cabinet_group_plan else _CUSTOM_PCS_COUNT_CHOICES
+                if st.session_state.get("custom_pcs_count") not in pcs_count_choices:
                     st.session_state.pop("custom_pcs_count", None)
                 pcs_per_ac = int(
                     custom_col1.selectbox(
                         "PCS Count per AC Block",
-                        _CUSTOM_PCS_COUNT_CHOICES,
+                        pcs_count_choices,
                         index=0,
                         key="custom_pcs_count",
                         help="PCS count is independent of transformer topology. The LV busbar arrangement is selected below.",
@@ -645,12 +711,12 @@ def show():
                 saved_dc_outputs = 2
             dc_block_output_circuits = int(
                 electrical_col2.selectbox(
-                    "DC Block Output Circuits",
-                    (1, 2),
-                    index=(0 if saved_dc_outputs == 1 else 1),
-                    format_func=lambda value: f"{value} protected PCS branch{'es' if value > 1 else ''} per DC Block",
-                    key="ac_dc_block_output_circuits",
-                    help="Default 2 for the 5 MWh DC Block. Select 1 only for a confirmed single-output product.",
+                    ("PCS Connections per Independent Group" if cabinet_group_plan else "DC Block Output Circuits"),
+                    ((1,) if cabinet_group_plan else (1, 2)),
+                    index=(0 if cabinet_group_plan or saved_dc_outputs == 1 else 1),
+                    format_func=lambda value: ("1 independent group -> 1 PCS" if cabinet_group_plan else f"{value} protected PCS branch{'es' if value > 1 else ''} per DC Block"),
+                    key=("ac_cabinet_group_output_circuits" if cabinet_group_plan else "ac_dc_block_output_circuits"),
+                    help=("Fixed by the cabinet interface: one independent DC busbar group connects to one PCS." if cabinet_group_plan else "Default 2 for the 5 MWh DC Block. Select 1 only for a confirmed single-output product."),
                 )
             )
             if transformer_topology:
@@ -661,7 +727,7 @@ def show():
                         if transformer_topology == "two_winding"
                         else "two independent LV secondary busbars"
                     )
-                    + f"; each DC Block has {dc_block_output_circuits} protected PCS output branch(es)."
+                    + ("; each independent cabinet group connects to one PCS." if cabinet_group_plan else f"; each DC Block has {dc_block_output_circuits} protected PCS output branch(es).")
                 )
             _minimum_dc_blocks = minimum_dc_blocks_for_pcs_feeders(
                 pcs_per_ac,
@@ -679,7 +745,8 @@ def show():
                     "Run is blocked until the PCS count or grouping is adjusted."
                 )
             elif (
-                selected_option.ratio == "1:8"
+                not cabinet_group_plan
+                and selected_option.ratio == "1:8"
                 and pcs_per_ac == 8
                 and pcs_kw == 1250
                 and transformer_topology == "three_winding"
@@ -952,8 +1019,33 @@ def show():
                     for warn in warnings:
                         st.warning(warn)
 
+            # --- DETAILED DC ALLOCATION ---
+            try:
+                if is_mixed_run:
+                    dc_allocation_plan = build_mixed_dc_allocation_plan(
+                        station_rows,
+                        dc_block_output_circuits=dc_block_output_circuits,
+                    )
+                else:
+                    dc_allocation_plan = build_dc_allocation_plan(
+                        dc_blocks_total,
+                        num_blocks,
+                        pcs_per_block,
+                        dc_block_output_circuits=dc_block_output_circuits,
+                    )
+            except ValueError as exc:
+                st.error(f"Invalid DC-to-PCS electrical topology: {exc}")
+                st.stop()
+            if cabinet_group_plan:
+                try:
+                    cabinet_group_plan = attach_cabinet_allocation(cabinet_group_plan, dc_allocation_plan)
+                except ValueError as exc:
+                    st.error(str(exc))
+                    st.stop()
+            dc_blocks_per_ac_block_list = [int(plan["dc_blocks_total"]) for plan in dc_allocation_plan]
+
+
             # ========== Results Summary ==========
-            st.success("AC Configuration Complete!")
             st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
 
             col1, col2, col3, col4 = st.columns(4)
@@ -1004,7 +1096,7 @@ def show():
             st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
             section_header("DC Allocation", eyebrow="Detail")
             if dc_cabinet_count > 0:
-                _dc_block_str = f"{dc_blocks_total} (C{dc_container_count}+B{dc_cabinet_count})"
+                _dc_block_str = (f"{dc_blocks_total} groups / {dc_cabinet_count} cabinets" if cabinet_group_plan else f"{dc_blocks_total} (C{dc_container_count}+B{dc_cabinet_count})")
             else:
                 _dc_block_str = f"{dc_blocks_total} × 20ft"
             _dc1, _dc2, _dc3 = st.columns(3)
@@ -1014,25 +1106,6 @@ def show():
             compact_note(
                 f"AC Block model: {ac_block_model_name}. Container type: {auto_container} per AC Block."
             )
-
-            # --- DETAILED DC ALLOCATION ---
-            try:
-                if is_mixed_run:
-                    dc_allocation_plan = build_mixed_dc_allocation_plan(
-                        station_rows,
-                        dc_block_output_circuits=dc_block_output_circuits,
-                    )
-                else:
-                    dc_allocation_plan = build_dc_allocation_plan(
-                        dc_blocks_total,
-                        num_blocks,
-                        pcs_per_block,
-                        dc_block_output_circuits=dc_block_output_circuits,
-                    )
-            except ValueError as exc:
-                st.error(f"Invalid DC-to-PCS electrical topology: {exc}")
-                st.stop()
-            dc_blocks_per_ac_block_list = [int(plan["dc_blocks_total"]) for plan in dc_allocation_plan]
 
             mv_kv = float(mv_kv_value or 33.0)
             lv_v = float(st.session_state.get("pcs_lv_v", 690.0))
@@ -1048,7 +1121,7 @@ def show():
                 "project_name": project_name,
                 "selected_ratio": selected_option.ratio,
                 "ac_block_grouping_ratio": selected_option.ratio,
-                "ac_block_grouping_label": _ac_block_grouping_label(selected_option.ratio),
+                "ac_block_grouping_label": (f"{selected_option.dc_blocks_per_ac[0]} independent cabinet group(s) per AC Block" if cabinet_group_plan else _ac_block_grouping_label(selected_option.ratio)),
                 "ac_block_quantity_basis": "dc_block_grouping_ratio",
                 "ac_block_model_code": ac_block_model_code,
                 "ac_block_model_name": ac_block_model_name,
@@ -1112,11 +1185,21 @@ def show():
                 "source_poi_frequency_hz": stage13_output.get("poi_frequency_hz"),
             }
 
+            if cabinet_group_plan:
+                ac_output.update(
+                    dc_unit_kind="independent_cabinet_group",
+                    cabinet_group_contract=cabinet_group_plan,
+                    physical_cabinet_count=dc_cabinet_count,
+                    ac_block_quantity_basis="independent_cabinet_groups",
+                    capability_verified=False,
+                )
+
             # This is a concept-layout routing condition, not a standard-product
             # lock. It is available only for a physically homogeneous 1:8 block
             # with the selected 8 x 1250 kW small-PCS / 3-winding architecture.
             if (
-                selected_option.ratio == "1:8"
+                not cabinet_group_plan
+                and selected_option.ratio == "1:8"
                 and pcs_per_block == 8
                 and int(pcs_kw) == 1250
                 and transformer_topology == "three_winding"
@@ -1147,63 +1230,38 @@ def show():
             elif bound_ac_product and is_mixed_run:
                 ac_output["ac_block_product_binding_suppressed"] = "mixed_station"
 
+            _auth_ctx = get_auth_context()
+            if _auth_ctx and not _auth_ctx.is_guest:
+                # The selected alternative is authoritative downstream. Do not
+                # promote session state or show success when its save fails.
+                try:
+                    _ac_run = persist_ac_run(
+                        dc_run_id=source_run_id, ac_inputs=ac_inputs,
+                        ac_output=ac_output, actor=_auth_ctx.username, source_ref="ac_view",
+                    )
+                    if _ac_run is None:
+                        raise ValueError("AC alternative was not saved")
+                except Exception:
+                    st.error("AC configuration could not be saved. The previous selected alternative is unchanged. Please retry.")
+                    return
+                adopt_saved_ac_run(_ac_run.run_id)
+                try:
+                    persist_ac_runtime_snapshot(
+                        run_id=source_run_id, ac_inputs=ac_inputs, ac_output=ac_output,
+                        results={}, source_ref="ac_view", actor=_auth_ctx.username,
+                    )
+                except Exception:
+                    st.warning("The AC alternative is saved. The legacy parent-run summary could not be refreshed; continue using the selected alternative.")
+                st.info(
+                    f"Configuration saved — unchanged; {_ac_run.alternatives} alternative(s) on this DC run."
+                    if _ac_run.reused else
+                    f"Configuration saved as a new AC alternative ({_ac_run.alternatives} on this DC run)."
+                )
             st.session_state["ac_output"] = ac_output
             ac_results.update(ac_output)
             set_run_time("ac_results")
-            _auth_ctx = get_auth_context()
-            if _auth_ctx and not _auth_ctx.is_guest:
-                persist_ac_runtime_snapshot(
-                    run_id=source_run_id,
-                    ac_inputs=ac_inputs,
-                    ac_output=ac_output,
-                    results={},
-                    source_ref="ac_view",
-                    actor=_auth_ctx.username,
-                )
-                # Record this AC alternative under the DC run. Identical
-                # configurations reuse their run, so the history counts the
-                # alternatives actually tried, not the times Save was pressed.
-                #
-                # Fail-soft on purpose: the configuration itself is already saved
-                # by the call above, which is what SLD and the report read. This
-                # is bookkeeping, and bookkeeping must never cost a user their
-                # save.
-                try:
-                    _ac_run = persist_ac_run(
-                        dc_run_id=source_run_id,
-                        ac_inputs=ac_inputs,
-                        ac_output=ac_output,
-                        actor=_auth_ctx.username,
-                        source_ref="ac_view",
-                    )
-                except Exception:
-                    _ac_run = None
-                if _ac_run is not None:
-                    # Work continues on the alternative just saved: the SLD,
-                    # arrangement and report pages all resolve their inputs and
-                    # their drawings from the SELECTED alternative, and leaving
-                    # the selection on the previous one would regenerate from a
-                    # configuration the user just replaced.
-                    #
-                    # adopt_saved_ac_run keeps the AC state (the session IS this
-                    # alternative's result) while dropping the SLD/arrangement on
-                    # screen, which came from the PREVIOUS configuration — a
-                    # report headed "AC Alternative B" must not embed A's SLD.
-                    adopt_saved_ac_run(_ac_run.run_id)
-                if _ac_run is None:
-                    st.info("Configuration saved.")
-                elif _ac_run.reused:
-                    st.info(
-                        f"Configuration saved — unchanged, so it stays AC alternative "
-                        f"1 of {_ac_run.alternatives} on this DC run."
-                    )
-                else:
-                    st.info(
-                        f"Configuration saved as a new AC alternative "
-                        f"({_ac_run.alternatives} on this DC run)."
-                    )
-            else:
-                st.success("AC sizing complete (guest mode — session only).")
+            st.success("AC Configuration Complete!" if _auth_ctx and not _auth_ctx.is_guest
+                       else "AC sizing complete (guest mode — session only).")
 
     latest_ac_output = st.session_state.get("ac_output") if isinstance(st.session_state.get("ac_output"), dict) else ac_results
     if _snapshot_output_matches_run(latest_ac_output, active_run_id):

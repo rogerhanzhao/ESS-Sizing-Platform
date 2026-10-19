@@ -1,5 +1,39 @@
 # Current Status 2026-07-12
 
+> Local-only work (2026-10-18): cabinet concept SLD, symbolic Block Arrangement
+> and technical DOCX export are implemented on the existing saved-AC/page/artifact
+> flow, with the original direct report download restored (no additional
+> Generate Report step). Final full regression: 1001 passed in 379.55 s. Actual browser downloads
+> and all 10 rendered report pages were checked; the isolated database retains
+> 18 DC runs and 11 AC runs. The five original SLD core files and frozen sizing
+> formulas remain unchanged. Preview-sheet selection reads verified packages;
+> unchanged AC re-runs retain drawings despite a renewed session token.
+> Installation-source PDF bodies are still unreadable while OneDrive sync is
+> pending: dimensions, installation spacing and test conditions remain unverified.
+> See `REPORT_EXPORT_UNIFIED_FLOW_REVIEW_2026-10-18.md`,
+> `CABINET_ARRANGEMENT_REPORT_LOCAL_REVIEW_2026-10-18.md` and
+> `CABINET_SLD_LOCAL_REVIEW_2026-10-17.md`. No commit, push or production deploy.
+> Earlier milestones and their historical test counts below are retained.
+
+> 2026-10-19 presentation-only follow-up: both report branches now use the generic
+> `Download Technical Proposal` button, with no product details in its label.
+> UI + frozen-canon targeted checks: 13 passed. The supplied 10-page cabinet
+> document was reviewed without editing its data or drawings; see
+> `CABINET_REPORT_PRESENTATION_REVIEW_2026-10-19.md`. The 1001 figure above is
+> the preceding full-regression checkpoint, not a new run for this label change.
+
+> 2026-10-19 owner follow-up: the isolated cabinet proposal now follows the
+> original report's nine engineering chapters, including saved Stage 1 DC
+> requirements and efficiency chain, Stage 2 configuration, Stage 3 lifetime
+> results and Stage 4 AC equipment. All actual SLD sheets precede all arrangement
+> sheets. The 13-page sample (four A3 drawing pages) was fully rendered and
+> inspected; all 21 annual rows and equipment/group assignments match the
+> supplied original cabinet proposal. Report plugin version: 1.1.1. Final
+> regression: 1008 passed in 227.31 s; focused report/data/UI/canon checks:
+> 90 passed. The original container report, five SLD core files and seven frozen
+> modules remain unchanged. Local QA service on port 8511 is healthy. No commit,
+> push or production deployment. See `CABINET_REPORT_PRESENTATION_REVIEW_2026-10-19.md`.
+
 > **Latest stage record: `docs/CURRENT_STATUS_2026-07-28.md`** (tip `20676fe`,
 > 517 tests). This doc remains the standing detail + module map (§2.7–§2.12,
 > §4.1); read the 2026-07-28 record first for the current milestone.
@@ -398,6 +432,17 @@ seams; maintenance should exploit them instead of scanning everything.
 
 ### 4.1b Data model — owner rulings 2026-08-04
 
+2026-10-17 local-only cabinet AC interface: `services/cabinet_ac_preview_service.py`
+owns the owner-confirmed 1..12-cabinet independent-group mapping and conceptual
+PCS candidate enumeration. The standalone `ui/cabinet_ac_preview.py` is now
+disconnected from the application: the owner requires the original continuous
+AC save -> SLD -> layout -> report workflow. Its earlier AC-page bypass has
+been removed. Keep it as an offline design reference until the group contract
+can be integrated into the existing workflow with downstream acceptance tests.
+DC snapshot adapters carry explicit source product codes for applicability.
+The frozen DC K_MAX_FIXED=10 and existing container AC engine remain unchanged.
+
+
 2026-10-13 addition to the Web UI / data-review domain: the existing admin
 Degradation page calls `ui/supplier_degradation_preview.py`; its read-only
 parser is `services/supplier_degradation_service.py`. It retains supplier
@@ -619,3 +664,47 @@ portal — guest is the button, not a role row.
 Trigger for Step 2: when SLD/Master-Layout work (P2) starts in earnest, the
 diagram engine is the first extraction candidate — it is the largest
 high-churn domain and has the fewest inbound dependencies.
+
+### Local cabinet interface integration — 2026-10-17 (not deployed)
+
+The original `ui/ac_view.py` owns the sole AC interaction and save/navigation path.
+`services/cabinet_ac_preview_service.py` now also validates and binds the approved
+1..12-cabinet independent group contract to existing AC allocations. No frozen
+formula or allocation utility changed. `services/ac_run_service.py` includes the
+optional contract in alternative identity; legacy hashes remain unchanged when absent.
+`ui/cabinet_handoff.py` presents the persisted group schedule on existing SLD,
+arrangement and report pages and blocks incompatible container rendering. Actual
+cabinet drawing/layout/report support is pending. The standalone preview remains disconnected.
+
+Latest local audit: see docs/LOCAL_OPTIMIZATION_AUDIT_2026-10-17.md. Original AC
+alternative save must succeed before selecting it or publishing session output.
+Raw product-import headers are checked before pandas can rename duplicates.
+Persisted cabinet interfaces are validated before downstream presentation.
+Compilation, 831 full tests and 39 extra DC/AC scope regressions passed. This is
+not a release approval: cabinet drawings/layout/formal reports remain pending.
+
+### Cabinet SLD module map addition — local only, 2026-10-17
+
+SLD cabinet-specific rendering: `calb_diagrams/cabinet_sld.py` owns pure topology
+and SVG generation; `services/cabinet_sld_service.py` owns concept artifact package,
+strict selected-AC persistence/restoration, input/file hashes and verified-package
+preview-sheet selection without database writes;
+`ui/cabinet_sld_view.py` owns controls within the existing SLD page. The only
+routing addition in `single_line_diagram_view.py` follows existing snapshot/context
+validation. Container/mixed renderer and frozen sizing ownership remain unchanged.
+See `CABINET_SLD_LOCAL_REVIEW_2026-10-17.md`. Cabinet concept SLD is implemented;
+physical layout and formal cabinet report remain pending.
+
+### Cabinet arrangement and report additions — local only, 2026-10-18
+
+`calb_diagrams/cabinet_arrangement.py` owns symbolic equipment zones and source-bound
+installation references. `services/cabinet_document_service.py` and
+`cabinet_arrangement_service.py` own strict saved-child verification and immutable
+all-sheet packages. `cabinet_report_data_service.py` copies verified persisted
+DC/AC values; `cabinet_report_service.py` owns complete-package report provenance
+and persistence; `reporting/cabinet_report.py` owns the cabinet-specific DOCX.
+`ui/cabinet_document_context.py`, `cabinet_arrangement_view.py` and
+`cabinet_report_view.py` stay within the original downstream pages. Container
+engines and frozen sizing ownership do not move. See
+`CABINET_ARRANGEMENT_REPORT_LOCAL_REVIEW_2026-10-18.md` for local validation and
+the outstanding OneDrive installation-evidence read.

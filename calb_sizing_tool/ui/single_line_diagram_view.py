@@ -426,6 +426,17 @@ def show() -> None:
     else:
         st.warning(runtime_status.message)
 
+    if ac_snapshot is not None and ac_snapshot.output.get("dc_unit_kind") == "independent_cabinet_group":
+        from calb_sizing_tool.ui.cabinet_sld_view import show_cabinet_sld
+        show_cabinet_sld(ac_snapshot.output, parent_run_id=run_id or workspace.get("run_id"),
+                        workspace=workspace, is_guest=_is_guest, auth_user=auth_user,
+                        authoritative=runtime_status.is_authoritative)
+        return
+
+    from calb_sizing_tool.ui.cabinet_handoff import render_cabinet_handoff
+    if render_cabinet_handoff(ac_snapshot.output if ac_snapshot else {}, "Single Line Diagram"):
+        return
+
     # Mixed AC Block station: the SLD authoritative contract is uniform-only
     # (SLD V1 requires a uniform PCS count per AC Block), so a head+tail station
     # cannot be rendered directly. Project it onto its HEAD AC-Block fleet — a

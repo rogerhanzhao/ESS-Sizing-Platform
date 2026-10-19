@@ -209,3 +209,79 @@ def test_ac_requirement_keeps_fractional_mwh(signed_in_workspace):
     restored = restored.run()
     assert not restored.exception
     assert next(metric.value for metric in restored.metric if metric.label == "POI Energy Req.") == "21.500 MWh"
+
+
+def test_cabinet_comparison_and_saved_handoff_are_explicit(signed_in_workspace):
+    app = signed_in_workspace()
+    app.session_state['dc_inputs.enable_hybrid'] = False
+    app.session_state['dc_inputs.enable_cabinet_only'] = True
+    sized = _run_sizing(app)
+    assert not sized.exception
+    summary = _state(sized, 'dc_result_summary')
+    assert summary['mode'] == 'cabinet_only'
+    assert summary['container_count'] == 0
+    assert summary['cabinet_count'] > 0
+    labels = [tab.label for tab in sized.tabs]
+    assert labels[0] == 'Cabinet Only — Active for AC / SLD'
+    assert 'Container Only — Comparison only' in labels
+    assert any('Active DC configuration for AC / SLD: Cabinet Only' in str(x.value) for x in sized.success)
+    restored = _app()
+    for key in ('auth_context','active_project_id','active_project_name','active_case_id','active_case_name'):
+        restored.session_state[key] = sized.session_state[key]
+    restored.session_state['active_run_id'] = _dc_run_id(sized)
+    restored.session_state['main_nav'] = 'AC Sizing'
+    restored = restored.run()
+    assert not restored.exception
+    assert _state(restored, 'dc_result_summary')['mode'] == 'cabinet_only'
+    assert any('Active DC configuration: Cabinet Only' in str(x.value) for x in restored.markdown)
+    assert not any('DC side used a hybrid packaging' in str(x.value) for x in restored.markdown)
+    assert any(control.label == 'Independent Cabinet Groups per AC Block' for control in restored.get('button_group'))
+    assert not any(control.label == 'DC Blocks per AC Block' for control in restored.get('button_group'))
+    assert any(control.label == 'PCS Connections per Independent Group' for control in restored.selectbox)
+
+
+
+def test_unsaved_dc_result_is_not_presented_as_active(signed_in_workspace, monkeypatch):
+    from calb_sizing_tool.ui import dc_view
+    monkeypatch.setattr(dc_view, 'persist_dc_run', lambda *args, **kwargs: {})
+    sized = _run_sizing(signed_in_workspace())
+    assert not sized.exception
+    assert any('DC result was not saved' in str(x.value) for x in sized.error)
+    assert not any('Active DC configuration for AC / SLD:' in str(x.value) for x in sized.success)
+    assert not any(b.label == 'AC Sizing →' for b in sized.button)
+
+
+def test_ac_failed_save_does_not_promote_or_claim_completion(signed_in_workspace, monkeypatch):
+    from calb_sizing_tool.ui import ac_view
+    app=signed_in_workspace()
+    app.session_state['dc_inputs.poi_power_req_mw']=8.0
+    app.session_state['dc_inputs.poi_energy_req_mwh']=16.0
+    app.session_state['dc_inputs.enable_hybrid']=False
+    app.session_state['dc_inputs.enable_cabinet_only']=True
+    sized=_run_sizing(app)
+    # AppTest serializes single-select button groups as a list in this runtime.
+    # Hold grouping fixed here; this test exercises save failure, not that widget.
+    monkeypatch.setattr(ac_view.st, 'segmented_control', lambda label, options, **kwargs: '1:2')
+    restored=_app()
+    for key in ('auth_context','active_project_id','active_project_name','active_case_id','active_case_name'):
+        restored.session_state[key]=sized.session_state[key]
+    restored.session_state['active_run_id']=_dc_run_id(sized)
+    restored.session_state['main_nav']='AC Sizing'
+    page=restored.run()
+    assert not page.exception
+    model=next(x for x in page.selectbox if x.label=='Select AC Block Model')
+    model.select(3)
+    page=page.run()
+    next(x for x in page.selectbox if x.label=='Transformer LV Topology').select('two_winding')
+    page=page.run()
+    before=_state(page,'active_ac_run_id')
+    monkeypatch.setattr(ac_view,'persist_ac_run',lambda **kwargs: None)
+    def forbidden(**kwargs):
+        raise AssertionError('Parent summary must not be refreshed after failed alternative save')
+    monkeypatch.setattr(ac_view,'persist_ac_runtime_snapshot',forbidden)
+    next(b for b in page.button if b.label=='Run AC Sizing').click()
+    page=page.run()
+    assert not page.exception
+    assert any('could not be saved' in str(x.value) for x in page.error)
+    assert not any('AC Configuration Complete' in str(x.value) for x in page.success)
+    assert _state(page,'active_ac_run_id') == before

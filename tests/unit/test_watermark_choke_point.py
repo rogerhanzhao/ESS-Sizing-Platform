@@ -33,6 +33,7 @@ ALLOWED_UNSTAMPED = {
     ("report_v2.py", "export_report_v2_1"): "POI capacity / degradation charts",
     ("export_docx.py", "add_header_logo"): "the brand logo in the page header",
     ("export_docx.py", "_append_dc_report_sections"): "DC lifetime charts",
+    ("cabinet_report.py", "_add_lifetime_chart"): "saved POI usable energy and relative/absolute SOH data charts only",
 }
 
 #: The one function allowed to call add_picture with a drawing.

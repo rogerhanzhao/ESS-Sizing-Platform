@@ -70,9 +70,21 @@ def _parse_upload(uploaded_file) -> pd.DataFrame | None:
         return None
     try:
         name = uploaded_file.name.lower()
-        if name.endswith(".xlsx") or name.endswith(".xls"):
-            return pd.read_excel(uploaded_file, dtype=str).replace({"nan": None, "": None})
-        return pd.read_csv(uploaded_file, dtype=str).replace({"nan": None, "": None})
+        # Preserve source headers: pandas otherwise silently renames duplicate
+        # columns, hiding a malformed import before the preview validator.
+        raw = (pd.read_excel(uploaded_file, dtype=str, header=None)
+               if name.endswith((".xlsx", ".xls"))
+               else pd.read_csv(uploaded_file, dtype=str, header=None))
+        if raw.empty:
+            st.error("The import file has no header row.")
+            return None
+        headers = [str(value).strip() if pd.notna(value) else "" for value in raw.iloc[0]]
+        if any(not name for name in headers) or len(headers) != len(set(headers)):
+            st.error("Import column names must be non-empty and unique.")
+            return None
+        frame = raw.iloc[1:].copy()
+        frame.columns = headers
+        return frame.reset_index(drop=True).replace({"nan": None, "": None})
     except Exception as exc:
         st.error(f"Failed to parse file: {exc}")
         return None
@@ -85,7 +97,14 @@ def _render_import_expander(
     template_cols: list[str],
     label: str,
 ) -> None:
-    with st.expander(f"Import {label} from CSV / Excel", expanded=False):
+    result_key = f"product_import_result_{entity}"
+    previous = st.session_state.get(result_key)
+    with st.expander(f"Import {label} from CSV / Excel", expanded=bool(previous)):
+        if previous:
+            result = previous["result"]
+            st.success(f"Last import: {result['imported']} saved, {result['skipped']} skipped.") if result["imported"] else st.warning(f"Last import: 0 saved, {result['skipped']} skipped.")
+            for error in result["errors"][:20]:
+                st.error(error)
         tpl_bytes = _template_csv(template_cols)
         st.download_button(
             f"Download {label} CSV Template",
@@ -101,6 +120,8 @@ def _render_import_expander(
         )
         if uploaded is None:
             return
+        upload_hash = hashlib.sha256(uploaded.getvalue()).hexdigest()
+        already_saved = bool(previous and previous["hash"] == upload_hash and previous["result"]["imported"])
         df = _parse_upload(uploaded)
         if df is None:
             return
@@ -108,18 +129,17 @@ def _render_import_expander(
         if missing:
             st.error(f"Missing required columns: {', '.join(missing)}")
             return
-        st.caption(f"{len(df)} rows detected. Preview (first 5):")
-        render_static_table(df.head(5))
-        if st.button(f"Import {len(df)} {label} rows", key=f"btn_import_{entity}", type="primary"):
+        preview = service.preview_import_from_df(df)
+        st.caption(f"{len(df)} rows detected; {len(preview['rows'])} rows pass format checks. " + ("This file has already been saved in this session." if already_saved else "Preview shows normalized values. Submission results, if any, appear above."))
+        if preview["rows"]:
+            render_static_table(pd.DataFrame([values for _, values in preview["rows"]]).head(5))
+        for error in preview["errors"][:20]:
+            st.error(error)
+        st.caption("Create-only import: existing product codes are not overwritten. Format checks do not verify engineering capability or product approval.")
+        if st.button(f"Import {len(df)} {label} rows", key=f"btn_import_{entity}", type="primary", disabled=bool(preview["errors"]) or already_saved):
             result = service.import_records_from_df(entity, df)
-            if result["imported"]:
-                st.success(f"Imported {result['imported']} record(s).")
-            if result["skipped"]:
-                st.warning(f"Skipped {result['skipped']} row(s).")
-            for err in result["errors"][:20]:
-                st.error(err)
-            if result["imported"]:
-                _refresh()
+            st.session_state[result_key] = {"hash": upload_hash, "result": result}
+            _refresh()
 
 _SECTIONS = [
     ("Overview", "Dashboard"),
@@ -359,9 +379,9 @@ def _render_edit_form(
                 elif kind == "textarea":
                     values[key] = st.text_area(label, value=str(current or ""), height=70, key=widget_key)
                 elif kind == "float":
-                    values[key] = st.number_input(label, value=_optional_float(current), step=float(spec.get("step", 1.0)), key=widget_key)
+                    values[key] = st.number_input(label, value=float(current) if current is not None else None, step=float(spec.get("step", 1.0)), key=widget_key, placeholder="Not provided")
                 elif kind == "int":
-                    values[key] = st.number_input(label, value=_optional_int(current), min_value=0, step=1, key=widget_key)
+                    values[key] = st.number_input(label, value=int(current) if current is not None else None, min_value=0, step=1, key=widget_key, placeholder="Not provided")
                 elif kind == "select":
                     choices = spec["choices"]
                     index = choices.index(current) if current in choices else 0
@@ -381,6 +401,14 @@ def _render_edit_form(
                     ]
                 elif kind == "bool":
                     values[key] = st.checkbox(label, value=bool(current), key=widget_key)
+
+            numeric_specs = [spec for spec in specs if spec.get("kind") in {"float", "int"} and record.get(spec["key"]) is not None]
+            if numeric_specs:
+                with st.expander("Clear existing numeric values (optional)"):
+                    st.caption("Select only values that should become Not provided. Zero is retained unless explicitly cleared.")
+                    for spec in numeric_specs:
+                        if st.checkbox(f"Clear {spec['label']}", key=f"clear_{entity}_{record_id}_{spec['key']}"):
+                            values[spec["key"]] = None
 
             c1, c2 = st.columns(2)
             values["is_active"] = c1.checkbox("Active", value=bool(record.get("is_active", True)), key=f"edit_{entity}_{record_id}_is_active")
@@ -645,6 +673,7 @@ def _section_cell_products(service: ProductAdminService, snapshot: dict[str, Any
                 ("Process", "manufacturing_process"),
                 ("Manufacturer", "manufacturer"),
                 ("Active", "is_active"),
+                ("Published", "is_published"),
             ],
         ),
         summary_columns=['Code', 'Model', 'Ah', 'Wh', 'Efficiency %', 'Active'],
@@ -1058,9 +1087,10 @@ def _section_ac_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
                 ("LV V", "lv_voltage_v"),
                 ("Peak Eff. %", "peak_efficiency_pct"),
                 ("Active", "is_active"),
+                ("Published", "is_published"),
             ],
         ),
-        summary_columns=['Code', 'Name', 'PCS kW', 'PCS Count', 'Transformer kVA', 'Active'],
+        summary_columns=['Code', 'Name', 'PCS kW', 'PCS Count', 'Transformer kVA', 'Active', 'Published'],
     )
 
     _render_edit_form(
@@ -1121,6 +1151,15 @@ def _section_ac_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
                     )
                     st.success("AC block template saved.")
                     _refresh()
+
+
+    _render_import_expander(
+        service, "ac_block", ["block_code", "block_name"],
+        ["block_code", "block_name", "pcs_model", "pcs_count", "pcs_power_kw",
+         "transformer_kva", "hv_voltage_kv", "lv_voltage_v", "aux_load_kw",
+         "metadata_json", "version_tag", "source_ref", "is_active", "is_published"],
+        "AC Block Templates",
+    )
 
 
 def _section_assets(service: ProductAdminService, snapshot: dict[str, Any]) -> None:

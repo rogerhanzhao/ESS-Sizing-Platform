@@ -1163,7 +1163,11 @@ def show():
             )
             dc_inputs["rte_monotonic_enforce"] = rte_monotonic_enforce
             
-            compact_note(f"Design rule: max 418kWh cabinets per DC busbar (K) = {K_MAX_FIXED}.")
+            compact_note(
+                f"Legacy DC packing parameter K = {K_MAX_FIXED} (unchanged). "
+                "The approved cabinet AC interface supports independent groups of 1–12 cabinets; "
+                "its electrical group list is separate from the legacy DC busbar count."
+            )
 
             section_header(
                 "Configuration Options",
@@ -1176,15 +1180,21 @@ def show():
             auto_enable_cabinet_only = auto_enable_hybrid
             copt1, copt2 = st.columns(2)
             enable_hybrid = copt1.checkbox(
-                "Enable Hybrid Mode",
+                "Include Hybrid comparison",
                 key=_init_input("enable_hybrid", auto_enable_hybrid),
             )
             dc_inputs["enable_hybrid"] = enable_hybrid
             enable_cabinet_only = copt2.checkbox(
-                "Enable Cabinet-Only Mode",
+                "Include Cabinet-Only comparison",
                 key=_init_input("enable_cabinet_only", auto_enable_cabinet_only),
             )
             dc_inputs["enable_cabinet_only"] = enable_cabinet_only
+            priority = (["Hybrid"] if enable_hybrid else []) + (["Cabinet Only"] if enable_cabinet_only else []) + ["Container Only"]
+            st.info(
+                "Container Only is always calculated as a comparison. These switches add scenarios; "
+                "they do not exclude containers. The first supported result is used for AC / SLD: "
+                + " > ".join(priority) + ". Viewing a result tab does not change the active configuration."
+            )
             threshold_col, _threshold_spacer = st.columns([1, 1])
             hybrid_disable_threshold = threshold_col.number_input(
                 "Disable Hybrid Threshold (MWh)",
@@ -1419,26 +1429,42 @@ def show():
                         actor=auth_user.username,
                     )
                     run_id = persist_result.get("run_id")
+                    if not run_id:
+                        st.error("DC result was not saved. AC / SLD input has not been updated; retry saving before continuing.")
+                        st.stop()
                     if run_id:
                         with session_scope() as session:
                             access = AccessControlService(session, auth_user)
                             bundle = access.load_dc_run_bundle(run_id)
                         if not bundle:
                             st.error("Run persisted but could not be reloaded from DB.")
+                            st.stop()
                         else:
                             st.session_state["poi_nominal_voltage_kv"] = poi_nominal_voltage_kv
                             st.session_state["poi_frequency_hz"] = poi_frequency_hz
                             restore_run_bundle_to_session(
                                 bundle, run_id, queue_widget_restore=False
                             )
-                            st.info("DC run saved and restored successfully.")
+                            st.info(f"DC run saved and restored successfully. Active configuration: {active_mode.replace('_', ' ').title()}.")
             except Exception as exc:
                 st.error(f"Failed to persist DC run: {exc}")
+                st.stop()
 
         # Tabs Display
         section_header("Configuration Comparison", eyebrow="Result")
-        tabs = st.tabs([m.replace("_", " ").title() for m in modes_to_run])
-        for i, mode in enumerate(modes_to_run):
+        if active_mode:
+            active_s2 = ok_results[active_mode][0]
+            st.success(
+                f"Active DC configuration for AC / SLD: {active_mode.replace('_', ' ').title()} | "
+                f"{int(active_s2.get('container_count', 0))} container(s), "
+                f"{int(active_s2.get('cabinet_count', 0))} cabinet(s) | "
+                f"{float(active_s2.get('dc_nameplate_bol_mwh', 0)):.3f} MWh nameplate. "
+                "Other tabs are comparison only; opening them does not select a different configuration."
+            )
+        display_modes = ([active_mode] if active_mode else []) + [m for m in modes_to_run if m != active_mode]
+        labels = [m.replace("_", " ").title() + (" — Active for AC / SLD" if m == active_mode else " — Comparison only") for m in display_modes]
+        tabs = st.tabs(labels)
+        for i, mode in enumerate(display_modes):
             with tabs[i]:
                 res = results.get(mode)
                 if isinstance(res, tuple) and res[0] != "ERROR":
@@ -1478,6 +1504,7 @@ def show():
                         )
 
                         st.session_state["dc_result_summary"] = {
+                            "dc_product_codes": [item.block_code for item in snapshots[active_mode].stage2.block_config_items],
                             "mwh": total_mwh,
                             "target_mw": poi_power,
                             "voltage": 1200,
@@ -1532,6 +1559,10 @@ def show():
                 f"Showing the selected saved result for {snapshot.stage1.poi_power_req_mw:.3f} MW / "
                 f"{snapshot.stage1.poi_energy_req_mwh:.3f} MWh. Editing the form does not change this result; "
                 "use Run Sizing to calculate a new result."
+            )
+            st.success(
+                f"Active DC configuration for AC / SLD: {snapshot.stage2.mode.replace('_', ' ').title()} | "
+                f"{snapshot.stage2.container_count} container(s), {snapshot.stage2.cabinet_count} cabinet(s)."
             )
             _render_dc_configuration_result(snapshot_to_legacy_tuple(snapshot), snapshot.stage1.poi_energy_req_mwh)
             saved_mode = str(snapshot.stage2.mode)

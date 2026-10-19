@@ -31,7 +31,7 @@ from calb_sizing_tool.services.auth_service import AuthService
 
 pytest.importorskip("docx")
 
-_DOWNLOAD_LABEL_FRAGMENT = "Download Combined Report"
+_DOWNLOAD_LABEL_FRAGMENT = "Download Technical Proposal"
 
 
 def _app() -> AppTest:

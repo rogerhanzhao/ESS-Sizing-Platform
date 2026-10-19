@@ -185,6 +185,19 @@ def show():
     # missing.
     workspace = get_workspace_context()
     _dc_run_id = workspace.get("run_id")
+    # Resolve cabinet documents before the legacy figure fallback chain. Their
+    # drawings must come from complete, verified packages on this exact child.
+    _selected_ac_resolution = _resolve_report_ac_snapshot(
+        _dc_run_id, state=state, project_state=project_state, session_state=st.session_state,
+    )
+    if (_selected_ac_resolution.snapshot is not None
+            and _selected_ac_resolution.snapshot.output.get('dc_unit_kind') == 'independent_cabinet_group'):
+        from calb_sizing_tool.ui.cabinet_report_view import show_cabinet_report
+        from calb_sizing_tool.state.auth_state import get_auth_user
+        _ph('Report Export', 'Proposal & Technical Document Export')
+        show_cabinet_report(_selected_ac_resolution.snapshot.output, parent_run_id=_dc_run_id,
+            workspace=workspace, auth_user=get_auth_user(), authoritative=_selected_ac_resolution.is_persisted)
+        return
     # Read artifacts at the AC alternative when one is selected. The reader walks
     # up parent_run_id, so an alternative that never produced a given figure still
     # shows the DC run's — and a database written before AC runs existed is
@@ -313,12 +326,7 @@ def show():
         or st.session_state.get("stage13_output")
         or {}
     )
-    ac_resolution = _resolve_report_ac_snapshot(
-        _dc_run_id,
-        state=state,
-        project_state=project_state,
-        session_state=st.session_state,
-    )
+    ac_resolution = _selected_ac_resolution
     ac_output = dict(ac_resolution.snapshot.output) if ac_resolution.snapshot is not None else {}
     if ac_output:
         st.session_state["ac_output"] = ac_output
@@ -328,6 +336,10 @@ def show():
             ac_inputs = st.session_state.get("ac_inputs")
             if isinstance(ac_inputs, dict):
                 ac_inputs.update(ac_resolution.snapshot.inputs)
+
+    from calb_sizing_tool.ui.cabinet_handoff import render_cabinet_handoff
+    if render_cabinet_handoff(ac_output, "Report Export"):
+        return
 
     if not stage13_output or not ac_output:
         st.warning("Run DC sizing and AC sizing first to enable report export.")
@@ -601,7 +613,7 @@ def show():
                 ac_alternative=ctx.ac_alternative_label,
             )
             st.download_button(
-                f"Download Combined Report {brand.display_name}",
+                "Download Technical Proposal",
                 comb_bytes,
                 proposal_filename,
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

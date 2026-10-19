@@ -46,3 +46,14 @@ def test_no_streamlit_arrow_serialization_calls_remain_in_ui() -> None:
                 violations.append(f"{source_path}:{node.lineno} st.{node.func.attr}")
 
     assert violations == []
+
+def test_platform_ui_literal_strings_remain_english():
+    """Product UI language is English; user-entered data is outside this rule."""
+    violations = []
+    for source_path in [Path('app.py'), *Path('calb_sizing_tool/ui').rglob('*.py')]:
+        tree = ast.parse(source_path.read_text(encoding='utf-8-sig'))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                if any('\u3400' <= char <= '\u9fff' for char in node.value):
+                    violations.append(f'{source_path}:{node.lineno}')
+    assert violations == []

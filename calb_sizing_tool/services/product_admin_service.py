@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import math
+import json
 from typing import Any
 
 import pandas as pd
+from sqlalchemy.exc import IntegrityError
 
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.repositories.product_admin_repository import ProductAdminRepository
@@ -12,7 +14,7 @@ from calb_sizing_tool.repositories.product_admin_repository import ProductAdminR
 _INT_COLUMNS = frozenset({
     "cycle_life_cycles", "launch_year", "cells_in_series", "strings_in_parallel",
     "racks_per_block", "packs_per_rack", "racks_per_container", "pack_count",
-    "container_count", "sort_order",
+    "container_count", "sort_order", "pcs_count",
 })
 
 
@@ -112,6 +114,18 @@ class ProductAdminService:
         return pd.DataFrame(records)
 
 
+    def preview_import_from_df(self, df: pd.DataFrame) -> dict[str, Any]:
+        """Normalize spreadsheet values without writing any records."""
+        if df.columns.duplicated().any():
+            return {"rows": [], "errors": ["Duplicate column names are not supported."]}
+        rows, errors = [], []
+        for line, (_, row) in enumerate(df.iterrows(), start=2):
+            try:
+                rows.append((line, _normalize_import_row(row)))
+            except ValueError as exc:
+                errors.append(f"Row {line}: {exc}")
+        return {"rows": rows, "errors": errors}
+
     def import_records_from_df(
         self, entity: str, df: pd.DataFrame
     ) -> dict[str, Any]:
@@ -137,30 +151,72 @@ class ProductAdminService:
         imported = skipped = 0
         errors: list[str] = []
 
-        for row_idx, row in df.iterrows():
-            values: dict[str, Any] = {}
-            for col, val in row.items():
-                if not col or str(col).startswith("_"):
-                    continue
-                if val is None or (isinstance(val, float) and math.isnan(val)):
-                    values[col] = None
-                elif col in _INT_COLUMNS:
-                    try:
-                        # via float() so spreadsheet-style "100.0" coerces to
-                        # 100 instead of silently dropping to None.
-                        values[col] = int(float(val))
-                    except (TypeError, ValueError):
-                        values[col] = None
-                else:
-                    values[col] = val
+        preview = self.preview_import_from_df(df)
+        errors.extend(preview["errors"])
+        if df.columns.duplicated().any():
+            return {"imported": 0, "skipped": len(df), "errors": errors}
+        skipped = len(errors)
+        for line, values in preview["rows"]:
             try:
                 create_fn(values)
                 imported += 1
+            except IntegrityError as exc:
+                skipped += 1
+                code = values.get("block_code") or values.get("cell_code") or values.get("asset_code") or values.get("curve_code") or values.get("plugin_key") or "record"
+                if "unique" in str(exc.orig).lower() or "duplicate" in str(exc.orig).lower():
+                    errors.append(f"Row {line}: Code '{code}' already exists. Existing records were not changed.")
+                else:
+                    errors.append(f"Row {line}: Record could not be saved. Check required fields and linked records.")
             except Exception as exc:
                 skipped += 1
-                errors.append(f"Row {int(row_idx) + 2}: {exc}")  # +2 = header + 1-based
+                errors.append(f"Row {line}: Record could not be saved. Check column names and field types.")
 
         return {"imported": imported, "skipped": skipped, "errors": errors}
+
+
+def _normalize_import_row(row: pd.Series) -> dict[str, Any]:
+    values: dict[str, Any] = {}
+    for col, val in row.items():
+        if not col or str(col).startswith("_"):
+            continue
+        missing = val is None or (not isinstance(val, (list, dict)) and pd.isna(val))
+        if missing or (isinstance(val, str) and not val.strip()):
+            # Blank optional fields keep model defaults, including JSON containers.
+            continue
+        if col in {"is_active", "is_published", "is_primary"}:
+            token = str(val).strip().lower()
+            if token in {"true", "1", "1.0", "yes"}:
+                values[col] = True
+            elif token in {"false", "0", "0.0", "no"}:
+                values[col] = False
+            else:
+                raise ValueError(f"{col}: use true/false or 1/0")
+        elif col in _INT_COLUMNS:
+            try:
+                number = float(val)
+            except (TypeError, ValueError):
+                # Retain legacy optional nonnumeric-to-null behavior.
+                if col == "pcs_count":
+                    raise ValueError("pcs_count: must be a positive integer")
+                values[col] = None
+                continue
+            if not math.isfinite(number) or not number.is_integer():
+                raise ValueError(f"{col}: must be a finite integer")
+            if col == "pcs_count" and number <= 0:
+                raise ValueError("pcs_count: must be a positive integer")
+            values[col] = int(number)
+        elif str(col).endswith("_json"):
+            try:
+                parsed = json.loads(val) if isinstance(val, str) else val
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{col}: invalid JSON") from exc
+            expected = list if col in {"cycle_points_json", "calendar_points_json"} else dict
+            if not isinstance(parsed, expected):
+                raise ValueError(f"{col}: expected JSON {expected.__name__}")
+            values[col] = parsed
+        else:
+            values[col] = val.strip() if isinstance(val, str) else val
+    return values
 
 
 def _to_dict(row: Any) -> dict[str, Any]:

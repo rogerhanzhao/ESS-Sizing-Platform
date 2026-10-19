@@ -59,4 +59,5 @@ def test_edit_form_widgets_do_not_collide_with_add_form():
     # 2x Capacity, 4 checkboxes (Active/Published in each form).
     assert len(app.text_input) == 4
     assert len(app.number_input) == 2
-    assert len(app.checkbox) == 4
+    assert sum(c.label in {"Active", "Published"} for c in app.checkbox) == 4
+    assert any(c.label == "Clear Capacity Ah" for c in app.checkbox)

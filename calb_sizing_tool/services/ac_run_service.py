@@ -68,6 +68,8 @@ AC_OUTPUT_SNAPSHOT_KIND = "ac_sizing_output"
 # in here is a presentation or bookkeeping detail and must NOT mint a new run —
 # that is the difference between "a second alternative" and "over-splitting".
 _IDENTITY_FIELDS = (
+    "dc_unit_kind",
+    "cabinet_group_contract",
     "num_blocks",
     "pcs_per_block",
     "pcs_kw",

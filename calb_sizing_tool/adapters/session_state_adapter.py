@@ -23,6 +23,8 @@ def build_dc_result_summary(snapshot: DcPipelineRunSnapshot) -> dict[str, Any]:
     )
     dc_blocks_total = int(stage2.container_count + stage2.cabinet_count)
     return {
+        "mode": str(stage2.mode),
+        "dc_product_codes": [item.block_code for item in stage2.block_config_items],
         "target_mw": stage1.poi_power_req_mw,
         "mwh": stage1.poi_energy_req_mwh,
         "dc_nameplate_bol_mwh": stage2.dc_nameplate_bol_mwh,

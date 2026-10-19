@@ -181,11 +181,6 @@ def show() -> None:
         "Typical AC Block Arrangement",
         "Concept equipment relationship for one AC Block — not a site plan or construction drawing.",
     )
-    st.info(
-        "This output shows one typical AC Block. It does not model site boundary, access, fire lanes, "
-        "maintenance clearances, POI routing, or by-others scope.",
-        icon=None,
-    )
 
     if _is_guest:
         st.info("👁 **Guest mode** — concept arrangements run from session data. AI prompt and external submission are disabled.", icon=None)
@@ -231,6 +226,23 @@ def show() -> None:
         st.caption(message)
     else:
         st.warning(message)
+
+    if ac_snapshot and ac_snapshot.output.get('dc_unit_kind') == 'independent_cabinet_group':
+        from calb_sizing_tool.ui.cabinet_arrangement_view import show_cabinet_arrangement
+        st.info('Preview one AC Block at a time; the download package contains every AC Block. '
+                'These are concept equipment relationships, not a site or installation design.')
+        show_cabinet_arrangement(ac_snapshot.output, parent_run_id=run_id, workspace=workspace,
+            is_guest=_is_guest, auth_user=auth_user, authoritative=ac_resolution.is_persisted)
+        return
+
+    st.info(
+        "This output shows one typical AC Block. It does not model site boundary, access, fire lanes, "
+        "maintenance clearances, POI routing, or by-others scope.",
+        icon=None,
+    )
+    from calb_sizing_tool.ui.cabinet_handoff import render_cabinet_handoff
+    if render_cabinet_handoff(ac_snapshot.output if ac_snapshot else {}, "Typical AC Block Arrangement"):
+        return
 
     constraint_template = build_site_constraint_template(
         run_id=run_id,
