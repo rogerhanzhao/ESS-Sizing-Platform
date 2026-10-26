@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -104,17 +105,67 @@ def ac_configuration_hash(ac_output: Mapping[str, Any] | None,
     """Identity of an AC alternative.
 
     Only the fields that make one alternative genuinely different are hashed, so
-    a re-run that changes nothing meaningful resolves to the same run. Values are
-    normalised through JSON so an int and a float of the same value agree.
+    a re-run that changes nothing meaningful resolves to the same run. Mixed
+    stations additionally identify every row's PCS model and DC allocation;
+    head-model scalars alone cannot distinguish a changed tail PCS rating.
+    Uniform stations and historical records without rows keep their old hashes.
     """
+    source = _identity_source(ac_output, ac_inputs)
+    mixed_rows = _mixed_rows_identity(ac_output, ac_inputs)
+    if mixed_rows is not None:
+        source["ac_block_rows"] = mixed_rows
+    return _payload_hash(source)
+
+
+def _identity_source(ac_output, ac_inputs) -> dict[str, Any]:
     source: dict[str, Any] = {}
     for field in _IDENTITY_FIELDS:
         for candidate in (ac_output or {}, ac_inputs or {}):
             if field in candidate:
                 source[field] = candidate[field]
                 break
-    raw = json.dumps(source, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return source
+
+
+def _mixed_rows_identity(ac_output, ac_inputs) -> list[dict[str, int]] | None:
+    """Strict numeric rows; do not truncate a fractional count or accept bools.
+
+    Extra presentation fields are deliberately excluded. Row order is the
+    physical AC Block order, so reassigning a model changes the alternative.
+    """
+    rows = None
+    for candidate in (ac_output or {}, ac_inputs or {}):
+        if "ac_block_rows" in candidate:
+            rows = candidate["ac_block_rows"]
+            break
+    if rows is None or rows == []:
+        return None
+    if not isinstance(rows, list):
+        raise ValueError("ac_block_rows must be a list")
+    normalized = []
+    for index, row in enumerate(rows, start=1):
+        if not isinstance(row, Mapping):
+            raise ValueError(f"AC Block {index}: row must be a mapping")
+        item = {}
+        for field in ("pcs_count", "pcs_kw", "dc_blocks"):
+            value = row.get(field)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or (isinstance(value, float) and (not math.isfinite(value) or not value.is_integer()))
+                or value <= 0
+            ):
+                raise ValueError(f"AC Block {index}: {field} must be a positive integer")
+            item[field] = int(value)
+        normalized.append(item)
+    if len({(row["pcs_count"], row["pcs_kw"]) for row in normalized}) <= 1:
+        return None
+    return normalized
+
+
+def _legacy_configuration_hash(ac_output, ac_inputs=None) -> str:
+    """The pre-mixed-row identity, used only for a checked compatibility lookup."""
+    return _payload_hash(_identity_source(ac_output, ac_inputs))
 
 
 def _payload_hash(payload: Mapping[str, Any]) -> str:
@@ -150,6 +201,28 @@ def persist_ac_run(
             return None
 
         existing = repo.find_child_run_by_hash(parent_id, AC_RUN_TYPE, content_hash)
+        legacy_hash = _legacy_configuration_hash(ac_output, ac_inputs)
+        if existing is None and legacy_hash != content_hash:
+            candidate = repo.find_child_run_by_hash(parent_id, AC_RUN_TYPE, legacy_hash)
+            if candidate is not None:
+                saved_output = repo.get_latest_output_snapshot_by_kind(
+                    candidate.sizing_run_id, AC_OUTPUT_SNAPSHOT_KIND
+                )
+                saved_input = repo.get_latest_input_snapshot_by_kind(
+                    candidate.sizing_run_id, AC_INPUT_SNAPSHOT_KIND
+                )
+                try:
+                    same_identity = bool(
+                        saved_output is not None
+                        and ac_configuration_hash(
+                            saved_output.snapshot_json,
+                            saved_input.snapshot_json if saved_input is not None else {},
+                        ) == content_hash
+                    )
+                except (TypeError, ValueError):
+                    same_identity = False
+                if same_identity:
+                    existing = candidate
         if existing is not None:
             # Same configuration as before: this is the SAME alternative being
             # recomputed, not a new one. Keep one row and move on.
@@ -251,7 +324,7 @@ def _refresh_alternative_snapshots(
 ) -> None:
     """Keep a reused alternative's stored configuration current.
 
-    The identity hash covers only the 17 fields that make one scheme different
+    The identity hash covers only the decisions that make one scheme different
     from another, so a re-save can legitimately carry NEW content under the SAME
     identity — a renamed case, an edited input that does not change the scheme.
     Since these snapshots are what the SLD, arrangement and report pages read
@@ -268,7 +341,8 @@ def _refresh_alternative_snapshots(
     """
     input_payload = dict(ac_inputs or {})
     existing_input = repo.get_latest_input_snapshot_by_kind(run_id, AC_INPUT_SNAPSHOT_KIND)
-    if existing_input is None or existing_input.snapshot_json != input_payload:
+    if (existing_input is None or existing_input.snapshot_json != input_payload
+            or existing_input.content_hash != content_hash):
         repo.add_input_snapshot(
             run_id,
             RunInputSnapshotSchema(

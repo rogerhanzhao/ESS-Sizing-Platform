@@ -68,7 +68,13 @@ def render_supplier_degradation_preview(db_url=None):
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="supplier_curve_original", on_click="ignore")
         return
     with st.container(key="supplier_curve_upload_box"):
-        st.markdown('<style>.st-key-supplier_curve_upload_box [data-testid="stFileUploader"] small {display:none;}</style>', unsafe_allow_html=True)
+        # Streamlit 1.52 shows the server's 200 MB transport limit here. This
+        # workbook has a stricter 25 MB check, stated in the visible caption.
+        st.markdown(
+            '<style>.st-key-supplier_curve_upload_box '
+            '[data-testid="stFileUploaderDropzoneInstructions"] > div > span:last-child '
+            '{display:none;}</style>', unsafe_allow_html=True,
+        )
         upload = st.file_uploader("Supplier degradation workbook", type=["xlsx"], key="supplier_curve_preview_upload", help="XLSX only. Maximum workbook size: 25 MB.")
         st.caption("XLSX workbook · Maximum 25 MB. If Windows says the file is in use, save and close it in Excel before selecting it.")
     if upload is None:

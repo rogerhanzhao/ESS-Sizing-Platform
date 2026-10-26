@@ -53,6 +53,7 @@ from calb_sizing_tool.state.project_state import bump_run_id_ac, get_project_sta
 from calb_sizing_tool.state.session_state import init_shared_state, set_run_time
 from calb_sizing_tool.state.workspace_state import (
     adopt_saved_ac_run,
+    clear_ac_form_widgets,
     get_workspace_context,
     restore_run_bundle_to_session,
 )
@@ -184,9 +185,19 @@ def _restore_active_dc_run_if_needed(active_run_id: str | None) -> bool:
     if has_dc_handoff or not run_id or auth_context is None or auth_context.is_guest or auth_user is None:
         return False
 
+    selected_ac_id = st.session_state.get("active_ac_run_id")
+    retained_ac_id = None
     try:
         with session_scope() as session:
             bundle = AccessControlService(session, auth_user).load_dc_run_bundle(run_id)
+            if bundle is not None and selected_ac_id:
+                from calb_sizing_tool.repositories.run_repository import RunRepository
+                selected = RunRepository(session).get_run(selected_ac_id)
+                if (selected is not None and selected.run_type == "ac_sizing"
+                        and selected.parent_run_id == run_id
+                        and selected.project_id == bundle.project_id
+                        and selected.sizing_case_id == bundle.sizing_case_id):
+                    retained_ac_id = selected_ac_id
     except Exception:
         # Keep the existing dependency message below.  In particular, a run
         # outside the current user's scope must never be exposed here.
@@ -196,6 +207,13 @@ def _restore_active_dc_run_if_needed(active_run_id: str | None) -> bool:
         return False
 
     restore_run_bundle_to_session(bundle, run_id, queue_widget_restore=False)
+    if retained_ac_id:
+        # Filling missing project/case codes is not a request to change this
+        # authorized DC run's selected AC alternative. The resolver below
+        # reloads that alternative rather than the parent's latest AC summary.
+        adopt_saved_ac_run(retained_ac_id)
+    elif selected_ac_id:
+        st.session_state.pop("active_ac_run_id", None)
     return True
 
 
@@ -220,14 +238,28 @@ def _hydrate_ac_runtime_snapshot(
 
 def _render_saved_ac_snapshot(ac_output: dict, *, section_header) -> None:
     with st.container(border=True):
-        section_header("Saved AC Runtime Snapshot", "Current AC configuration restored from persisted run data.")
+        section_header("Saved AC Configuration", "The AC configuration restored from the selected saved run.")
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("AC Blocks", int(ac_output.get("num_blocks") or 0))
-        col2.metric("PCS per Block", int(ac_output.get("pcs_per_block") or 0))
-        col3.metric("PCS Rating", f"{_format_float(ac_output.get('pcs_kw'), 0)} kW")
+        mixed_rows = _saved_mixed_station_rows(ac_output)
+        if mixed_rows:
+            schedule = summarize_ac_block_rows(mixed_rows)
+            col2.metric("Total PCS", sum(row["pcs_count"] for row in mixed_rows))
+            col3.metric("AC Block Models", len(schedule))
+        elif ac_output.get("ac_block_mixed"):
+            total_pcs = ac_output.get("pcs_count_total")
+            col2.metric("Total PCS", int(total_pcs) if total_pcs else "Not recorded")
+            col3.metric("Configuration", "Mixed station")
+        else:
+            col2.metric("PCS per Block", int(ac_output.get("pcs_per_block") or 0))
+            col3.metric("PCS Rating", f"{_format_float(ac_output.get('pcs_kw'), 0)} kW")
         col4.metric("Total AC Power", f"{_format_float(ac_output.get('total_ac_mw'), 2)} MW")
         model_name = ac_output.get("ac_block_model_name") or ac_output.get("ac_block_template_id")
-        if model_name:
+        if mixed_rows:
+            _render_mixed_station_schedule(mixed_rows)
+        elif ac_output.get("ac_block_mixed"):
+            st.caption("This mixed record has no detailed AC Block rows. The saved total is shown above.")
+        elif model_name:
             st.caption(f"Saved AC Block model: {model_name}")
 
         # Replay the same existing comparison used when this configuration is
@@ -248,6 +280,235 @@ def _render_saved_ac_snapshot(ac_output: dict, *, section_header) -> None:
                     st.error(message)
                 for message in warnings:
                     st.warning(message)
+
+
+def _saved_mixed_station_rows(ac_output: dict) -> list[dict]:
+    """Read the saved physical rows without mutating or guessing a tail model."""
+    rows = ac_output.get("ac_block_rows")
+    if not isinstance(rows, list) or not rows:
+        return []
+    normalized = []
+    for row in rows:
+        if not isinstance(row, dict):
+            return []
+        item = {}
+        for field in ("pcs_count", "pcs_kw", "dc_blocks"):
+            value = row.get(field)
+            if (isinstance(value, bool) or not isinstance(value, (int, float))
+                    or value <= 0 or not float(value).is_integer()):
+                return []
+            item[field] = int(value)
+        normalized.append(item)
+    return normalized if is_mixed_station(normalized) else []
+
+
+def _render_mixed_station_schedule(rows: list[dict]) -> None:
+    schedule = summarize_ac_block_rows(rows)
+    render_static_table([{
+        "Model": entry["role"],
+        "AC Blocks": entry["count"],
+        "PCS per AC Block": f"{entry['pcs_count']} x {entry['pcs_kw']:,.0f} kW",
+        "AC Power per Block (MW)": f"{entry['block_mw']:.2f}",
+        "Total AC Power (MW)": f"{entry['count'] * entry['block_mw']:.2f}",
+        "DC Blocks per AC Block": (
+            str(entry["dc_blocks_each"]) if entry["dc_blocks_each"] is not None
+            else f"{entry['dc_blocks_min']} to {entry['dc_blocks_max']}"
+        ),
+    } for entry in schedule])
+    st.caption("Mixed station totals use the saved rows. Each model has its own PCS count and rating.")
+
+
+def _sync_ac_form_source(dc_run_id: str | None, ac_run_id: str | None) -> None:
+    """Reset keyed choices on a real source switch, preserving same-source edits."""
+    source = (dc_run_id or None, ac_run_id or None)
+    previous = st.session_state.get("_ac_form_source")
+    if previous is not None and previous != source:
+        clear_ac_form_widgets()
+    st.session_state["_ac_form_source"] = source
+
+
+def _suggested_ac_block_model_index(
+    model_options: list, selected_option, *, total_energy_mwh: float,
+    target_energy_mwh: float, target_power_mw: float, dc_block_output_circuits: int,
+) -> int | None:
+    """Choose an initial model using existing checks, without changing the library.
+
+    This is only a starting selection: the original model order, optimal flags,
+    saved choices and manual overrides remain available.
+    """
+    if min(total_energy_mwh, target_energy_mwh, target_power_mw) <= 0:
+        return None
+    candidates = []
+    for index, model in enumerate(model_options):
+        if not dc_grouping_has_feeder_capacity(
+            selected_option.dc_blocks_per_ac, model.pcs_count,
+            dc_block_output_circuits=dc_block_output_circuits,
+        ):
+            continue
+        total_ac_mw = model.block_size_mw * selected_option.ac_block_count
+        errors, _ = evaluate_ac_sizing_feasibility(
+            total_energy_mwh=total_energy_mwh, target_energy_mwh=target_energy_mwh,
+            total_ac_mw=total_ac_mw, target_power_mw=target_power_mw,
+        )
+        if not errors and total_ac_mw >= target_power_mw:
+            candidates.append((total_ac_mw, index))
+    return min(candidates)[1] if candidates else None
+
+
+def _saved_tail_parent(run_id: str | None, workspace: dict):
+    """Read the selected, access-controlled DC comparison; never adopt it."""
+    auth = get_auth_context()
+    if not run_id or auth is None or auth.is_guest:
+        return None
+    from calb_sizing_tool.services.dc_reduced_string_tail_service import restored_comparison
+    try:
+        with session_scope() as session:
+            bundle = AccessControlService(session, get_auth_user()).load_dc_run_bundle(run_id)
+        if (bundle is None or bundle.project_id != workspace.get("project_id")
+                or bundle.sizing_case_id != workspace.get("case_id")):
+            return None
+        return bundle.snapshot if restored_comparison(bundle.snapshot) else None
+    except (ValueError, TypeError, PermissionError):
+        st.warning("The saved tail comparison is unavailable. Standard AC sizing remains available.")
+        return None
+
+
+def _tail_ac_comparison_inputs(parent, rows: list[dict], circuits: int,
+                               saved_ac_output: dict, *, grouping_ratio: str) -> dict:
+    """Small addition to the original form; only tail-connected PCS are editable."""
+    if parent is None:
+        return {}
+    from calb_sizing_tool.services.dc_reduced_string_tail_service import restored_comparison
+    from calb_sizing_tool.services.run_persistence_service import _hash_payload
+    comparison = restored_comparison(parent)
+    strings = comparison["selected_tail_strings"]
+    with st.expander("Advanced: Reduced-string tail", expanded=False):
+        st.caption(
+            f"The saved DC result includes one {strings}-string tail comparison. "
+            "The same Run AC Sizing button will review it against this grouping. "
+            "The standard AC configuration remains active for SLD, arrangement and proposal export."
+        )
+        try:
+            plan = build_mixed_dc_allocation_plan(rows, dc_block_output_circuits=circuits)
+            last = plan[-1]
+            connection = next(item for item in last["dc_block_connections"]
+                              if item["dc_block_index"] == last["dc_blocks_total"])
+            feeders = list(connection["feeder_indices"])
+        except (ValueError, TypeError, KeyError, IndexError, StopIteration):
+            st.caption("Resolve the grouping and PCS feeder allocation above before reviewing the tail.")
+            return {}
+        render_static_table([
+            {"AC Block": len(rows), "DC configuration": "12-string main",
+             "Quantity": rows[-1]["dc_blocks"] - 1, "DC outputs per container": circuits},
+            {"AC Block": len(rows), "DC configuration": f"{strings}-string tail",
+             "Quantity": 1, "DC outputs per container": 1 if strings == 10 else 2},
+        ])
+        st.caption(
+            "Only the last physical DC container is replaced. All preceding groups keep their original composition. "
+            "PCS ratings below belong to this comparison only; other PCS inherit the existing MIX row."
+        )
+        if strings == 10 and len(feeders) > 1:
+            st.warning(
+                "The last container is currently assigned to two PCS. A 10-string tail has one DC output "
+                "and can feed only one PCS. Adjust the last group in the existing MIX table or select a "
+                "compatible PCS count above. The standard configuration remains available."
+            )
+        elif strings == 8:
+            st.caption(
+                "The 8-string tail has two outputs and may feed up to two PCS. "
+                "Individual output power is unconfirmed; no equal split or parallel connection is assumed."
+            )
+        saved_ratings = {}
+        if saved_ac_output.get("ac_block_rows") == rows and saved_ac_output.get("dc_block_output_circuits") == circuits:
+            from calb_sizing_tool.services.dc_tail_ac_review_service import restored_tail_ac_review
+            try:
+                saved_review = restored_tail_ac_review(parent, saved_ac_output)
+            except (ValueError, TypeError):
+                saved_review = None
+            if saved_review:
+                saved_ratings = {item["feeder_index"]: item["rating_kw"]
+                                 for item in saved_review["tail_pcs_rating_overrides_kw"]}
+        form_identity = _hash_payload({"dc": comparison["comparison_sha256"], "rows": rows,
+                                       "circuits": circuits, "ratio": grouping_ratio})[:16]
+        return {
+            feeder: float(st.number_input(
+                f"Tail-comparison PCS {feeder} rating (kW)", min_value=50.0, max_value=10000.0,
+                value=float(saved_ratings.get(feeder, rows[-1]["pcs_kw"])), step=50.0, format="%.0f",
+                key=f"ac_tail_comparison_kw_{form_identity}_{feeder}",
+                help="A comparison setting only. Use the original MIX table for the active AC model.",
+            )) for feeder in feeders
+        }
+
+
+def _render_saved_tail_ac_review(parent, ac_output: dict, *, section_header) -> None:
+    if parent is None:
+        return
+    from calb_sizing_tool.services.dc_tail_ac_review_service import restored_tail_ac_review
+    try:
+        review = restored_tail_ac_review(parent, ac_output)
+    except (ValueError, TypeError):
+        st.warning("The saved tail AC comparison no longer matches this DC / AC configuration. Run AC Sizing to update it.")
+        return
+    if review is None:
+        return
+    from calb_sizing_tool.services.dc_reduced_string_tail_service import restored_comparison
+    comparison = restored_comparison(parent)
+    strings = comparison["selected_tail_strings"]
+    group = review["groups"][-1]
+    with st.container(border=True):
+        section_header("Reduced-string Tail — AC Comparison", eyebrow="Comparison only")
+        st.caption(
+            f"AC Block {review['tail_group_index']}: {group['main_count']} standard 12-string container(s) "
+            f"+ one {strings}-string tail. The preceding {len(review['groups']) - 1} AC group(s) are unchanged. "
+            "This saved comparison does not select a different AC configuration."
+        )
+        a, b, c = st.columns(3)
+        a.metric("Last-group DC Energy", f"{group['dc_energy_mwh']:.3f} MWh")
+        b.metric("Last-group PCS Nameplate", f"{sum(item['rating_kw'] for item in group['pcs_items']) / 1000:.3f} MW")
+        c.metric("Tail DC Outputs", 1 if strings == 10 else 2)
+        st.caption(
+            f"Last-group DC reference: {group['required_dc_duty_kw'] / 1000:.3f} MW; "
+            f"nominal 0.5C DC capacity: {group['nominal_dc_capacity_kw'] / 1000:.3f} MW."
+        )
+        render_static_table([
+            {"PCS in last AC Block": item["feeder_index"], "Rating (kW)": f"{item['rating_kw']:.0f}",
+             "DC reference (kW)": f"{item['required_dc_duty_kw']:.2f}" if item["required_dc_duty_kw"] is not None else "Pending output data",
+             "AC reference (kW)": f"{item['required_ac_duty_kw']:.2f}" if item["required_ac_duty_kw"] is not None else "Pending output data",
+             "Nominal power check": {"within_nominal_nameplate": "Pass", "exceeds_pcs_nameplate": "Not met", "unknown_output_duty": "Pending output data"}[item["nominal_power_check"]]}
+            for item in group["pcs_items"]
+        ])
+        st.caption(
+            "Power references use DC nameplate energy shares for this comparison. DC-to-PCS-AC conversion "
+            "uses the original DC cable and PCS efficiencies. The 0.5C value is a nominal DC design basis; "
+            "equipment current, voltage, output allocation and transformer winding ratings remain to be confirmed."
+        )
+        for message in review["errors"]:
+            st.warning(message)
+        if not review["errors"]:
+            st.info("The nominal comparison is calculated. Electrical equipment confirmation is still required; standard AC remains active.")
+        with st.expander("Last-group transformer and LV basis", expanded=False):
+            transformer = group["transformer_review"]
+            st.caption(
+                f"Original transformer basis: {transformer['total_mva']:.3f} MVA "
+                f"({'planning estimate' if transformer['is_estimate'] else 'bound product nameplate'}). "
+                f"Separate PCS nameplates at the planning 0.9 power factor: "
+                f"{transformer['full_pcs_nameplate_at_0_9_pf_mva']:.3f} MVA. "
+                "No individual winding rating is inferred from the total."
+            )
+            render_static_table([
+                {"LV winding": winding["winding_index"],
+                 "PCS feeders": ", ".join(str(index) for index in winding["feeder_indices"]),
+                 "PCS nameplate (kW)": f"{winding['pcs_rating_kw_sum']:.0f}",
+                 "Confirmed winding rating (kVA)": "Pending"}
+                for winding in group["windings"]
+            ])
+        if review["pending_evidence"]:
+            with st.expander("Electrical data still to confirm", expanded=False):
+                for message in review["pending_evidence"]:
+                    if (not message.startswith("AC Block ")
+                            or message.startswith(f"AC Block {review['tail_group_index']}:")
+                            or message.startswith(f"AC Block {review['tail_group_index']} PCS ")):
+                        st.caption(message)
 
 
 def _saved_pcs_choice_index(ac_output: dict | None, recommendations: list) -> int:
@@ -349,6 +610,7 @@ def show():
         workspace = get_workspace_context()
         active_run_id = workspace.get("run_id") or active_run_id
 
+    _sync_ac_form_source(active_run_id, workspace.get("ac_run_id"))
     ac_resolution = resolve_preferred_ac_snapshot(
         active_run_id,
         project_state=project_state,
@@ -393,6 +655,7 @@ def show():
 
     dc_container_count = int(dc_data.get("container_count", 0) or 0)
     dc_cabinet_count = int(dc_data.get("cabinet_count", 0) or 0)
+    tail_parent = _saved_tail_parent(active_run_id, workspace) if dc_container_count > 0 and dc_cabinet_count == 0 else None
     dc_total_blocks_hint = int(dc_data.get("total_blocks", 0) or 0)
     # Restored summaries retain mwh as the POI target for compatibility.
     # Use the persisted DC nameplate for allocation and energy validation.
@@ -480,6 +743,10 @@ def show():
         col2.metric("DC Capacity", f"{total_energy_mwh:.1f} MWh")
         col3.metric("POI Power Req.", f"{target_mw:.1f} MW")
         col4.metric("POI Energy Req.", f"{target_mwh:.3f} MWh")
+        st.caption(
+            "DC Capacity is installed nameplate energy. The AC energy comparison uses this value; "
+            "refer to DC Sizing for usable POI energy at the guarantee year."
+        )
         if dc_cabinet_count > 0 and dc_container_count == 0:
             compact_note(
                 f"Active DC configuration: Cabinet Only — {dc_cabinet_count} physical cabinets, no containers. "
@@ -489,8 +756,8 @@ def show():
         elif dc_cabinet_count > 0:
             compact_note(
                 f"DC side used a hybrid packaging: {dc_container_count} container(s) + "
-                f"{dc_cabinet_count} cabinet(s) as the DC tail. The AC mixed station (in the "
-                "AC configuration must be selected from the same grouping and PCS flow; "
+                f"{dc_cabinet_count} cabinet(s) as the DC tail. Select the AC mixed-station "
+                "configuration through the same grouping and PCS steps; "
                 "the DC tail does not select a fixed AC product."
             )
 
@@ -499,9 +766,11 @@ def show():
     saved_ac_output = st.session_state.get("ac_output") if isinstance(st.session_state.get("ac_output"), dict) else ac_results
     if cabinet_group_plan and saved_ac_output and saved_ac_output.get("dc_unit_kind") != "independent_cabinet_group":
         st.warning("This saved AC result predates the independent cabinet group interface. Recalculate before generating cabinet drawings or reports.")
+    saved_snapshot_region = st.empty()
     if _snapshot_output_matches_run(saved_ac_output, active_run_id):
-        _render_saved_ac_snapshot(saved_ac_output, section_header=section_header)
-        st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
+        with saved_snapshot_region.container():
+            _render_saved_ac_snapshot(saved_ac_output, section_header=section_header)
+            st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
 
     # Historical governed product helpers remain available for reading old persisted
     # runs. They are deliberately not exposed in this UI: AC sizing now has one
@@ -601,11 +870,63 @@ def show():
             model_default_index = _saved_ac_block_model_choice_index(
                 saved_ac_output, model_options, custom_index=len(model_options)
             )
-            if cabinet_group_plan and not saved_ac_output.get("pcs_kw") and model_options:
-                sufficient = [i for i, model in enumerate(model_options)
-                              if model.block_size_mw * selected_option.ac_block_count >= target_mw]
-                model_default_index = min(sufficient, key=lambda i: model_options[i].block_size_mw) if sufficient else max(
-                    range(len(model_options)), key=lambda i: model_options[i].block_size_mw
+            recommendation_circuits = 1 if cabinet_group_plan else st.session_state.get(
+                "ac_dc_block_output_circuits", saved_ac_output.get("dc_block_output_circuits") or 2
+            )
+            if recommendation_circuits not in (1, 2):
+                recommendation_circuits = 2
+            suggested_index = _suggested_ac_block_model_index(
+                model_options, selected_option, total_energy_mwh=total_energy_mwh,
+                target_energy_mwh=target_mwh, target_power_mw=target_mw,
+                dc_block_output_circuits=int(recommendation_circuits),
+            )
+            has_saved_model = bool(saved_ac_output.get("ac_block_model_code")
+                                   or saved_ac_output.get("pcs_kw"))
+            saved_model_ratio = (saved_ac_output.get("ac_block_grouping_ratio")
+                                 or saved_ac_output.get("selected_ratio"))
+            # A model restored for another ratio is not a manual choice for
+            # this grouping. Existing per-ratio widget choices still win over
+            # this initial default, so revisiting an edited ratio is stable.
+            if ((not has_saved_model or (saved_model_ratio and saved_model_ratio != selected_option.ratio))
+                    and suggested_index is not None):
+                model_default_index = suggested_index
+            # Streamlit removes widgets for a ratio while another ratio is
+            # rendered. Retain choices by model identity within this source,
+            # rather than relying on an absent widget's old numeric index.
+            remembered_models = dict(st.session_state.get("_ac_model_choices") or {})
+            remembered_model = remembered_models.get(model_widget_key)
+            if remembered_model == "__custom__":
+                model_default_index = len(model_options)
+            elif remembered_model:
+                model_default_index = next(
+                    (i for i, model in enumerate(model_options) if model.model_code == remembered_model),
+                    model_default_index,
+                )
+            mixed_editor_active = bool(st.session_state.get(
+                f"ac_mixed_enabled_{selected_option.ratio.replace(':', 'to')}",
+                saved_ac_output.get("ac_block_mixed", False),
+            ))
+            if suggested_index is not None:
+                suggested = model_options[suggested_index]
+                st.caption(
+                    f"Suggested starting model: {suggested.display_name}. "
+                    f"A uniform station of {selected_option.ac_block_count} AC Blocks provides "
+                    f"{suggested.block_size_mw * selected_option.ac_block_count:.2f} MW "
+                    f"against {target_mw:.2f} MW POI required power. "
+                    "This is a nameplate starting point; confirm the electrical configuration below."
+                )
+                if mixed_editor_active:
+                    st.caption(
+                        "Mixed station is enabled: the MIX rows below determine the actual station total. "
+                        "This uniform suggestion does not replace those rows. Turn off the mixed station "
+                        "to use the recommended uniform model."
+                    )
+                elif st.button("Use recommended model", key=f"ac_use_recommended_{model_widget_key}"):
+                    st.session_state[model_widget_key] = suggested_index
+            else:
+                st.caption(
+                    "No standard starting model passes the existing power/energy and feeder checks "
+                    "for this grouping. Review the grouping or use a custom model."
                 )
 
             model_choice = st.selectbox(
@@ -616,6 +937,10 @@ def show():
                 key=model_widget_key,
                 help="Sizing candidate derived from PCS count and rating. It is not a product record and does not lock a catalogue choice.",
             )
+            remembered_models[model_widget_key] = (
+                model_options[model_choice].model_code if model_choice < len(model_options) else "__custom__"
+            )
+            st.session_state["_ac_model_choices"] = remembered_models
 
             if model_choice < len(model_options):
                 chosen_model = model_options[model_choice]
@@ -632,6 +957,16 @@ def show():
                 pcs_count_choices = (selected_option.dc_blocks_per_ac[0],) if cabinet_group_plan else _CUSTOM_PCS_COUNT_CHOICES
                 if st.session_state.get("custom_pcs_count") not in pcs_count_choices:
                     st.session_state.pop("custom_pcs_count", None)
+                if _snapshot_output_matches_run(saved_ac_output, active_run_id):
+                    saved_count = saved_ac_output.get("pcs_per_block")
+                    saved_kw = saved_ac_output.get("pcs_kw")
+                    if ("custom_pcs_count" not in st.session_state
+                            and type(saved_count) in (int, float) and saved_count in pcs_count_choices):
+                        st.session_state["custom_pcs_count"] = int(saved_count)
+                    if ("custom_pcs_kw" not in st.session_state
+                            and type(saved_kw) in (int, float) and 1000 <= saved_kw <= 5000
+                            and float(saved_kw).is_integer()):
+                        st.session_state["custom_pcs_kw"] = int(saved_kw)
                 pcs_per_ac = int(
                     custom_col1.selectbox(
                         "PCS Count per AC Block",
@@ -934,6 +1269,14 @@ def show():
                     for _msg in mixed_valid.messages:
                         st.warning(_msg)
 
+            tail_review_rows = (
+                mixed_rows if mixed_enabled and is_mixed_station(mixed_rows or [])
+                else default_uniform_rows(selected_option.dc_blocks_per_ac, pcs_per_ac, pcs_kw)
+            )
+            tail_pcs_ratings = _tail_ac_comparison_inputs(
+                tail_parent, tail_review_rows, dc_block_output_circuits, saved_ac_output,
+                grouping_ratio=selected_option.ratio,
+            )
             submitted = st.button("Run AC Sizing", use_container_width=True, type="primary")
 
         # ========== STEP 4: Calculation & Validation ==========
@@ -1103,9 +1446,12 @@ def show():
             _dc1.metric("DC Blocks", _dc_block_str)
             _dc2.metric("DC per AC Block (avg)", f"{dc_blocks_total / num_blocks:.1f}")
             _dc3.metric("Total DC Energy", f"{total_energy:.1f} MWh")
-            compact_note(
-                f"AC Block model: {ac_block_model_name}. Container type: {auto_container} per AC Block."
-            )
+            if is_mixed_run:
+                _render_mixed_station_schedule(station_rows)
+            else:
+                compact_note(
+                    f"AC Block model: {ac_block_model_name}. Container type: {auto_container} per AC Block."
+                )
 
             mv_kv = float(mv_kv_value or 33.0)
             lv_v = float(st.session_state.get("pcs_lv_v", 690.0))
@@ -1230,6 +1576,15 @@ def show():
             elif bound_ac_product and is_mixed_run:
                 ac_output["ac_block_product_binding_suppressed"] = "mixed_station"
 
+            if tail_parent is not None:
+                from calb_sizing_tool.services.dc_tail_ac_review_service import REVIEW_KEY, evaluate_tail_ac_review
+                try:
+                    tail_review = evaluate_tail_ac_review(tail_parent, ac_output, tail_pcs_ratings)
+                    if tail_review is not None:
+                        ac_output[REVIEW_KEY] = tail_review
+                except (ValueError, TypeError) as exc:
+                    st.warning(f"Tail comparison was not calculated: {exc} Standard AC sizing is retained.")
+
             _auth_ctx = get_auth_context()
             if _auth_ctx and not _auth_ctx.is_guest:
                 # The selected alternative is authoritative downstream. Do not
@@ -1245,6 +1600,9 @@ def show():
                     st.error("AC configuration could not be saved. The previous selected alternative is unchanged. Please retry.")
                     return
                 adopt_saved_ac_run(_ac_run.run_id)
+                # This is the configuration just produced by this form, rather
+                # than a request to switch to a different saved source.
+                st.session_state["_ac_form_source"] = (active_run_id or None, _ac_run.run_id)
                 try:
                     persist_ac_runtime_snapshot(
                         run_id=source_run_id, ac_inputs=ac_inputs, ac_output=ac_output,
@@ -1260,10 +1618,17 @@ def show():
             st.session_state["ac_output"] = ac_output
             ac_results.update(ac_output)
             set_run_time("ac_results")
+            # Replace the earlier saved snapshot only after this save succeeds.
+            # A rerun would reroute the original form/Next flow; a placeholder
+            # keeps both summaries consistent in the same button response.
+            with saved_snapshot_region.container():
+                _render_saved_ac_snapshot(ac_output, section_header=section_header)
+                st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
             st.success("AC Configuration Complete!" if _auth_ctx and not _auth_ctx.is_guest
                        else "AC sizing complete (guest mode — session only).")
 
     latest_ac_output = st.session_state.get("ac_output") if isinstance(st.session_state.get("ac_output"), dict) else ac_results
     if _snapshot_output_matches_run(latest_ac_output, active_run_id):
+        _render_saved_tail_ac_review(tail_parent, latest_ac_output, section_header=section_header)
         auth_ctx = get_auth_context()
         render_pipeline_next_steps("AC Sizing", is_guest=bool(auth_ctx and auth_ctx.is_guest))

@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlalchemy.exc import OperationalError
 
-from calb_sizing_tool.domain.enums import StageScope
+from calb_sizing_tool.domain.enums import ScenarioMode, StageScope
 from calb_sizing_tool.infra.db.base import Base
 from calb_sizing_tool.infra.db.session import session_scope
 from calb_sizing_tool.repositories.case_repository import CaseRepository
@@ -20,6 +20,18 @@ from calb_sizing_tool.utils.text import slugify
 def _hash_payload(payload: dict[str, Any]) -> str:
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+_PERSISTABLE_DC_MODES = frozenset(mode.value for mode in ScenarioMode)
+
+
+def _validate_original_dc_mode(mode: str) -> None:
+    """Keep planning/comparison results outside the adopted DC run contract."""
+    if mode not in _PERSISTABLE_DC_MODES:
+        raise ValueError(
+            "Only standard container, cabinet or hybrid DC results can be saved or restored. "
+            "Comparison-only results cannot be adopted through this workflow."
+        )
 
 
 def _persist_dc_run_with_session(
@@ -179,6 +191,9 @@ def persist_dc_run(
     actor: str | None = None,
     defaults: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    # Reject an experimental composition before opening or creating a database.
+    # Its aggregate Stage 2 shape is compatible, but it is not an adopted run.
+    _validate_original_dc_mode(snapshot.stage2.mode)
     if isinstance(case_input, dict):
         case_model = SizingCaseInput.model_validate(case_input)
     else:

@@ -45,3 +45,30 @@ def test_customer_labels_keep_engineering_identifiers_and_remove_database_ids():
     assert quantity_label(1,"AC Block") == "1 AC Block"
     assert quantity_label(2,"AC Block") == "2 AC Blocks"
     assert spacing_basis_text("Owner ruling 2026-08-03 — same clearance") == "Concept design assumption — same clearance"
+
+
+def test_site_equipment_table_preserves_fractional_installed_power(tmp_path, monkeypatch):
+    import pandas as pd
+
+    monkeypatch.setenv("CALB_OUTPUTS_DIR", str(tmp_path))
+    ctx = build_report_context({}, {
+        "stage13_output": dict(project_name="Fractional AC rating", poi_power_req_mw=100,
+            poi_energy_req_mwh=400, project_life_years=20, cycles_per_year=365, poi_guarantee_year=0),
+        "stage2": dict(container_count=90, dc_nameplate_bol_mwh=451.440,
+            block_config_table=pd.DataFrame([{
+                "Unit Capacity (MWh)": 5.016, "Quantity": 90, "Subtotal (MWh)": 451.440,
+            }])),
+        "ac_output": dict(num_blocks=45, pcs_per_block=2, pcs_kw=1250, block_size_mw=2.5,
+            dc_blocks_per_ac=2, dc_blocks_total=90, pcs_count_total=90, total_ac_mw=112.5),
+    }, {})
+    doc = Document(io.BytesIO(export_report_v2_1(ctx)))
+    ratings = [row.cells[1].text for table in doc.tables for row in table.rows
+               if len(row.cells) >= 2 and row.cells[0].text == "Rated power / energy (whole site)"]
+    assert ratings == ["112.50 MW / 451.440 MWh"]
+    captions = [paragraph.text for paragraph in doc.paragraphs
+                if "Concept Site Arrangement — one representative project group" in paragraph.text]
+    assert len(captions) == 1
+    assert "2.50 MW per block" in captions[0]
+    assert "(112.50 MW / 451.440 MWh)" in captions[0]
+    assert ctx.ac_output["total_ac_mw"] == 112.5
+    assert ctx.dc_total_energy_mwh == 451.440

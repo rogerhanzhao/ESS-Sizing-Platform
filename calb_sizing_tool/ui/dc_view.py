@@ -38,6 +38,7 @@ from calb_sizing_tool.services.dc_input_guard_service import (
     validate_dc_inputs,
     validate_soh_curve_support,
 )
+from calb_sizing_tool.services.dc_product_curve_guard import check_admin_dc_curve_applicability
 from calb_sizing_tool.services.dc_pipeline_service import size_with_guarantee as service_size_with_guarantee
 from calb_sizing_tool.services.run_persistence_service import persist_dc_run
 from calb_sizing_tool.services.stage1_service import run_stage1 as service_run_stage1
@@ -693,15 +694,21 @@ def build_report_bytes(stage1: dict, results_dict: dict, report_order: list):
 # ==========================================
 # 6. MAIN VIEW FUNCTION
 # ==========================================
-def _render_dc_configuration_result(res, poi_energy):
+def _render_dc_configuration_result(res, poi_energy, *, fixed_tail_bom=False):
     s2, s3_df, s3_meta, iter_c, poi_g, conv = res
     if not conv:
-        st.warning(
-            f"NOT CONVERGED: after {iter_c} augmentation iterations this "
-            "configuration still cannot meet the POI requirement at the "
-            "guarantee year. Do not use this result for a proposal — "
-            "review the POI duty, guarantee year, and product selection."
-        )
+        if fixed_tail_bom:
+            st.warning(
+                "This fixed tail configuration does not meet the POI energy requirement at the guarantee year. "
+                "The standard configuration remains active; no extra containers were added to this comparison."
+            )
+        else:
+            st.warning(
+                f"NOT CONVERGED: after {iter_c} augmentation iterations this "
+                "configuration still cannot meet the POI requirement at the "
+                "guarantee year. Do not use this result for a proposal — "
+                "review the POI duty, guarantee year, and product selection."
+            )
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Installed DC Nameplate", f"{s2['dc_nameplate_bol_mwh']:.3f} MWh")
@@ -790,6 +797,121 @@ def _render_dc_technical_export(s1, results, report_order, project_name, *, is_g
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             on_click="ignore",
         )
+
+
+def _reduced_string_tail_options(df_blocks):
+    """Read only the owner-authorized family; never alter the standard picker."""
+    from calb_sizing_tool.services.product_admin_service import ProductAdminService
+    from calb_sizing_tool.services.dc_reduced_string_tail_service import (
+        available_products, derive_reduced_string_basis,
+    )
+    reference = load_dc_excel_bundle_from_path(Path(DC_DATA_PATH))
+    basis = derive_reduced_string_basis(reference)
+    main = service_pick_dc_block(df_blocks, "container")
+    rows = ProductAdminService().dc_block_maintenance_rows()
+    products = available_products(rows, basis, main[0] if main else None)
+    return basis, products
+
+
+def _saved_tail_comparison(snapshot):
+    from calb_sizing_tool.services.dc_reduced_string_tail_service import restored_comparison
+    try:
+        return restored_comparison(snapshot)
+    except (ValueError, TypeError) as exc:
+        st.warning(f"The saved tail comparison cannot be displayed: {exc} The standard result is unchanged.")
+        return None
+
+
+def _tail_curve_comparison_details(baseline_meta, tail_meta):
+    """Describe saved selections; never select curves or recalculate a result."""
+    rows = []
+    for label, meta in (("Standard active", baseline_meta), ("Tail comparison", tail_meta)):
+        if meta is not None:
+            rows.append({
+                "Configuration": label,
+                "Effective DC rate": f"{meta.effective_c_rate:.4f}C",
+                "Selected SOH rate": f"{meta.chosen_soh_c_rate:g}C",
+                "Selected SOH cycles/year": meta.chosen_soh_cycles_per_year,
+                "Selected RTE rate": f"{meta.chosen_rte_c_rate:g}C",
+            })
+    if baseline_meta is None:
+        return rows, None
+    changed = []
+    if (baseline_meta.soh_profile_id, baseline_meta.chosen_soh_c_rate,
+            baseline_meta.chosen_soh_cycles_per_year) != (
+            tail_meta.soh_profile_id, tail_meta.chosen_soh_c_rate,
+            tail_meta.chosen_soh_cycles_per_year):
+        changed.append("SOH")
+    if (baseline_meta.rte_profile_id, baseline_meta.chosen_rte_c_rate) != (
+            tail_meta.rte_profile_id, tail_meta.chosen_rte_c_rate):
+        changed.append("RTE")
+    return rows, changed
+
+
+def _render_reduced_string_tail_comparison(comparison, baseline_snapshot=None):
+    tail_snapshot = DcPipelineRunSnapshot.model_validate(comparison["snapshot"])
+    strings = comparison["selected_tail_strings"]
+    year = tail_snapshot.stage1.poi_guarantee_year
+    target = tail_snapshot.stage1.poi_energy_req_mwh
+    result = comparison["poi_energy_at_guarantee_year_mwh"]
+    st.info(
+        f"One {strings}-string tail replaces the final 12-string container. "
+        "This is the current comparison setup, not an adopted configuration. "
+        "The standard configuration remains active for AC / SLD and proposal export."
+    )
+    a, b, c = st.columns(3)
+    a.metric(f"POI Target at Y{year}", f"{target:.3f} MWh")
+    b.metric(f"POI Usable Energy at Y{year}", f"{result:.3f} MWh")
+    c.metric(f"Energy Margin at Y{year}", f"{result - target:+.3f} MWh")
+    a, b = st.columns(2)
+    a.metric(f"POI Energy Check at Y{year}", "Pass" if comparison["meets_guarantee_year_energy"] else "Not met")
+    b.metric("Nominal 0.5C Power Check", "Pass" if comparison["meets_nominal_dc_power"] else "Not met")
+    st.caption(
+        f"Energy guarantee checkpoint: Y{year} from COD. "
+        f"Project life: {tail_snapshot.stage1.project_life_years} years. "
+        "Passing this checkpoint does not establish that the POI target is met in every project year."
+    )
+    rows, changed = _tail_curve_comparison_details(
+        baseline_snapshot.stage3.meta if baseline_snapshot is not None else None,
+        tail_snapshot.stage3.meta,
+    )
+    render_static_table(pd.DataFrame(rows))
+    if changed:
+        st.warning(
+            f"Curve selection changed from the standard result: {' and '.join(changed)}. "
+            "The same standard curve library is reused, but the selected curve may differ as the effective rate changes."
+        )
+    elif changed is not None:
+        st.caption("SOH / RTE curve selection is unchanged from the standard result; the effective DC rate is shown above.")
+    else:
+        st.caption("Standard curve selection is unavailable for this display; no comparison of curve selections is made.")
+    st.caption(
+        f"Nominal DC power basis: {comparison['nominal_dc_power_mw']:.3f} MW; "
+        f"DC power required: {comparison['dc_power_required_mw']:.3f} MW. "
+        "Capacity follows the original cell-to-container chain. SOH / RTE use the current standard 314Ah "
+        "data and the original rate / cycle-frequency selector under the owner's sizing assumption."
+    )
+    _render_dc_configuration_result(
+        snapshot_to_legacy_tuple(tail_snapshot), tail_snapshot.stage1.poi_energy_req_mwh,
+        fixed_tail_bom=True,
+    )
+    st.caption(
+        "The 0.5C nominal check is not a lifetime power guarantee or PCS match. "
+        + ("The 8-string container has two outputs, but their individual allocation and ratings are not assumed."
+           if strings == 8 else "The 10-string container has one output and may connect to one PCS only.")
+    )
+    with st.expander("Review 0.5C against remaining capacity", expanded=False):
+        st.caption(
+            "This separate review divides required DC power by each year's remaining gross capacity. "
+            "It does not model hardware power degradation or change the original SOH / RTE calculation."
+        )
+        review = comparison["annual_current_capacity_rate_review"]
+        render_static_table(pd.DataFrame([
+            {"Year": row["year_index"],
+             "Required capacity C-rate": f"{row['current_capacity_c_rate']:.3f}" if row["current_capacity_c_rate"] is not None else "N/A",
+             "Within 0.5C of remaining capacity": "Yes" if row["within_0_5c_current_capacity"] else "No"}
+            for row in review
+        ]))
 
 
 def show():
@@ -927,6 +1049,8 @@ def show():
         st.warning("using legacy dictionary")
 
     # DC Block Library source — offer admin product library when it has active records
+    _using_admin_products = False
+    _admin_snapshot = None
     if not auth_context.is_guest:
         from calb_sizing_tool.services.product_admin_service import ProductAdminService as _PAS
         try:
@@ -945,10 +1069,23 @@ def show():
                 help="Admin product library uses blocks maintained in ⚙ Product & Database.",
             )
             if _block_src == "Admin product library":
+                _using_admin_products = True
                 df_blocks = _admin_df
+                try:
+                    _admin_snapshot = _PAS().snapshot()
+                except Exception:
+                    # A new Admin run must fail closed if its exact cell link
+                    # cannot be read. Saved results below remain viewable.
+                    _admin_snapshot = None
+                _admin_preflight = check_admin_dc_curve_applicability(
+                    df_blocks, _admin_snapshot, forms=("container", "cabinet")
+                )
                 st.caption(
-                    f"Using {len(_admin_active)} active block(s) from admin product library "
-                    f"({', '.join(_admin_active['Dc_Block_Code'].tolist())})."
+                    "Admin library defaults: " + "; ".join(
+                        f"{row['form'].title()}: {row['block_name']} "
+                        f"({row['capacity_mwh']:.3f} MWh)"
+                        for row in _admin_preflight.selections
+                    ) + ". Curve applicability is checked before a new run."
                 )
 
     rte_issues = validate_rte_monotonicity_314(df_rte_profile, df_rte_curve)
@@ -988,9 +1125,11 @@ def show():
                             st.session_state["poi_nominal_voltage_kv"] = poi_nominal_voltage_kv
                             st.session_state["poi_frequency_hz"] = poi_frequency_hz
                             restore_run_bundle_to_session(bundle, run_id)
-                            apply_pending_dc_input_restore()
                             set_run_time("dc_results")
-                            st.success(f"DC run ··{run_id[-8:] if len(run_id) >= 8 else run_id} loaded.")
+                            # The workspace, header and sidebar were read before
+                            # this click. Render again from the restored source
+                            # rather than mixing its inputs with the old result.
+                            st.rerun()
                     except PermissionError:
                         st.error("You do not have access to this run.")
                     except Exception as exc:
@@ -1010,7 +1149,8 @@ def show():
     def _init_input(field: str, default_value):
         key = f"dc_inputs.{field}"
         if key not in st.session_state:
-            st.session_state[key] = default_value
+            saved_value = dc_inputs.get(field)
+            st.session_state[key] = default_value if saved_value is None else saved_value
         if field not in dc_inputs:
             dc_inputs[field] = st.session_state[key]
         return key
@@ -1079,16 +1219,9 @@ def show():
             freq_default = dc_inputs.get("poi_frequency_option")
             if freq_default is None:
                 freq_default = "TBD"
-            if freq_default in (50, 50.0):
-                freq_index = 1
-            elif freq_default in (60, 60.0):
-                freq_index = 2
-            else:
-                freq_index = 0
             poi_frequency = _c_freq.selectbox(
                 "POI Frequency (Hz)",
                 freq_options,
-                index=freq_index,
                 key=_init_input("poi_frequency_option", freq_default),
                 help="Optional; used for reporting only.",
             )
@@ -1171,7 +1304,7 @@ def show():
 
             section_header(
                 "Configuration Options",
-                "Scenario switches for cabinet, container, and hybrid search paths.",
+                "Compare container, cabinet, and hybrid configurations.",
                 eyebrow="Step 3",
             )
             threshold_key = _init_input("hybrid_disable_threshold_mwh", 20.0)
@@ -1201,6 +1334,45 @@ def show():
                 key=threshold_key,
             )
             dc_inputs["hybrid_disable_threshold_mwh"] = hybrid_disable_threshold
+
+            tail_basis, tail_products, selected_tail_strings = None, {}, None
+            if not auth_context.is_guest:
+                with st.expander("Advanced: Reduced-string tail", expanded=False):
+                    # The request is comparison-only and separate from original
+                    # scenario inputs. Only an explicitly maintained tail is offered.
+                    try:
+                        tail_basis, tail_products = _reduced_string_tail_options(df_blocks)
+                    except Exception:
+                        st.caption("Product maintenance could not be read. Standard sizing remains available.")
+                    labels = {10: "Compare one 10-string tail", 8: "Compare one 8-string tail"}
+                    choices = ["Standard 12-string only"] + [labels[n] for n in (10, 8) if n in tail_products]
+                    previous = st.session_state.get("dc_tail_option_preview")
+                    for n, label in labels.items():
+                        if previous == f"Allow one {n}-string tail" and label in choices:
+                            st.session_state["dc_tail_option_preview"] = label
+                    if st.session_state.get("dc_tail_option_preview") not in choices:
+                        st.session_state["dc_tail_option_preview"] = choices[0]
+                    selected_tail = st.radio(
+                        "Tail comparison (not adopted)",
+                        choices, key="dc_tail_option_preview", disabled=len(choices) == 1,
+                        help="Compare one replacement tail using the same Run Sizing button. The standard result remains active for AC / SLD.",
+                    )
+                    selected_tail_strings = next((n for n, label in labels.items() if label == selected_tail), None)
+                    st.caption(
+                        "For the active Container Only result in the existing 314Ah / 20ft / 12-string family. "
+                        "This comparison evaluates one replacement in the final container position; "
+                        "it does not define the permitted scope of future manual combinations. "
+                        "Use the original cell-to-container capacity chain, "
+                        "0.5C nominal power and current standard SOH / RTE data. "
+                        "Tail results are saved as comparisons; AC / SLD continue with the standard configuration."
+                    )
+                    render_static_table(pd.DataFrame([
+                        {"Tail option": labels[n],
+                         "Capacity (MWh)": f"{tail_basis['tails'][n]['energy_mwh']:.3f}" if tail_basis else "",
+                         "Nominal power (MW)": f"{tail_basis['tails'][n]['power_kw'] / 1000:.3f}" if tail_basis else "",
+                         "Status": "Available for DC comparison" if n in tail_products else "No matching authorized product"}
+                        for n in (10, 8)
+                    ]))
 
             with st.expander("Advanced: Efficiency Chain"):
                 poi_is_dc_side = st.checkbox(
@@ -1311,6 +1483,22 @@ def show():
             )
             st.stop()
 
+        if _using_admin_products:
+            _required_forms = ("container", "cabinet") if (enable_hybrid or enable_cabinet_only) else ("container",)
+            _curve_preflight = check_admin_dc_curve_applicability(
+                df_blocks, _admin_snapshot, forms=_required_forms
+            )
+            if _curve_preflight.errors:
+                st.error(
+                    "Sizing was not run — product and curve applicability is not verified:\n\n"
+                    + "\n".join(f"- {message}" for message in _curve_preflight.errors)
+                    + "\n\nMaintain a verified product-to-cell link and matching SOH/RTE applicability "
+                    "before using this Admin product, or select the Excel reference library "
+                    "to use the existing reference products. Publishing a product does not "
+                    "activate a new cell's sizing curves."
+                )
+                st.stop()
+
         # Only a run that actually starts takes a run id. Bumping before the
         # guard burned an id on every rejected submission.
         bump_run_id_dc()
@@ -1401,6 +1589,29 @@ def show():
             try:
                 # The run already computed above — never a second sizing pass.
                 active_snapshot = snapshots[active_mode]
+                if selected_tail_strings is not None:
+                    if active_mode != "container_only":
+                        st.warning(
+                            "The tail comparison requires Container Only as the active result. "
+                            "Turn off Hybrid and Cabinet-Only comparisons to evaluate a reduced-string tail. "
+                            "The original selected configuration is unchanged."
+                        )
+                    else:
+                        from calb_sizing_tool.services.dc_reduced_string_tail_service import (
+                            SUMMARY_KEY, evaluate_reduced_string_tail,
+                        )
+                        try:
+                            tail_comparison = evaluate_reduced_string_tail(
+                                active_snapshot, master_bundle.model_copy(update={
+                                    "raw_sheets": load_dc_excel_bundle_from_path(Path(DC_DATA_PATH)).raw_sheets,
+                                }),
+                                tail_products[selected_tail_strings], tail_basis,
+                            )
+                            active_snapshot = active_snapshot.model_copy(deep=True)
+                            active_snapshot.summary[SUMMARY_KEY] = tail_comparison
+                            snapshots[active_mode] = active_snapshot
+                        except ValueError as exc:
+                            st.warning(f"Tail comparison was not calculated: {exc} Standard sizing is retained.")
                 case_input = dict(case_input_base)
                 case_input["scenario_id"] = active_mode
                 if auth_context.is_guest:
@@ -1463,6 +1674,9 @@ def show():
             )
         display_modes = ([active_mode] if active_mode else []) + [m for m in modes_to_run if m != active_mode]
         labels = [m.replace("_", " ").title() + (" — Active for AC / SLD" if m == active_mode else " — Comparison only") for m in display_modes]
+        tail_comparison = _saved_tail_comparison(active_snapshot) if active_snapshot is not None else None
+        if tail_comparison:
+            labels.append("Reduced-string tail — Comparison only")
         tabs = st.tabs(labels)
         for i, mode in enumerate(display_modes):
             with tabs[i]:
@@ -1536,6 +1750,9 @@ def show():
 
                 else:
                     st.error(f"Error: {res[1]}")
+        if tail_comparison:
+            with tabs[-1]:
+                _render_reduced_string_tail_comparison(tail_comparison, active_snapshot)
         _render_dc_technical_export(s1, ok_results, report_order, project_name, is_guest=auth_context.is_guest)
 
     else:
@@ -1565,6 +1782,10 @@ def show():
                 f"{snapshot.stage2.container_count} container(s), {snapshot.stage2.cabinet_count} cabinet(s)."
             )
             _render_dc_configuration_result(snapshot_to_legacy_tuple(snapshot), snapshot.stage1.poi_energy_req_mwh)
+            tail_comparison = _saved_tail_comparison(snapshot)
+            if tail_comparison:
+                section_header("Reduced-string Tail Comparison", eyebrow="Saved result")
+                _render_reduced_string_tail_comparison(tail_comparison, snapshot)
             saved_mode = str(snapshot.stage2.mode)
             _render_dc_technical_export(
                 snapshot.stage1.to_legacy_dict(), {saved_mode: snapshot_to_legacy_tuple(snapshot)},
@@ -1572,7 +1793,11 @@ def show():
                 is_guest=auth_context.is_guest,
             )
 
-    has_dc_result = bool(st.session_state.get("dc_result_summary") or dc_results.get("dc_result_summary"))
+    has_dc_result = bool(
+        st.session_state.get("dc_result_summary")
+        or dc_results.get("dc_result_summary")
+        or (not run_btn and snapshot is not None)
+    )
     if has_dc_result:
         st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
         section_header("Next Steps", eyebrow="Continue")

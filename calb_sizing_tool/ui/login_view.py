@@ -15,8 +15,8 @@ from calb_sizing_tool.state.auth_state import AuthContext, set_auth_context
 from calb_sizing_tool.state.workspace_state import navigate_now
 
 _FEATURES = [
-    ("DC Sizing",           "String sizing from POI targets — cell selection, thermal derating, capacity margin."),
-    ("AC Sizing",           "PCS block count, transformer sizing, auxiliary load budget, AC/DC validation."),
+    ("DC Sizing",           "Battery configuration, degradation projection, and energy margin against POI requirements."),
+    ("AC Sizing",           "AC Block grouping, PCS selection, transformer basis, and power checks."),
     ("Single Line Diagram", "Auto-generated engineering SLD — bus topology, protection annotation, PNG export."),
     ("Typical AC Block Arrangement", "Concept relationship for one AC Block; not a full site plan or construction drawing."),
     ("Report Export",       "Word (.docx) report: executive summary, sizing tables, SLD, and typical AC Block arrangement."),
@@ -144,7 +144,7 @@ def show() -> None:
 <div style="border-bottom:1px solid #D8E6F2;padding-bottom:0.65rem;margin-bottom:0.55rem">
     <div style="color:#1A2635;font-size:1.0rem;font-weight:700;margin-bottom:0.18rem">Sign In</div>
     <div style="color:#6A8AA4;font-size:0.74rem">
-        Project → Case → Run is the primary working boundary.
+        Manage projects and cases, then size and compare design options.
     </div>
 </div>
 """, unsafe_allow_html=True)

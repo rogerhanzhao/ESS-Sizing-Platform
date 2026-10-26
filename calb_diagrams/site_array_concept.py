@@ -639,8 +639,8 @@ def render_site_svg(layout: SiteArrayLayout,
                f"{layout.fire_roads} internal fire road(s)")
     _t(parts, margin_l, 30,
        f"CONCEPT SITE ARRANGEMENT · {layout.n_blocks} × AC BLOCK "
-       f"({layout.dc_per_block}×DC) · {layout.total_power_mw:.0f} MW / "
-       f"{layout.total_energy_mwh:.1f} MWh", size=11.5, anchor="start")
+       f"({layout.dc_per_block}×DC) · {layout.total_power_mw:.2f} MW / "
+       f"{layout.total_energy_mwh:.3f} MWh", size=11.5, anchor="start")
     _t(parts, margin_l, 46, grp_txt, size=10, anchor="start", weight=600, fill="#5b6367")
     _dim(parts, ox, oy + layout.envelope_d_m * s + 22,
          ox + env_w_px, oy + layout.envelope_d_m * s + 22,

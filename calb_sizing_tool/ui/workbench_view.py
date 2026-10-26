@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from html import escape
+import math
 
 import streamlit as st
 from calb_sizing_tool.services.run_restore_service import RunRestoreError
@@ -13,7 +14,7 @@ from calb_sizing_tool.repositories.case_repository import CaseRepository
 from calb_sizing_tool.services.access_control_service import AccessControlService
 from calb_sizing_tool.state.auth_state import get_auth_context, get_auth_user
 from calb_sizing_tool.state.project_state import init_project_state
-from calb_sizing_tool.services.ac_run_service import list_ac_alternatives
+from calb_sizing_tool.services.ac_run_service import ac_alternative_label, list_ac_alternatives
 from calb_sizing_tool.state.workspace_state import (
     get_active_ac_run_id,
     get_workspace_context,
@@ -38,6 +39,8 @@ def _run_label(index: int, created_at) -> str:
 def _fmt_value(value, suffix: str = "") -> str:
     if value is None or value == "":
         return "-"
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+        return f"{value:,.3f}{suffix}"
     return f"{value}{suffix}"
 
 
@@ -700,7 +703,7 @@ def _render_first_case_onboarding(projects: list[dict], context: dict, auth_user
     with form_col:
         with st.container(border=True):
             st.subheader("Create your first case")
-            st.caption("A case is the accountable input set for the subsequent sizing run.")
+            st.caption("A case stores the requirements and sizing results for one design option.")
             _render_create_case_form(context, auth_user, form_key="workbench_create_first_case")
 
 
@@ -771,7 +774,7 @@ def _run_registry_table_html(rows: list[dict[str, str]]) -> str:
     selector below. Keeping its rendering outside ``st.dataframe`` prevents a
     native PyArrow failure from terminating every Streamlit session.
     """
-    columns = ("Run", "Power", "Energy", "Scenario", "OK", "Current selection")
+    columns = ("Run", "Power", "Energy", "Scenario", "Converged", "Current selection")
     header_html = "".join(f"<th>{escape(column)}</th>" for column in columns)
     body_html = "".join(
         "<tr>"
@@ -809,7 +812,7 @@ def _render_run_registry(runs: list[dict], context: dict, auth_user) -> None:
                 "Power": _fmt_value(item["poi_power_req_mw"], " MW"),
                 "Energy": _fmt_value(item["poi_energy_req_mwh"], " MWh"),
                 "Scenario": scenario_str,
-                "OK": "Yes" if item["converged"] else "No",
+                "Converged": "Yes" if item["converged"] else "No",
                 "Current selection": "Selected" if is_active_run else "—",
             }
         )
@@ -837,6 +840,20 @@ def _render_run_registry(runs: list[dict], context: dict, auth_user) -> None:
     _render_ac_alternative_picker(context)
 
 
+def _ac_alternative_picker_label(item: dict, alternative: str) -> str:
+    """Readable saved quantities; A/B naming remains owned by ac_run_service."""
+    summary, output = item.get('summary') or {}, item.get('output') or {}
+    details = []
+    for value, unit, decimals in (
+        (summary.get('num_blocks'), 'AC Blocks', 0),
+        (output.get('total_ac_mw'), 'MW', 2),
+        (summary.get('dc_blocks_total'), 'DC Blocks', 0),
+    ):
+        if type(value) in (int, float) and math.isfinite(value) and value > 0:
+            details.append(f'{value:.{decimals}f} {unit}')
+    return ' | '.join([alternative] + (details or ['Saved AC alternative']))
+
+
 def _render_ac_alternative_picker(context: dict) -> None:
     """Switch between the AC alternatives recorded under the ACTIVE DC run.
 
@@ -856,15 +873,13 @@ def _render_ac_alternative_picker(context: dict) -> None:
         # pages already resolve to it, or to the DC run when there is none.
         return
 
-    def _label(index: int, item: dict) -> str:
-        summary = item.get("summary") or {}
-        pcs = summary.get("pcs_per_block")
-        dc = summary.get("dc_blocks_total")
-        code = summary.get("configuration_code")
-        detail = code or (f"{pcs} PCS / {dc} DC" if pcs else "AC alternative")
-        return f"{index}. {detail}"
-
-    labels = {_label(i, item): item["run_id"] for i, item in enumerate(alternatives, start=1)}
+    labels = {}
+    for index, item in enumerate(alternatives, 1):
+        # Consume the same stable A/B name as the report, rather than numbering
+        # newest first and making two different groupings look identical.
+        name = ac_alternative_label(active_run_id, item['run_id'])
+        label = _ac_alternative_picker_label(item, f'AC {name}' if name else f'AC alternative {index}')
+        labels[label] = item['run_id']
     current = get_active_ac_run_id()
     current_label = next((lbl for lbl, rid in labels.items() if rid == current), None)
 

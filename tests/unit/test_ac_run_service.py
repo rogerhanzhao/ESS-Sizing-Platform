@@ -10,6 +10,8 @@ does and does not count as a different alternative.
 """
 from __future__ import annotations
 
+from copy import deepcopy
+
 import pytest
 
 from calb_sizing_tool.infra.db.base import Base
@@ -132,6 +134,133 @@ def test_the_dc_allocation_plan_is_part_of_the_identity():
     plan_b = [{"ac_block_index": i, "dc_blocks_total": 8 if i < 13 else 4} for i in range(1, 14)]
     assert (acr.ac_configuration_hash({**_AC_8x8, "dc_allocation_plan": plan_a})
             != acr.ac_configuration_hash({**_AC_8x8, "dc_allocation_plan": plan_b}))
+
+
+def _mixed_output(tail_kw=1000):
+    from calb_sizing_tool.services.ac_mixed_station import build_mixed_dc_allocation_plan
+
+    rows = [
+        {"pcs_count": 2, "pcs_kw": 2500, "dc_blocks": 4},
+        {"pcs_count": 2, "pcs_kw": tail_kw, "dc_blocks": 2},
+    ]
+    return {
+        "num_blocks": 2, "pcs_per_block": 2, "pcs_kw": 2500,
+        "block_size_mw": 5.0, "transformer_mva": 5.0 / .9,
+        "dc_blocks_total": 6, "ac_block_mixed": True,
+        "ac_block_rows": rows,
+        "dc_allocation_plan": build_mixed_dc_allocation_plan(rows),
+        "total_ac_mw": 5.0 + 2 * tail_kw / 1000,
+    }
+
+
+def _seed_legacy_mixed(dc_run, monkeypatch, output):
+    url, parent = dc_run
+    with monkeypatch.context() as legacy:
+        legacy.setattr(acr, "ac_configuration_hash", acr._legacy_configuration_hash)
+        return acr.persist_ac_run(dc_run_id=parent, ac_inputs={}, ac_output=output, db_url=url)
+
+
+def test_tail_pcs_rating_changes_the_ac_alternative_without_overwriting(dc_run):
+    url, parent = dc_run
+    first_output = _mixed_output(1000)
+    second_output = _mixed_output(1250)
+    assert first_output["dc_allocation_plan"] == second_output["dc_allocation_plan"]
+    first = acr.persist_ac_run(dc_run_id=parent, ac_inputs={}, ac_output=first_output, db_url=url)
+    second = acr.persist_ac_run(dc_run_id=parent, ac_inputs={}, ac_output=second_output, db_url=url)
+    assert first.run_id != second.run_id
+    assert not second.reused and second.alternatives == 2
+
+    again = acr.persist_ac_run(dc_run_id=parent, ac_inputs={}, ac_output=second_output, db_url=url)
+    assert again.reused and again.run_id == second.run_id and again.alternatives == 2
+    from calb_sizing_tool.repositories.run_repository import RunRepository
+    with session_scope(url) as session:
+        saved = RunRepository(session).get_latest_output_snapshot_by_kind(first.run_id, acr.AC_OUTPUT_SNAPSHOT_KIND)
+        assert saved.snapshot_json == first_output
+
+
+def test_legacy_mixed_exact_match_upgrades_identity_without_adding_alternative(dc_run, monkeypatch):
+    url, parent = dc_run
+    output = _mixed_output()
+    legacy = _seed_legacy_mixed(dc_run, monkeypatch, output)
+    expected_hash = acr.ac_configuration_hash(output)
+    assert legacy.content_hash != expected_hash
+    upgraded = acr.persist_ac_run(dc_run_id=parent, ac_inputs={}, ac_output=output, db_url=url)
+    assert upgraded.reused and upgraded.run_id == legacy.run_id and upgraded.alternatives == 1
+    assert upgraded.content_hash == expected_hash
+    from calb_sizing_tool.repositories.run_repository import RunRepository
+    with session_scope(url) as session:
+        repo = RunRepository(session)
+        assert repo.get_latest_input_snapshot_by_kind(legacy.run_id, acr.AC_INPUT_SNAPSHOT_KIND).content_hash == expected_hash
+        assert repo.find_child_run_by_hash(parent, acr.AC_RUN_TYPE, expected_hash).sizing_run_id == legacy.run_id
+    again = acr.persist_ac_run(dc_run_id=parent, ac_inputs={}, ac_output=output, db_url=url)
+    assert again.reused and again.run_id == legacy.run_id and again.alternatives == 1
+
+
+def test_legacy_hash_match_cannot_reuse_or_overwrite_a_different_tail(dc_run, monkeypatch):
+    url, parent = dc_run
+    original = _mixed_output(1000)
+    legacy = _seed_legacy_mixed(dc_run, monkeypatch, original)
+    changed = _mixed_output(1250)
+    assert acr._legacy_configuration_hash(changed) == legacy.content_hash
+    result = acr.persist_ac_run(dc_run_id=parent, ac_inputs={}, ac_output=changed, db_url=url)
+    assert not result.reused and result.run_id != legacy.run_id and result.alternatives == 2
+    from calb_sizing_tool.repositories.run_repository import RunRepository
+    with session_scope(url) as session:
+        repo = RunRepository(session)
+        assert repo.get_latest_output_snapshot_by_kind(legacy.run_id, acr.AC_OUTPUT_SNAPSHOT_KIND).snapshot_json == original
+        assert repo.get_latest_input_snapshot_by_kind(legacy.run_id, acr.AC_INPUT_SNAPSHOT_KIND).content_hash == legacy.content_hash
+
+
+def test_upgraded_legacy_historical_hash_cannot_overwrite_the_first_mixed_variant(dc_run, monkeypatch):
+    url, parent = dc_run
+    original = _mixed_output(1000)
+    legacy = _seed_legacy_mixed(dc_run, monkeypatch, original)
+    upgraded = acr.persist_ac_run(dc_run_id=parent, ac_inputs={}, ac_output=original, db_url=url)
+    changed = acr.persist_ac_run(dc_run_id=parent, ac_inputs={}, ac_output=_mixed_output(1250), db_url=url)
+    assert upgraded.run_id == legacy.run_id
+    assert changed.run_id != upgraded.run_id and changed.alternatives == 2
+    restored = acr.persist_ac_run(dc_run_id=parent, ac_inputs={}, ac_output=original, db_url=url)
+    assert restored.run_id == upgraded.run_id and restored.alternatives == 2
+
+
+def test_uniform_and_rowless_historical_hashes_remain_byte_identical():
+    expected_legacy_hash = "8bbe0c956008456270fc92a1d9a00dc5f67ac10b456dac0cee7b7c3af78c8bd7"
+    assert acr.ac_configuration_hash(_AC_8x8) == expected_legacy_hash
+    uniform = {**_AC_8x8, "ac_block_rows": [
+        {"pcs_count": 8, "pcs_kw": 1250, "dc_blocks": dc} for dc in (8, 7)
+    ]}
+    assert acr.ac_configuration_hash(uniform) == expected_legacy_hash
+
+
+def test_mixed_rows_normalize_integral_numbers_and_ignore_presentation_noise():
+    output = _mixed_output()
+    normalized = deepcopy(output)
+    normalized["ac_block_rows"] = [
+        {**{key: float(value) for key, value in row.items()}, "label": "Display only"}
+        for row in output["ac_block_rows"]
+    ]
+    assert acr.ac_configuration_hash(normalized) == acr.ac_configuration_hash(output)
+    assert acr.ac_configuration_hash({**output, "ac_block_rows": list(reversed(output["ac_block_rows"]))}) != acr.ac_configuration_hash(output)
+
+
+@pytest.mark.parametrize("field", ["pcs_count", "pcs_kw", "dc_blocks"])
+@pytest.mark.parametrize("invalid", [True, False, 1.5, float("nan"), float("inf"), "1250"])
+def test_invalid_row_numbers_do_not_silently_normalize_to_valid_identity(dc_run, field, invalid):
+    url, parent = dc_run
+    malformed = _mixed_output()
+    malformed["ac_block_rows"][1][field] = invalid
+    with pytest.raises(ValueError, match="positive integer"):
+        acr.persist_ac_run(dc_run_id=parent, ac_inputs={}, ac_output=malformed, db_url=url)
+    assert acr.list_ac_alternatives(parent, db_url=url) == []
+
+
+def test_legacy_invalid_rows_are_never_adopted_via_compatibility_lookup(dc_run, monkeypatch):
+    url, parent = dc_run
+    malformed = _mixed_output()
+    malformed["ac_block_rows"][1]["pcs_kw"] = True
+    legacy = _seed_legacy_mixed(dc_run, monkeypatch, malformed)
+    result = acr.persist_ac_run(dc_run_id=parent, ac_inputs={}, ac_output=_mixed_output(), db_url=url)
+    assert not result.reused and result.run_id != legacy.run_id and result.alternatives == 2
 
 
 # ---------------------------------------------------------------------------

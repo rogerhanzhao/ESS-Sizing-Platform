@@ -148,14 +148,14 @@ def _resolve_sld_runtime_source_status(ac_resolution: AcSnapshotResolution) -> S
     # from the AC alternative selected under it. Matching one source string here
     # is what made every SLD draft-only once alternatives existed.
     if ac_resolution.is_persisted:
-        detail = ("the selected AC alternative" if source == "persisted_ac_alternative"
-                  else "persisted run AC snapshot")
+        detail = ("the selected saved AC alternative" if source == "persisted_ac_alternative"
+                  else "saved AC configuration for the selected run")
         return SldRuntimeSourceStatus(
             source=source,
             mode="authoritative_persisted",
             is_authoritative=True,
             force_draft=False,
-            message=f"SLD runtime data source: authoritative persisted mode ({detail}).",
+            message=f"SLD data source: {detail}.",
         )
     if source == "compatibility_adapter":
         return SldRuntimeSourceStatus(
@@ -339,6 +339,49 @@ def _sync_sld_preview_control_signature(signature: dict[str, Any]) -> bool:
     return had_preview
 
 
+def _render_tail_comparison_preview(ac_resolution, *, workspace, run_id,
+                                    auth_user, is_guest):
+    """Show the saved physical last group outside the standard SLD artifacts."""
+    if is_guest or not ac_resolution.is_persisted:
+        return
+    output = ac_resolution.snapshot.output
+    from calb_sizing_tool.services.dc_tail_ac_review_service import REVIEW_KEY
+    if not output.get(REVIEW_KEY):
+        return
+    with st.expander('Advanced: Reduced-string tail SLD preview', expanded=False):
+        st.caption('Last physical AC Block only, from the selected saved comparison. '
+                   'The standard configuration remains active for Generate SLD and proposal export.')
+        if not workspace.get('ac_run_id'):
+            st.info('Select the saved AC alternative in Workbench before viewing its tail comparison.')
+            return
+        try:
+            from calb_sizing_tool.services.dc_tail_preview_source_service import load_saved_tail_sld_preview
+            preview = load_saved_tail_sld_preview(
+                dc_run_id=run_id, ac_run_id=workspace.get('ac_run_id'),
+                project_id=workspace.get('project_id'), case_id=workspace.get('case_id'),
+                auth_user=auth_user, expected_ac_output=output,
+            )
+            if preview is None:
+                st.info('No saved tail comparison is available for this AC alternative.')
+                return
+            if not preview['preview_available']:
+                st.warning('This tail comparison cannot be drawn until its nominal or connection errors are resolved.')
+                for reason in preview['blocking_reasons']:
+                    st.write(reason)
+                return
+            from calb_sizing_tool.sld.tail_comparison_preview import render_tail_comparison_svg
+            st.image(render_tail_comparison_svg(preview), use_container_width=True)
+            st.caption('Comparison only / Not adopted / Not for construction. '
+                       'Dashed connections or TBC values require engineering confirmation. '
+                       'This preview is not saved as a standard SLD or included in the technical proposal.')
+        except PermissionError:
+            st.warning('You do not have access to this saved tail comparison.')
+        except ValueError as exc:
+            st.warning(f'Tail comparison preview is unavailable: {exc}')
+        except Exception:
+            st.warning('The saved tail comparison could not be read. Restore its AC alternative and retry.')
+
+
 def show() -> None:
     state = init_shared_state()
     init_project_state()
@@ -437,6 +480,13 @@ def show() -> None:
     if render_cabinet_handoff(ac_snapshot.output if ac_snapshot else {}, "Single Line Diagram"):
         return
 
+    # Use the complete saved physical station before the original Head-fleet
+    # projection. A large last-group PCS model may itself be the old "Head".
+    _render_tail_comparison_preview(
+        ac_resolution, workspace=workspace, run_id=run_id,
+        auth_user=auth_user, is_guest=_is_guest,
+    )
+
     # Mixed AC Block station: the SLD authoritative contract is uniform-only
     # (SLD V1 requires a uniform PCS count per AC Block), so a head+tail station
     # cannot be rendered directly. Project it onto its HEAD AC-Block fleet — a
@@ -474,7 +524,7 @@ def show() -> None:
     group_choices = list(range(1, ac_blocks_total + 1)) if ac_blocks_total > 0 else [1]
     section_header(
         "Generation Setup",
-        "Select the AC block group, visual density, renderer mode, and output plugin.",
+        "Select the AC Block group, then choose the display and drawing options.",
         eyebrow="Step 1",
     )
     group_index = st.selectbox(
@@ -507,7 +557,7 @@ def show() -> None:
             else:
                 st.warning(
                     "Formal engineering settings are not yet saved for this case. "
-                    "Open Engineering Settings before using strict mode, or switch to draft override mode."
+                    "Open Engineering Settings before generating a formal SLD, or switch to draft override mode."
                 )
             if st.button("Open Engineering Settings", use_container_width=False):
                 navigate_now("Engineering Settings")
@@ -531,11 +581,12 @@ def show() -> None:
     else:
         if runtime_status.force_draft:
             st.warning(
-                "Formal / strict generation is disabled for the current AC source. "
+                "Formal SLD generation is disabled for the current AC source. "
                 "Generate SLD will force draft/session mode until a persisted AC runtime snapshot exists."
             )
         else:
-            compact_note("Formal mode uses strict runtime inputs only. Missing required engineering inputs will fail fast.")
+            compact_note("Formal SLD generation requires saved engineering settings. "
+                         "Complete missing inputs in Engineering Settings before generating.")
 
     registry = get_plugin_registry()
     plugins = registry.list_by_artifact("sld_svg")
@@ -688,22 +739,23 @@ def show() -> None:
             f"Run {_meta_run_short} | Group {pipeline_meta.get('group_index')} | "
             f"Document: {mode_label} | Topology {pipeline_meta.get('topology_nodes')} nodes / {pipeline_meta.get('topology_edges')} edges"
         )
-        if pipeline_meta.get("runtime_source_mode"):
-            st.caption(
-                f"Runtime source `{pipeline_meta.get('ac_runtime_source')}` | "
-                f"Source mode `{pipeline_meta.get('runtime_source_mode')}`"
-            )
         renderer_version = pipeline_meta.get("renderer_version") or "n/a"
         renderer_mode = pipeline_meta.get("renderer_mode") or "n/a"
-        st.caption(
-            f"Renderer `{renderer_version}` | Mode `{renderer_mode}` | Input hash `{pipeline_meta.get('input_hash')}` | "
-            f"Topology hash `{pipeline_meta.get('topology_hash')}`"
-        )
-        if renderer_mode == "engineering_v2":
+        with st.expander("Technical details", expanded=False):
+            if pipeline_meta.get("runtime_source_mode"):
+                st.caption(
+                    f"Runtime source `{pipeline_meta.get('ac_runtime_source')}` | "
+                    f"Source mode `{pipeline_meta.get('runtime_source_mode')}`"
+                )
             st.caption(
-                f"Engineering V2 graph `{pipeline_meta.get('engineering_v2_graph_hash')}` | "
-                f"layout `{pipeline_meta.get('engineering_v2_layout_hash')}`"
+                f"Renderer `{renderer_version}` | Mode `{renderer_mode}` | Input hash `{pipeline_meta.get('input_hash')}` | "
+                f"Topology hash `{pipeline_meta.get('topology_hash')}`"
             )
+            if renderer_mode == "engineering_v2":
+                st.caption(
+                    f"Engineering V2 graph `{pipeline_meta.get('engineering_v2_graph_hash')}` | "
+                    f"layout `{pipeline_meta.get('engineering_v2_layout_hash')}`"
+                )
         if document_status == "concept":
             st.warning("This SLD is a concept document and must not be used for construction or formal issue.")
         elif document_status == "draft_override":
@@ -786,8 +838,8 @@ def show() -> None:
         for artifact_kind, artifact_hash in (pipeline_meta.get("artifact_hashes") or {}).items():
             hash_rows.append({"artifact_kind": artifact_kind, "content_hash": artifact_hash})
         if hash_rows:
-            section_header("Traceability", eyebrow="Output")
-            render_static_table(hash_rows)
+            with st.expander("Artifact traceability", expanded=False):
+                render_static_table(hash_rows)
         section_header("Downloads", eyebrow="Output")
         if svg_item:
             st.download_button(

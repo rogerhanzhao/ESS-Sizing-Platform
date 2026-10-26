@@ -171,9 +171,9 @@ def test_site_array_power_and_energy_match_the_ac_sizing_tables():
     )
     assert caption, "§9 site arrangement caption not found"
     # 13 AC Blocks x 10.00 MW = 130 MW (was 65), and the REAL 100 DC Blocks.
-    assert "10 MW\nper block" in caption or "10 MW per block" in caption, caption
-    assert "130 MW" in caption, caption
-    assert "65 MW" not in caption, caption
+    assert re.search(r"(?<![\d.])10(?:\.0+)? MW\s+per block", caption), caption
+    assert re.search(r"(?<![\d.])130(?:\.0+)? MW", caption), caption
+    assert not re.search(r"(?<![\d.])65(?:\.0+)? MW", caption), caption
 
 
 def _ctx_for(pcs_per_block: int, num_blocks: int, dc_blocks_total: int,

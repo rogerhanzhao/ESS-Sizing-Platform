@@ -1,5 +1,681 @@
 # Current Status 2026-07-12
 
+> 2026-10-25 AC INITIAL-SELECTION / MISSING-SLD FOLLOW-UP (local validation):
+> the owner's actual 100 MW / 400 MWh test has 92 standard containers. Its
+> saved 230 MW and 115 MW alternatives are arithmetically correct; stale keyed
+> AC controls and an index-zero default made the initial model misleading.
+> The original AC form now suggests the smallest existing model passing the
+> original feeder/aggregate checks, preserves saved/manual choices, clears
+> controls only on source switches, and updates the upper snapshot in the same
+> successful save response. MIX summaries use actual saved rows. No identity,
+> grouping, sizing equation, feasibility threshold or model-library change.
+> A separate older Admin 661Ah test exposed reuse of the 314Ah curves: a bounded
+> preflight now checks the exact original picker's product-to-cell link before
+> new Admin calculations, preserving the approved legacy 314Ah-A and Excel
+> paths. Other cells require a future verified curve resolver; no fallback or
+> retrospective rewriting of saved results. Initially the missing report SLD
+> had never been generated, with incomplete engineering inputs. The original direct
+> download remains; a warning/link now precedes it, and missing-figure status
+> no longer reserves its own near-empty page. Valid-image Word rendering is
+> pixel-identical in all ten pages. Final ratio-switch state refinement adds
+> a source-scoped standard-model memory so first visits get the new grouping's
+> suggestion and returning visits retain manual choices (38 focused pass).
+> Final clean aggregate regression: 2373 passed, 2 inherited fixture warnings,
+> 1021.84s, exit 0; compileall also passes. An earlier aggregate exposed one old
+> mixed-report test requiring drawing-scope text with no drawing. Its test-only
+> correction now verifies absent and available SLD, with 26 focused passes,
+> followed by the successful complete rerun. Native Chrome restored the actual
+> 1:4 / 115 MW run and recommendation correctly, then capture returned black.
+> The follow-up after owner display/login recovery is blocked by the Computer
+> Use safety mechanism: current browser URL cannot be determined reliably.
+> No further automated app input was issued. The owner subsequently generated
+> the AC B draft SLD and concept arrangement, then clicked the original direct
+> download. The actual 20261025 AC-B DOCX is now verified: 92 standard containers,
+> 23 AC groups x 2 x 2500 kW = 115 MW, 46 PCS, correct parent/child, zero UUIDs.
+> Its ten-page Word rendering includes a readable SLD on page 7. The 1:4 diagram
+> is linked to the current AC B artifact records and explicitly draft_override;
+> registered file hashes match, and report SVG-to-PNG rendering has only tiny
+> text-edge raster differences. This is not formal engineering acceptance.
+> The source DB/workbook/catalogue/schema remain unchanged; 19 owner-generated
+> draft/concept artifacts and related runtime snapshots/audits are accounted for.
+> The actual saved 115 MW report separately passes readonly export/Word render
+> QA (ten pages, no UUID, correct 23 x 2 x 2500 kW, no SLD fixture substituted).
+> Same isolated DB on 8511, final runtime PID 13180, health ok.
+> No source data, drawing engine, commit, GitHub or production change.
+> Evidence: output/ac_sld_issue_review_20261025/REVIEW.md.
+
+> 2026-10-24 ORIGINAL-PAGE HUMAN-VIEW REVIEW (local): external Chrome reviewed
+> all ten original workflow pages and all ten Product & Database sections.
+> Kept the existing navigation, Run/restore/Next/direct-download and comparison
+> boundaries. Improved readable product/run tables, summary precision, clear
+> English actions/source labels, collapsed technical IDs/hashes, and the
+> contradictory supplier-uploader size hint. Fixed the RMU widget's duplicate
+> SessionState/default warning. Report provenance copy now follows the resolved
+> source without changing the resolver. Actual AC A download exposed integer
+> rounding of 112.5 MW / 2.5 MW per block; report table/caption and the site
+> figure's two title format strings now preserve decimals. No geometry, rule,
+> sizing formula, source-data or product-activation change. Full checkpoint:
+> 2321 passed, 2 existing invalid-frequency-fixture warnings, 1025.38s. Later
+> source/precision changes separately pass 15 and 44 focused checks. Current
+> compile, core hashes, exact diagram-label-only diff and data audits pass.
+> Word/PDFium render QA retains ten pages; first eight are pixel-identical,
+> changed pages 9/10 inspected. Original browser workflow and an actual before
+> download pass; after owner sign-in the final actual Chrome download also
+> passes. Every OOXML part and all five media match the reviewed saved-case
+> export; Word/PDFium confirms all ten rendered pages are pixel-identical.
+> Correct 112.50 MW / 451.440 MWh and 2.50 MW per block, no UUID or comparison
+> capacity leakage. Signed-in Report Export remains open. No new sizing run.
+> Local 8511, same isolated copy, no commit/push/deploy. Evidence and exact
+> coverage: output/ui_human_review_20261024/REVIEW.md.
+
+> 2026-10-24 FOLLOW-UP BOUNDARY RECHECK (297 focused tests and live switching passed):
+> no application/test source changes. Current product/DC/BOM: 96 passed;
+> AC/saved-source/SLD: 168 passed; original report isolation: 33 passed, all
+> without warnings. Four real saved samples retain exact BOM/source checks;
+> ten-string two-PCS is rejected and eight-string unknowns remain TBC. Previous
+> DOCX files still match all OOXML/media; saved-file verification is separate
+> from the additional current-cycle actual browser download, which also passes.
+> The machine rebooted at 14:56; local 8511 was stopped and its old tab absent.
+> Restored the same isolated DB on localhost only, health ok. External Chrome
+> current-cycle external Chrome as administrator verifies eight-string tail feeding two
+> PCS (individual duties TBC) and one PCS (input arrangement TBC), ten-string
+> two-PCS rejection/no image and normal 1500+1000 kW MIX recovery. Foreign or
+> unselected AC sources cannot reuse the old figure. Original AC/SLD/Arrangement
+> Next and direct download pass; the new actual Word matches all reviewed
+> OOXML/media. Signed-in original report page left open. Final 39-table/source
+> 33-table/workbook audit and seven frozen hashes pass. No run, product, curve,
+> figure, migration, commit, push or production change. Evidence:
+> output/flexible_dc_boundary_recheck_20261024/REVIEW.md.
+
+> 2026-10-24 COMPREHENSIVE LOCAL RECHECK (software and administrator browser
+> acceptance passed):
+> domains: product maintenance, original DC form/restore, optional AC/SLD tail
+> preview and original report presentation. Known current catalogue conflicts
+> and actual linked-cell changes can no longer bypass tail eligibility; legacy
+> saved comparisons retain their recorded interpretation. One-PCS/three-winding
+> preview input now shows an unused LV winding explicitly as TBC without
+> inventing a connection or rating. The original DC page fixes duplicate
+> frequency defaults, inline Load Run rendering the previous result, and
+> returning from another page resetting restored inputs to workbook defaults.
+> Historical report library provenance is no longer guessed from the current
+> form radio. Two long AC identifier lists become exact continuous ranges and
+> one caption pagination link is relaxed; sections/models/quantities/images and
+> direct download are unchanged. The real saved AC B report remains 90 standard
+> containers / 451.440 MWh / 45 AC groups / 113 MW; no comparison BOM or PCS
+> override leaks into it. Word visual review improved 13 pages to 12; actual
+> browser download matches every reviewed OOXML part and media hash.
+> Compile and final complete suite pass: 2318 tests, 2 inherited intentional
+> invalid-frequency fixture warnings, 762.65s (full-pytest-final.txt).
+> Focused original DC restore/navigation/frequency/provenance: 6 passed.
+> Source 33 tables and default workbook are unchanged; isolated-copy 39 tables
+> differ only in normal login timestamps. Seven pinned canon modules and the
+> original calb_diagrams tree have no diff. Final runtime is local 8511 on the
+> same isolated DB; fresh Guest defaults/guard pass on the final runtime.
+> Post-restart external Chrome as administrator confirms one inline Load Run immediately
+> replaces the 46-container result with the exact saved 90-container parent,
+> 98% DoD / 6 months S&C survive Workbench navigation, and the frequency warning
+> is absent. Original Next through AC B / SLD / Arrangement / Report works.
+> The historical source disclosure is correct; another actual download matches
+> all reviewed OOXML/media. No Run/Generate clicked; signed-in report left open.
+> Formal/manual tail adoption, arrangement and proposal remain incomplete;
+> the existing one-tail producer is a comparison scope, not a product rule.
+> Evidence: output/flexible_dc_full_recheck_20261023/REVIEW.md. No source DB
+> write, migration, frozen formula edit, commit, push or production deployment.
+
+> 2026-10-23 OWNER MANUAL-COMBINATION CORRECTION / NEXT LOCAL INCREMENT:
+> one replacement, final position and ten/eight mutual exclusion are the scope
+> of the existing comparison producer and test samples, NOT permanent product
+> rules. The owner wants future manual adjustment; quantities and editing UX
+> are not decided. Do not silently expose arbitrary combinations or encode the
+> old sample limits into the inventory handoff. Ten-string 1-output/1-PCS and
+> eight-string 2-output/up-to-2-PCS product constraints remain in force.
+> Current work stays in the original DC page and existing adapters: explicit
+> guarantee checkpoint Yx / POI target / usable energy / margin, actual versus
+> selected SOH/RTE rates and curve-change disclosure. The existing session
+> adapter gains an opt-in actual BOM handoff, preserving per-SKU subtotals,
+> displayed unit precision and full Stage2 identity without inventing a physical
+> connection. Only the optional tail preview consumes it in this batch, checking
+> actual products/quantities/capacities against the saved AC assignments.
+> Original scalar handoffs and the standard default are unchanged. Formal tail
+> adoption / arrangement / proposal are still incomplete: no adopted button or
+> reclassification of a comparison is enabled. Full regression: 2280 passed,
+> two existing intentional invalid-frequency fixture warnings, 1094.05s.
+> External Chrome as administrator verified eight/ten saved DC cards, original Next from
+> DC to AC to SLD, explicit-AC-source requirement, eight-string two-PCS TBC,
+> ten-string/two-PCS rejection and subsequent normal AC B preview. No Run or
+> Generate clicked. Final page remains the signed-in ten-string DC result.
+> All 39 isolated-copy tables match the pre-browser baseline except normal
+> administrator login timestamps; source 33-table hashes and default Excel match.
+> Compile/diff/frozen checks pass. Evidence:
+> output/flexible_dc_tail_next_20261023/. No core formula, source DB,
+> product/curve edit, new table/migration, commit, push or production deployment.
+> This current correction supersedes the one-tail wording in historical entries.
+
+> 2026-10-23 TAIL LAST-GROUP SLD PREVIEW (local acceptance complete):
+> the next bounded increment stays on the original Single Line Diagram page,
+> in one collapsed comparison area before the legacy MIX Head-fleet projection.
+> It consumes a read-only handoff from the exact selected saved AC child and
+> DC parent: actual run parent/project/case/type, full saved output hashes and
+> displayed AC content must all match. No parent-runtime/session/artifact
+> fallback is used by this optional preview. The pure adapter revalidates the
+> existing DC comparison and AC review, preserving physical DC IDs, actual unit
+> energies, separate PCS ratings and saved links. Errors produce no drawing.
+> Eight-string unknown output duties/input arrangements remain explicitly TBC.
+> A separate SVG depicts only that physical last group and marks comparison /
+> not adopted / not for construction on the image. It is not registered,
+> downloaded, published to shared SLD state or included in the proposal.
+> Original Generate, standard renderer, downloads and Next remain unchanged.
+> Full regression: 2231 passed in 1181.45s, two existing intentional invalid-
+> frequency fixture warnings. The final display-only Workbench picker fix then
+> passed 40 focused onboarding/alternative/workspace checks: it consumes the
+> stable service A/B name and shows actual AC group count, total MW and DC count
+> in the same existing control. External Chrome as administrator verified all four saved
+> cases: ten-string 1500+1000 kW true MIX preview, ten-string/two-PCS no drawing,
+> eight-string/two-PCS unknown duties and eight-string/one-PCS input TBC.
+> Historical DC restoration alone does not substitute a parent-runtime source:
+> the user must select the actual AC child in original Workbench before this
+> preview is drawn. Final selector labels and Selected/Use were verified after
+> restart; final signed-in page displays the AC B / group 45 ten-string preview.
+> No original Run or Generate was clicked in this browser pass. Final read-only
+> 39-table comparison allows normal administrator login timestamps only; no new run,
+> snapshot, audit or artifact. Source 33-table hashes and default workbook match.
+> Compile/diff/frozen checks pass; screenshots are browser-*.png in the evidence
+> folder. The complete run preceded the final picker-copy change; its separate
+> 40-check run and final browser acceptance cover that presentation-only edit.
+> Formal tail adoption is still later work; source/artifact binding must be
+> closed before an old standard or other-alternative image can enter a tail
+> proposal. Evidence: output/flexible_dc_tail_sld_20261023/. No source database
+> write, migration, frozen-core / calb_diagrams edit, commit, push or deploy.
+
+> 2026-10-22 AC LAST-GROUP TAIL REVIEW (local comparison acceptance complete):
+> original AC form / MIX rows / Run / save / Next remain the workflow. If its
+> selected DC run has the saved owner-basis tail comparison, one collapsed area
+> shows the final group's actual main + tail composition and separate ratings
+> for only the PCS connected to that tail. Original Run attaches a nominal
+> review to the standard AC output; it does not adopt the smaller DC BOM.
+> The bounded service preserves exact source identities and original feeder
+> mapping. Ten-string/two-PCS is a comparison error; eight-string/two-PCS keeps
+> individual output duties unknown. No 4+4, equal split, current rating or winding
+> capacity is inferred. DC duty shares are an explicit nameplate comparison
+> policy; original cable / PCS efficiencies convert to the PCS AC boundary.
+> Discovered and fixed MIX alternative hash collision: a changed tail PCS
+> rating now creates a distinct alternative. Standard / legacy-no-row hashes
+> remain unchanged; a legacy MIX is reused only after full new-identity equality.
+> Also repaired lightweight same-DC restore losing the selected AC alternative
+> while project/case metadata is filled, and Custom controls losing their saved
+> count/rating. Foreign AC selections are not retained; existing user edits are
+> not overwritten. Full regression: 2155 passed in 762.27s, with only the two
+> existing intentional invalid-frequency fixture warnings. Original-page
+> AppTest covers save/restore, actual MIX, selected older AC alternatives,
+> Custom defaults, comparison-only rating reuse and unchanged SLD projection.
+> External Chrome verified actual 1:2 grouping, the eight-string/two-PCS unknown
+> output duties, ten-string/two-PCS rejection, and a last-group MIX comparison
+> with separate 1500 + 1000 kW PCS ratings (not averaged). Standard Run / save /
+> alternative reuse / original Next controls remain available. The two-winding
+> selection used in these local cases is a test basis, not OEM confirmation.
+> Final read-only database check matches all 39 isolated-copy tables against
+> before-browser.sqlite: four normal AC children, their inputs/outputs and
+> correlated audits, plus normal login timestamps. Existing DC inputs and
+> products/curves are unchanged. User-created DC samples before that baseline
+> are retained and are not attributed to browser acceptance. Source 33-table
+> hashes and default workbook match; compile/diff/frozen checks pass.
+> Source/product/curve data untouched. No frozen module / diagram edit,
+> migration, new page, commit, push or deployment. Evidence directory:
+> output/flexible_dc_tail_ac_20261022/. Tail adoption / downstream integration
+> remain a later step after the last-group contract is accepted.
+
+> 2026-10-22 OWNER-BASIS TAIL DC COMPARISON (latest, local implementation):
+> owner explicitly authorizes the original cell-to-block energy calculation,
+> default 0.5C and current standard 12-string 314Ah runtime curves. Exact 10/8
+> capacities are 4.179968/3.3439744 MWh; nominal powers 2089.984/1671.9872 kW.
+> The isolated 8511 copy now has two precisely linked Special tail records;
+> source DB, main product, cells, curves and default Excel remain unchanged.
+> Engineering variants stay outside the standard picker. Original collapsed
+> Advanced area offers the two eligible choices; original Run calculates and
+> saves one N-1 + 1 comparison beside the unchanged standard run. Original
+> renderer shows BOM, lifetime plot and annual data; saved comparisons restore
+> without calculation/adoption. Exact parent precision follows the existing
+> Excel/Admin input path. Separate current-capacity rate review does not alter
+> Stage3, and nominal 0.5C is not a hardware or lifetime power guarantee.
+> Fixed an original historical-DC page gap: valid saved results now retain both
+> Next buttons; AC restores the standard active run. Targeted 79 checks pass
+> (58.23s), including four tail/source combinations and saved Next routing.
+> Full regression: 2040 passed, 2 existing intentional fixture warnings
+> (774.34s); compile, diff and frozen checks pass. External Chrome as administrator:
+> both options enabled, original Run saved two real comparisons, original BOM /
+> lifetime plot / annual data displayed. Original Workbench Restore selected
+> each saved comparison without a new run; both historical Next buttons remain.
+> Next -> AC for each still shows 92 standard boxes / 461.5 MWh. Returned to
+> original DC Advanced area, signed in and ready for owner testing. Source
+> unchanged; local writes are the two controlled child products, two correlated
+> DC runs with inputs/outputs/audits and normal administrator login timestamps only.
+> This supersedes
+> older missing-nominal-energy/curve and disabled-placeholder statements below
+> only for local DC comparison. Tail adoption, AC MIX last-group integration,
+> output-level ratings and subsequent drawings/reports remain next work.
+> New ownership: services/dc_reduced_string_tail_service is the bounded adapter;
+> ui/dc_view remains the only DC renderer and workflow. No frozen core edits,
+> independent page, new migration, commit, GitHub push or production deploy.
+> Evidence: output/flexible_dc_owner_tail_20261022/.
+
+> 2026-10-22 BATCH 2a LOCAL FOUNDATION VERIFIED: the original DC form now has
+> one collapsed Advanced: Reduced-string tail area before Efficiency Chain.
+> Its three choices are disabled and fixed to standard; no business input,
+> scenario, second Run, adopted tail, product activation or new page is added.
+> Maintenance summaries reuse the original catalogue diagnostics and exact
+> selected-container/parent codes, never equal Ah or fuzzy product names.
+> Guest does not read this maintenance preview; read failure leaves standard
+> sizing available. The existing DC payload hash already covers Stage 2 BOM:
+> persistence rejects non-original comparison modes before opening a database;
+> restoration verifies existing DC input/output hashes before constructing the
+> bundle. Hashless legacy runs and AC alternative identity hashes retain their
+> prior compatibility. This does NOT add tail revision/topology adoption.
+> Validation: 15 form/frozen checks passed (17.05s); 20 persistence/restore
+> checks passed (22.11s); full suite 1991 passed, 2 existing fixture warnings
+> (726.23s); compile/diff/frozen checks passed. Existing isolated-copy 54 DC
+> input and 54 output hashes all match the unchanged hash algorithm. Source
+> data unchanged; local data retains prior 418 form corrections plus login times.
+> Old local service was already stopped when checked; started PID 27760 on
+> 8511 with the same isolated copy, all pilot flags off, without startup-script
+> migration. External Chrome login then confirmed the collapsed area, disabled
+> 3 choices, short maintenance table, original Run, and admin -> Back to Sizing
+> preserving administrator / V2.2 TEST / 4th / unselected run / 100 MW / 400 MWh.
+> No real-browser Run/Save/Import was clicked. Evidence: batch2a-* under
+> output/flexible_dc_connection_maintenance_20261022/. Batch 2 formal tail
+> adoption is still incomplete; ratings/curve applicability and actual BOM to
+> AC handoff remain open. No GitHub push, commit or production deploy.
+
+> 2026-10-22 ORIGINAL PRODUCT PAGE BROWSER ACCEPTANCE COMPLETE: after the fresh
+> user login, all four actual external Chrome uploads completed. Valid 10-string
+> shows 1 DC output / maximum PCS 1; valid 8-string shows 2 / 2; unknown ratings
+> remain blank. The 10-string/PCS-2 counterexample shows Row 2, zero valid rows
+> and disabled Import. Legacy 57-column input previews with the new fields blank.
+> Exporting during a valid preview retains that preview and administrator authentication;
+> its 4-row/60-column CSV is byte-identical to the prior actual download. Removed
+> all test uploads, returned via Back to Sizing to Workbench and opened the
+> original DC Sizing page. Project V2.2 TEST / Case 4th / Run Not selected remain
+> intact. No Save, Import, Run, restore, product activation or application edit.
+> Data verification passes: source unchanged, local product changes still only
+> the two previously documented 418 form corrections, plus normal login times.
+> No further logout occurred during this fresh-session pass. The earlier lost
+> session's precise trigger remains unconfirmed; do not call it an app fix.
+> Evidence: browser-*.txt/png and browser-catalogue-during-preview.csv under
+> output/flexible_dc_connection_maintenance_20261022/. Batch 1 maintenance is
+> verified locally. Batch 2 DC integration has not started; actual tail ratings
+> and cell/curve applicability remain open. No GitHub push or production deploy.
+
+> 2026-10-22 CHROME FILE PERMISSION CONFIRMED: user screenshot shows Allow
+> access to file URLs enabled. Reconnected the same external CALB tab through
+> the refreshed Chrome connection; administrator/Admin and the original project/case
+> were visible. The file chooser now opens and accepts the local preview CSV.
+> The subsequent page state returned to Sign In before a preview appeared.
+> PID 25552 has not restarted and stderr has no application exception. Read-only
+> review finds no auth clearing in the upload-preview path; a replaced/lost
+> Streamlit session is a hypothesis, not an established root cause. Requested
+> one fresh user login to retry immediately. Database verification still passes.
+> Actual upload-preview acceptance and return to Sizing remain pending; no
+> Save/Import, application change, GitHub push or production deploy occurred.
+
+> 2026-10-22 EXTERNAL CHROME REVIEW RESUMED: after user restored the extension,
+> opened the original Product & Database page as administrator and inspected the three
+> new English fields on the existing 5MWh edit form (blank/Not specified, no
+> automatic tail values). Actual catalogue/template downloads completed: 4
+> product rows vs header-only, same 60 ordered fields, no UUIDs, byte-identical
+> to the service export. Screenshot: browser-fields.png in the evidence folder.
+> File-chooser wait then timed out and control detached during upload preview;
+> Chrome upload guidance requires checking Allow access to file URLs. User has
+> been asked to restore upload permission/connection, without logging out.
+> Four exact preview files pass the live service's read-only checks (invalid
+> 10-string/2-PCS is rejected; valid 10, valid 8 and legacy 57-column pass).
+> These are service checks, not completed browser upload acceptance. No Save or
+> Import clicked, no app/code changes or test rerun. Actual upload previews and
+> return-to-Sizing review remain pending; see current evidence/review record.
+
+> 2026-10-22 PRODUCT CONNECTION MAINTENANCE IMPLEMENTED (local only): original
+> DC Block add/edit forms maintain DC output circuits, maximum connected PCS
+> and connection source. The existing metadata owns these values; no new table
+> or migration. Shared maintenance parsing/validation covers forms, flat CSV
+> and legacy metadata aliases; new exports/templates have 60 fields, old 57-field
+> input remains compatible. Counts are product capability, not actual operating
+> PCS quantity. Special tail 10 requires declared 1/1; 8 requires declared 2/2;
+> missing draft values remain Incomplete and all special tails stay outside the
+> standard picker. Standard records are neither inferred nor constrained by
+> these family rules. Known interface/family conflicts cannot be bypassed by
+> partial edits once connection counts are declared. Explicit null/nonmapping
+> product metadata is rejected so the tail role/parent/constraints cannot be
+> erased. Legacy invalid metadata opens safely with Needs correction and allows
+> repair; reads do not modify records. Ownership remains product maintenance
+> service + original admin UI; DC/AC formulas, original flow, diagrams/reports
+> and default selection remain unchanged. No real tails created/activated.
+> Validation: basic/backend and UI checks passed; first full run had 1966 pass
+> and one UI-refresh assertion failure caused by a pre-existing test leaking
+> a mocked _refresh. Scoped that mock; the ordered 27-check regression passed.
+> Final full regression after the null-metadata repair: 1972 passed (736.55s),
+> with only two existing intentional Pydantic fixture warnings; compile, frozen
+> and diff checks passed. Local 8511
+> had stopped and was started with the same isolated DB and pilot flags off.
+> User signed in as administrator in external Chrome; browser-control connection then
+> failed (Debugger unattached), so current live field/download review is pending
+> connection restoration. Keep this distinct from passed AppTest checks.
+> Source tables unchanged; local product/cell/curve records retain only the
+> prior two 418 classification deltas. Normal login updated user timestamps.
+> Evidence: `output/flexible_dc_connection_maintenance_20261022/`.
+> No GitHub push, production deploy or further DC/AC integration in this batch.
+
+> 2026-10-22 OWNER TAIL-TOPOLOGY CLARIFICATION (latest): the 10-string tail has
+> ONE DC output and must not feed two PCS simultaneously; the 8-string tail has
+> TWO DC outputs and can feed two PCS. This is direct user design input, not
+> a newly obtained supplier drawing. Output count is no longer wholly unknown;
+> actual ratings, the 8-string per-output distribution and curve applicability
+> remain separate open inputs. Keep the original 12-string default plus at
+> most ONE tail (10 OR 8), and use the original DC/AC MIX/downstream workflow.
+> Do not create an independent platform or force a new AC Block/transformer for
+> every tail. First replace the final DC unit within the existing last AC group;
+> split a tail group only if actual equipment cannot support that combination.
+> Original MIX has one PCS rating per group and a station-wide DC-output count;
+> these cannot represent the new per-product topology or unequal PCS ratings
+> inside a tail group. The planned narrow adapter must preserve actual DC/PCS
+> composition only for that group, not change the old core/standard main groups.
+> Updated `FLEXIBLE_DC_EXISTING_UI_INTEGRATION_2026-10-21.md` is authoritative.
+> This pass revises planning only: no app/DB writes, product activation, restart,
+> GitHub push or deployment. Earlier statements below about unknown tail output
+> counts are historical and superseded only for the two confirmed interface facts.
+
+> 2026-10-22 BATCH 1 PRODUCT DATA RECONCILIATION (local only): user confirmed
+> independent 8/10-string specifications/drawings are unavailable; keep tails
+> pending and do not enable batch 2. Read source PDFs and the actual 5MWh DC SLD:
+> standard 12 strings use two 6+6 outputs and paired-string HV boxes, so 10
+> strings cannot silently become 5+5. Continuous per-output ratings, exact
+> cell/revision and curve applicability still need independent evidence.
+> Corrected only 418 block_form container→cabinet and its matched structured
+> datasheet field in the 8511 isolated copy, with backup, identity guards and
+> exact whole-database delta checks. Source remains unchanged at 0010; all
+> other copy data, flags, curve/cell links and default Excel remain unchanged.
+> Future seed now explicitly declares all four forms; no existing-library
+> reseed. Admin cabinet/hybrid availability intentionally reflects the fixed
+> form. A/B/G1 identities remain unresolved and are not rebound; master SOH
+> 178 and RTE 51 effective points match v13. Module ownership stays in catalogue
+> initialization/maintenance. 78 focused checks passed (45.84s), plus the added
+> datasheet-form assertion (1 passed, 2.24s); compile/diff checks passed. Actual
+> browser shows cabinet, downloaded CSV has 4 rows/57 fields and no UUIDs.
+> Frozen core, original DC/AC/SLD/layout/report UI and app routing are unchanged.
+> See `FLEXIBLE_DC_PRODUCT_DATA_RECONCILIATION_2026-10-22.md` and
+> `output/flexible_dc_data_reconcile_20261022/`. No GitHub push or deployment.
+>
+> The earlier seven-table source/copy equality below describes the pre-repair
+> browser check; after this bounded correction, only the two documented form
+> fields intentionally differ. It is not a claim of current whole-table equality.
+
+> 2026-10-22 BATCH 1 LOGGED-IN BROWSER REVIEW COMPLETE: original Product &
+> Database → DC Blocks opened successfully as administrator. Checked original edit/add
+> controls, 5MWh missing-parameter messages and the filtered parent selector;
+> downloaded the actual catalogue and blank template (same 57 columns, 4 rows
+> versus header-only, no internal IDs). Repeated download retained the upload
+> preview and authentication. Uploaded current and legacy-format no-write
+> previews; human codes and Special tail labels rendered correctly. An invalid
+> parent produced a row-specific message and disabled import. No Save/Import
+> was clicked; uploads were removed. Back to Sizing retained administrator, project
+> V2.2 TEST, case 4th and the original no-selected-run state; returned to a clean
+> DC catalogue page. All seven catalogue tables match the source exactly, and
+> all 32 source data tables remain unchanged at 0010. Evidence and screenshots:
+> `output/flexible_dc_product_browser_20261022/`. This resolves the sign-in
+> visual-review pending item below; no app code changed in this browser pass.
+> Existing DATA issues remain separate: 418kWh is classified container in both
+> source/copy; 5MWh lacks continuous power/current and its curve/cell linkage
+> needs reconciliation. Do not infer repairs, activate tails or reinterpret
+> Published as engineering approval. Wide catalogue tables still horizontally
+> scroll at the observed viewport; no navigation/layout redesign was made.
+> Batch 1 functional review ends here. Before enabling batch 2, reconcile the
+> exact product/cell/curve basis and obtain confirmed independent tail ratings.
+> No GitHub push, production deploy or new sizing/diagram/report connection.
+
+> 2026-10-22 BATCH 1 READABILITY FOLLOW-UP (local only): use engineering labels
+> in missing-parameter details, lock existing Special tail role, filter known
+> incompatible parent choices (without rejecting incomplete parent drafts), and
+> project import previews to human codes/labels instead of legacy UUID/JSON.
+> Full import payload and legacy backend compatibility remain unchanged.
+> Module ownership stays in original admin UI and product maintenance services.
+> 75 focused checks passed (43.90s), including original DC run/navigation smoke
+> and frozen canon checks; compile/diff/source-data checks passed. The prior
+> full 1871 pass is the Oct 21 baseline, not a new Oct 22 full run.
+> Browser initially showed administrator signed in but navigation rebuilt a signed-out
+> session; admin-page visual acceptance remains pending. Local 8511 was then
+> restarted to load these display changes, using the same isolated DB copy.
+> A separate original-app navigation check passes: Product & Database → DC
+> Blocks → Back to Sizing retains authentication, active case and DC page.
+> Nine original-page tests passed (10.99s), including this added regression.
+> No auth behavior, sizing, diagrams, reports, activation, push or deploy changed.
+
+> 2026-10-21 BATCH 1, ORIGINAL PRODUCT MAINTENANCE (local only): the existing
+> DC Block Templates add/edit forms now maintain configuration role, parent,
+> source/version and restrictions; the original catalogue shows live missing
+> parameter status. No new page, sizing option or workflow step was added.
+> Module ownership: `services/dc_product_maintenance.py` owns the draft field
+> contract, code/identity resolution and known-conflict validation, reusing the
+> existing lineage structure checker; `product_admin_service.py` owns writes,
+> previews, read-only diagnostics and flat parameter export; original admin UI
+> owns those form controls. No new migration or automatic registry transition.
+> CSV template/export use one field list and cell/parent codes rather than UUIDs.
+> Cells/parents must already exist; import remains create-only. Custom metadata
+> and engineering review history are outside this parameter export. Legacy raw
+> service updates remain compatible and can expose incompatible drafts, while
+> original forms and maintained-field imports enforce declaration consistency.
+> Special tails remain excluded from standard sizing, including Active/Published
+> records. Missing data is never approved or scaled from parent ratings.
+> Validation complete: 1871 tests passed (501.33s), including 35 new maintenance
+> and 5 original-form interaction checks; two existing intentional Pydantic
+> fixture warnings. Compile/diff checks passed. Frozen core, app routing, other
+> UI, diagrams and reports are unchanged. All 32 source data tables remain
+> unchanged at 0010; existing 16 FK issues did not increase. Local 8511 uses the
+> same isolated copy. Logged-in browser visual review remains pending admin
+> sign-in; do not claim it completed from AppTest. Stop at batch 1 and report.
+
+> 2026-10-21 ORIGINAL-UI INTEGRATION CLEANUP (latest user direction): removed
+> all seven experimental UI modules and their entry points, the standalone D2
+> search stack, its dedicated fixtures/tests, and prototype rehearsal launchers.
+> 26 application/script/test files plus eight historical launch/reproduction
+> scripts were SHA-verified into an external recovery archive before removal.
+> Original app/DC/Admin/AC/SLD/layout/report UI now has zero diff against 05cb345.
+> Module ownership: original dc_view remains the sole DC result renderer;
+> readiness, finite-tail comparison, lineage, manifest/dispatch and D1 checks
+> remain backend assets for narrow original-page adapters. No new sizing feature
+> is connected yet. Migrations 0011-13 and required models retain compatibility.
+> `FLEXIBLE_DC_EXISTING_UI_INTEGRATION_2026-10-21.md` supersedes the prototype
+> expansion plans: batch 0 ends after cleanup/planning/verification; report back
+> before product/DC/AC integration batches. No GitHub push or deployment.
+> Cleanup validation complete: 1831 tests passed (629.52s); 27 original-page
+> focused checks passed (46.08s), compile and diff checks passed. No dangling
+> imports after removal. Source DB remains 0010 with unchanged records and 16
+> inherited FK issues. Batch 0 ends here; next continuation is product
+> maintenance only, with no automatic advance into DC/AC implementation.
+
+> 2026-10-21 USER SCOPE RESET: retain the original pages, buttons and workflow.
+> Stop further D2 development and independent prototype acceptance. D1/D2
+> remain local research assets, not the planned replacement UI or a release.
+> The near-term scope is the original 12-string default plus one optional
+> 8/10-string tail, using the existing AC and export flow. The formerly visible
+> admin readiness panel is now opt-in (`CALB_DC_CATALOGUE_REVIEW=1`); all other
+> pilot entry points remain default-off. Original app routing, AC/SLD/layout/
+> report pages and frozen modules are unchanged against 05cb345. See
+> `FLEXIBLE_DC_SCOPE_RESET_2026-10-21.md`, which takes precedence over expansion
+> steps below. The D2 full run was stopped at the user's scope correction and
+> is not a full acceptance result. No GitHub push or production deployment.
+> Scope-reset checks: 33 original-flow regressions passed (60.50s), compile
+> and diff checks passed. Original app.py is running on 8511 with all five
+> experimental UI flags off and a separate source-data copy; 8527 was stopped.
+> Source remains 0010 with unchanged records. Logged-in browser acceptance of
+> the full original workflow remains pending.
+
+> 2026-10-21 Phase D2a local implementation: module-map additions
+> `schemas/dc_ac_candidate_search.py` owns explicit assembly/slot declarations
+> and computation budgets; `services/dc_ac_candidate_search_service.py` owns
+> bounded revision-multiset exact cover, full D1b evaluation and batch review
+> checkpoints; `ui/dc_ac_candidate_review_view.py` owns independent English
+> candidate diagnostics. The D1b AC-reference prerequisite is reused through
+> `validate_equipment_source_boundary`; its semantics are unchanged.
+> One whole DC unit occupies one PCS slot; full templates and separate input
+> buses only. No DC paralleling, new sizing ratios, adoption or drawing release.
+> See `DC_AC_CANDIDATES_D2A_2026-10-21.md` and local D2a evidence directory.
+
+> 2026-10-21 second independent D1b recheck found pilot input metadata loss:
+> `ui/dc_view.py` now forwards POI AC/DC location, voltage and actual frequency
+> into comparison inputs. TBD blocks only the experimental comparisons and
+> clears their temporary preview; the original Run Sizing path is unchanged.
+> The equipment diagnostic adapter now rejects DC-side/unspecified POI sources,
+> TBD frequency and conflicting selected/numeric frequencies before using any
+> equipment rating. It never infers AC boundaries from 100% efficiencies.
+> Earlier pilot comparisons with lost metadata must be recomputed from the
+> corrected UI; they cannot be inferred, relabelled or silently rehashed.
+> Module ownership remains unchanged: pilot input context and diagnostic guards.
+> Evidence: `output/flexible_dc_phase_d1b_finalcheck_20261021/`.
+> Final regression: 1877 passed (688.62s), including 21 new metadata/boundary
+> checks. Twelve synthetic scenarios were recomputed; browser checks confirm
+> DC-POI/TBD rejection, 60/50Hz failures and exact download content with preview
+> retained. Source records/version remain unchanged; no push or deployment.
+
+> 2026-10-21 independent D1b recheck: the pre-fix 1844 suite passed again
+> (512.82s), but independent edge probes found two known-failure masking gaps:
+> a missing temperature endpoint hid an exceedance of the other known endpoint;
+> unknown PF hid an apparent-power rating below the known active-power lower
+> bound. Fixed in the independent equipment diagnostic adapter, with 12 new
+> regressions. Equipment tokens are checked again after final DC revalidation.
+> The result/UI now explicitly describe separate read checkpoints and require
+> atomic revalidation for future adoption; this remains comparison-only.
+> No frozen sizing, legacy matching, original diagram or source DB changes.
+> Final recheck evidence: `output/flexible_dc_phase_d1b_recheck_20261021/`.
+> Post-fix full regression: 1856 passed (504.63s); all 12 added edge regressions
+> passed (20.94s), 42 previous equipment tests passed (89.86s), and 7 UI checks
+> passed (10.23s). Original seven synthetic scenarios retain their numerical
+> duties/statuses; two added edge scenarios now fail for the known shortfall.
+
+> 2026-10-21 Phase D1b local equipment diagnostics: after 148 D1a checks passed,
+> added `schemas/ac_equipment_capability.py` for strict component ratings and
+> explicit equipment duty; `infra/db/models/ac_equipment_capability.py` plus
+> migration 0013 for independent immutable revisions/events; and
+> `services/ac_equipment_capability_service.py` for admin-only monotonic review,
+> lifecycle integrity and exact reference resolution. Module-map additions:
+> `services/dc_ac_equipment_assessment_service.py` owns declared discharge-point
+> checks using the signed Stage1 loss chain, individual PCS ports/whole units
+> and transformer windings/total ratings; `ui/dc_ac_equipment_review_view.py`
+> owns English static diagnostics outside the original page routing. These do
+> not own frozen sizing, legacy catalogue matching, run adoption or rendering.
+> Ratings and project conditions can remain unknown; all results stay local,
+> comparison-only and downstream-not-ready. See `DC_AC_EQUIPMENT_D1B_2026-10-21.md`.
+> Migration rehearsed only on isolated databases/copy; all existing source-copy
+> records preserved, zero additional FK violations, source remains at 0010.
+> Final D1b full regression: 1844 passed (550.44s); 42 focused equipment checks,
+> 187 schema/registry/migration/UI-containment checks and 7 UI checks passed.
+> Compile and frozen-module/diagram diff checks passed. Browser verified seven
+> synthetic scenarios and retained preview after download; final table-width
+> presentation adjustment passed another 7 UI/containment checks (11.29s).
+> No frozen-module/diagram changes, actual product release, push or deployment.
+
+> 2026-10-21 Phase D1a local mapping diagnostics: after 299 C2b compatibility
+> checks passed (107.95s), added `schemas/dc_ac_allocation.py` for strict explicit
+> equipment connections; `services/dc_ac_allocation_source_service.py` for exact
+> retained-comparison identity and current DC source/dispatch revalidation;
+> `services/dc_ac_allocation_topology.py` for complete connection and bus-boundary
+> checks; `services/dc_ac_allocation_service.py` for before/after source checks
+> and upstream DC-duty aggregation. Module-map additions own diagnostics only,
+> not sizing formulas, numerical AC capability, release, adoption or rendering.
+> `ui/dc_ac_allocation_review_view.py` presents English static diagnostic tables;
+> the isolated loopback review app does not change production page routing.
+> Equipment references remain unverified; all new results stay comparison-only
+> and downstream-not-ready. See `DC_AC_ALLOCATION_D1A_2026-10-21.md`.
+> Final D1a regression: 1614 tests passed (404.45s); compile, diff and frozen
+> checks passed. Browser verified six synthetic cases and retained preview after
+> diagnostic download. Four isolated rehearsal DBs pass integrity/FK checks.
+> Source remains at 0010; its 16 inherited FK violations remain unresolved.
+> No frozen-module/diagram edits, source DB migration, push or deployment.
+
+> 2026-10-21 Phase C2b local comparison: scoped to the existing 314Ah / 416S /
+> 20ft / 12-string family, with at most one independently reviewed 10- or
+> 8-string tail replacing one standard container. Module-map additions:
+> `services/dc_tail_candidate_service.py` owns bounded candidate enumeration
+> from a separately computed standard count; `services/dc_composition_dispatch_service.py`
+> owns declared per-box/per-domain DC discharge-duty diagnostics;
+> `services/dc_composition_comparison_service.py` owns fixed-BOM evidence checks
+> and experimental comparison orchestration using unchanged Stage1/Stage3 and
+> frozen Stage2 record rounding. It neither replaces the original guarantee
+> loop nor adopts a run. Common numerical curves must be independently approved
+> for every revision. `ui/dc_tail_comparison_view.py` presents these separate
+> energy/DC/AC states under admin-only `CALB_DC_TAIL_COMPARISON=1` (default off).
+> These modules do not own production sizing, AC/PCS allocation, rendering,
+> product activation or release. See `DC_TAIL_COMPARISON_CONTRACT_C2B_2026-10-21.md`.
+> All new rehearsal data are SYNTHETIC, isolated and not CALB performance evidence.
+> No source/production DB migration, GitHub push or deployment.
+> Final C2b verification: 1473 full-suite tests passed (423.73s), 299 focused
+> tests passed (108.21s), plus 10 final UI/Arrow/English checks passed. Compile,
+> diff and frozen-module/diagram checks passed. The Arrow chart regression was
+> fixed using the existing locked Matplotlib PNG path, without weakening the
+> platform containment test. Browser checked normal and underpowered-tail
+> cases, individual/domain limits, annual chart/data and preview after download.
+> Two synthetic databases pass integrity/FK checks; source remains at 0010 with
+> four products and the same 16 pre-existing FK orphans. Actual C2a draft-product
+> planning retains incomplete-review gates. Next AC contract design is recorded
+> in `DC_AC_ALLOCATION_D1_DESIGN_2026-10-21.md`; no AC adoption/SLD release yet.
+
+> 2026-10-20 Phase C2a local pilot: the active scope is the existing 314Ah /
+> 416S / 20ft / 12-string parent and special 8/10-string child configurations.
+> Module-map additions: `infra/db/models/dc_configuration_variant.py` and migration
+> `20261020_0012` own versioned lineage/events; `services/dc_configuration_variant_service.py`
+> owns lineage integrity/review/special-scope checks; `common/dc_configuration_identity.py`
+> owns explicit 20ft catalogue terminology only; `services/dc_composition_manifest_service.py`
+> owns explicit planning BOM/physical identities/output partitions and content signature.
+> `ui/dc_configuration_variant_view.py` presents the opt-in administrative local pilot
+> (`CALB_DC_VARIANT_REVIEW=1`). The product-library adapter quarantines registered/marked
+> engineering child products from the standard picker regardless of Active/Published;
+> all other existing records retain their prior semantics. C1 comparison enforces the
+> special scope before/after evaluation. No sizing formula, AC allocation, diagram
+> engine, run adoption or release responsibility moves into these modules.
+> See `FLEXIBLE_DC_PHASE_C2A_2026-10-20.md`. Isolated-copy rehearsal only; no source
+> database migration, commit, GitHub push or production deployment.
+> Final C2a checks: 226 focused tests and 1272 full-suite tests passed (362.62s
+> full suite); compile/diff/frozen checks passed. Browser checked both 12+8 and
+> 12+10 planning BOMs, scope rejection, physical register and preview after download.
+> All 32 original source tables' records are preserved; 16 inherited foreign-key
+> orphans are recorded separately, with zero new violations. This is not full
+> production database health or mixed-sizing/AC/drawing acceptance.
+
+> 2026-10-20 Phase C1 local pilot: `services/dc_product_comparison_service.py`
+> validates a reviewed product revision and a separately approved DC curve
+> package, preflights the entire requested evaluation budget, then invokes the
+> frozen container-only pipeline. `ui/dc_product_comparison_view.py` exposes an
+> administrator-only comparison under `CALB_DC_PRODUCT_COMPARISON=1` in the DC
+> page. It owns no sizing formula, persistence, adoption or downstream readiness.
+> Standard flow remains the default. Module-map addition: these modules own
+> comparison applicability/validation and presentation only. See
+> `FLEXIBLE_DC_PHASE_C1_2026-10-20.md`. Final local regression: 1142 passed /
+> 308.02 seconds; compile and frozen-canon checks pass. No push or deployment.
+
+> 2026-10-20 Phase B local pilot: Phase A recheck passed 24 tests. New
+> `infra/db/models/dc_catalogue_revision.py` and migration `20261020_0011`
+> persist isolated parameter revisions and review events;
+> `services/dc_catalogue_revision_service.py` owns snapshot integrity, review
+> transitions and staleness checks. `ui/dc_catalogue_revision_view.py` exposes
+> an administrator-only, opt-in review panel through the existing product page.
+> These modules do not own sizing, runtime curve applicability or activation.
+> Runtime release remains disabled. Migration rehearsal used an isolated copy;
+> source/production databases are unchanged. See `FLEXIBLE_DC_PHASE_B_2026-10-20.md`.
+> Final Phase B regression: 1049 passed / 258.25 seconds; compile check passed.
+> Independent follow-up found and fixed old-review revival after parameter
+> restoration; v2 snapshots include catalogue modification tokens. New captures
+> are selected explicitly, review form state is isolated, captured values are
+> visible. Final second-pass regression: 1054 passed / 361.37 seconds.
+
+> 2026-10-20 local planning / Phase A: see
+> `FLEXIBLE_DC_PRODUCT_ROADMAP_2026-10-20.md`. Product administration now has a
+> read-only participation/parameter review using the actual frozen picker.
+> Module-map addition: `services/dc_catalogue_readiness_service.py` owns catalogue
+> diagnostics only; `ui/admin_portal_view.py` presents them. No sizing, activation,
+> drawing, curve mapping or database responsibility moves into this service.
+> Multi-variant search and a versioned equipment allocation contract are staged
+> follow-ups, not enabled by this diagnostic. No production release.
+> Actual database/Streamlit testing exposed and fixed the existing detached-ORM
+> product-to-sizing adapter bug without changing its selection semantics.
+> Final local regression: 1034 passed / 508.06 seconds; see
+> `FLEXIBLE_DC_PHASE_A_VALIDATION_2026-10-20.md`.
+
 > Local-only work (2026-10-18): cabinet concept SLD, symbolic Block Arrangement
 > and technical DOCX export are implemented on the existing saved-AC/page/artifact
 > flow, with the original direct report download restored (no additional
@@ -418,14 +1094,20 @@ seams; maintenance should exploit them instead of scanning everything.
 | Domain | Packages | Size | Change frequency |
 | --- | --- | --- | --- |
 | Sizing core (FROZEN) | `services/stage*_service`, `dc_pipeline`, AC capacity/calculation services | part of `services/` (29 files, 6.3k lines) | Frozen — no edits without explicit logic-upgrade approval |
+| **Admin DC product / curve preflight** | `services/dc_product_curve_guard.py`; caller in original `ui/dc_view.py` | ~0.12k lines | Low — inspects the exact frozen picker's selection and linked cell before a new Admin run. Preserves the approved legacy 314Ah-A basis; rejects unrelated or unverified cells and explicit curve conflicts. No product fallback, curve resolver, new publication workflow, saved-result rewrite or sizing arithmetic. |
 | SLD engine | `sld/` (18 files, 3.1k), `services/sld_*`, `schemas/sld_*`, `schemas/ac_electrical_topology.py`, `schemas/governed_ac_block_config.py`, `adapters/ac_to_sld_adapter.py`; mixed→SLD bridge in `services/ac_mixed_station.py` (`head_fleet_ac_output_for_sld`) | ~6k lines | High — owns AC-to-SLD physical topology contract and the governed AC Block configuration; SLD V1 is uniform-only, so mixed stations render via a head-fleet projection; remains the most active area |
 | Diagram renderers | `calb_diagrams/` (incl. `ac_block_bilateral_layout.py`) | ~6.9k lines | Medium — renderer/template + governed layout-variant engines |
 | **Typical AC Block Arrangement (contract)** | `calb_diagrams/typical_ac_block_arrangement.py` | ~0.4k lines | **Low, but load-bearing** — SOLE owner of the engine-selection rule, the drawing title, the shape resolution from a run, and the CONCEPT marking. The exported report (`reporting/report_v2.py` §8/§9) and the web page (`plugins/layout_arrangement_v2_plugin.py`) are both thin callers; neither may reimplement any of it. `tests/unit/test_typical_ac_block_arrangement.py` holds the two surfaces byte-identical. |
 | Arrangement geometry | `calb_diagrams/ac_block_arrangement_v2.py` (linear row + SHARED equipment glyphs), `ac_block_bilateral_layout.py` (central-station 4+4) | ~1.3k lines | Low — geometry is owner-ruled; both engines draw through the shared `draw_dc_container` / `draw_mv_station` glyphs |
 | Site array (L2) | `calb_diagrams/site_array_concept.py` | ~0.7k lines | Medium — owns the minimum-land packing search, the connected fire-road loop and the reported land metrics; tiles any `BlockForm`, including a central-station block via its real placements |
 | Layout / constraint gate | `plugins/layout_*`, `services/site_constraint_*` | ~1k lines | Medium — P2 Master Layout work lands here. `services/layout_service.ARRANGEMENT_PLUGIN_ID` names the ONE arrangement renderer the page offers |
-| **AC alternatives (identity)** | `services/ac_run_service.py` | ~0.3k lines | **Low, but load-bearing** — SOLE owner of what makes two AC schemes different (the 17-field identity hash, the only gate against over-splitting) and of how siblings are NAMED (`ac_alternative_label`, oldest-first `A`/`B`/…). Report file names, covers and provenance all quote that label; no other module may compute one. Its per-run snapshots double as the per-alternative AC configuration `sld_data_source_service` reads back — there is no second copy. |
+| **AC alternatives (identity)** | `services/ac_run_service.py` | ~0.4k lines | **Low, but load-bearing** — SOLE owner of what makes two AC schemes different (the original scalar identity plus actual per-row PCS model / DC allocation for true MIX, the gate against over-splitting) and of how siblings are NAMED (`ac_alternative_label`, oldest-first `A`/`B`/…). Standard / historical no-row hashes stay unchanged. Legacy MIX reuse requires the saved output's complete new identity to match, so changing only a tail PCS rating cannot overwrite another alternative. Optional comparison attachments do not mint a formal AC alternative. Report file names, covers and provenance quote the service's label; no other module computes it. Its snapshots are the per-alternative configuration `sld_data_source_service` reads back. |
 | **AC alternative resolution** | `services/sld_data_source_service.resolve_preferred_ac_snapshot`, `state/workspace_state.artifact_run_id()` | ~0.3k lines | **Low, but load-bearing** — the two places that answer "which alternative am I working from": one for INPUTS (the AC snapshot), one for OUTPUTS (the artifacts). Both read `active_ac_run_id` themselves. A page that decides this for itself is the defect pattern that gave the arrangement two implementations. |
+| **DC run persistence / restoration** | `services/run_persistence_service.py`, `services/run_restore_service.py` | ~0.4k lines | Low — owns the existing full DC input/output payload hash and restoration checks before session adoption. Original three modes only; comparison results are not adopted runs. Hashless old runs remain compatible; AC alternative identity hashes are a separate contract. No sizing arithmetic or tail revision/topology adoption is owned here. |
+| **Reduced-string DC comparison** | `services/dc_reduced_string_tail_service.py` | ~0.36k lines | Local bounded adapter — validates the owner-authorized 314Ah cell-to-block capacity chain and exact maintained parent/child; evaluates one N-1 + 1 tail with the original Stage2 item builder and Stage3; owns its saved comparison/restore checks. No new search, active scenario, AC topology adoption or independent renderer. The existing `ui/dc_view.py` owns the original Advanced option, Run, shared result display and Next buttons. |
+| **Reduced-string AC nominal review** | `services/dc_tail_ac_review_service.py` | ~0.3k lines | Local bounded adapter — consumes the validated saved DC comparison and original AC rows / feeder plan, replacing only the last physical DC slot in its review. Owns explicit nameplate-share DC reference, separate PCS AC checks and unknown-output handling, winding disclosure, review identity and saved-content consistency. `ui/ac_view.py` remains the only AC form / Run / result / Next. No original sizing arithmetic, actual tail adoption, new equipment capability register or diagram engine is introduced. |
+| **Reduced-string SLD comparison preview** | `services/dc_tail_preview_service.py`, `services/dc_tail_preview_source_service.py`, `sld/tail_comparison_preview.py`; optional area in `ui/single_line_diagram_view.py` | ~0.5k lines | Local read-only last-physical-group preview. Exact authorized saved DC/AC child and complete payload checks precede the adapter; separate SVG consumes validated physical links, never Head-fleet averages. No standard SLD/artifact publication, new generation workflow or actual tail adoption. Original SLD pipeline and customer report remain the standard branch. |
+| **DC inventory handoff** | `adapters/session_state_adapter.py::build_dc_bom_handoff`; optional consumer in `services/dc_tail_preview_service.py` | ~0.15k added lines | Reads actual canonical Stage2 BOM, preserves source subtotals/total and per-unit display precision; validates quantities and rounding bounds. Inventory ordinals are not physical/electrical mapping. No permanent one-tail/last-position/exclusive-SKU constraint; no adopted scenario or change to legacy summary/stage13 scalars. Preview cross-checks assigned products, quantity, capacity and distinct physical units. |
 | Reporting | `reporting/` (5 files, 1.4k) | 1.4k lines | Low — **two** customer-facing DOCX surfaces, and only two: `report_v2.export_report_v2_1` (the proposal, from the Report Export page) and `dc_view.build_report_bytes` (the DC page's technical export). `export_docx` is now shared DOCX primitives plus `create_dc_report`, which is the REGRESSION BASELINE pinning the DC page's export — not a product path, and not to be given callers. Owner ruling 2026-08-08 deleted `create_ac_report` / `create_combined_report` and the 413 lines only they reached; `export_docx` embeds no engineering drawing at all now, which `test_watermark_choke_point` enforces. Wording/section changes; the AC alternative label is CONSUMED here (file name, cover, provenance), never derived. A figure that could not be READ is never reported as one that was never GENERATED — `ctx.artifact_read_failures` carries the distinction from `artifact_service.load_artifact_bytes_with_failures` into §7/§8 (owner ruling 2026-08-08, 读取失败重新读取). **Carries no QC/validation layer**: the report states what the run produced. Consistency belongs upstream — `services/dc_input_guard_service` before sizing, the §6/§6.1/§9 schedules for disclosure. Owner ruling 2026-08-08 removed `report_v2._validate_*` / `_aggregate_ac_block_configs`, `report_context.validate_report_context` and `ReportContext.qc_checks`: nothing in the product ever called them, and their uniform-station arithmetic (blocks × per_block) mis-stated every mixed governed site. Do not reintroduce a validator here without a caller. |
 | Web UI | `ui/` (18 files, 6.7k), `state/`, `app.py` | ~7.5k lines | Medium — copy and workflow polish. `ui/dc_view.py` sizes each mode ONCE (2026-08-08): the snapshot it persists and the tuple it displays are the same run, derived by `snapshot_to_legacy_tuple`. A page that sizes again for the DB is the defect that was removed; `tests/unit/test_dc_page_sizes_each_mode_once.py` asserts it by AST. |
 | Platform | `infra/` (36 files), `db/`, `importers/`, `adapters/`, `migrations/` | ~3.4k lines | Low — deployment/migration driven |

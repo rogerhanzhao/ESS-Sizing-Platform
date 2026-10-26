@@ -123,7 +123,6 @@ def render_electrical_inputs(
     rmu_rated_kv = r1.number_input(
         "RMU rated voltage (kV)",
         min_value=0.0,
-        value=_safe_float(st.session_state.get(rmu_derived_value_key), derived_rmu_kv),
         key=rmu_derived_value_key,
         step=0.1,
         disabled=True,

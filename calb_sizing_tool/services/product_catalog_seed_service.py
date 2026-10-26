@@ -309,6 +309,7 @@ def _seed_dc_blocks(session: Session, *, cell_id_by_code: dict[str, str], brochu
     rows = [
         {
             "block_code": "CALB-418KWH-DC-CABINET-314AH",
+            "block_form": "cabinet",
             "block_name": "CALB 418kWh DC Cabinet - 314Ah Platform",
             "product_model": None,
             "product_cell_id": cell_314,
@@ -343,6 +344,7 @@ def _seed_dc_blocks(session: Session, *, cell_id_by_code: dict[str, str], brochu
         },
         {
             "block_code": "CALB-5P01596MWH-20FT-314AH",
+            "block_form": "container",
             "block_name": "CALB 5.01596MWh 20ft DC Container - 314Ah Platform",
             "product_model": "C173F5016",
             "product_cell_id": cell_314,
@@ -394,6 +396,7 @@ def _seed_dc_blocks(session: Session, *, cell_id_by_code: dict[str, str], brochu
         },
         {
             "block_code": "CALB-6P26208MWH-20FT-588AH",
+            "block_form": "container",
             "block_name": "CALB 6.26208MWh 20ft DC Container - 588Ah Platform",
             "product_cell_id": cell_id_by_code.get("CALB-588AH"),
             "cells_in_series": 416,
@@ -432,6 +435,7 @@ def _seed_dc_blocks(session: Session, *, cell_id_by_code: dict[str, str], brochu
         },
         {
             "block_code": "CALB-10P05143MWH-10500MM-661AH",
+            "block_form": "container",
             "block_name": "CALB 10.05143MWh DC Block - 661Ah Platform",
             "product_cell_id": cell_id_by_code.get("CALB-661AH"),
             "cells_in_series": 396,

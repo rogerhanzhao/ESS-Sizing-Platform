@@ -67,9 +67,26 @@ def _clear_layout_runtime_state() -> None:
     st.session_state.pop("layout_artifacts", None)
 
 
+def clear_ac_form_widgets() -> None:
+    """Drop AC form choices that belong to a different selected source."""
+    exact_keys = {
+        "selected_ac_ratio", "selected_ac_block_grouping", "custom_pcs_count",
+        "custom_pcs_kw", "ac_transformer_topology", "ac_dc_block_output_circuits",
+        "ac_cabinet_group_output_circuits", "ac_transformer_topology_confirmation_gate_v1",
+        "_ac_model_choices",
+    }
+    prefixes = (
+        "ac_block_model_choice_", "ac_mixed_", "ac_trunk_product_bind_",
+        "cabinet_ac_grouping_", "cabinet_group_count_", "ac_tail_comparison_kw_",
+    )
+    for key in list(st.session_state):
+        if key in exact_keys or str(key).startswith(prefixes):
+            st.session_state.pop(key, None)
+
+
 def _clear_ac_runtime_state() -> None:
+    clear_ac_form_widgets()
     st.session_state.pop("ac_output", None)
-    st.session_state.pop("selected_ac_ratio", None)
 
     for key in ("ac_inputs", "ac_results"):
         value = st.session_state.get(key)

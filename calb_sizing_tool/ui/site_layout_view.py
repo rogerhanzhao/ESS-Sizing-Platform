@@ -23,7 +23,6 @@ import json
 import streamlit as st
 
 from calb_sizing_tool.infra.db.session import session_scope
-from calb_sizing_tool.plugins.registry import get_plugin_registry
 from calb_sizing_tool.services.layout_service import ARRANGEMENT_PLUGIN_ID
 from calb_sizing_tool.schemas.layout_inputs import LayoutRenderOptions
 from calb_sizing_tool.services.access_control_service import AccessControlService
@@ -258,9 +257,9 @@ def show() -> None:
     constraint_source = "generated_template"
     uploaded_constraint_set_valid = False
     section_header(
-        "Concept Master Layout Readiness",
-        "A deterministic Master Layout remains blocked until project-specific site constraints are provided.",
-        eyebrow="P2 Gate",
+        "Site Layout Prerequisites",
+        "Project-specific site constraints are required before a Master Layout can be prepared.",
+        eyebrow="Site inputs",
     )
     st.caption(
         "This is an input-completeness check, not a code-compliance or construction-design check. "
@@ -360,15 +359,9 @@ def show() -> None:
     # the page were asked to stop doing. Engine, spacing and station size come
     # from calb_diagrams.typical_ac_block_arrangement — the report's own call.
     selected_plugin = ARRANGEMENT_PLUGIN_ID
-    registry = get_plugin_registry()
-    _renderer = registry.get(selected_plugin)
     st.caption(
-        f"Renderer: **{_renderer.metadata.plugin_name if _renderer else selected_plugin}** — "
-        "DC Block arrangement, clearances and station size are resolved by the "
-        "rule profile (IFC / NFPA 855 / NFPA 850 / UL 9540A) and the AC Block "
-        "class. An 8-PCS / 8-DC block draws the 40 ft central station with "
-        "mirrored west and east DC fields. The exported report renders this "
-        "identical drawing."
+        "Uses the same typical AC Block arrangement as the exported proposal. "
+        "Equipment positions and spacing follow the selected AC Block configuration and the existing arrangement rules."
     )
 
     block_index = st.selectbox(

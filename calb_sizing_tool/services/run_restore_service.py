@@ -11,15 +11,32 @@ from calb_sizing_tool.schemas.run_snapshot import DcPipelineRunSnapshot, RunInpu
 from calb_sizing_tool.schemas.stage1 import Stage1Result
 from calb_sizing_tool.schemas.stage2 import Stage2Result
 from calb_sizing_tool.schemas.stage3 import Stage3Result
+from calb_sizing_tool.services.run_persistence_service import _hash_payload, _validate_original_dc_mode
 
 
 class RunRestoreError(ValueError):
     """A saved run cannot be restored through the DC history workflow."""
 
 
+def _validate_dc_content_hash(snapshot, snapshot_kind: str) -> None:
+    # Only these DC producers use the complete payload hash. AC input snapshots
+    # instead carry an alternative identity hash and may be a legacy fallback.
+    if snapshot is None or snapshot.snapshot_kind != snapshot_kind or not snapshot.content_hash:
+        return
+    if _hash_payload(snapshot.snapshot_json) != snapshot.content_hash:
+        raise RunRestoreError(
+            "This saved DC result or its inputs have changed since they were saved. "
+            "Select another run or run DC sizing again."
+        )
+
+
 def _build_snapshot_from_payload(payload: dict[str, Any]) -> DcPipelineRunSnapshot:
     stage1 = Stage1Result.model_validate(payload.get("stage1") or {})
     stage2 = Stage2Result.model_validate(payload.get("stage2") or {})
+    try:
+        _validate_original_dc_mode(stage2.mode)
+    except ValueError as exc:
+        raise RunRestoreError(str(exc)) from exc
     stage3 = Stage3Result.model_validate(payload.get("stage3") or {})
     return DcPipelineRunSnapshot(
         stage1=stage1,
@@ -51,6 +68,10 @@ def load_dc_run_bundle(run_id: str, *, db_url: str | None = None) -> DcRunBundle
 
         if output_snapshot is None or output_snapshot.snapshot_kind != "dc_pipeline_output":
             raise RunRestoreError("This run has no saved DC result. Select another DC sizing run.")
+        # Hash the stored JSON, before Pydantic can normalize numbers/defaults.
+        # Historical rows without a hash retain their existing restore path.
+        _validate_dc_content_hash(input_snapshot, "dc_case_input")
+        _validate_dc_content_hash(output_snapshot, "dc_pipeline_output")
         output_payload = output_snapshot.snapshot_json
         try:
             snapshot = _build_snapshot_from_payload(output_payload)

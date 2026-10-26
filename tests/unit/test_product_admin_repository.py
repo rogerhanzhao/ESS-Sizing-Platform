@@ -149,9 +149,24 @@ def test_product_catalog_seed_from_brochure_defaults(tmp_path):
 
     five_mwh = next(row for row in snapshot["dc_blocks"] if row["block_code"] == "CALB-5P01596MWH-20FT-314AH")
     six_mwh = next(row for row in snapshot["dc_blocks"] if row["block_code"] == "CALB-6P26208MWH-20FT-588AH")
+    forms = {row['block_code']: row['block_form'] for row in snapshot['dc_blocks']}
+    assert forms == {
+        'CALB-418KWH-DC-CABINET-314AH': 'cabinet',
+        'CALB-5P01596MWH-20FT-314AH': 'container',
+        'CALB-6P26208MWH-20FT-588AH': 'container',
+        'CALB-10P05143MWH-10500MM-661AH': 'container',
+    }
+    adapted = ProductAdminService(db_url).df_blocks_as_sizing_dataframe().set_index('Dc_Block_Code')
+    assert adapted.loc['CALB-418KWH-DC-CABINET-314AH', 'Block_Form'] == 'cabinet'
     assert five_mwh["rated_capacity_kwh"] == 5015.96
     assert five_mwh["default_degradation_curve_code"] == DEFAULT_314_DEGRADATION_CURVE_CODE
     assert six_mwh["default_degradation_curve_code"] is None
     asset_codes = {row["asset_code"] for row in snapshot["assets"]}
     assert "CALB-5P01596MWH-20FT-314AH-DATASHEET" in asset_codes
     assert "CALB-314AH-B-DATASHEET" in asset_codes
+    datasheet_forms = {
+        row["owner_code"]: row["data_json"]["block_form"]
+        for row in snapshot["assets"]
+        if row["owner_entity"] == "product_dc_block" and row["asset_kind"] == "datasheet"
+    }
+    assert datasheet_forms == forms

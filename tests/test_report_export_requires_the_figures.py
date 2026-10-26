@@ -162,6 +162,11 @@ def test_a_run_with_no_figures_still_exports(session_with_a_finished_run):
     assert download.proto.ignore_rerun is True
     assert "Downloads" not in {element.value for element in app.subheader}
     assert any("Word (.docx)" in element.value for element in app.caption)
+    assert any("SLD not included" in message.value for message in app.warning)
+    next(button for button in app.button if button.label == "Open Single Line Diagram").click().run()
+    assert not app.exception
+    assert app.session_state["main_nav"] == "Single Line Diagram"
+    assert app.session_state["active_run_id"] == _run_id
 
 
 def test_a_recorded_figure_that_cannot_be_read_blocks_the_export(
@@ -202,6 +207,8 @@ def test_the_export_recovers_once_the_figure_can_be_read(session_with_a_finished
     assert not app.exception
     assert "could not be retrieved" not in _errors(app)
     assert _download_offered(app), "a readable figure must let the export through"
+    assert not any("SLD not included" in message.value for message in app.warning)
+    assert "Open Single Line Diagram" not in {button.label for button in app.button}
 
 
 def test_a_selected_ac_alternative_resolves_from_its_dc_parent(session_with_a_finished_run):

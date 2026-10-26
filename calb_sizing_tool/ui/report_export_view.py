@@ -136,6 +136,47 @@ def _resolve_report_ac_snapshot(
     )
 
 
+def _render_ac_source_reference(
+    ac_resolution: AcSnapshotResolution,
+    *,
+    dc_run_id: str,
+    selected_ac_run_id: str | None,
+) -> None:
+    """Describe the resolved source without changing the report configuration."""
+    output = ac_resolution.snapshot.output if ac_resolution.snapshot is not None else {}
+    recorded_ac_id = str(output.get("source_ac_run_id") or "").strip() or None
+    selected_ac_id = str(selected_ac_run_id or "").strip() or None
+    if ac_resolution.snapshot is None:
+        st.warning("No AC configuration is available for this report.")
+    elif ac_resolution.source == "persisted_ac_alternative":
+        alternative = None
+        # The resolver has verified this selected child and its DC parent.
+        # The older recorded AC reference is separate from that child identity.
+        if selected_ac_id:
+            try:
+                from calb_sizing_tool.services.ac_run_service import ac_alternative_label
+
+                alternative = ac_alternative_label(dc_run_id, selected_ac_id)
+            except Exception:
+                _log.debug("Could not resolve the saved AC alternative label", exc_info=True)
+        st.success(
+            f"AC data source: saved AC Alternative {alternative}."
+            if alternative else "AC data source: saved AC alternative configuration."
+        )
+    elif ac_resolution.source == "persisted_run_snapshot":
+        st.success("AC data source: saved AC configuration attached to this DC run.")
+    else:
+        st.info("AC data source: current session configuration. "
+                "Its save status is not confirmed; save AC Sizing before issuing the report.")
+
+    with st.expander("Technical identifiers", expanded=False):
+        st.caption(f"DC Run ID: `{dc_run_id}`")
+        if recorded_ac_id:
+            st.caption(f"Recorded AC reference ID: `{recorded_ac_id}`")
+        if ac_resolution.source == "persisted_ac_alternative" and selected_ac_id:
+            st.caption(f"Selected AC alternative ID: `{selected_ac_id}`")
+
+
 def _log_figure_resolution(kind, png, svg, failures, *, dc_run_id, artifact_run_id):
     status = "read_failed" if failures else ("available" if png or svg else "unavailable")
     log = _log.warning if status != "available" else _log.info
@@ -484,21 +525,16 @@ def show():
             st.write(active_case_code or "—")
 
         if active_run_id:
-            st.success(f"DC Run ID: `{active_run_id}`  — linked to database")
-            # Block library source provenance
-            _block_src_label = st.session_state.get("dc_block_source") or "Excel reference library"
-            if "Admin" in _block_src_label:
-                st.info("DC Block Library: **Admin product library** (Phase B DB)")
-            else:
-                st.info("DC Block Library: Excel reference library")
-            # Show AC snapshot linkage
-            _ac_run_id = ac_output.get("source_ac_run_id") if ac_output else None
-            if _ac_run_id:
-                st.success(f"AC Run ID: `{_ac_run_id}`  — AC sizing persisted")
-            elif ac_output:
-                st.info("AC results loaded from snapshot attached to DC run (fully traceable).")
-            else:
-                st.warning("AC sizing not yet performed for this run.")
+            st.success("DC sizing is saved and linked to this report.")
+            st.info(
+                "DC Block Library: Not recorded in this saved run. "
+                "Refer to the saved DC Block configuration."
+            )
+            _render_ac_source_reference(
+                ac_resolution,
+                dc_run_id=active_run_id,
+                selected_ac_run_id=workspace.get("ac_run_id"),
+            )
         else:
             st.warning(
                 "No database run linked. Run DC Sizing and persist the run first. "
@@ -509,7 +545,6 @@ def show():
     # --- Standard Product Information (from ProductAsset DB) ---
     _stage2_raw_preview = stage13_output.get("stage2_raw", {})
     _preview_block_code, _preview_block_name = _extract_block_identity(_stage2_raw_preview)
-    _dc_block_src = st.session_state.get("dc_block_source", "Excel reference library")
     _product_assets = _load_product_assets_for_block(_preview_block_code)
 
     with st.expander("Standard Product Information", expanded=bool(_product_assets)):
@@ -599,6 +634,14 @@ def show():
             st.button("Retry retrieving the figures", key="report_retry_artifact_fetch")
             return
 
+        if not ctx.sld_pro_png_bytes and not ctx.sld_preview_svg_bytes:
+            st.warning(
+                "SLD not included. No SLD is available for the selected configuration. "
+                "You can download the current report, or generate the SLD first."
+            )
+            if st.button("Open Single Line Diagram", key="report_open_missing_sld"):
+                navigate_now("Single Line Diagram")
+
         try:
             comb_bytes = export_report_v2_1(ctx, brand=brand)
         except (BrandAssetMissingError, BrandLeakError) as exc:
@@ -625,8 +668,6 @@ def show():
                 alternative_label=ctx.ac_alternative_label,
             )
 
-    if not sld_png and not sld_svg:
-        st.info("SLD image not found. Generate it in Single Line Diagram.")
     if not layout_png and not layout_svg:
         st.info("Typical AC Block Arrangement image not found. Generate it from the corresponding concept page.")
 

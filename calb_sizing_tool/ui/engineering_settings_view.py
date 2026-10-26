@@ -64,14 +64,14 @@ def _resolve_mv_nominal_voltage_kv(auth_user, run_id: str | None) -> float | Non
 
 def _source_label(source: str) -> str:
     if source == "dedicated_table":
-        return "Dedicated settings table"
+        return "Saved engineering settings"
     if source == "legacy_case_json":
-        return "Legacy case JSON fallback"
+        return "Earlier case settings"
     return "Not saved"
 
 
 def _render_history(rows: list[dict[str, Any]]) -> None:
-    section_header("Change History", "Recent saved settings events for the active case.")
+    section_header("Change History", "Recent changes to the active case's engineering settings.")
     if not rows:
         st.info("No saved settings history for this case.")
         return
@@ -99,7 +99,7 @@ def show() -> None:
 
     auth_user = get_auth_user()
     workspace = get_workspace_context()
-    page_header("Engineering Settings", "Formal SLD project settings and review history")
+    page_header("Engineering Settings", "Settings used for formal SLD generation and their change history")
     workspace_status_bar(
         [
             ("Project", workspace.get("project_name") or "None"),
@@ -128,21 +128,21 @@ def show() -> None:
         c3.metric("Case", case_info["case_name"])
         if source == "legacy_case_json":
             st.warning(
-                "This case is still reading legacy JSON settings. Saving from this page will move the active settings "
-                "to the dedicated settings table."
+                "This case uses earlier saved settings. Review and save them here to update the engineering "
+                "settings used for formal SLD generation."
             )
         elif source == "none":
             st.info("No formal SLD engineering settings are saved for this case yet.")
 
     st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
-    section_header("Edit Formal Settings", "Saved values are used by strict/formal SLD mode.")
+    section_header("Edit Engineering Settings", "Review and save the values used for formal SLD generation.")
     with st.form("engineering_settings_form"):
         formal_settings_input = render_electrical_inputs(
             settings or legacy_sld_override_preset(),
             key_prefix="engineering_settings",
             mv_nominal_voltage_kv=mv_nominal_voltage_kv,
             section_title="Formal SLD Engineering Settings",
-            section_caption="Persisted case-level settings used by formal / strict SLD mode.",
+            section_caption="These settings apply to the active case and are used for formal SLD generation.",
         )
         submitted = st.form_submit_button("Save Engineering Settings", use_container_width=True)
 

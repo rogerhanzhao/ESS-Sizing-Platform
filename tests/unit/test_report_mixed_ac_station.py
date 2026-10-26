@@ -214,7 +214,8 @@ def test_belize_mixed_allocation_consumes_saved_4_4_2_not_balanced_4_3_3():
 
 
 def test_belize_mixed_report_states_models_totals_and_figure_scope():
-    text = _doc_text(_belize_ctx())
+    ctx = _belize_ctx()
+    text = _doc_text(ctx)
     assert "2 × 5.00 MW (4 × 1250 kW PCS per block) + 1 × 2.50 MW" in text
     assert "= 12.50 MW installed PCS nameplate" in text
     assert "AC-01, AC-02" in text and "AC-03" in text
@@ -222,11 +223,21 @@ def test_belize_mixed_report_states_models_totals_and_figure_scope():
     assert "5.00 / 10.00" in text and "2.50 / 2.50" in text
     assert "Transformer Rating (representative Head model)" in text
     assert "Representative Head Size (MW)" in text
-    assert "Tail AC Blocks are not included in this drawing" in text
+    assert "SLD not generated" in text
+    assert "Tail AC Blocks are not included in this drawing" not in text
     assert "Tail AC Blocks are not shown" in text
-    assert "not the complete station SLD" in text
     assert "PCS nameplate is the installed converter rating" in text
     assert "POI requirement is 10.80 MW" in text
+    # Drawing-scope language requires a drawing. Keep the original disclosure
+    # assertions for an available SLD, rather than claiming a nonexistent image.
+    ctx.sld_preview_svg_bytes = (
+        b'<svg xmlns="http://www.w3.org/2000/svg" width="600" height="250">'
+        b'<rect x="1" y="1" width="598" height="248" fill="white" stroke="black"/>'
+        b'<text x="20" y="50">Mixed head fleet test SLD</text></svg>'
+    )
+    with_sld = _doc_text(ctx)
+    assert "Tail AC Blocks are not included in this drawing" in with_sld
+    assert "not the complete station SLD" in with_sld
 
 
 def test_mixed_report_exposes_unconfirmed_frequency_without_changing_saved_input():

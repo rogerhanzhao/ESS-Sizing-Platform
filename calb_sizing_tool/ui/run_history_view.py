@@ -89,7 +89,7 @@ def show() -> None:
             "POI MW": _display_number(inp.get("poi_power_req_mw")),
             "POI MWh": _display_number(inp.get("poi_energy_req_mwh")),
             "DC Req MWh": _display_number(summary.get("dc_energy_capacity_required_mwh")),
-            "Guarantee MWh": _display_number(summary.get("guarantee_year_poi_usable_mwh")),
+            "Guarantee-year POI MWh": _display_number(summary.get("guarantee_year_poi_usable_mwh")),
             "Margin MWh": _display_number(summary.get("margin_mwh")),
             "Converged": "Yes" if summary.get("converged") else "No",
         })
@@ -103,23 +103,25 @@ def show() -> None:
         summary = run["output_summary_json"]
         inp = run["input_summary_json"]
         with st.expander(f"Run {label} — details", expanded=False):
-            st.write(
-                {
-                    "Project": inp.get("project_name"),
-                    "Case": inp.get("case_name"),
-                    "Scenario": SCENARIO_LABELS.get(inp.get("scenario_id"), inp.get("scenario_id")),
-                    "POI Power (MW)": inp.get("poi_power_req_mw"),
-                    "POI Energy (MWh)": inp.get("poi_energy_req_mwh"),
-                    "DC Required (MWh)": summary.get("dc_energy_capacity_required_mwh"),
-                    "Guarantee Year (MWh)": summary.get("guarantee_year_poi_usable_mwh"),
-                    "Margin (MWh)": summary.get("margin_mwh"),
-                    "Effective C-Rate": summary.get("effective_c_rate"),
-                    "SOH Profile": summary.get("soh_profile_id"),
-                    "RTE Profile": summary.get("rte_profile_id"),
-                    "Iterations": summary.get("iterations"),
-                    "Converged": summary.get("converged"),
-                    "Created": fmt_dt(run["created_at"]),
-                }
+            details = {
+                "Project": inp.get("project_name"),
+                "Case": inp.get("case_name"),
+                "Scenario": SCENARIO_LABELS.get(inp.get("scenario_id"), inp.get("scenario_id")),
+                "POI Power (MW)": _display_number(inp.get("poi_power_req_mw")),
+                "POI Energy (MWh)": _display_number(inp.get("poi_energy_req_mwh")),
+                "DC Required (MWh)": _display_number(summary.get("dc_energy_capacity_required_mwh")),
+                "Guarantee-year POI Energy (MWh)": _display_number(summary.get("guarantee_year_poi_usable_mwh")),
+                "Margin (MWh)": _display_number(summary.get("margin_mwh")),
+                "Effective C-Rate": _display_number(summary.get("effective_c_rate")),
+                "SOH Profile": summary.get("soh_profile_id"),
+                "RTE Profile": summary.get("rte_profile_id"),
+                "Iterations": summary.get("iterations"),
+                "Converged": "Yes" if summary.get("converged") else "No",
+                "Created": fmt_dt(run["created_at"]),
+            }
+            render_static_table(
+                [{"Parameter": name, "Value": value if value is not None else "—"}
+                 for name, value in details.items()]
             )
             if st.button("Restore Run Inputs", key=f"restore_{run['sizing_run_id']}"):
                 with session_scope() as session:

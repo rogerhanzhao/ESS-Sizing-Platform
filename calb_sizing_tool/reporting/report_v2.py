@@ -347,6 +347,26 @@ def _mixed_composition_text(schedule: list[dict]) -> str:
     )
 
 
+def _compact_ac_block_labels(indices) -> str:
+    """Shorten long consecutive labels without changing saved order or gaps."""
+    labels = []
+    run = []
+
+    def append_run():
+        if len(run) >= 3:
+            labels.append(f"AC-{run[0]:02d}–AC-{run[-1]:02d}")
+        else:
+            labels.extend(f"AC-{index:02d}" for index in run)
+
+    for index in indices:
+        if run and index != run[-1] + 1:
+            append_run()
+            run = []
+        run.append(index)
+    append_run()
+    return ", ".join(labels)
+
+
 def _mixed_nameplate_mw(schedule: list[dict]) -> float:
     return sum(int(entry["count"]) * float(entry["block_mw"]) for entry in schedule)
 
@@ -1581,7 +1601,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             xf = f"{block_mw / pf:.2f} MVA (est.)" if pf else "TBD"
             schedule_rows.append((
                 str(entry.get("role") or "—") + " · " + (
-                    ", ".join(f"AC-{index:02d}" for index in entry["ac_block_indices"])
+                    _compact_ac_block_labels(entry["ac_block_indices"])
                     or "block numbers not recorded"
                 ),
                 f"{int(entry.get('count') or 0)}",
@@ -1610,9 +1630,15 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         )
 
     # --- Section 7: Single Line Diagram ---
-    doc.add_page_break()
+    sld_png_bytes = _sld_png_for_report(ctx, brand)
+    if not sld_png_bytes and ctx.sld_preview_svg_bytes:
+        sld_png_bytes = _svg_bytes_to_png(ctx.sld_preview_svg_bytes)
+    # An absent drawing needs a short status note, not a dedicated empty page.
+    # A readable SLD retains its original separate-page presentation.
+    if sld_png_bytes:
+        doc.add_page_break()
     doc.add_heading("7.  Single Line Diagram", level=2)
-    if mixed_schedule:
+    if mixed_schedule and sld_png_bytes:
         _keep_next_para(doc.add_paragraph(
             "Mixed AC Block station: the SLD shows the representative Head AC Block fleet only. "
             "Tail AC Blocks are not included in this drawing; their quantities and equipment "
@@ -1623,7 +1649,6 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     ))
     figure_index = 3  # Figures 1-2 used by Stage 3 milestone + POI charts above
     sld_embedded = False
-    sld_png_bytes = _sld_png_for_report(ctx, brand)
     if sld_png_bytes:
         _add_concept_figure(
             doc,
@@ -1636,20 +1661,6 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         doc.add_paragraph(f"Figure {figure_index}: Single Line Diagram – System Electrical Configuration — NOT FOR CONSTRUCTION")
         figure_index += 1
         sld_embedded = True
-    elif ctx.sld_preview_svg_bytes:
-        png_bytes = _svg_bytes_to_png(ctx.sld_preview_svg_bytes)
-        if png_bytes:
-            _add_concept_figure(
-                doc,
-                png_bytes,
-                width=Inches(6.7),
-                source_has_status_watermark=ctx.sld_source_has_status_watermark,
-                alt_text="Single line diagram — NOT FOR CONSTRUCTION",
-            )
-            _keep_next_para(doc.paragraphs[-1])
-            doc.add_paragraph(f"Figure {figure_index}: Single Line Diagram – System Electrical Configuration — NOT FOR CONSTRUCTION")
-            figure_index += 1
-            sld_embedded = True
     if not sld_embedded:
         doc.add_paragraph(_missing_figure_note(
             ctx, "SLD", "Please generate in the Single Line Diagram page.", kind="sld"))
@@ -1659,7 +1670,8 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     # ArrangementRuleProfile). The legacy UI-generated artifact is embedded
     # only as a fallback when the rule-based render is unavailable, so the
     # report never shows two contradictory aisle dimensions.
-    doc.add_page_break()
+    if sld_embedded:
+        doc.add_page_break()
     doc.add_heading("8.  Typical AC Block Arrangement (Concept Only)", level=2)
     if mixed_schedule:
         _keep_next_para(doc.add_paragraph(
@@ -1720,13 +1732,13 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             alt_text="Typical AC block arrangement — NOT FOR CONSTRUCTION",
         )
         _keep_next_para(doc.paragraphs[-1])
-        _keep_next_para(doc.add_paragraph(
+        doc.add_paragraph(
             f"Figure {figure_index}: Typical AC Block Arrangement (rule-based) — "
             f"envelope ≈ {plan_layout.envelope_w_m:.2f} × "
             f"{plan_layout.envelope_d_m:.2f} m "
             f"({plan_layout.envelope_area_m2:,.0f} m²). "
             f"Concept only. — NOT FOR CONSTRUCTION"
-        ))
+        )
         figure_index += 1
         basis_rows = [(item, f"{value} — {spacing_basis_text(basis)}")
                       for item, value, basis in ARRANGEMENT_PROFILE.basis]
@@ -1868,7 +1880,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         ))
         _add_table(doc, [
             (
-                ", ".join(f"AC-{index:02d}" for index in entry["ac_block_indices"])
+                _compact_ac_block_labels(entry["ac_block_indices"])
                 or "Not recorded",
                 str(entry["role"]), str(int(entry["count"])),
                 f"{float(entry['block_mw']):.2f} MW",
@@ -1952,11 +1964,11 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 f"Figure {figure_index}: Concept Site Arrangement — one "
                 f"representative project group (≈ {group_layout.envelope_w_m:.1f} × "
                 f"{group_layout.envelope_d_m:.1f} m; {group_layout.n_blocks} × "
-                f"{group_layout.total_power_mw / max(1, group_layout.n_blocks):.0f} MW "
+                f"{group_layout.total_power_mw / max(1, group_layout.n_blocks):.2f} MW "
                 f"per block). The full site is {site_layout.groups} such group(s) "
                 f"≈ {site_layout.envelope_w_m:.1f} × {site_layout.envelope_d_m:.1f} m "
-                f"({ws_power_mw:.0f} MW / "
-                f"{ws_energy_mwh:.1f} MWh). Concept only — a full "
+                f"({ws_power_mw:.2f} MW / "
+                f"{ws_energy_mwh:.3f} MWh). Concept only — a full "
                 f"Master Layout requires a registered site constraint set. — NOT FOR CONSTRUCTION"
             ))
             figure_index += 1
@@ -1973,8 +1985,8 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 ("Site envelope (concept, whole site)",
                  f"≈ {site_layout.envelope_w_m:.1f} × {site_layout.envelope_d_m:.1f} m"),
                 ("Rated power / energy (whole site)",
-                 f"{ws_power_mw:.0f} MW / "
-                 f"{ws_energy_mwh:.1f} MWh"),
+                 f"{ws_power_mw:.2f} MW / "
+                 f"{ws_energy_mwh:.3f} MWh"),
                 # Footprint is an objective, so it is reported rather than left
                 # to be inferred from the envelope dimensions.
                 ("Site land area (equipment + access only)",

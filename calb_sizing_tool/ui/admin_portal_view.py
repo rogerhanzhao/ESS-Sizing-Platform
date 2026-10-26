@@ -15,6 +15,12 @@ from sqlalchemy.exc import IntegrityError
 from calb_sizing_tool.runtime_paths import get_outputs_dir
 from calb_sizing_tool.services.auth_service import AuthService
 from calb_sizing_tool.services.product_admin_service import ProductAdminService
+from calb_sizing_tool.services.dc_product_maintenance import (
+    DC_BLOCK_FILE_COLUMNS,
+    DC_CONNECTION_FIELDS,
+    dc_connection_value,
+)
+from calb_sizing_tool.common.dc_configuration_identity import is_20ft_container_type
 from calb_sizing_tool.utils.files import (
     MAX_UPLOAD_BYTES,
     human_bytes,
@@ -40,19 +46,7 @@ _CELL_CSV_COLUMNS = [
     "end_of_life_soh_pct", "manufacturing_process", "launch_year", "notes",
 ]
 
-_DC_BLOCK_CSV_COLUMNS = [
-    "block_code", "block_name", "block_form", "product_model",
-    "cells_in_series", "strings_in_parallel", "racks_per_block",
-    "packs_per_rack", "racks_per_container", "pack_count", "container_count",
-    "configuration", "container_type", "thermal_management", "enclosure",
-    "gross_energy_mwh", "usable_energy_mwh", "rated_capacity_kwh",
-    "nominal_voltage_v", "voltage_min_v", "voltage_max_v",
-    "nominal_power_kw", "max_current_a", "max_c_rate", "charge_discharge_rate",
-    "dod_pct", "cycle_life_cycles", "end_of_life_soh_pct",
-    "service_life_years", "system_efficiency_pct",
-    "dimension_width_mm", "dimension_depth_mm", "dimension_height_mm", "weight_kg",
-    "ingress_protection", "working_temp_min_c", "working_temp_max_c", "notes",
-]
+_DC_BLOCK_CSV_COLUMNS = DC_BLOCK_FILE_COLUMNS
 
 
 def _template_csv(columns: list[str]) -> bytes:
@@ -100,6 +94,16 @@ def _render_import_expander(
     result_key = f"product_import_result_{entity}"
     previous = st.session_state.get(result_key)
     with st.expander(f"Import {label} from CSV / Excel", expanded=bool(previous)):
+        if entity == 'dc_block':
+            st.download_button('Export DC Product Parameters (CSV)',
+                service.export_dc_blocks_dataframe().to_csv(index=False).encode('utf-8-sig'),
+                file_name='CALB_DC_Product_Catalogue.csv', mime='text/csv', key='export_dc_catalogue')
+            st.caption('Use Standard / Special tail for configuration_role, cell_code for the exact linked cell, '
+                       'and parent_block_code for its parent. Save cells and parent products before importing tails. '
+                       'dc_output_count and max_connected_pcs are optional positive integers; '
+                       'dc_topology_source_ref records the DC connection basis. '
+                       'The export and template share the same fields; imports create new codes only. '
+                       'Parameter exports exclude custom metadata and engineering review history.')
         if previous:
             result = previous["result"]
             st.success(f"Last import: {result['imported']} saved, {result['skipped']} skipped.") if result["imported"] else st.warning(f"Last import: 0 saved, {result['skipped']} skipped.")
@@ -129,10 +133,14 @@ def _render_import_expander(
         if missing:
             st.error(f"Missing required columns: {', '.join(missing)}")
             return
-        preview = service.preview_import_from_df(df)
+        preview = service.preview_import_from_df(df, entity=entity)
         st.caption(f"{len(df)} rows detected; {len(preview['rows'])} rows pass format checks. " + ("This file has already been saved in this session." if already_saved else "Preview shows normalized values. Submission results, if any, appear above."))
         if preview["rows"]:
-            render_static_table(pd.DataFrame([values for _, values in preview["rows"]]).head(5))
+            if entity == 'dc_block':
+                render_static_table(service.dc_block_import_preview_dataframe(preview['rows']))
+                st.caption('Preview highlights product identity and key ratings. All supplied fields are retained for import.')
+            else:
+                render_static_table(pd.DataFrame([values for _, values in preview["rows"]]).head(5))
         for error in preview["errors"][:20]:
             st.error(error)
         st.caption("Create-only import: existing product codes are not overwritten. Format checks do not verify engineering capability or product approval.")
@@ -193,6 +201,8 @@ def _friendly_duplicate_save():
         if "UNIQUE constraint failed" not in str(exc.orig):
             raise
         st.error("A record with this code already exists. Open the existing record to edit it, or enter a different code.")
+    except ValueError as exc:
+        st.error(str(exc))
 
 
 def show() -> None:
@@ -353,7 +363,7 @@ def _render_edit_form(
     if not items:
         return
 
-    with st.expander(f"Edit Selected {title}", expanded=False):
+    with st.expander(f"Edit Selected {title}", expanded=False), _friendly_duplicate_save():
         options = _display_options(items, id_field, label_fields)
         selected_label = st.selectbox("Record", list(options.keys()), key=f"edit_{entity}_record")
         record_id = options[selected_label]
@@ -362,8 +372,13 @@ def _render_edit_form(
             st.warning("Selected record is no longer available.")
             return
 
+        if entity == 'dc_block':
+            st.caption(f"Parameter status: {record['parameter_status']}. {record['parameter_details']}")
+
         with st.form(f"admin_edit_{entity}"):
             values: dict[str, Any] = {}
+            if entity == 'dc_block':
+                values.update(_dc_maintenance_fields(record, items, f'edit_dc_{record_id}'))
             for spec in specs:
                 key = spec["key"]
                 label = spec["label"]
@@ -403,6 +418,11 @@ def _render_edit_form(
                     values[key] = st.checkbox(label, value=bool(current), key=widget_key)
 
             numeric_specs = [spec for spec in specs if spec.get("kind") in {"float", "int"} and record.get(spec["key"]) is not None]
+            if entity == 'dc_block':
+                numeric_specs.extend(spec for spec in (
+                    {'key': 'dc_output_count', 'label': 'DC output circuits'},
+                    {'key': 'max_connected_pcs', 'label': 'Maximum connected PCS'},
+                ) if record.get(spec['key']) is not None)
             if numeric_specs:
                 with st.expander("Clear existing numeric values (optional)"):
                     st.caption("Select only values that should become Not provided. Zero is retained unless explicitly cleared.")
@@ -425,6 +445,91 @@ def _render_edit_form(
                     _refresh()
                 else:
                     st.error("Record update failed.")
+
+
+def _dc_maintenance_fields(record: dict, blocks: list[dict], key: str) -> dict:
+    """Small addition inside the original product forms, never a second workflow."""
+    c1, c2 = st.columns(2)
+    locked = record.get('configuration_role') == 'special_tail'
+    roles = ['special_tail'] if locked else ['standard', 'special_tail']
+    role = c1.selectbox('Configuration role', roles,
+        index=roles.index(record.get('configuration_role', 'standard')),
+        format_func=lambda value: 'Special tail' if value == 'special_tail' else 'Standard',
+        key=f'{key}_role', disabled=locked)
+    options = {'No parent product': ''}
+    for block in blocks:
+        if (block.get('product_dc_block_id') != record.get('product_dc_block_id')
+                and block.get('configuration_role', 'standard') == 'standard'
+                and block.get('block_form') in (None, '', 'container')
+                and block.get('cells_in_series') in (None, 416)
+                and block.get('strings_in_parallel') in (None, 12)
+                and (not block.get('container_type') or is_20ft_container_type(block['container_type']))
+                and (not record.get('product_cell_id') or not block.get('product_cell_id')
+                     or record['product_cell_id'] == block['product_cell_id'])):
+            options[f"{block['block_code']} - {block['block_name']}"] = block['block_code']
+    current = record.get('parent_block_code') or ''
+    if current and current not in options.values():
+        options[f'{current} (check parent declaration)'] = current
+    labels = list(options)
+    parent_label = next((label for label, code in options.items() if code == current), labels[0])
+    parent = c2.selectbox('Parent product (special tail only)', labels,
+        index=labels.index(parent_label), key=f'{key}_parent',
+        help='Select a 12-string, 416S, 20ft container with the exact same linked cell product. '
+             'The linked cell is checked again when saving; equal Ah is insufficient.')
+    s1, s2 = st.columns([3, 1])
+    source = s1.text_input('Technical source reference', value=str(record.get('source_ref') or ''), key=f'{key}_source')
+    version = s2.text_input('Source version', value=str(record.get('version_tag') or ''), key=f'{key}_version')
+    connection_values = {}
+    for field in DC_CONNECTION_FIELDS:
+        try:
+            connection_values[field] = dc_connection_value(field, record.get(field))
+        except ValueError as exc:
+            st.warning(f'Stored DC connection value needs correction. {exc}')
+            connection_values[field] = '' if field == 'dc_topology_source_ref' else None
+    t1, t2 = st.columns(2)
+    dc_outputs = t1.number_input('DC output circuits',
+        value=connection_values['dc_output_count'],
+        min_value=1, step=1, placeholder='Not specified', key=f'{key}_dc_output_count',
+        help='Product DC connection count. The confirmed 10-string tail has one output; '
+             'the 8-string tail has two. Leave unspecified for unconfirmed products.')
+    maximum_pcs = t2.number_input('Maximum connected PCS',
+        value=connection_values['max_connected_pcs'],
+        min_value=1, step=1, placeholder='Not specified', key=f'{key}_max_connected_pcs',
+        help='Product connection limit, not the PCS quantity selected for a project. '
+             'The 10-string tail supports one PCS; the 8-string tail supports up to two, '
+             'without requiring two PCS.')
+    dc_source = st.text_input('DC connection source',
+        value=connection_values['dc_topology_source_ref'], key=f'{key}_dc_topology_source_ref',
+        help='Record the applicable drawing or user design confirmation. This does not '
+             'confirm power/current ratings or activate the product for sizing.')
+    restrictions = st.text_area('Usage restrictions', value=str(record.get('usage_restrictions') or ''),
+        height=70, key=f'{key}_restrictions')
+    st.caption('Special tail identifies an 8- or 10-string variant linked to a standard 12-string, 20ft product. '
+               'Missing parameters can be saved for completion. It remains excluded from standard sizing, '
+               'even when Active or Published; this form does not approve or activate it.')
+    return dict(configuration_role=role, parent_block_code=options[parent],
+                source_ref=source.strip() or None, version_tag=version.strip() or None,
+                usage_restrictions=restrictions.strip(), dc_output_count=dc_outputs,
+                max_connected_pcs=maximum_pcs, dc_topology_source_ref=dc_source.strip() or None)
+
+
+def _dc_connection_display(block: dict, field: str) -> Any:
+    try:
+        value = dc_connection_value(field, block.get(field))
+    except ValueError:
+        return 'Needs correction'
+    return 'Not specified' if value is None or value == '' else value
+
+
+def _dc_connection_summary(block: dict) -> str:
+    outputs = _dc_connection_display(block, 'dc_output_count')
+    maximum = _dc_connection_display(block, 'max_connected_pcs')
+    if outputs == maximum == 'Not specified':
+        return 'Not specified'
+    output_label = 'DC output' if outputs == 1 else 'DC outputs'
+    output_text = f'{outputs} {output_label}' if isinstance(outputs, int) else f'DC outputs: {outputs}'
+    pcs_text = f'max {maximum} PCS' if isinstance(maximum, int) else f'PCS limit: {maximum}'
+    return f'{output_text} / {pcs_text}'
 
 
 def _section_overview(snapshot: dict[str, Any]) -> None:
@@ -467,6 +572,7 @@ def _section_users_access() -> None:
 
     st.subheader("Users & Access")
     st.caption("Public sign-up remains disabled. Administrators create accounts and assign project access here.")
+    st.caption("Created and Last Login timestamps are shown in UTC.")
 
     display_rows = [
         {
@@ -588,7 +694,21 @@ def _render_catalogue_table(rows: list[dict[str, Any]], *, summary_columns: list
     if not rows:
         st.info("No products registered yet. Add a product below.")
         return
-    render_static_table([{key: row.get(key) for key in summary_columns} for row in rows], nowrap=True)
+    summary_rows = []
+    for row in rows:
+        summary = {}
+        for key in summary_columns:
+            value = row.get(key)
+            if isinstance(value, bool):
+                value = "Yes" if value else "No"
+            elif isinstance(value, (int, float)):
+                if key == "Gross MWh":
+                    value = f"{value:.3f}"
+                elif "%" in key:
+                    value = f"{value:.2f}"
+            summary[key] = value
+        summary_rows.append(summary)
+    render_static_table(summary_rows, nowrap=False)
     with st.expander("View all catalogue parameters", expanded=False):
         render_static_table(rows, nowrap=True)
 
@@ -799,11 +919,18 @@ def _section_cell_products(service: ProductAdminService, snapshot: dict[str, Any
 
 def _section_dc_block(service: ProductAdminService, snapshot: dict[str, Any]) -> None:
     st.subheader("DC Block Templates")
-    st.caption("String/rack/container templates linked to maintained cell products.")
+    st.caption("String/rack/container templates linked to maintained cell products. "
+               "Parameter status is a maintenance check; it does not change existing sizing selection.")
+    blocks = service.dc_block_maintenance_rows(snapshot)
 
     _render_catalogue_table(
         _rows(
-            snapshot["dc_blocks"],
+            [dict(block,
+                  role_label='Special tail' if block['configuration_role'] == 'special_tail' else 'Standard',
+                  dc_connection_summary=_dc_connection_summary(block),
+                  dc_output_display=_dc_connection_display(block, 'dc_output_count'),
+                  max_pcs_display=_dc_connection_display(block, 'max_connected_pcs'),
+                  dc_source_display=_dc_connection_display(block, 'dc_topology_source_ref')) for block in blocks],
             [
                 ("Code", "block_code"),
                 ("Name", "block_name"),
@@ -820,16 +947,28 @@ def _section_dc_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
                 ("Thermal", "thermal_management"),
                 ("Published", "is_published"),
                 ("Active", "is_active"),
+                ("Use", "role_label"),
+                ("Parent", "parent_block_code"),
+                ("Cell", "cell_code"),
+                ("DC connection", "dc_connection_summary"),
+                ("DC output circuits", "dc_output_display"),
+                ("Maximum connected PCS", "max_pcs_display"),
+                ("DC connection source", "dc_source_display"),
+                ("Parameters", "parameter_status"),
+                ("Missing / Review", "parameter_details"),
+                ("Source", "source_ref"),
+                ("Source Version", "version_tag"),
+                ("Usage Restrictions", "usage_restrictions"),
             ],
         ),
-        summary_columns=['Code', 'Name', 'Form', 'Gross MWh', 'Published', 'Active'],
+        summary_columns=['Name', 'Gross MWh', 'Use', 'DC connection', 'Parameters', 'Published', 'Active'],
     )
 
     _render_edit_form(
         service=service,
         title="DC Block Template",
         entity="dc_block",
-        items=snapshot["dc_blocks"],
+        items=blocks,
         id_field="product_dc_block_id",
         label_fields=["block_code", "block_name"],
         cells=snapshot["cells"],
@@ -886,7 +1025,7 @@ def _section_dc_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
         ],
     )
 
-    with st.expander("Add DC Block Template", expanded=False):
+    with st.expander("Add DC Block Template", expanded=False), _friendly_duplicate_save():
         with st.form("admin_add_product_dc_block"):
             # ── Identity (always visible) ─────────────────────────────────
             c1, c2, c3 = st.columns(3)
@@ -897,6 +1036,7 @@ def _section_dc_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
                 ["container", "cabinet"],
                 help="container = 20ft BESS unit, cabinet = indoor rack cabinet",
             )
+            maintenance = _dc_maintenance_fields({}, blocks, 'add_dc')
             # ── Tabs for the remaining 40 fields ─────────────────────────
             tab_core, tab_struct, tab_phys, tab_comply, tab_notes = st.tabs(
                 ["Core", "Structure", "Physical", "Compliance", "Notes"]
@@ -975,6 +1115,7 @@ def _section_dc_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
                 else:
                     service.create_dc_block(
                         {
+                            **maintenance,
                             "block_code": block_code.strip(),
                             "block_name": block_name.strip(),
                             "block_form": block_form,
@@ -1090,7 +1231,7 @@ def _section_ac_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
                 ("Published", "is_published"),
             ],
         ),
-        summary_columns=['Code', 'Name', 'PCS kW', 'PCS Count', 'Transformer kVA', 'Active', 'Published'],
+        summary_columns=['Name', 'PCS kW', 'PCS Count', 'Transformer kVA', 'Active', 'Published'],
     )
 
     _render_edit_form(
@@ -1164,7 +1305,8 @@ def _section_ac_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
 
 def _section_assets(service: ProductAdminService, snapshot: dict[str, Any]) -> None:
     st.subheader("Product Assets")
-    st.caption("Structured datasheets and product images used by future proposal product-information sections.")
+    st.caption("Product datasheets and images available to technical proposals. "
+               "Upload a file to enable its preview and download.")
 
     render_static_table(
         _rows(
@@ -1476,7 +1618,7 @@ def _section_rte(service: ProductAdminService, snapshot: dict[str, Any]) -> None
 
 def _section_plugins(service: ProductAdminService, snapshot: dict[str, Any]) -> None:
     st.subheader("Plugin Registry")
-    st.caption("Reserved mount points for PyBaMM, GitHub or internal degradation simulation plugins.")
+    st.caption("Register external or internal degradation simulation tools and their source references.")
 
     if snapshot["plugins"]:
         render_static_table(
@@ -1550,8 +1692,8 @@ def _section_plugins(service: ProductAdminService, snapshot: dict[str, Any]) -> 
 def _section_dc_sizing_data() -> None:
     st.subheader("DC Sizing Data")
     st.caption(
-        "SoH profiles, degradation curves and RTE bands used by the stage-3 DC sizing pipeline. "
-        "When DB data is present it overrides the Excel reference file at runtime."
+        "SOH profiles, degradation curves and RTE bands used for DC sizing. "
+        "Saved database curves take priority over the Excel reference file."
     )
 
     from calb_sizing_tool.services.master_data_service import MasterDataService
@@ -1571,9 +1713,9 @@ def _section_dc_sizing_data() -> None:
 
     _has_data = counts["soh_profile"] > 0 and counts["rte_profile"] > 0
     if _has_data:
-        st.success("DB data present — stage-3 will use DB curves (refreshed every 60 s).")
+        st.success("DC sizing uses the saved database curves. Updates are refreshed within 60 seconds.")
     else:
-        st.info("No DB data — stage-3 uses the Excel reference file.")
+        st.info("No curves are saved in the database. DC sizing uses the Excel reference file.")
 
     st.markdown("---")
     st.markdown("**Migrate from Excel reference file**")
@@ -1616,7 +1758,7 @@ def _section_dc_sizing_data() -> None:
     if _has_data:
         st.markdown("---")
         st.markdown("**Clear DB data (revert to Excel)**")
-        st.caption("Removes all SoH/RTE records. Stage-3 will revert to the Excel reference file.")
+        st.caption("Removes all SOH/RTE records from the database. DC sizing will use the Excel reference file instead.")
         if st.button("Clear DB SoH / RTE data", key="btn_clear_soh_rte"):
             try:
                 result = svc.migrate_soh_rte_from_excel_bundle(
