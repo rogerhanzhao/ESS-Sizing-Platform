@@ -202,6 +202,21 @@ def _ctx_for(pcs_per_block: int, num_blocks: int, dc_blocks_total: int,
     )
 
 
+@pytest.mark.parametrize('pcs_per_block,block_mw,pcs_total,total_mw', [(4,10,68,170),(2,5,34,85)])
+def test_uniform_report_discloses_saved_nameplate_separately_from_poi(pcs_per_block,block_mw,pcs_total,total_mw):
+    ctx = _ctx_for(pcs_per_block,17,68,block_mw,total_mw)
+    ctx.poi_power_requirement_mw = 75
+    ctx.ac_output['pcs_kw'] = 2500
+    doc = Document(io.BytesIO(export_report_v2_1(ctx)))
+    nameplate_rows = [r for t in doc.tables for r in t.rows if r.cells[0].text == 'Installed PCS Nameplate (MW)']
+    assert len(nameplate_rows) == 2
+    assert all(r.cells[1].text == f'{total_mw:.2f}' for r in nameplate_rows)
+    text = '\n'.join(p.text for p in doc.paragraphs)
+    assert f'Saved equipment: {pcs_total} PCS modules' in text
+    assert '75.00 MW' in text
+    assert ctx.pcs_modules_total == pcs_total
+
+
 def test_ten_mw_block_is_drawn_with_the_forty_foot_station_not_the_twenty():
     """P1-4 lock for F1: station size follows the AC Block class, not a constant.
 

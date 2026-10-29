@@ -848,14 +848,18 @@ def _tail_curve_comparison_details(baseline_meta, tail_meta):
     return rows, changed
 
 
-def _render_reduced_string_tail_comparison(comparison, baseline_snapshot=None):
+def _render_reduced_string_tail_comparison(comparison, baseline_snapshot=None, *, is_guest=True, case_name=None):
     tail_snapshot = DcPipelineRunSnapshot.model_validate(comparison["snapshot"])
     strings = comparison["selected_tail_strings"]
     year = tail_snapshot.stage1.poi_guarantee_year
     target = tail_snapshot.stage1.poi_energy_req_mwh
     result = comparison["poi_energy_at_guarantee_year_mwh"]
+    tail_count = comparison.get("tail_container_count", 1)
+    composition = (f"One {strings}-string tail replaces the final 12-string container. " if tail_count == 1
+                   else f"{tail_count} containers use the {strings}-string version; "
+                        f"{tail_snapshot.stage2.container_count - tail_count} retain 12 strings. ")
     st.info(
-        f"One {strings}-string tail replaces the final 12-string container. "
+        composition + f"Total container count stays at {tail_snapshot.stage2.container_count}. "
         "This is the current comparison setup, not an adopted configuration. "
         "The standard configuration remains active for AC / SLD and proposal export."
     )
@@ -912,6 +916,28 @@ def _render_reduced_string_tail_comparison(comparison, baseline_snapshot=None):
              "Within 0.5C of remaining capacity": "Yes" if row["within_0_5c_current_capacity"] else "No"}
             for row in review
         ]))
+    if baseline_snapshot is not None:
+        reduction = baseline_snapshot.stage2.dc_nameplate_bol_mwh - tail_snapshot.stage2.dc_nameplate_bol_mwh
+        st.caption(
+            f"Installed capacity reduction: {reduction:.3f} MWh "
+            f"({reduction / baseline_snapshot.stage2.dc_nameplate_bol_mwh:.2%} of the standard configuration). "
+            f"Strings removed: {(12 - strings) * tail_count}. Total container count is unchanged."
+        )
+        if DOCX_AVAILABLE and not is_guest:
+            try:
+                from calb_sizing_tool.reporting.dc_tail_report import build_tail_dc_report, tail_report_filename
+                report = build_tail_dc_report(baseline_snapshot, case_name=case_name, logo_path=find_logo_for_report())
+            except Exception:
+                st.warning("The separate tail DC report could not be generated. The saved comparison and standard result are unchanged.")
+            else:
+                st.download_button(
+                    "Download Tail DC Sizing Report", data=report,
+                    file_name=tail_report_filename(baseline_snapshot),
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    on_click="ignore", key="dc_tail_report_download",
+                )
+                st.caption("This comparison is saved with its DC run. Use Load Run to return to it and download this separate report. "
+                           "The standard technical report and active configuration remain unchanged.")
 
 
 def show():
@@ -1335,7 +1361,7 @@ def show():
             )
             dc_inputs["hybrid_disable_threshold_mwh"] = hybrid_disable_threshold
 
-            tail_basis, tail_products, selected_tail_strings = None, {}, None
+            tail_basis, tail_products, selected_tail_strings, selected_tail_count = None, {}, None, 1
             if not auth_context.is_guest:
                 with st.expander("Advanced: Reduced-string tail", expanded=False):
                     # The request is comparison-only and separate from original
@@ -1344,27 +1370,33 @@ def show():
                         tail_basis, tail_products = _reduced_string_tail_options(df_blocks)
                     except Exception:
                         st.caption("Product maintenance could not be read. Standard sizing remains available.")
-                    labels = {10: "Compare one 10-string tail", 8: "Compare one 8-string tail"}
+                    labels = {10: "Compare 10-string tails", 8: "Compare 8-string tails"}
                     choices = ["Standard 12-string only"] + [labels[n] for n in (10, 8) if n in tail_products]
                     previous = st.session_state.get("dc_tail_option_preview")
                     for n, label in labels.items():
-                        if previous == f"Allow one {n}-string tail" and label in choices:
+                        if previous in (f"Allow one {n}-string tail", f"Compare one {n}-string tail") and label in choices:
                             st.session_state["dc_tail_option_preview"] = label
                     if st.session_state.get("dc_tail_option_preview") not in choices:
                         st.session_state["dc_tail_option_preview"] = choices[0]
                     selected_tail = st.radio(
                         "Tail comparison (not adopted)",
                         choices, key="dc_tail_option_preview", disabled=len(choices) == 1,
-                        help="Compare one replacement tail using the same Run Sizing button. The standard result remains active for AC / SLD.",
+                        help="Compare 1 to 4 reduced-string containers using Run Sizing. Total container count and the active standard configuration stay unchanged.",
                     )
                     selected_tail_strings = next((n for n, label in labels.items() if label == selected_tail), None)
+                    selected_tail_count = int(st.number_input(
+                        "Reduced-string container count", min_value=1, max_value=4, value=1, step=1,
+                        key="dc_tail_count_preview", disabled=len(choices) == 1,
+                        help="Applies only when a tail comparison is selected. At least one standard 12-string container must remain.",
+                    ))
                     st.caption(
+                        "Standard 12-string sizing is the default. Use this optional comparison for specific project needs. "
                         "For the active Container Only result in the existing 314Ah / 20ft / 12-string family. "
-                        "This comparison evaluates one replacement in the final container position; "
-                        "it does not define the permitted scope of future manual combinations. "
+                        "Replace 1 to 4 containers with the selected reduced-string version; the total box count stays fixed. "
                         "Use the original cell-to-container capacity chain, "
                         "0.5C nominal power and current standard SOH / RTE data. "
-                        "Tail results are saved as comparisons; AC / SLD continue with the standard configuration."
+                        "Results are saved with the DC run and can be downloaded as a separate DC comparison report; "
+                        "AC / SLD continue with the standard configuration."
                     )
                     render_static_table(pd.DataFrame([
                         {"Tail option": labels[n],
@@ -1605,7 +1637,7 @@ def show():
                                 active_snapshot, master_bundle.model_copy(update={
                                     "raw_sheets": load_dc_excel_bundle_from_path(Path(DC_DATA_PATH)).raw_sheets,
                                 }),
-                                tail_products[selected_tail_strings], tail_basis,
+                                tail_products[selected_tail_strings], tail_basis, tail_count=selected_tail_count,
                             )
                             active_snapshot = active_snapshot.model_copy(deep=True)
                             active_snapshot.summary[SUMMARY_KEY] = tail_comparison
@@ -1752,7 +1784,8 @@ def show():
                     st.error(f"Error: {res[1]}")
         if tail_comparison:
             with tabs[-1]:
-                _render_reduced_string_tail_comparison(tail_comparison, active_snapshot)
+                _render_reduced_string_tail_comparison(tail_comparison, active_snapshot,
+                    is_guest=auth_context.is_guest, case_name=active_case_name)
         _render_dc_technical_export(s1, ok_results, report_order, project_name, is_guest=auth_context.is_guest)
 
     else:
@@ -1785,7 +1818,8 @@ def show():
             tail_comparison = _saved_tail_comparison(snapshot)
             if tail_comparison:
                 section_header("Reduced-string Tail Comparison", eyebrow="Saved result")
-                _render_reduced_string_tail_comparison(tail_comparison, snapshot)
+                _render_reduced_string_tail_comparison(tail_comparison, snapshot,
+                    is_guest=auth_context.is_guest, case_name=active_case_name)
             saved_mode = str(snapshot.stage2.mode)
             _render_dc_technical_export(
                 snapshot.stage1.to_legacy_dict(), {saved_mode: snapshot_to_legacy_tuple(snapshot)},

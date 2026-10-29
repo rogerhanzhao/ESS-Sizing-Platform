@@ -77,6 +77,8 @@ def build_tail_sld_preview(parent_snapshot, ac_output) -> dict | None:
     comparison = restored_comparison(parent_snapshot)
     if comparison is None:
         return None
+    if comparison.get('tail_container_count', 1) > 1:
+        return None  # Do not project multiple tails onto the old final-slot drawing.
     if not isinstance(ac_output, dict):
         raise ValueError('A saved original AC output is required for a tail preview.')
     output = _finite_json(ac_output)

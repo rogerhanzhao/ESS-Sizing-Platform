@@ -1,5 +1,52 @@
 # Current Status 2026-07-12
 
+> 2026-10-30 RELEASE CHECKPOINT: final full regression completed on 2026-10-29
+> with 2404 passed, two inherited invalid-frequency fixture warnings, 1380.49s;
+> compileall passed. Frozen core modules are unchanged. Linux candidate checks
+> verify 239 runtime Python source hashes, eight reduced-string comparisons and
+> exports, unchanged 39-table database copy, and the 75 MW / 68-container
+> recommendation (34 x 2500 kW PCS, 85 MW installed). The saved 170 MW source
+> report was read-only re-exported and Word-rendered to ten pages; affected
+> summary/AC pages are legible. Release deployment and owner browser acceptance
+> are recorded separately in private operations evidence.
+
+> 2026-10-29 LOCAL PCS REPORT REVIEW: a saved 75 MW / 300 MWh case uses
+> 68 standard DC containers, 17 AC Blocks and 4 x 2500 kW PCS per block:
+> its 68 PCS / 170 MW report matches the production snapshot. Existing initial
+> selection recommends 2 x 2500 kW per block (34 PCS / 85 MW) at the same 1:4
+> grouping. Historical choices are preserved; their original selection gesture
+> cannot be inferred from a saved snapshot. The original AC page now warns when
+> the selected uniform model is larger than its suggested alternative. Uniform
+> reports explicitly disclose installed PCS MW alongside POI duty and saved
+> equipment quantities. No sizing equation or historical record is rewritten.
+> Full release regression is pending after this follow-up. The earlier full
+> run passed 2399 checks and found two missing data-image declarations for the
+> new tail report; its logo/data chart are now explicitly classified in the
+> watermark guard. Production remains at the prior release pending validation.
+
+> 2026-10-27 LOCAL DC COMPARISON SCOPE: the owner paused formal tail adoption
+> and requested a separate saved/exportable DC comparison with unchanged total
+> container count, then clarified a manual range of 1..4 reduced-string boxes.
+> The original DC Advanced area selects either the 10-string or 8-string product
+> and a quantity. Standard 12-string sizing remains the default and active run;
+> the comparison keeps at least one main container, does not add boxes to cure a
+> failed energy check, and uses the original Stage3 curve selection. Single-tail
+> saved payloads remain version 1; multiple-tail attachments use version 2 and
+> are excluded from the old single-tail AC review / SLD preview. A separate
+> DOCX download reads the validated saved comparison on both Run and Load Run.
+> Original proposal/DC exports, sizing formulas, database schema and standard
+> AC/SLD/layout paths remain unchanged. This is local work, not a production release.
+> Verification completed 2026-10-28: 186 focused tests pass, including signed-in
+> Run / saved-result reload / separate download presence / original AC handoff;
+> compileall and frozen-core checks pass. Forty catalogue-copy cases cover both
+> products and 1..4 quantities (34 calculated, six correctly rejected because
+> no standard container would remain); failed energy checks stay failed without
+> added boxes. Two final DOCX samples were rendered by Microsoft Word, three
+> pages each, and all pages visually inspected. Original production snapshot
+> hash is unchanged. Local 8511 uses a separate review DB copy; native-browser
+> click acceptance and production release are not claimed. Evidence is private
+> under output/dc_tail_range_review_20261027/.
+
 > 2026-10-25 AC INITIAL-SELECTION / MISSING-SLD FOLLOW-UP (local validation):
 > the owner's actual 100 MW / 400 MWh test has 92 standard containers. Its
 > saved 230 MW and 115 MW alternatives are arithmetically correct; stale keyed
@@ -1104,11 +1151,12 @@ seams; maintenance should exploit them instead of scanning everything.
 | **AC alternatives (identity)** | `services/ac_run_service.py` | ~0.4k lines | **Low, but load-bearing** — SOLE owner of what makes two AC schemes different (the original scalar identity plus actual per-row PCS model / DC allocation for true MIX, the gate against over-splitting) and of how siblings are NAMED (`ac_alternative_label`, oldest-first `A`/`B`/…). Standard / historical no-row hashes stay unchanged. Legacy MIX reuse requires the saved output's complete new identity to match, so changing only a tail PCS rating cannot overwrite another alternative. Optional comparison attachments do not mint a formal AC alternative. Report file names, covers and provenance quote the service's label; no other module computes it. Its snapshots are the per-alternative configuration `sld_data_source_service` reads back. |
 | **AC alternative resolution** | `services/sld_data_source_service.resolve_preferred_ac_snapshot`, `state/workspace_state.artifact_run_id()` | ~0.3k lines | **Low, but load-bearing** — the two places that answer "which alternative am I working from": one for INPUTS (the AC snapshot), one for OUTPUTS (the artifacts). Both read `active_ac_run_id` themselves. A page that decides this for itself is the defect pattern that gave the arrangement two implementations. |
 | **DC run persistence / restoration** | `services/run_persistence_service.py`, `services/run_restore_service.py` | ~0.4k lines | Low — owns the existing full DC input/output payload hash and restoration checks before session adoption. Original three modes only; comparison results are not adopted runs. Hashless old runs remain compatible; AC alternative identity hashes are a separate contract. No sizing arithmetic or tail revision/topology adoption is owned here. |
-| **Reduced-string DC comparison** | `services/dc_reduced_string_tail_service.py` | ~0.36k lines | Local bounded adapter — validates the owner-authorized 314Ah cell-to-block capacity chain and exact maintained parent/child; evaluates one N-1 + 1 tail with the original Stage2 item builder and Stage3; owns its saved comparison/restore checks. No new search, active scenario, AC topology adoption or independent renderer. The existing `ui/dc_view.py` owns the original Advanced option, Run, shared result display and Next buttons. |
+| **Reduced-string DC comparison** | `services/dc_reduced_string_tail_service.py` | ~0.42k lines | Bounded adapter — validates the owner-authorized 314Ah capacity chain and exact maintained parent/child; evaluates N-k mains plus k identical tails, k=1..4, with the original Stage2 item builder and Stage3; owns saved comparison/restore checks. Single-tail version 1 remains compatible; multiple-tail version 2 is DC-only. No new search, active scenario or AC topology adoption. The existing `ui/dc_view.py` owns the original Advanced option, Run, shared result display and Next buttons. |
+| **Reduced-string DC report** | `reporting/dc_tail_report.py`; optional download in `ui/dc_view.py` | ~0.25k lines | Read-only standalone DOCX for the owner-requested special DC comparison. Consumes the service-validated saved attachment, shows the standard baseline, unchanged count, actual BOM, guarantee-year energy/power checks, selected curve rates and annual results. No independent database record, sizing calculation, adoption or change to the original technical/proposal exports. |
 | **Reduced-string AC nominal review** | `services/dc_tail_ac_review_service.py` | ~0.3k lines | Local bounded adapter — consumes the validated saved DC comparison and original AC rows / feeder plan, replacing only the last physical DC slot in its review. Owns explicit nameplate-share DC reference, separate PCS AC checks and unknown-output handling, winding disclosure, review identity and saved-content consistency. `ui/ac_view.py` remains the only AC form / Run / result / Next. No original sizing arithmetic, actual tail adoption, new equipment capability register or diagram engine is introduced. |
 | **Reduced-string SLD comparison preview** | `services/dc_tail_preview_service.py`, `services/dc_tail_preview_source_service.py`, `sld/tail_comparison_preview.py`; optional area in `ui/single_line_diagram_view.py` | ~0.5k lines | Local read-only last-physical-group preview. Exact authorized saved DC/AC child and complete payload checks precede the adapter; separate SVG consumes validated physical links, never Head-fleet averages. No standard SLD/artifact publication, new generation workflow or actual tail adoption. Original SLD pipeline and customer report remain the standard branch. |
 | **DC inventory handoff** | `adapters/session_state_adapter.py::build_dc_bom_handoff`; optional consumer in `services/dc_tail_preview_service.py` | ~0.15k added lines | Reads actual canonical Stage2 BOM, preserves source subtotals/total and per-unit display precision; validates quantities and rounding bounds. Inventory ordinals are not physical/electrical mapping. No permanent one-tail/last-position/exclusive-SKU constraint; no adopted scenario or change to legacy summary/stage13 scalars. Preview cross-checks assigned products, quantity, capacity and distinct physical units. |
-| Reporting | `reporting/` (5 files, 1.4k) | 1.4k lines | Low — **two** customer-facing DOCX surfaces, and only two: `report_v2.export_report_v2_1` (the proposal, from the Report Export page) and `dc_view.build_report_bytes` (the DC page's technical export). `export_docx` is now shared DOCX primitives plus `create_dc_report`, which is the REGRESSION BASELINE pinning the DC page's export — not a product path, and not to be given callers. Owner ruling 2026-08-08 deleted `create_ac_report` / `create_combined_report` and the 413 lines only they reached; `export_docx` embeds no engineering drawing at all now, which `test_watermark_choke_point` enforces. Wording/section changes; the AC alternative label is CONSUMED here (file name, cover, provenance), never derived. A figure that could not be READ is never reported as one that was never GENERATED — `ctx.artifact_read_failures` carries the distinction from `artifact_service.load_artifact_bytes_with_failures` into §7/§8 (owner ruling 2026-08-08, 读取失败重新读取). **Carries no QC/validation layer**: the report states what the run produced. Consistency belongs upstream — `services/dc_input_guard_service` before sizing, the §6/§6.1/§9 schedules for disclosure. Owner ruling 2026-08-08 removed `report_v2._validate_*` / `_aggregate_ac_block_configs`, `report_context.validate_report_context` and `ReportContext.qc_checks`: nothing in the product ever called them, and their uniform-station arithmetic (blocks × per_block) mis-stated every mixed governed site. Do not reintroduce a validator here without a caller. |
+| Reporting | `reporting/` (5 files, 1.4k) | 1.4k lines | Low — two original customer-facing DOCX surfaces (plus the owner-requested 2026-10-27 standalone DC comparison described above): `report_v2.export_report_v2_1` (the proposal, from the Report Export page) and `dc_view.build_report_bytes` (the DC page's technical export). `export_docx` is now shared DOCX primitives plus `create_dc_report`, which is the REGRESSION BASELINE pinning the DC page's export — not a product path, and not to be given callers. Owner ruling 2026-08-08 deleted `create_ac_report` / `create_combined_report` and the 413 lines only they reached; `export_docx` embeds no engineering drawing at all now, which `test_watermark_choke_point` enforces. Wording/section changes; the AC alternative label is CONSUMED here (file name, cover, provenance), never derived. A figure that could not be READ is never reported as one that was never GENERATED — `ctx.artifact_read_failures` carries the distinction from `artifact_service.load_artifact_bytes_with_failures` into §7/§8 (owner ruling 2026-08-08, 读取失败重新读取). **Carries no QC/validation layer**: the report states what the run produced. Consistency belongs upstream — `services/dc_input_guard_service` before sizing, the §6/§6.1/§9 schedules for disclosure. Owner ruling 2026-08-08 removed `report_v2._validate_*` / `_aggregate_ac_block_configs`, `report_context.validate_report_context` and `ReportContext.qc_checks`: nothing in the product ever called them, and their uniform-station arithmetic (blocks × per_block) mis-stated every mixed governed site. Do not reintroduce a validator here without a caller. |
 | Web UI | `ui/` (18 files, 6.7k), `state/`, `app.py` | ~7.5k lines | Medium — copy and workflow polish. `ui/dc_view.py` sizes each mode ONCE (2026-08-08): the snapshot it persists and the tuple it displays are the same run, derived by `snapshot_to_legacy_tuple`. A page that sizes again for the DB is the defect that was removed; `tests/unit/test_dc_page_sizes_each_mode_once.py` asserts it by AST. |
 | Platform | `infra/` (36 files), `db/`, `importers/`, `adapters/`, `migrations/` | ~3.4k lines | Low — deployment/migration driven |
 

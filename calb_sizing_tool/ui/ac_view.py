@@ -382,6 +382,10 @@ def _tail_ac_comparison_inputs(parent, rows: list[dict], circuits: int,
     from calb_sizing_tool.services.run_persistence_service import _hash_payload
     comparison = restored_comparison(parent)
     strings = comparison["selected_tail_strings"]
+    if comparison.get("tail_container_count", 1) > 1:
+        st.caption("The saved reduced-string comparison is available in the DC Sizing report only. "
+                   "AC sizing continues with the standard 12-string configuration.")
+        return {}
     with st.expander("Advanced: Reduced-string tail", expanded=False):
         st.caption(
             f"The saved DC result includes one {strings}-string tail comparison. "
@@ -952,6 +956,20 @@ def show():
                 ac_block_model_name = chosen_model.display_name
                 ac_block_model_source = chosen_model.source
                 compact_note(f"Selected AC Block model: {chosen_model.display_name}.")
+                if (not mixed_editor_active and suggested_index is not None
+                        and chosen_model.block_size_mw > model_options[suggested_index].block_size_mw):
+                    suggested = model_options[suggested_index]
+                    st.warning(
+                        f"Selected equipment: {selected_option.ac_block_count} AC Blocks × "
+                        f"{pcs_per_ac} PCS × {pcs_kw} kW = "
+                        f"{single_block_ac_power * selected_option.ac_block_count:.2f} MW; "
+                        f"POI requirement: {target_mw:.2f} MW. "
+                        f"The smaller suggested model provides "
+                        f"{suggested.block_size_mw * selected_option.ac_block_count:.2f} MW with "
+                        f"{suggested.pcs_count * selected_option.ac_block_count} PCS. "
+                        "Use recommended model above to select it, or retain the larger model "
+                        "if its additional installed power is intentional."
+                    )
             else:
                 custom_col1, custom_col2 = st.columns(2)
                 pcs_count_choices = (selected_option.dc_blocks_per_ac[0],) if cabinet_group_plan else _CUSTOM_PCS_COUNT_CHOICES

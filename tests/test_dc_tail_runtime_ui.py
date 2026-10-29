@@ -119,8 +119,8 @@ def test_authorized_products_enable_three_choices_with_one_original_run(authoriz
     app, service = authorized_tail_workspace
     assert not app.exception
     choice = app.radio(key='dc_tail_option_preview')
-    assert choice.options == ['Standard 12-string only', 'Compare one 10-string tail',
-                              'Compare one 8-string tail']
+    assert choice.options == ['Standard 12-string only', 'Compare 10-string tails',
+                              'Compare 8-string tails']
     assert choice.label == 'Tail comparison (not adopted)'
     assert choice.value == 'Standard 12-string only'
     assert not choice.disabled
@@ -143,7 +143,7 @@ def test_one_run_saves_tail_comparison_and_restores_without_recalculation(
         app.session_state['dc_inputs.poi_guarantee_year'] = 3
         app = app.run()
     before_products = deepcopy(service.snapshot())
-    app.radio(key='dc_tail_option_preview').set_value(f'Compare one {strings}-string tail')
+    app.radio(key='dc_tail_option_preview').set_value(f'Compare {strings}-string tails')
     sized = _run_sizing(app)
     assert not sized.exception
     assert 'Reduced-string tail — Comparison only' in [tab.label for tab in sized.tabs]
@@ -197,6 +197,7 @@ def test_one_run_saves_tail_comparison_and_restores_without_recalculation(
     assert restored_metrics[f'POI Usable Energy at Y{year}'] == metrics[f'POI Usable Energy at Y{year}']
     assert any(button.label == 'AC Sizing →' for button in restored.button)
     assert any(button.label == 'Single Line Diagram →' for button in restored.button)
+    assert any(button.label == 'Download Tail DC Sizing Report' for button in restored.get('download_button'))
     # Follow the original visible workflow from a fresh historical DC page;
     # AC must restore the standard active run, never adopt its comparison.
     next(button for button in restored.button if button.label == 'AC Sizing →').click()
@@ -205,6 +206,34 @@ def test_one_run_saves_tail_comparison_and_restores_without_recalculation(
     assert _state(ac, 'main_nav') == 'AC Sizing'
     _assert_standard_handoff(ac, main)
     assert service.snapshot() == before_products
+
+
+@pytest.mark.parametrize('strings,quantity', [(10, 4), (8, 2)])
+def test_multiple_tails_save_restore_export_and_keep_original_ac(authorized_tail_workspace, strings, quantity):
+    app, _ = authorized_tail_workspace
+    app = _select_library(app, 'Admin product library')
+    app.radio(key='dc_tail_option_preview').set_value(f'Compare {strings}-string tails')
+    app.number_input(key='dc_tail_count_preview').set_value(quantity)
+    sized = _run_sizing(app)
+    assert not sized.exception
+    saved = _stored_output(sized)
+    comparison = saved['summary'][SUMMARY_KEY]
+    assert comparison['tail_container_count'] == quantity
+    assert comparison['schema_version'] == 2
+    assert [i['count'] for i in comparison['snapshot']['stage2']['block_config_items']] == [
+        saved['stage2']['container_count'] - quantity, quantity]
+    assert any(item.label == 'Download Tail DC Sizing Report' for item in sized.get('download_button'))
+    assert any(item.label == 'Export Technical Sizing Report' for item in sized.get('download_button'))
+    _assert_standard_handoff(sized, saved['stage2'])
+    restored = _restore_page(sized)
+    assert not restored.exception
+    assert any(item.label == 'Download Tail DC Sizing Report' for item in restored.get('download_button'))
+    assert _stored_output(restored) == saved
+    ac = _restore_page(sized, 'AC Sizing')
+    assert not ac.exception
+    assert any('DC Sizing report only' in item.value for item in ac.caption)
+    assert not any('Tail-comparison PCS' in item.label for item in ac.number_input)
+    _assert_standard_handoff(ac, saved['stage2'])
 
 
 def test_standard_choice_retains_original_result_and_next_steps(authorized_tail_workspace):
@@ -231,8 +260,8 @@ def test_previous_comparison_choice_keeps_selection_with_clearer_label(authorize
     app.session_state['dc_tail_option_preview'] = 'Allow one 10-string tail'
     app = app.run()
     assert not app.exception
-    assert app.radio(key='dc_tail_option_preview').value == 'Compare one 10-string tail'
-    assert any('not define the permitted scope of future manual combinations' in item.value
+    assert app.radio(key='dc_tail_option_preview').value == 'Compare 10-string tails'
+    assert any('Replace 1 to 4 containers' in item.value
                for item in app.caption)
 
 
@@ -241,7 +270,7 @@ def test_wrong_main_or_duplicate_tail_is_not_offered(authorized_tail_workspace):
     service.create_dc_block(_tail_values(10, code='UI-TAIL-10-DUPLICATE'))
     app = app.run()
     assert app.radio(key='dc_tail_option_preview').options == [
-        'Standard 12-string only', 'Compare one 8-string tail',
+        'Standard 12-string only', 'Compare 8-string tails',
     ]
     cell_id = next(row['product_cell_id'] for row in service.snapshot()['cells']
                    if row['cell_code'] == 'CALB-314AH-A')

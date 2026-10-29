@@ -104,6 +104,8 @@ def evaluate_tail_ac_review(parent_snapshot, ac_output,
     comparison = restored_comparison(parent_snapshot)
     if comparison is None:
         return None
+    if comparison.get('tail_container_count', 1) > 1:
+        return None  # Multiple tails are a DC report comparison only.
     count = parent_snapshot.stage2.container_count
     rows, circuits, winding_count = _ac_rows(ac_output, count)
     plan = build_mixed_dc_allocation_plan(rows, dc_block_output_circuits=circuits)

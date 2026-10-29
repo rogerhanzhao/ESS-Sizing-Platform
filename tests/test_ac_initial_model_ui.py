@@ -50,6 +50,16 @@ def test_starting_model_rejects_a_feeder_infeasible_short_group():
     assert index is None
 
 
+def test_75mw_300mwh_68_containers_suggest_34_pcs_not_68():
+    option, models = _models(68, ratio="1:4", power=75, energy=300)
+    index = ac_view._suggested_ac_block_model_index(
+        models, option, total_energy_mwh=341.088,
+        target_energy_mwh=300, target_power_mw=75, dc_block_output_circuits=2)
+    assert option.ac_block_count == 17
+    assert (models[index].pcs_count, models[index].pcs_kw) == (2, 2500)
+    assert models[index].block_size_mw * option.ac_block_count == 85
+
+
 def test_starting_model_does_not_recommend_a_known_energy_failure():
     option, models = _models()
     assert ac_view._suggested_ac_block_model_index(
@@ -99,6 +109,8 @@ def test_original_page_suggests_once_preserves_manual_and_restores_on_request(or
     page = page.run()
     assert not page.exception
     assert page.selectbox(key="ac_block_model_choice_1to2").value == manual_index
+    assert any("Selected equipment:" in item.value and "Use recommended model" in item.value
+               for item in page.warning)
     page = page.run()
     assert page.selectbox(key="ac_block_model_choice_1to2").value == manual_index
     next(button for button in page.button if button.label == "Use recommended model").click()

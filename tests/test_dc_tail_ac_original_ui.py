@@ -22,7 +22,7 @@ def _dc_run(app, strings):
     app.session_state['dc_inputs.poi_power_req_mw'] = 2.0
     app.session_state['dc_inputs.poi_energy_req_mwh'] = 16.0
     if strings is not None:
-        app.radio(key='dc_tail_option_preview').set_value(f'Compare one {strings}-string tail')
+        app.radio(key='dc_tail_option_preview').set_value(f'Compare {strings}-string tails')
     result = _run_sizing(app)
     assert not result.exception
     return result

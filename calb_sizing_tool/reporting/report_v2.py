@@ -1134,6 +1134,11 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             )
         _keep_next_para(key_para)
         _keep_next_para(config_para)
+    # State installed power without changing saved equipment during export.
+    uniform_installed_mw = None
+    if (not mixed_schedule and not ctx.ac_output.get("governed_configuration")
+            and ctx.ac_block_size_mw and ctx.ac_blocks_total > 0):
+        uniform_installed_mw = float(ctx.ac_block_size_mw) * ctx.ac_blocks_total
     exec_rows = [
         ("POI Power Requirement (MW)", format_value(ctx.poi_power_requirement_mw, "MW")),
         ("POI Energy Requirement (MWh)", format_value(ctx.poi_energy_requirement_mwh, "MWh")),
@@ -1152,6 +1157,8 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     ]
     if mixed_schedule:
         exec_rows.insert(-1, ("Installed PCS Nameplate (MW)", f"{_mixed_nameplate_mw(mixed_schedule):.2f}"))
+    elif uniform_installed_mw is not None:
+        exec_rows.insert(-1, ("Installed PCS Nameplate (MW)", f"{uniform_installed_mw:.2f}"))
     site_layout = None if mixed_schedule else _compute_site_layout(ctx)
     if site_layout is not None:
         exec_rows.append((
@@ -1567,7 +1574,18 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     ]
     if mixed_schedule:
         s4_rows.append(("Installed PCS Nameplate (MW)", f"{_mixed_nameplate_mw(mixed_schedule):.2f}"))
+    elif uniform_installed_mw is not None:
+        s4_rows.append(("Installed PCS Nameplate (MW)", f"{uniform_installed_mw:.2f}"))
+        s4_rows.append(("POI Power Requirement (MW)", f"{ctx.poi_power_requirement_mw:.2f}"))
     _add_table(doc, s4_rows, ["Parameter", "Value"])
+    if uniform_installed_mw is not None:
+        doc.add_paragraph(
+            f"Saved equipment: {ctx.pcs_modules_total} PCS modules, "
+            f"{uniform_installed_mw:.2f} MW installed versus "
+            f"{ctx.poi_power_requirement_mw:.2f} MW required at POI. "
+            "Installed nameplate does not establish net POI capability. "
+            "Review excess capacity in AC Sizing before issue."
+        )
 
     # Mixed AC Block station: a head AC Block model plus smaller tail model(s).
     # This is the AC-side counterpart of the DC container + cabinet tail, driven

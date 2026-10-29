@@ -1,4 +1,4 @@
-"""One reduced-string tail beside an unchanged original container sizing run.
+"""One to four reduced-string tails beside an unchanged container sizing run.
 
 This local comparison consumes the owner's 2026-10-22 capacity/power/curve
 basis. It neither adopts the BOM nor supplies an AC/SLD design or a warranty.
@@ -235,11 +235,15 @@ def _curve_fingerprints(bundle):
             for key in _CURVE_TABLES}
 
 
-def _stage2_for_tail(parent, product, basis):
+def _stage2_for_tail(parent, product, basis, tail_count=1):
     original = parent.stage2
+    _require(type(tail_count) is int and 1 <= tail_count <= 4,
+             'Select between 1 and 4 reduced-string containers.')
     _require(parent.converged is True and original.mode == 'container_only' and original.cabinet_count == 0
              and type(original.container_count) is int and original.container_count >= 2
              and len(original.block_config_items) == 1, 'A standard container-only result with at least two main containers is required.')
+    _require(original.container_count > tail_count,
+             'The comparison must retain at least one standard 12-string container; total container count stays unchanged.')
     main = original.block_config_items[0]
     # Excel has already run the original round-3 nameplate recalculation. The
     # Admin adapter instead supplies its catalogue's raw unit capacity; the
@@ -256,9 +260,9 @@ def _stage2_for_tail(parent, product, basis):
     # Preserve the exact unit precision of the selected standard input path.
     items = _build_items([
         {'Block Code': main.block_code, 'Block Name': main.block_name, 'Form': 'container',
-         'Unit Capacity (MWh)': selected_unit, 'Count': main.count - 1},
+         'Unit Capacity (MWh)': selected_unit, 'Count': main.count - tail_count},
         {'Block Code': product['block_code'], 'Block Name': product['block_name'], 'Form': 'container',
-         'Unit Capacity (MWh)': tail['energy_mwh'], 'Count': 1}])
+         'Unit Capacity (MWh)': tail['energy_mwh'], 'Count': tail_count}])
     total = items[0].total_dc_nameplate_bol_mwh
     required = _positive(parent.stage1.dc_energy_capacity_required_mwh, 'Required DC energy')
     return Stage2Result(mode=COMPARISON_MODE, dc_nameplate_bol_mwh=total,
@@ -266,15 +270,15 @@ def _stage2_for_tail(parent, product, basis):
         block_config_items=items, container_count=original.container_count, cabinet_count=0, busbars_needed=0)
 
 
-def evaluate_reduced_string_tail(parent_snapshot, bundle, product: dict, basis: dict) -> dict:
-    """Evaluate exactly N-1 mains plus one tail; do not change the parent run."""
+def evaluate_reduced_string_tail(parent_snapshot, bundle, product: dict, basis: dict, *, tail_count=1) -> dict:
+    """Evaluate N-k mains plus k identical tails, k=1..4, without adoption."""
     _validate_basis(basis)
     _require(derive_reduced_string_basis(bundle) == basis, 'The capacity source changed before comparison.')
     parent = deepcopy(parent_snapshot)
     source = product.get('_tail_parent')
     _require(isinstance(source, dict) and _product_eligible(product, source, basis, product.get('_tail_main_code')),
              'A current eligible maintained tail and its exact parent are required.')
-    stage2 = _stage2_for_tail(parent, product, basis)
+    stage2 = _stage2_for_tail(parent, product, basis, tail_count)
     stage3 = run_stage3(parent.stage1, stage2, bundle)
     unsupported = validate_soh_curve_support(bundle.df_soh_curve, stage3.meta.soh_profile_id,
         chosen_c_rate=stage3.meta.chosen_soh_c_rate, effective_c_rate=stage3.meta.effective_c_rate)
@@ -286,7 +290,7 @@ def evaluate_reduced_string_tail(parent_snapshot, bundle, product: dict, basis: 
     _require(len(guaranteed) == 1, 'The comparison has no unique guarantee-year result.')
     tail = _tail_basis(basis, product['strings_in_parallel'])
     count = parent.stage2.container_count
-    nominal_power_mw = ((count - 1) * basis['main_energy_raw_mwh'] * 0.5 + tail['power_kw'] / 1000)
+    nominal_power_mw = ((count - tail_count) * basis['main_energy_raw_mwh'] * 0.5 + tail_count * tail['power_kw'] / 1000)
     power_required = _positive(parent.stage1.dc_power_required_mw, 'Required DC power')
     annual_rate_review = [dict(year_index=row.year_index,
         current_capacity_c_rate=power_required / row.dc_gross_capacity_mwh if row.dc_gross_capacity_mwh > 0 else None,
@@ -317,6 +321,10 @@ def evaluate_reduced_string_tail(parent_snapshot, bundle, product: dict, basis: 
         limitations=['DC comparison only; standard configuration remains active for AC / SLD.',
                      'No PCS, per-output electrical current, AC, charge-duty or layout validation.',
                      'Annual current-capacity rate review does not model hardware power degradation.'])
+    # Preserve the original single-tail payload and hash. Version 2 is explicitly
+    # DC-only; existing single-tail AC/SLD reviews cannot consume multiple tails.
+    if tail_count > 1:
+        result.update(schema_version=2, tail_container_count=tail_count)
     # JSON object keys (including tail counts) have their saved form before hashing.
     result = _json(result)
     result['comparison_sha256'] = _hash_payload(result)
@@ -330,7 +338,7 @@ def restored_comparison(parent_snapshot) -> dict | None:
         return None
     _require(isinstance(value, dict), 'Saved tail comparison is incomplete.')
     result = deepcopy(value)
-    _require(result.get('schema_version') == 1 and result.get('contract_type') == 'reduced_string_tail_comparison'
+    _require(result.get('schema_version') in (1, 2) and result.get('contract_type') == 'reduced_string_tail_comparison'
              and result.get('authority') == BASIS_AUTHORITY and result.get('comparison_only') is True
              and result.get('downstream_ready') is False and result.get('lifetime_power_guaranteed') is False
              and result.get('ac_power_matching_pending') is True,
@@ -348,7 +356,11 @@ def restored_comparison(parent_snapshot) -> dict | None:
     _require(isinstance(product['_tail_parent'], dict)
              and _product_eligible(product, product['_tail_parent'], basis, product['_tail_main_code']),
              'Saved tail product and parent are inconsistent.')
-    expected_stage2 = _stage2_for_tail(parent_snapshot, product, basis)
+    tail_count = result.get('tail_container_count', 1)
+    _require((result['schema_version'] == 1 and type(tail_count) is int and tail_count == 1)
+             or (result['schema_version'] == 2 and type(tail_count) is int and 2 <= tail_count <= 4),
+             'Saved tail quantity is inconsistent with its comparison version.')
+    expected_stage2 = _stage2_for_tail(parent_snapshot, product, basis, tail_count)
     nested = result.get('snapshot')
     _require(isinstance(nested, dict) and nested.get('stage1') == parent_snapshot.stage1.model_dump(mode='json'),
              'Saved tail input differs from its standard result.')
@@ -370,8 +382,8 @@ def restored_comparison(parent_snapshot) -> dict | None:
     expected_energy = guarantee[0].poi_usable_energy_mwh
     energy_passes = expected_energy + 1e-6 >= parent_snapshot.stage1.poi_energy_req_mwh
     tail = _tail_basis(basis, product['strings_in_parallel'])
-    expected_power = ((parent_snapshot.stage2.container_count - 1) * basis['main_energy_raw_mwh'] * 0.5
-                      + tail['power_kw'] / 1000)
+    expected_power = ((parent_snapshot.stage2.container_count - tail_count) * basis['main_energy_raw_mwh'] * 0.5
+                      + tail_count * tail['power_kw'] / 1000)
     required_power = parent_snapshot.stage1.dc_power_required_mw
     expected_annual = [dict(year_index=row.year_index,
         current_capacity_c_rate=required_power / row.dc_gross_capacity_mwh if row.dc_gross_capacity_mwh > 0 else None,

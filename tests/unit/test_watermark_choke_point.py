@@ -30,6 +30,7 @@ REPORTING = pathlib.Path("calb_sizing_tool/reporting")
 #: no stamp. Each entry names the function and what it embeds — adding one is a
 #: deliberate act, which is the point.
 ALLOWED_UNSTAMPED = {
+    ("dc_tail_report.py", "build_tail_dc_report"): "brand header logo and saved POI energy comparison data chart only; no engineering drawings",
     ("report_v2.py", "export_report_v2_1"): "POI capacity / degradation charts",
     ("export_docx.py", "add_header_logo"): "the brand logo in the page header",
     ("export_docx.py", "_append_dc_report_sections"): "DC lifetime charts",
