@@ -1639,6 +1639,9 @@ def show():
             # Replace the earlier saved snapshot only after this save succeeds.
             # A rerun would reroute the original form/Next flow; a placeholder
             # keeps both summaries consistent in the same button response.
+            # Clear previous children too: the new snapshot may contain fewer
+            # warnings, and replacing a nested container can retain trailing UI.
+            saved_snapshot_region.empty()
             with saved_snapshot_region.container():
                 _render_saved_ac_snapshot(ac_output, section_header=section_header)
                 st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)

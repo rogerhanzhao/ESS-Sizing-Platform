@@ -226,9 +226,11 @@ def test_saving_replaces_the_top_snapshot_only_on_success(original_ac_page, monk
         assert page.session_state["active_ac_run_id"] == "previous-ac"
         assert next(m.value for m in page.metric if m.label == "Total AC Power") == "230.00 MW"
         assert any("could not be saved" in str(message.value) for message in page.error)
+        assert any("Power overhead: 130.0 MW" in str(message.value) for message in page.warning)
     else:
         totals = [m.value for m in page.metric if m.label == "Total AC Power"]
         assert totals == ["115.00 MW", "115.00 MW"]
+        assert not any("Power overhead: 130.0 MW" in str(message.value) for message in page.warning)
         assert page.session_state["ac_output"]["total_ac_mw"] == 115
         assert page.session_state["active_ac_run_id"] == "new-ac"
         assert any("Single Line Diagram" in button.label for button in page.button)
