@@ -13,8 +13,8 @@
 > and a visible Head arrangement; formal SLD was not generated. Follow-up local
 > fixes qualify the Section 7 reference and remove the isolated arrangement-note
 > page (10 to nine pages, all 11 tables identical); 21 report tests pass. The
-> earlier 2405-test run predates these final report edits, so release regression
-> remains pending. No frozen sizing logic, catalogue or production data
+> final release regression completed on 2026-11-06: 2405 passed, two inherited
+> fixture warnings, 1849.74s; compileall passed. No frozen sizing logic, catalogue or production data
 > changes. This checkpoint is local validation, not a GitHub/production release.
 
 > 2026-10-30 RELEASE CHECKPOINT: final full regression completed on 2026-10-29
