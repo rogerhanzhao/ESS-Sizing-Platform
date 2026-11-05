@@ -71,6 +71,7 @@ excludes the substation, O&M building, laydown, stormwater and lot-line setbacks
 
 from __future__ import annotations
 
+import textwrap
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 from xml.sax.saxutils import escape as _xml_escape
@@ -530,6 +531,27 @@ def render_site_svg(layout: SiteArrayLayout,
     bw, bd = layout.block_w_m, layout.block_d_m
 
     width = margin_l + layout.envelope_w_m * s + margin_r
+    title = (f"CONCEPT SITE ARRANGEMENT · {layout.n_blocks} × AC BLOCK "
+             f"({layout.dc_per_block}×DC) · {layout.total_power_mw:.2f} MW / "
+             f"{layout.total_energy_mwh:.3f} MWh")
+    group_note = (f"{layout.groups} group(s) of ≤ {layout.blocks_per_group} blocks · "
+                  f"{layout.fire_roads} internal fire road(s)")
+    title_lines = textwrap.wrap(title, width=max(1, int((width - margin_l - 20) / (11.5 * 0.65))))
+    group_lines = textwrap.wrap(group_note, width=max(1, int((width - margin_l - 20) / (10 * 0.65))))
+    margin_t = max(margin_t, 38 + 16 * (len(title_lines) + len(group_lines)))
+    footer_notes = (
+        f"{layout.land_area_m2:,.0f} m2 inside the perimeter road "
+        f"({layout.land_per_block_m2:,.0f} m2/AC Block · "
+        f"{layout.land_per_mwh_m2:.1f} m2/MWh)",
+        "EQUIPMENT AND ACCESS ONLY: excludes substation, O&M building, "
+        "laydown, stormwater and setbacks",
+        "CONCEPT ONLY — NOT FOR CONSTRUCTION · envelope estimate, not a site layout",
+    )
+    footer_lines = [line for note in footer_notes for line in textwrap.wrap(
+        note, width=max(1, int((width - margin_l - 20) / (10.5 * 0.65))),
+    )]
+    # Only grow the drawing's annotation margin; site geometry is unchanged.
+    margin_b = max(margin_b, 52 + 16 * len(footer_lines))
     height = margin_t + layout.envelope_d_m * s + margin_b
 
     parts: List[str] = []
@@ -635,27 +657,19 @@ def render_site_svg(layout: SiteArrayLayout,
                      f'stroke="#801d15" stroke-width="1.3"/>')
 
     # title + dims + concept note
-    grp_txt = (f"{layout.groups} group(s) of ≤ {layout.blocks_per_group} blocks · "
-               f"{layout.fire_roads} internal fire road(s)")
-    _t(parts, margin_l, 30,
-       f"CONCEPT SITE ARRANGEMENT · {layout.n_blocks} × AC BLOCK "
-       f"({layout.dc_per_block}×DC) · {layout.total_power_mw:.2f} MW / "
-       f"{layout.total_energy_mwh:.3f} MWh", size=11.5, anchor="start")
-    _t(parts, margin_l, 46, grp_txt, size=10, anchor="start", weight=600, fill="#5b6367")
+    for index, line in enumerate(title_lines):
+        _t(parts, margin_l, 30 + 16 * index, line, size=11.5, anchor="start")
+    for index, line in enumerate(group_lines):
+        _t(parts, margin_l, 30 + 16 * (len(title_lines) + index), line,
+           size=10, anchor="start", weight=600, fill="#5b6367")
     _dim(parts, ox, oy + layout.envelope_d_m * s + 22,
          ox + env_w_px, oy + layout.envelope_d_m * s + 22,
          f"{layout.envelope_w_m:.1f} m site envelope", above=False)
     _dim(parts, ox - 22, oy, ox - 22, oy + layout.envelope_d_m * s,
          f"{layout.envelope_d_m:.1f} m", above=True)
-    _t(parts, margin_l, height - 32,
-       f"{layout.land_area_m2:,.0f} m2 inside the perimeter road "
-       f"({layout.land_per_block_m2:,.0f} m2/AC Block · "
-       f"{layout.land_per_mwh_m2:.1f} m2/MWh) — EQUIPMENT AND ACCESS ONLY: "
-       f"excludes substation, O&M building, laydown, stormwater and setbacks",
-       size=9.5, anchor="start", weight=600, fill="#5b6367")
-    _t(parts, margin_l, height - 16,
-       "CONCEPT ONLY — NOT FOR CONSTRUCTION · envelope estimate, not a site layout",
-       size=10.5, anchor="start", weight=600, fill="#5b6367")
+    for index, line in enumerate(footer_lines):
+        _t(parts, margin_l, height - 16 * (len(footer_lines) - index), line,
+           size=10.5, anchor="start", weight=600, fill="#5b6367")
 
     parts.append("</svg>")
     return "".join(parts)

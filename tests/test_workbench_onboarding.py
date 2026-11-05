@@ -106,6 +106,35 @@ def test_run_registry_avoids_streamlit_arrow_dataframe_serialisation():
     assert any("wb-run-table" in item.value for item in app.markdown)
 
 
+def _case_switch_registry_app():
+    import streamlit as st
+    from calb_sizing_tool.ui import workbench_view
+
+    case = "B" if st.checkbox("Case B") else "A"
+    runs = [
+        {"sizing_run_id": f"{case}-{index}",
+         "created_at": f"2026-10-{30 if case == 'A' else 31} 0{index}:00",
+         "scenario_id": "container_only", "poi_power_req_mw": 75.0,
+         "poi_energy_req_mwh": 300.0, "converged": True}
+        for index in (1, 2)
+    ]
+    workbench_view._render_run_registry(runs, {"case_id": case}, None)
+
+
+def test_case_switch_cannot_restore_previous_case_selection(monkeypatch):
+    from calb_sizing_tool.ui import workbench_view
+
+    restored = []
+    monkeypatch.setattr(workbench_view, "_restore_run", lambda run_id, _user: restored.append(run_id))
+    app = AppTest.from_function(_case_switch_registry_app).run()
+    app.selectbox[0].select("#2 2026-10-30 02:00").run()
+    app.checkbox[0].check().run()
+    assert not app.exception
+    assert app.selectbox[0].value == "#1 2026-10-31 01:00"
+    next(button for button in app.button if button.label == "Restore").click().run()
+    assert restored == ["B-1"]
+
+
 def test_duplicate_case_is_rejected_without_a_technical_exception(monkeypatch):
     from contextlib import contextmanager
 

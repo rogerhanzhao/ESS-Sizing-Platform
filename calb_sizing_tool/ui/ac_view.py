@@ -1112,9 +1112,9 @@ def show():
 
             # Container size info - based on single AC block size
             compact_note(
-                f"AC Block Container: {auto_container} "
-                f"(single block {single_block_ac_power:.2f} MW, "
-                f"total AC {selected_option.ac_block_count * single_block_ac_power:.2f} MW)."
+                f"Selected AC Block model: {auto_container} container, "
+                f"{single_block_ac_power:.2f} MW per block. "
+                "Station totals are shown in the configuration summary."
             )
 
             # Catalogue matching happens only after grouping / PCS / transformer

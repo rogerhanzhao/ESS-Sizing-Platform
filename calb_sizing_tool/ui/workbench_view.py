@@ -824,7 +824,7 @@ def _render_run_registry(runs: list[dict], context: dict, auth_user) -> None:
     selected_label = restore_col.selectbox(
         "Restore run",
         list(options.keys()),
-        key="workbench_restore_run_select",
+        key=f"workbench_restore_run_select_{context['case_id']}",
         label_visibility="collapsed",
     )
     selected_run_id = options[selected_label]

@@ -1,5 +1,22 @@
 # Current Status 2026-07-12
 
+> 2026-11-05 LOCAL DISPLAY REVIEW: removed the hardcoded typical-block energy
+> label, wrapped concept-site annotations for narrow canvases, released the
+> oversized report figure pagination chain, and scoped Workbench Restore run
+> selection to its Case. Full regression passed 2405 tests with two inherited
+> invalid-frequency fixture warnings (1464.34s); the saved-source report renders
+> to nine pages, with all 11 tables unchanged except issue date. Browser review
+> confirmed cross-Case restore and mixed concept layout generation. A follow-up
+> AC copy-only fix removes a uniform station total from the per-model container
+> note; 18 focused AC checks pass. The actual Westlake browser download was
+> Word-rendered and reviewed: 10 PCS, 12.50 MW, 10 DC containers, no body UUIDs,
+> and a visible Head arrangement; formal SLD was not generated. Follow-up local
+> fixes qualify the Section 7 reference and remove the isolated arrangement-note
+> page (10 to nine pages, all 11 tables identical); 21 report tests pass. The
+> earlier 2405-test run predates these final report edits, so release regression
+> remains pending. No frozen sizing logic, catalogue or production data
+> changes. This checkpoint is local validation, not a GitHub/production release.
+
 > 2026-10-30 RELEASE CHECKPOINT: final full regression completed on 2026-10-29
 > with 2404 passed, two inherited invalid-frequency fixture warnings, 1380.49s;
 > compileall passed. Frozen core modules are unchanged. Linux candidate checks

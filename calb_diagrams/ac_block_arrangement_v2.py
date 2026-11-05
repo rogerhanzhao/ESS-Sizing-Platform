@@ -509,7 +509,7 @@ def render_plan_svg(dc_count: int,
     # labels
     # Raised clear of the aisle / end-gap dimension line that runs at -0.30 m.
     _text(parts, ox0 + dc_span_m * s / 2, oy0 - 0.52 * s - 22,
-          f"{dc_count} × DC BLOCK (5.015 MWh, mirrored pairs)", size=12)
+          f"{dc_count} × DC BLOCK (mirrored pairs)", size=12)
     # Centre on the ACTUAL station, not on the 20 ft constant — a 40 ft station
     # would otherwise carry its label a full 3 m off centre.
     _text(parts, mv_x + layout.station_length_m * s / 2, mv_y - 10,

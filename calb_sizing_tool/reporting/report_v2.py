@@ -25,7 +25,7 @@ from typing import Optional
 
 import pandas as pd
 from docx import Document
-from docx.shared import Inches
+from docx.shared import Inches, Pt
 
 from calb_sizing_tool.reporting.export_docx import (
     _add_page_number_footer,
@@ -1405,15 +1405,15 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 "Installed DC nameplate energy versus deliverable POI energy chart",
             )
             _keep_next_para(doc.paragraphs[-1])  # keep picture paragraph with its caption
-            _keep_next_para(doc.add_paragraph(
+            doc.add_paragraph(
                 f"Figure 1: Installed DC nameplate energy (dark, DC side) versus deliverable "
                 f"energy at the point of interconnection (light, POI side). The step from BOL "
                 f"to POI reflects the one-way DC→POI efficiency chain, depth of discharge, "
                 f"and S&C/calendar/cycle degradation; later POI bars additionally reflect ageing. "
                 f"Red line = POI energy guarantee target ({format_value(gyr_target, 'MWh')} MWh), "
                 f"applicable to the POI bars only."
-            ))
-            _keep_next_para(doc.add_paragraph(""))
+            )
+            doc.add_paragraph("")
 
         chart = _plot_poi_usable_png(
             s3_df,
@@ -1427,11 +1427,11 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 "POI usable energy by year from COD chart",
             )
             _keep_next_para(doc.paragraphs[-1])  # keep picture paragraph with its caption
-            _keep_next_para(doc.add_paragraph(
+            doc.add_paragraph(
                 f"Figure 2: POI Usable Energy (MWh) by year from COD. "
                 f"Red line = guarantee target ({format_value(gyr_target, 'MWh')} MWh). "
                 f"Guarantee evaluated at Year {ctx.poi_guarantee_year}."
-            ))
+            )
         else:
             err = None
             try:
@@ -1440,7 +1440,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 err = None
             _keep_next_para(doc.add_paragraph(f"Stage 3 chart unavailable{': ' + err if err else '.'}"))
 
-        _keep_next_para(doc.add_paragraph(""))
+        doc.add_paragraph("")
         _keep_next_para(doc.add_paragraph("Year-by-Year Degradation & POI Deliverable:"))
         s3_columns = [
             "Year_Index",
@@ -1604,7 +1604,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         _keep_next_para(doc.add_paragraph(
             "Concept / draft: transformer ratings are preliminary estimates based on "
             "PCS power and power factor. Confirm equipment ratings and interfaces "
-            "during detailed design. Section 7 shows the representative Head AC Block "
+            "during detailed design. When included, the SLD in Section 7 shows the representative Head AC Block "
             "only; it does not include the Tail AC Blocks."
         ))
         pf = ctx.grid_power_factor if (ctx.grid_power_factor and ctx.grid_power_factor > 0) else None
@@ -1739,7 +1739,8 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         ))
         figure_index += 1
         for note in getattr(plan_layout, "provisional_notes", ()):
-            doc.add_paragraph(f"Provisional: {note}.")
+            note_paragraph = doc.add_paragraph(f"Provisional: {note}.")
+            note_paragraph.paragraph_format.space_after = Pt(3)
     elif plan_png and plan_layout is not None:
         _keep_next_para(doc.add_paragraph(
             f"Rule-based typical arrangement ({dc_per_ac} × DC per block, "
@@ -1887,7 +1888,6 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         # Repeating the Head footprint for every model would depict equipment
         # absent from the saved run (e.g. 12 DC containers for a 4+4+2 site).
         # Show the true composition until a mixed footprint layout is available.
-        doc.add_page_break()
         doc.add_heading("9.  Concept Site Arrangement (Concept Only)", level=2)
         _keep_next_para(doc.add_paragraph(
             f"The station comprises {ctx.ac_blocks_total} AC Blocks: "
