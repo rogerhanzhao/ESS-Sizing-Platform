@@ -270,7 +270,10 @@ def arrangement_equipment_placements(arrangement, profile=US_NFPA_OIL):
     layout = arrangement.layout
     equipment = [dict(equipment_type="dc_container", x_m=layout.unit_offsets_m[j//2],
                       y_m=(j % 2)*(DC_WIDTH_M+profile.dc_pair_gap_m),
-                      width_m=DC_LENGTH_M, height_m=DC_WIDTH_M)
+                      width_m=DC_LENGTH_M, height_m=DC_WIDTH_M,
+                      door_orientation=("south" if j == arrangement.dc_blocks-1 and arrangement.dc_blocks % 2
+                                        else "north" if j % 2 == 0 else "south"),
+                      equipment_end="west" if (j//2) % 2 == 0 else "east")
                  for j in range(arrangement.dc_blocks)]
     equipment.append(dict(equipment_type="ac_station",
                           x_m=arrangement.envelope_w_m-arrangement.station_length_m,

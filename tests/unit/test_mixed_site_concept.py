@@ -52,9 +52,12 @@ def test_report_raster_contains_visible_opaque_equipment_not_an_empty_image():
     assert image.crop((1, 1, image.width-1, image.height-1)).getchannel('A').getextrema() == (255, 255)
     colors = image.convert('RGB').getcolors(image.width * image.height)
     counts = {rgb: count for count, rgb in colors}
-    assert counts.get((255, 255, 255), 0) > image.width * image.height * 0.1
-    assert counts.get((226, 233, 207), 0) > 1000  # Actual DC equipment fill.
-    assert counts.get((180, 201, 222), 0) > 1000  # Actual PCS/MV station fill.
+    from PIL import ImageColor
+    from calb_diagrams.ac_block_arrangement_v2 import _BOX, _MV_BODY
+    from calb_diagrams.site_array_concept import _GROUND
+    assert counts.get(ImageColor.getrgb(_GROUND), 0) > image.width * image.height * 0.1
+    assert counts.get(ImageColor.getrgb(_BOX), 0) > 1000
+    assert counts.get(ImageColor.getrgb(_MV_BODY), 0) > 1000
 
 
 def test_stale_head_layout_hint_does_not_turn_tail_into_eight_dc_boxes():
@@ -85,7 +88,7 @@ def _preview_app():
 
 def test_existing_page_preview_tracks_current_saved_allocation():
     from streamlit.testing.v1 import AppTest
-    app = AppTest.from_function(_preview_app).run()
+    app = AppTest.from_function(_preview_app, default_timeout=30).run()
     assert not app.exception
     app.checkbox(key='show_mixed_station_concept').check().run()
     assert not app.exception
@@ -94,3 +97,30 @@ def test_existing_page_preview_tracks_current_saved_allocation():
     assert not app.exception
     assert any('7 DC containers' in c.value for c in app.caption)
     assert not any('6 DC containers' in c.value for c in app.caption)
+
+
+def test_variable_rows_use_actual_widths_mirror_pairs_and_connected_group_roads():
+    from dataclasses import replace
+    from calb_diagrams.mixed_site_concept import _pack_mixed_rows
+    from calb_diagrams.site_array_concept import US_NFPA_SITE
+    output=dict(ac_block_rows=[dict(pcs_count=4,pcs_kw=1250,dc_blocks=4)]*4+
+                [dict(pcs_count=1,pcs_kw=1250,dc_blocks=1)])
+    arrangements=[render_typical_ac_block(ac_block_shape_from_ac_output(output,i+1)) for i in range(5)]
+    p=_pack_mixed_rows(arrangements,2,replace(US_NFPA_SITE,fire_access_limit_m=4))
+    assert len(p['groups'])==3
+    assert len(p['roads'])==len(p['groups'])+1
+    assert [b['source_index'] for b in p['blocks']]==list(range(5))
+    assert [b['mirrored'] for b in p['blocks']]==[False,True,False,True,False]
+    assert p['blocks'][1]['x_m']-p['blocks'][0]['x_m']==pytest.approx(
+        arrangements[0].envelope_w_m+US_NFPA_SITE.mv_corridor_m)
+    assert all(g['depth_m']/2<=4 for g in p['groups'])
+    assert p['roads'][0]==0 and p['roads'][-1]+US_NFPA_SITE.fire_road_m==pytest.approx(p['depth'])
+
+
+def test_layout_group_ids_and_dimensions_come_from_actual_geometry():
+    result=mixed_site_from_ac_output(dict(ac_block_rows=[
+        dict(pcs_count=8,pcs_kw=1250,dc_blocks=8),dict(pcs_count=2,pcs_kw=1250,dc_blocks=2)]))
+    assert [i for g in result.groups for i in g['block_indices']]==[b['index'] for b in result.blocks]
+    assert f'{result.width_m:.1f} x {result.depth_m:.1f} m' in result.svg
+    assert 'paired MV corridor' in result.svg
+    assert 'door' in result.svg.lower()

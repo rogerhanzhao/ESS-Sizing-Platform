@@ -32,7 +32,7 @@ from calb_sizing_tool.reporting.brand_profiles import (
     neutralize_brand_text,
 )
 from calb_sizing_tool.reporting.report_context import build_report_context
-from calb_sizing_tool.reporting.report_v2 import export_report_v2_1
+from calb_sizing_tool.reporting.report_v2 import export_report_v2_1, MixedLayoutConsistencyError
 from calb_sizing_tool.runtime_paths import get_outputs_dir
 from calb_sizing_tool.state.project_state import get_project_state, init_project_state
 from calb_sizing_tool.state.session_state import init_shared_state
@@ -644,7 +644,7 @@ def show():
 
         try:
             comb_bytes = export_report_v2_1(ctx, brand=brand)
-        except (BrandAssetMissingError, BrandLeakError) as exc:
+        except (BrandAssetMissingError, BrandLeakError, MixedLayoutConsistencyError) as exc:
             # Never fall back to another brand's assets or unverified raster
             # drawings in a white-label report.
             st.error(str(exc))

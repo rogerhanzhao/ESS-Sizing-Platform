@@ -6,6 +6,8 @@ table appears only when it adds information).
 from __future__ import annotations
 
 import io
+import copy
+import pytest
 
 from docx import Document
 
@@ -314,3 +316,58 @@ def test_legacy_mixed_mirrors_use_per_block_dc_array_when_ratio_is_scalar():
         "dc_blocks_per_ac_block": 4, "ac_blocks_count": 2,
     }
     assert "= 12.50 MW installed PCS nameplate" in _doc_text(ctx)
+
+
+@pytest.mark.parametrize('field,value', [
+    ('total_ac_mw',30), ('pcs_count_total',12), ('num_blocks',6),
+    ('dc_blocks_total',11), ('pcs_count_by_block',[4,4,4]),
+    ('dc_blocks_per_ac',[2,4,4]),
+])
+def test_inconsistent_saved_mixed_totals_block_export_before_creating_document(monkeypatch,field,value):
+    import calb_sizing_tool.reporting.report_v2 as report
+    ctx=_belize_ctx()
+    ctx.ac_output[field]=value
+    original=copy.deepcopy(ctx.ac_output)
+    def forbidden(*args,**kwargs):
+        pytest.fail('Invalid MIX must not create a document or call the uniform engine')
+    monkeypatch.setattr(report,'Document',forbidden)
+    monkeypatch.setattr(report,'_compute_site_layout',forbidden)
+    with pytest.raises(report.MixedLayoutConsistencyError,match='Report not generated'):
+        report.export_report_v2_1(ctx)
+    assert ctx.ac_output==original
+
+
+def test_marked_mix_without_allocation_never_falls_back_to_uniform(monkeypatch):
+    import calb_sizing_tool.reporting.report_v2 as report
+    ctx=_belize_ctx()
+    for key in ('ac_block_rows','pcs_count_by_block','dc_blocks_per_ac','ac_block_breakdown'):
+        ctx.ac_output.pop(key,None)
+    monkeypatch.setattr(report,'_compute_site_layout',lambda *a:pytest.fail('Uniform fallback'))
+    with pytest.raises(report.MixedLayoutConsistencyError,match='allocation'):
+        report.export_report_v2_1(ctx)
+
+
+def test_mixed_report_rejects_conflicting_dc_energy_and_snapshot():
+    from calb_sizing_tool.reporting.report_v2 import _validated_manual_mixed_site, MixedLayoutConsistencyError
+    ctx=_belize_ctx();ctx.dc_block_unit_mwh=5.016;ctx.dc_total_energy_mwh=55.18
+    with pytest.raises(MixedLayoutConsistencyError,match='energy'):
+        _validated_manual_mixed_site(ctx)
+    ctx.dc_total_energy_mwh=50.16
+    ctx.ac_run_id='selected-alternative';ctx.ac_output['source_ac_run_id']='other-alternative'
+    with pytest.raises(MixedLayoutConsistencyError,match='different saved alternatives'):
+        _validated_manual_mixed_site(ctx)
+
+
+def test_valid_mixed_site_ignores_stale_layout_and_never_calls_uniform_engine(monkeypatch):
+    import calb_sizing_tool.reporting.report_v2 as report
+    from zipfile import ZipFile
+    ctx=_belize_ctx();ctx.layout_png_bytes=b'wrong-case-uniform-cached-image'
+    ctx.layout_svg_bytes=b'<svg>wrong-case-uniform-cached-image</svg>'
+    monkeypatch.setattr(report,'_compute_site_layout',lambda *a:pytest.fail('Uniform fallback'))
+    result=report.export_report_v2_1(ctx)
+    with ZipFile(io.BytesIO(result)) as z:
+        assert all(b'wrong-case-uniform-cached-image' not in z.read(n) for n in z.namelist())
+    text='\n'.join(p.text for p in Document(io.BytesIO(result)).paragraphs)
+    assert '3 AC Blocks, 10 DC containers, 10 PCS, 12.50 MW' in text
+    assert 'one representative project group' not in text
+    assert 'Equipment and access envelope:' in text

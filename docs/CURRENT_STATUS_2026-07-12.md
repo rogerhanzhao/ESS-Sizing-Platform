@@ -1,5 +1,20 @@
 # Current Status 2026-07-12
 
+> 2026-11-06 MIX STYLE CORRECTION (LOCAL): owner review rejected the independent
+> max-cell/per-row-road MIX presentation. Reuse the original site-rule profile and
+> equipment glyphs/palette; pack heterogeneous widths and depths without changing
+> saved block order, mirror eligible linear pairs, separate groups with access
+> roads and use maintenance aisles within groups. Standard/uniform engine is unchanged.
+> Report preflight rejects incomplete/conflicting manual MIX data instead of uniform
+> fallback or a downloadable mismatch note. Source, context totals and legacy mirrors
+> are checked; diagram dimensions derive from the placement. Full regression passed
+> 2428 tests with two inherited warnings. On 2026-11-07, the Antigravity test-only
+> registry bypass was removed after native-environment verification: 37 MIX tests
+> passed. The preview test uses a bounded 30-second cold-start timeout, retaining
+> all allocation-refresh assertions. Compileall passed. This remains local.
+> Production a389c03 was read back healthy with release exit 0 and 39 unchanged tables;
+> this subsequent correction is local, not deployed.
+
 > 2026-11-06 LOCAL MIX LAYOUT: restoring a whole-station concept figure for manual
 > mixed container runs from each saved AC row. Uses the shared typical-block
 > geometry, including odd DC tails and central stations; no Sizing recalculation.
@@ -1183,7 +1198,7 @@ seams; maintenance should exploit them instead of scanning everything.
 | Diagram renderers | `calb_diagrams/` (incl. `ac_block_bilateral_layout.py`) | ~6.9k lines | Medium — renderer/template + governed layout-variant engines |
 | **Typical AC Block Arrangement (contract)** | `calb_diagrams/typical_ac_block_arrangement.py` | ~0.4k lines | **Low, but load-bearing** — SOLE owner of the engine-selection rule, the drawing title, the shape resolution from a run, and the CONCEPT marking. The exported report (`reporting/report_v2.py` §8/§9) and the web page (`plugins/layout_arrangement_v2_plugin.py`) are both thin callers; neither may reimplement any of it. `tests/unit/test_typical_ac_block_arrangement.py` holds the two surfaces byte-identical. |
 | Arrangement geometry | `calb_diagrams/ac_block_arrangement_v2.py` (linear row + SHARED equipment glyphs), `ac_block_bilateral_layout.py` (central-station 4+4) | ~1.3k lines | Low — geometry is owner-ruled; both engines draw through the shared `draw_dc_container` / `draw_mv_station` glyphs |
-| Site array (L2) | `calb_diagrams/site_array_concept.py`; `mixed_site_concept.py` (manual MIX rows, conservative concept road grid, shared block geometry; consumed by report and original Layout page) | ~0.7k lines | Medium — owns the minimum-land packing search, the connected fire-road loop and the reported land metrics; tiles any `BlockForm`, including a central-station block via its real placements |
+| Site array (L2) | `calb_diagrams/site_array_concept.py`; `mixed_site_concept.py` (manual MIX rows, heterogeneous packing using original site rules and shared equipment glyphs; consumed by report and original Layout page) | ~0.7k lines | Medium — owns the minimum-land packing search, the connected fire-road loop and the reported land metrics; tiles any `BlockForm`, including a central-station block via its real placements |
 | Layout / constraint gate | `plugins/layout_*`, `services/site_constraint_*` | ~1k lines | Medium — P2 Master Layout work lands here. `services/layout_service.ARRANGEMENT_PLUGIN_ID` names the ONE arrangement renderer the page offers |
 | **AC alternatives (identity)** | `services/ac_run_service.py` | ~0.4k lines | **Low, but load-bearing** — SOLE owner of what makes two AC schemes different (the original scalar identity plus actual per-row PCS model / DC allocation for true MIX, the gate against over-splitting) and of how siblings are NAMED (`ac_alternative_label`, oldest-first `A`/`B`/…). Standard / historical no-row hashes stay unchanged. Legacy MIX reuse requires the saved output's complete new identity to match, so changing only a tail PCS rating cannot overwrite another alternative. Optional comparison attachments do not mint a formal AC alternative. Report file names, covers and provenance quote the service's label; no other module computes it. Its snapshots are the per-alternative configuration `sld_data_source_service` reads back. |
 | **AC alternative resolution** | `services/sld_data_source_service.resolve_preferred_ac_snapshot`, `state/workspace_state.artifact_run_id()` | ~0.3k lines | **Low, but load-bearing** — the two places that answer "which alternative am I working from": one for INPUTS (the AC snapshot), one for OUTPUTS (the artifacts). Both read `active_ac_run_id` themselves. A page that decides this for itself is the defect pattern that gave the arrangement two implementations. |

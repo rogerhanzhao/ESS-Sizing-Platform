@@ -314,6 +314,58 @@ def _add_cover_page_v2(doc: Document, ctx: ReportContext, brand: BrandProfile) -
     doc.add_page_break()
 
 
+class MixedLayoutConsistencyError(ValueError):
+    """A saved manual MIX cannot be exported without reinterpreting its data."""
+
+
+def _validated_manual_mixed_site(ctx: ReportContext):
+    """Validate before creating a document; never let a broken MIX become uniform."""
+    output = ctx.ac_output or {}
+    if output.get("governed_groups"):
+        return None
+    rows = output.get("ac_block_rows") or []
+    models = {(str(r.get("pcs_count")), str(r.get("pcs_kw")))
+              for r in rows if isinstance(r, dict)} if isinstance(rows, list) else set()
+    legacy_counts = output.get("pcs_count_by_block") or []
+    breakdown = output.get("ac_block_breakdown") or []
+    declared_mixed = (output.get("ac_block_mixed") or len(models) > 1
+                      or (isinstance(legacy_counts, list) and len(set(map(str, legacy_counts))) > 1)
+                      or (isinstance(breakdown, list) and len(breakdown) > 1))
+    if not declared_mixed:
+        return None
+    try:
+        from calb_diagrams.mixed_site_concept import mixed_site_from_ac_output
+        if ctx.configuration_code:
+            raise ValueError("The manual MIX has a conflicting governed configuration identity.")
+        site = mixed_site_from_ac_output(output)
+        if (ctx.ac_blocks_total, ctx.dc_blocks_total, ctx.pcs_modules_total) != (
+                len(site.blocks), site.total_dc, site.total_pcs):
+            raise ValueError("The report's AC, DC or PCS totals do not match the saved AC Blocks.")
+        for key, actual in (("total_ac_mw", site.total_mw), ("pcs_count_total", site.total_pcs),
+                            ("total_pcs", site.total_pcs)):
+            if output.get(key) is not None and not math.isclose(float(output[key]), actual, abs_tol=1e-6):
+                raise ValueError(f"Saved {key} does not match the per-block configuration.")
+        for key, field in (("pcs_count_by_block", "pcs_count"),
+                           ("dc_blocks_per_ac", "dc_blocks"),
+                           ("dc_blocks_total_by_block", "dc_blocks")):
+            mirror = output.get(key)
+            if isinstance(mirror, (list, tuple)) and list(mirror) != [b[field] for b in site.blocks]:
+                raise ValueError(f"Saved {key} conflicts with the authoritative AC Block rows.")
+        if ctx.dc_block_unit_mwh is not None and ctx.dc_total_energy_mwh is not None:
+            # Historical DC summaries may be stored to two decimal places.
+            expected_energy = ctx.dc_block_unit_mwh * site.total_dc
+            if not math.isclose(ctx.dc_total_energy_mwh, expected_energy, rel_tol=1e-9, abs_tol=0.005):
+                raise ValueError("DC nameplate energy conflicts with the saved container count and unit capacity.")
+        if ctx.ac_run_id and output.get("source_ac_run_id") and ctx.ac_run_id != output["source_ac_run_id"]:
+            raise ValueError("The report and AC configuration refer to different saved alternatives.")
+        return site
+    except (ValueError, TypeError, KeyError, OverflowError) as exc:
+        raise MixedLayoutConsistencyError(
+            f"Report not generated — inconsistent saved MIX configuration: {exc} "
+            "Reload the intended DC run and AC alternative; no uniform layout was substituted."
+        ) from exc
+
+
 def _manual_mixed_schedule(ctx: ReportContext) -> list[dict]:
     """Present the persisted per-block composition, including legacy mirrors.
 
@@ -1025,6 +1077,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         brand = CALB_BRAND
     require_brand_assets(brand)
     ctx = _report_context_for_brand(ctx, brand)
+    mixed_site = _validated_manual_mixed_site(ctx)
     mixed_schedule = _manual_mixed_schedule(ctx)
 
     doc = Document()
@@ -1912,20 +1965,28 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             "A full Master Layout requires a registered site constraint set and confirmed equipment interfaces."
         )
         try:
-            from calb_diagrams.mixed_site_concept import mixed_site_from_ac_output
-            mixed_site = mixed_site_from_ac_output(ctx.ac_output)
-            if mixed_site.total_dc != ctx.dc_blocks_total or len(mixed_site.blocks) != ctx.ac_blocks_total:
-                raise ValueError("The saved station totals and allocation rows do not match.")
+            if mixed_site is None:
+                raise ValueError("Validated saved MIX geometry is unavailable.")
             mixed_png = _svg_bytes_to_png(mixed_site.svg.encode("utf-8"))
             if not mixed_png:
                 raise ValueError("The concept drawing could not be rendered; retry the export.")
             doc.add_paragraph(
                 "All saved AC Blocks are shown below, including the smaller models. "
                 "Each block retains its own equipment count and typical footprint. "
-                "The arrangement uses a conservative access road along each row and "
-                "the perimeter; it is not an optimized or site-approved Master Layout."
+                "The arrangement retains the existing site-rule assumptions: maintenance aisles "
+                "within groups, mirrored linear pairs and connected group/perimeter access roads. "
+                "The equipment/access envelope is not an approved site boundary or Master Layout."
             )
-            _add_concept_figure(doc, mixed_png, width=Inches(6.2))
+            doc.add_paragraph(
+                f"Equipment and access envelope: {mixed_site.width_m:.1f} × {mixed_site.depth_m:.1f} m "
+                f"({mixed_site.width_m*mixed_site.depth_m:,.0f} m²), "
+                f"{len(mixed_site.groups)} layout group(s). These are geometric results under the stated "
+                "profile assumptions, not total project land or approved fire clearances."
+            )
+            from PIL import Image
+            with Image.open(io.BytesIO(mixed_png)) as raster:
+                figure_width = min(6.2, 6.0*raster.width/raster.height)
+            _add_concept_figure(doc, mixed_png, width=Inches(figure_width))
             _keep_next_para(doc.paragraphs[-1])
             doc.add_paragraph(
                 f"Figure {figure_index}: Mixed-station concept arrangement — "
@@ -1935,7 +1996,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             )
             figure_index += 1
         except (ValueError, TypeError, KeyError) as exc:
-            doc.add_paragraph(f"Mixed-station concept drawing unavailable: {exc}")
+            raise MixedLayoutConsistencyError(f"Report not generated — MIX drawing failed: {exc}") from exc
         site_layout = None
         group_layout = None
     else:

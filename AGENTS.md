@@ -21,11 +21,23 @@
 - Windows, Python 3.10, Streamlit on port 8511 (`.\scripts\start_local_web.ps1`).
 - DB: SQLite at `var/calb_sizing.db`, Alembic migrations (`python -m alembic upgrade head`).
 
-## Before every commit
+## Incremental maintenance (owner instruction, 2026-11-07)
+
+- Start from the current diff and the reported issue; inspect only affected domains.
+- Make bounded changes in the existing UI and workflow. Do not redesign or rescan
+  the repository unless evidence shows a cross-domain defect.
+- During iteration, run affected tests and immediate interface checks. Reuse
+  recorded passing results for unchanged code instead of rerunning the full suite.
+- Run a full regression for a release candidate or changes to shared contracts,
+  persistence, dependencies, or multiple domains. Do not repeat it solely for
+  documentation, whitespace, or test-timeout changes; run affected tests instead.
+- Record what changed, checks run, existing evidence reused, and deployment status.
+
+## Release validation
 
 ```powershell
 python -m compileall -q app.py calb_sizing_tool calb_diagrams
-python -m pytest tests -q     # all 215 must pass
+python -m pytest tests -q     # current suite must pass; see reuse rule above
 ```
 
 - Active branch: `ops/ubuntu-docker-coexist-20260311` (main branch: `master`).
