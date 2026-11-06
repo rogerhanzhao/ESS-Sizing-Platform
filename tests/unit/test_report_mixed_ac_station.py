@@ -251,7 +251,8 @@ def test_mixed_report_exposes_unconfirmed_frequency_without_changing_saved_input
 
 def test_belize_mixed_site_overview_does_not_repeat_false_head_footprints():
     text = _doc_text(_belize_ctx())
-    assert "equipment composition overview, not a physical site layout" in text
+    assert "All saved AC Blocks are shown below" in text
+    assert "3 AC Blocks, 10 DC containers, 10 PCS, 12.50 MW" in text
     assert "site envelope and land area are not established" in text
     assert "single representative project group of 3" not in text
     assert "Site land area (equipment + access only)" not in text

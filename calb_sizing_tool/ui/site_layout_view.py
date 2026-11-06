@@ -137,6 +137,38 @@ def _resolve_ac_blocks_total(ac_output: dict) -> int:
     return max(1, value)
 
 
+def _render_mixed_station_concept(ac_output: dict) -> None:
+    """Additional view on the existing page; the saved sizing is read-only."""
+    rows = ac_output.get("ac_block_rows") or []
+    models = {(r.get("pcs_count"), r.get("pcs_kw")) for r in rows if isinstance(r, dict)}
+    legacy_counts = ac_output.get("pcs_count_by_block") or []
+    if ac_output.get("governed_groups") or (len(models) < 2 and len(set(legacy_counts)) < 2):
+        return
+    with st.expander("Whole-station concept arrangement — mixed AC Blocks"):
+        st.caption(
+            "Shows every saved AC Block with its own DC quantity and PCS station footprint. "
+            "This concept is also included in the technical proposal; site constraints are "
+            "required for a project-specific Master Layout."
+        )
+        if st.checkbox("Show whole-station concept arrangement", key="show_mixed_station_concept"):
+            try:
+                from calb_diagrams.mixed_site_concept import mixed_site_from_ac_output
+                result = mixed_site_from_ac_output(ac_output)
+                # Responsive CSS belongs to the browser view. Keep intrinsic
+                # SVG dimensions for CairoSVG and downloaded report graphics.
+                preview_svg = result.svg.replace('<svg ', '<svg style="width:100%;height:auto" ', 1)
+                st.components.v1.html(preview_svg, height=640, scrolling=True)
+                st.download_button("Download whole-station concept SVG", result.svg.encode("utf-8"),
+                                   "mixed_station.concept.svg", "image/svg+xml")
+                st.caption(
+                    f"{len(result.blocks)} AC Blocks · {result.total_dc} DC containers · "
+                    f"{result.total_pcs} PCS · {result.total_mw:.2f} MW. "
+                    "CONCEPT ONLY — NOT FOR CONSTRUCTION."
+                )
+            except (ValueError, TypeError, KeyError) as exc:
+                st.warning(f"Whole-station concept unavailable: {exc}")
+
+
 def _build_guest_dc_bundle() -> DcRunBundle | None:
     snapshot = st.session_state.get("guest_dc_run_snapshot")
     if snapshot is None:
@@ -517,6 +549,9 @@ def show() -> None:
                         st.success(f"Submission created: {submission['submission_id']}")
                     except Exception as exc:
                         st.error(f"Submission failed: {exc}")
+
+    if ac_snapshot:
+        _render_mixed_station_concept(ac_snapshot.output)
 
     if not _is_guest and run_id:
         submissions = list_external_submissions(run_id)

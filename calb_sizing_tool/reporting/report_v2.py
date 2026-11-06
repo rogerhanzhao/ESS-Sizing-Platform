@@ -1907,18 +1907,35 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             for entry in mixed_schedule
         ], ["AC Blocks", "Model", "Qty", "PCS Nameplate Each", "DC Blocks Total"])
         doc.add_paragraph(
-            "This is an equipment composition overview, not a physical site layout. "
-            "The representative Head arrangement in Section 8 must not be repeated "
-            "as if every AC Block had that footprint or DC quantity. Tail footprints, "
-            "MV collection routing, access roads, clearances and equipment interfaces "
-            "must be developed together against the actual project site constraints."
+            "A complete dimensioned site arrangement, site envelope and land area are not established. "
+            "The concept excludes the substation, site boundary, drainage, setbacks and final MV routing. "
+            "A full Master Layout requires a registered site constraint set and confirmed equipment interfaces."
         )
-        doc.add_paragraph(
-            "A complete dimensioned site arrangement, site envelope and land area are "
-            "not established for this mixed configuration. A full Master Layout "
-            "requires a registered site constraint set and confirmed equipment dimensions. "
-            "Concept only — NOT FOR CONSTRUCTION."
-        )
+        try:
+            from calb_diagrams.mixed_site_concept import mixed_site_from_ac_output
+            mixed_site = mixed_site_from_ac_output(ctx.ac_output)
+            if mixed_site.total_dc != ctx.dc_blocks_total or len(mixed_site.blocks) != ctx.ac_blocks_total:
+                raise ValueError("The saved station totals and allocation rows do not match.")
+            mixed_png = _svg_bytes_to_png(mixed_site.svg.encode("utf-8"))
+            if not mixed_png:
+                raise ValueError("The concept drawing could not be rendered; retry the export.")
+            doc.add_paragraph(
+                "All saved AC Blocks are shown below, including the smaller models. "
+                "Each block retains its own equipment count and typical footprint. "
+                "The arrangement uses a conservative access road along each row and "
+                "the perimeter; it is not an optimized or site-approved Master Layout."
+            )
+            _add_concept_figure(doc, mixed_png, width=Inches(6.2))
+            _keep_next_para(doc.paragraphs[-1])
+            doc.add_paragraph(
+                f"Figure {figure_index}: Mixed-station concept arrangement — "
+                f"{len(mixed_site.blocks)} AC Blocks, {mixed_site.total_dc} DC containers, "
+                f"{mixed_site.total_pcs} PCS, {mixed_site.total_mw:.2f} MW. "
+                "CONCEPT ONLY — NOT FOR CONSTRUCTION."
+            )
+            figure_index += 1
+        except (ValueError, TypeError, KeyError) as exc:
+            doc.add_paragraph(f"Mixed-station concept drawing unavailable: {exc}")
         site_layout = None
         group_layout = None
     else:

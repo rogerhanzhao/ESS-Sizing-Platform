@@ -262,6 +262,23 @@ def render_typical_ac_block(
     )
 
 
+def arrangement_equipment_placements(arrangement, profile=US_NFPA_OIL):
+    """Physical rectangles for composition, using the shared block geometry."""
+    if arrangement.placements:
+        return tuple(dict(p) for p in arrangement.placements)
+    from calb_diagrams.ac_block_arrangement_v2 import DC_LENGTH_M, DC_WIDTH_M, MV_WIDTH_M
+    layout = arrangement.layout
+    equipment = [dict(equipment_type="dc_container", x_m=layout.unit_offsets_m[j//2],
+                      y_m=(j % 2)*(DC_WIDTH_M+profile.dc_pair_gap_m),
+                      width_m=DC_LENGTH_M, height_m=DC_WIDTH_M)
+                 for j in range(arrangement.dc_blocks)]
+    equipment.append(dict(equipment_type="ac_station",
+                          x_m=arrangement.envelope_w_m-arrangement.station_length_m,
+                          y_m=max(0, (arrangement.envelope_d_m-MV_WIDTH_M)/2),
+                          width_m=arrangement.station_length_m, height_m=MV_WIDTH_M))
+    return tuple(equipment)
+
+
 def arrangement_spec(arrangement: TypicalArrangement,
                      profile: ArrangementRuleProfile = US_NFPA_OIL) -> Dict[str, Any]:
     """Machine-readable description of the drawing, with its code basis.
