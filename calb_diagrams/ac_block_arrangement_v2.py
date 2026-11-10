@@ -439,6 +439,13 @@ def _mv_station(parts: List[str], s: float, ox: float, oy: float,
     draw_mv_station(parts, s, ox, oy, length_m=station_len_m, width_m=MV_WIDTH_M)
 
 
+def linear_equipment_end(dc_count: int, station_length_m: float, unit_index: int) -> str:
+    """A single pair beside a 20 ft AC cabin connects towards that cabin (east)."""
+    if dc_count == 2 and abs(station_length_m - AC_STATION_20FT_LENGTH_M) < 1e-6:
+        return "east"
+    return "west" if unit_index % 2 == 0 else "east"
+
+
 def render_plan_svg(dc_count: int,
                     profile: ArrangementRuleProfile = US_NFPA_OIL,
                     block_label: str = "TYPICAL AC BLOCK",
@@ -483,11 +490,12 @@ def render_plan_svg(dc_count: int,
 
     # DC units west, MV station east. Units alternate end-for-end so the
     # equipment ends face the block boundary (see end_gap_sequence).
+    # A lone pair with a 20 ft cabin faces that cabin instead, for the DC connection.
     units = layout.pair_count + (1 if layout.has_single_tail else 0)
     for u in range(layout.pair_count):
         ux = ox0 + layout.unit_offsets_m[u] * s
         _dc_pair_at(parts, s, ux, oy0, profile.dc_pair_gap_m,
-                    equipment_end="west" if u % 2 == 0 else "east")
+                    equipment_end=linear_equipment_end(dc_count, layout.station_length_m, u))
     if layout.has_single_tail:
         ux = ox0 + layout.unit_offsets_m[units - 1] * s
         _single_dc(parts, s, ux, oy0,

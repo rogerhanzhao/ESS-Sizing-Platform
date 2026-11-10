@@ -353,6 +353,26 @@ def test_mixed_manual_selection_uses_saved_equipment_on_both_surfaces():
     assert "2.50 MW" in tail and "2 × 1250 kW PCS" in tail
 
 
+def test_two_dc_20ft_equipment_ends_face_ac_in_drawing_and_placements(monkeypatch):
+    from calb_diagrams import ac_block_arrangement_v2 as engine
+    from calb_diagrams.typical_ac_block_arrangement import arrangement_equipment_placements
+
+    drawn = []
+    original = engine.draw_dc_container
+
+    def capture(*args, **kwargs):
+        drawn.append(kwargs.get("equipment_end"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(engine, "draw_dc_container", capture)
+    arrangement = render_typical_ac_block(AcBlockShape(2, 2, 2.5))
+    placements = arrangement_equipment_placements(arrangement)
+    assert drawn == ["east", "east"]
+    assert [p["equipment_end"] for p in placements[:-1]] == drawn
+    assert [p["door_orientation"] for p in placements[:-1]] == ["north", "south"]
+    assert all(p["x_m"] + p["width_m"] < placements[-1]["x_m"] for p in placements[:-1])
+
+
 def test_mixed_manual_rows_resolve_distinct_unit_ratings_and_tail_first():
     from calb_diagrams.typical_ac_block_arrangement import ac_block_shape_from_ac_output
     ac = dict(ac_block_rows=[

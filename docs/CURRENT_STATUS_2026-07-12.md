@@ -1,5 +1,58 @@
 # Current Status 2026-07-12
 
+> 2026-11-10 FORMAL RENDER ASSETS: owner approved the gravel/close-view revision
+> 2026-11-10.v2 for the shipped library: four templates, five 2400 x 1600 views
+> each. Manifest hashes match all 20 approved source images. Real exports for
+> T1-T4 embed the new images while preserving tables, AC output and Section 9
+> content. The 21 selector/packaged-asset tests pass. Existing geometry-only
+> eligibility and fallback rules remain unchanged. Production is not deployed.
+> Release validation: compileall passed. Full suite: 2449 passed, one caption
+> regression, two inherited serializer warnings. Restored equipment dimensions
+> in render captions; all 58 affected tests then passed, including that failure.
+> Unchanged full-suite results are reused after this caption-only correction.
+
+> 2026-11-09 REPORT/SIZING BOUNDARY: visual selection consumes the existing
+> resolved arrangement; MW/MWh do not filter images, but existing cabinet-length
+> and layout resolution still apply. AC sizing schedules remain authoritative.
+> Real-export comparison identified and corrected spacing-table drift in the
+> render branch: preserve original linear basis rows and bilateral provisional
+> notes. Frozen sizing modules remain unchanged. Targeted AC sizing, contract
+> and allocation checks: 115 passed. Design: VISUAL_AC_SIZING_BOUNDARY_2026-11-09.md.
+
+> 2026-11-09 VISUAL MATCHING UPDATE: all four templates including T3 are enabled
+> locally by owner instruction. Match AC 20/40ft length, DC count, layout,
+> coordinates, orientation and spacing, without MW or MWh eligibility filters.
+> Images describe representative geometry, not electrical ratings. Explicit
+> product compatibility and unsupported-layout fallback remain in force.
+> This supersedes the earlier T3 power-rating hold below.
+
+> 2026-11-09 LOCAL RENDER ACTIVATION: owner authorized enabling the accepted
+> typical render library. T1/T2/T4 manifest entries are enabled for compatible
+> unbound standard studies; T3 remains off pending AC rating eligibility.
+> Manifest is read on each export, so no restart/login interruption is needed.
+> Selector/fallback tests: 15 passed. No production deployment or full regression.
+> Earlier unreleased-state notes below are historical.
+
+> 2026-11-09 LOCAL ORIENTATION FIX: the linear two-DC / 20ft AC arrangement now
+> points both DC equipment ends east towards the AC cabin in both the SVG and
+> shared placement records. Doors, coordinates, clearances and footprints remain
+> unchanged. Compared 48 shapes against HEAD: all other SVGs and placements are
+> identical. T3's inactive render manifest is synchronized; no render activation
+> or deployment. No sizing logic or station packing algorithm changes.
+> Validation: 61 affected tests passed; changed diagram modules compile cleanly.
+
+> 2026-11-08 LOCAL TYPICAL-BLOCK VISUALS: owner-approved four layout templates
+> feed a versioned five-view render library. Reporting selects TOP plus one
+> random oblique only when the saved standard-container study and the shared
+> arrangement's geometry, station length, power and spacing profile match.
+> Explicit product bindings require a manifest compatibility entry; unsupported,
+> mixed, white-label or damaged-asset paths retain the original drawing.
+> The report's whole-station section and frozen sizing formulas are unchanged.
+> Verification and rendered sample evidence: output/layout_photoreal_20261108/.
+> Owner follow-up: review each rendered template before activation. Asset manifest
+> entries remain unreleased; whole-station photoreal rendering is cancelled and
+> its existing engineering engine stays unchanged. This is local work only.
+
 > 2026-11-06 MIX STYLE CORRECTION (LOCAL): owner review rejected the independent
 > max-cell/per-row-road MIX presentation. Reuse the original site-rule profile and
 > equipment glyphs/palette; pack heterogeneous widths and depths without changing
@@ -1192,6 +1245,7 @@ seams; maintenance should exploit them instead of scanning everything.
 
 | Domain | Packages | Size | Change frequency |
 | --- | --- | --- | --- |
+| Typical-block render assets (report presentation) | `reporting/layout_render_assets.py`, `reporting/assets/layout_renders/v1/`; caller `reporting/report_v2.py` section 8 | ~0.1k lines plus 20 PNGs | Versioned fixed geometry/material renders. Matches the existing shared arrangement contract and profile; owns asset integrity, explicit product compatibility and random oblique selection. No sizing or layout-engine responsibility. Whole-station section 9 remains unchanged. |
 | Sizing core (FROZEN) | `services/stage*_service`, `dc_pipeline`, AC capacity/calculation services | part of `services/` (29 files, 6.3k lines) | Frozen — no edits without explicit logic-upgrade approval |
 | **Admin DC product / curve preflight** | `services/dc_product_curve_guard.py`; caller in original `ui/dc_view.py` | ~0.12k lines | Low — inspects the exact frozen picker's selection and linked cell before a new Admin run. Preserves the approved legacy 314Ah-A basis; rejects unrelated or unverified cells and explicit curve conflicts. No product fallback, curve resolver, new publication workflow, saved-result rewrite or sizing arithmetic. |
 | SLD engine | `sld/` (18 files, 3.1k), `services/sld_*`, `schemas/sld_*`, `schemas/ac_electrical_topology.py`, `schemas/governed_ac_block_config.py`, `adapters/ac_to_sld_adapter.py`; mixed→SLD bridge in `services/ac_mixed_station.py` (`head_fleet_ac_output_for_sld`) | ~6k lines | High — owns AC-to-SLD physical topology contract and the governed AC Block configuration; SLD V1 is uniform-only, so mixed stations render via a head-fleet projection; remains the most active area |
