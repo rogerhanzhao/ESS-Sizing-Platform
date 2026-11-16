@@ -1772,48 +1772,8 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     is_bilateral = arrangement is not None and arrangement.uses_central_station
     plan_layout = arrangement
 
-    render_pair = (select_render_pair(ctx, arrangement, ARRANGEMENT_PROFILE)
-                   if not brand.neutralize_equipment_names and not mixed_schedule else None)
-    if render_pair is not None:
-        doc.add_paragraph(
-            f"Representative CALB installation concept: {dc_per_ac} DC containers and one "
-            f"{plan_layout.station_length_m:.3f} m AC station. Equipment envelope "
-            f"{plan_layout.envelope_w_m:.2f} × {plan_layout.envelope_d_m:.2f} m. "
-            "Materials and equipment details are illustrative; clearances require project confirmation."
-        )
-        doc.add_paragraph(
-            "This exterior layout illustration is selected by cabinet dimensions and placement. "
-            "PCS quantities, electrical ratings and DC allocation are defined by the AC sizing "
-            "schedule; internal equipment shown is illustrative."
-        )
-        if render_pair.orientation_note:
-            doc.add_paragraph(render_pair.orientation_note)
-        for view, image in (("TOP", render_pair.top_png),
-                            (render_pair.oblique_view, render_pair.oblique_png)):
-            _add_concept_figure(
-                doc, image, width=Inches(5.9),
-                alt_text=f"Typical AC block render {render_pair.template_id} {render_pair.version} "
-                         f"{view} — NOT FOR CONSTRUCTION",
-            )
-            _keep_next_para(doc.paragraphs[-1])
-            doc.add_paragraph(
-                f"Figure {figure_index}: Typical AC Block Arrangement — "
-                f"{'Top view' if view == 'TOP' else view + ' oblique view'} "
-                f"— equipment envelope ≈ {plan_layout.envelope_w_m:.2f} × "
-                f"{plan_layout.envelope_d_m:.2f} m "
-                f"({plan_layout.envelope_area_m2:,.0f} m²) "
-                "— Concept Only · NOT FOR CONSTRUCTION"
-            )
-            figure_index += 1
-        if is_bilateral:
-            for note in getattr(plan_layout, "provisional_notes", ()):
-                doc.add_paragraph(f"Provisional: {note}.")
-        else:
-            basis_rows = [(item, f"{value} — {spacing_basis_text(basis)}")
-                          for item, value, basis in ARRANGEMENT_PROFILE.basis]
-            basis_rows.append(("Arrangement rule profile", ARRANGEMENT_PROFILE.market_label))
-            _add_table(doc, basis_rows, ["Spacing parameter", "Value & code basis"])
-    elif plan_png and plan_layout is not None and is_bilateral:
+    typical_layout = plan_layout
+    if plan_png and plan_layout is not None and is_bilateral:
         # The SAME label the drawing carries and the page shows.
         _keep_next_para(doc.add_paragraph(
             f"{plan_layout.label} — central vertical 40 ft AC Block with west "
@@ -2146,6 +2106,52 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 for item, value, basis in SITE_PROFILE.basis
             )
             _add_table(doc, site_rows, ["Site parameter", "Value & code basis"])
+    render_pair = (select_render_pair(ctx, typical_layout, ARRANGEMENT_PROFILE)
+                   if not brand.neutralize_equipment_names else None)
+    if render_pair is not None:
+        doc.add_page_break()
+        doc.add_heading("Appendix A. Typical Installation Visual Reference (Concept Only)", level=2)
+        doc.add_paragraph(
+            "AI-assisted representative illustrations; not site photographs or construction drawings. "
+            "The engineering arrangements and equipment schedules in the report remain authoritative."
+        )
+        if mixed_schedule:
+            doc.add_paragraph(
+                "Mixed AC Block station: these views show the representative Head AC Block only. "
+                "Tail AC Blocks are not shown; see Section 6.1 for the full equipment allocation "
+                "and Section 9 for the whole-station engineering layout."
+            )
+        appendix_figure_index = 1
+        doc.add_paragraph(
+            f"Representative CALB installation concept: {dc_per_ac} DC containers and one "
+            f"{typical_layout.station_length_m:.3f} m AC station. Equipment envelope "
+            f"{typical_layout.envelope_w_m:.2f} × {typical_layout.envelope_d_m:.2f} m. "
+            "Materials and equipment details are illustrative; clearances require project confirmation."
+        )
+        doc.add_paragraph(
+            "This exterior layout illustration is selected by cabinet dimensions and placement. "
+            "PCS quantities, electrical ratings and DC allocation are defined by the AC sizing "
+            "schedule; internal equipment shown is illustrative."
+        )
+        if render_pair.orientation_note:
+            doc.add_paragraph(render_pair.orientation_note)
+        for view, image in (("TOP", render_pair.top_png),
+                            (render_pair.oblique_view, render_pair.oblique_png)):
+            _add_concept_figure(
+                doc, image, width=Inches(5.9),
+                alt_text=f"Typical AC block render {render_pair.template_id} {render_pair.version} "
+                         f"{view} — NOT FOR CONSTRUCTION",
+            )
+            _keep_next_para(doc.paragraphs[-1])
+            doc.add_paragraph(
+                f"Figure A-{appendix_figure_index}: Typical AC Block Arrangement — "
+                f"{'Top view' if view == 'TOP' else view + ' oblique view'} "
+                f"— equipment envelope ≈ {typical_layout.envelope_w_m:.2f} × "
+                f"{typical_layout.envelope_d_m:.2f} m "
+                f"({typical_layout.envelope_area_m2:,.0f} m²) "
+                "— Concept Only · NOT FOR CONSTRUCTION"
+            )
+            appendix_figure_index += 1
     report_bytes = _doc_to_bytes(doc)
     assert_brand_clean_docx(report_bytes, brand)
     return report_bytes

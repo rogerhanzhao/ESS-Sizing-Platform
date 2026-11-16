@@ -1,5 +1,13 @@
 # Current Status 2026-07-12
 
+> 2026-11-16 REPORT APPENDIX: preserve Sections 8/9 engineering drawings and append
+> compatible representative TOP + one oblique view as Appendix A. Manual mixed
+> stations may show Head geometry only; Tail is explicitly excluded. Existing
+> governed-product, brand and geometry guards remain. Sizing and site engines
+> unchanged. 88 affected checks passed; compileall passed. Previous full-suite
+> evidence reused for unchanged code. Deployment evidence is kept in ops-local.
+> Authenticated browser download and Word pagination are not yet replayed.
+
 > 2026-11-15 R2 IMAGE APPROVAL: owner explicitly approved the current 20-image
 > photo-style set for publication after review of remaining cross-view detail
 > limitations. Formal library version is 2026-11-15.r2, native 1536 x 1024.

@@ -42,13 +42,21 @@ def select_render_pair(ctx, arrangement, profile, *, root=None, choose=None):
 Unbound container studies use a representative CALB exterior by geometry.
 An explicitly bound AC product needs its exact code in the asset manifest;
 same power/length alone never establishes physical product compatibility.
+
+For a mixed AC Block station the arrangement passed in is already the
+representative Head block geometry (resolved by _arrangement_shape in
+report_v2). The visual template is matched against that Head geometry
+exactly as for a uniform station; the tail block(s) are described in
+Section 6.1 and are not shown in the arrangement drawing.
+Governed multi-group runs still require per-group asset bindings and
+continue to fall back to the engineering drawing.
 """
     if arrangement is None or getattr(ctx, "scenario_id", "") != "container_only":
         return None
     try:
         output = ctx.ac_output or {}
-        if output.get("ac_block_mixed") or output.get("governed_ac_groups"):
-            return None  # heterogeneous products require per-group asset bindings
+        if output.get("governed_ac_groups"):
+            return None  # governed multi-group: per-group asset bindings required
         bound = output.get("governed_product_block_code") or output.get("ac_block_product_block_code")
         if getattr(ctx, "configuration_code", None) and not bound:
             return None
