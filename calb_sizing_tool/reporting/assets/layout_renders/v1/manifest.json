@@ -1,15 +1,9 @@
 {
-  "version": "2026-11-10.v2",
-  "renderer": "Blender Cycles, locked GLB geometry; not generative image edits",
+  "version": "2026-11-15.r2",
+  "renderer": "AI-assisted photo-style edits referenced to fixed 3D views; owner-approved R2 images",
   "dc_family": "Representative CALB 20 ft exterior; no energy rating asserted by image",
   "scope": "Representative unbound concept only; bound products require explicit compatibility codes",
-  "activation_note": "Owner-approved four geometry-only templates with enhanced gravel and closer oblique views; activated locally for release candidate.",
-  "source_sha256": {
-    "templates.json": "cbae10518cda0f1f358c724d343e05f65fd2510f3dfd0c1b1edf804dd149a690",
-    "dc_geometry.json": "9f99bdc155de86262f8b6b44269932b610912ca9348837876aebece7fc3f92b0",
-    "ac_geometry.json": "019e849ed5354aa03b5c4d7d51bbe9c423927afb717b07730c623c6d98aa52ae",
-    "render_blender.py": "aa4f542695c6bb8965445f52752a8015e37b3a3e23fce47ac6c56c7f22691248"
-  },
+  "activation_note": "Owner explicitly approved current R2 set for publication on 2026-11-15 after review of visual limitations; 20 images at native 1536 x 1024.",
   "templates": [
     {
       "id": "T1",
@@ -141,23 +135,23 @@
       "views": {
         "TOP": {
           "file": "T1/TOP.png",
-          "sha256": "3effeac7bc2107875750bc92a58a617c792555f2c34a2717d30eaca8b2d01b7b"
+          "sha256": "341907a326d37d002705f966edf28561443f909dd162782fa4e07483af13f81f"
         },
         "SW": {
           "file": "T1/SW.png",
-          "sha256": "3c8fc70b70b4a30e4e53a79be6b0c1d3690eb5ddfe85ccd665f389beee2a4df3"
+          "sha256": "9b24c845732c183b7b8553b832ba14fa932f474f27095f9af72e8be8b653b1ca"
         },
         "SE": {
           "file": "T1/SE.png",
-          "sha256": "80ed1d7bb6852da142cee9e2f1004f065dd310a40f31826e3eb9d9128106c9e6"
+          "sha256": "5d4336f90f96dce357dd189f6f303e41b5e778b91ad36aa064901539ea5a8a72"
         },
         "NE": {
           "file": "T1/NE.png",
-          "sha256": "628e8831909d364d8b982c9030c5d3ae2790d0ec7dceac1a646b2615418b7758"
+          "sha256": "7a8068fc5e667d2b9a67518990e57d0a57beb654611e92fd20bba8d7aca9b392"
         },
         "NW": {
           "file": "T1/NW.png",
-          "sha256": "d184f67bd36e8d73bcfa67f9081299e158442c5dd6a99b2148e200c4928fa7ba"
+          "sha256": "32e816f18b680b09792e749d0510f8b28cb05ef596ab18211490e99e8d3dbb1d"
         }
       },
       "orientation_note": "",
@@ -257,23 +251,23 @@
       "views": {
         "TOP": {
           "file": "T2/TOP.png",
-          "sha256": "4cb9a3c6ec2d8c764a2649917f6ec43d1293ea3532cef48a398cf5cdba19a433"
+          "sha256": "5d32250135584ac870b2cf87fb7aa7ddbdf6819af648abc588ddedb3b828d161"
         },
         "SW": {
           "file": "T2/SW.png",
-          "sha256": "c05baa945ed78447b889d4f9245aa5f6c4e7aa0fa0afdacb90e2342de7c25602"
+          "sha256": "d8192439182937a4cd67d1143d387a76c9a7ce73bce500a8d66544a4dbd2bcd4"
         },
         "SE": {
           "file": "T2/SE.png",
-          "sha256": "a09b14e0194b4eecef7f8e3f815377318bc00d1665d005834f5283ada490f01d"
+          "sha256": "0ec73a1c6839e9c359ca091ffc6c59d50f72d67eef669cdab4b8bdb5e072fd15"
         },
         "NE": {
           "file": "T2/NE.png",
-          "sha256": "56316f33919969f52d687ed25d18a455b81baf0969036ad4b755e241cb925dc4"
+          "sha256": "c5161fe756dccbb4056e2030a3ffbc570b54859e806918463e35a0cadc42419c"
         },
         "NW": {
           "file": "T2/NW.png",
-          "sha256": "7f9452de0f2ecf879f1139dcc9d5a3a51e5e936c6aea0e7488b398567533bfe3"
+          "sha256": "787400493d2a5f0a8b1002e9ca340d92b52f28edf548d0c353e222221e3f7baf"
         }
       },
       "orientation_note": "",
@@ -355,23 +349,23 @@
       "views": {
         "TOP": {
           "file": "T3/TOP.png",
-          "sha256": "de2d5a32da12aea0469a7c6385ac8d737a6b21225ea78ef63760c68ad47bb97e"
+          "sha256": "f8abbc83c2eb1d62a5d5ae9a864db40cd835d0c198c8fda9d42dbbbc47918a28"
         },
         "SW": {
           "file": "T3/SW.png",
-          "sha256": "8ba12de89d834e6e83f4ae28ed3770e4e759e7c76a6026f2ea2c1645f07bbd4b"
+          "sha256": "b1e33b26d33c4942aff3af674f639f20494351047e222268d47b0ba0d5775743"
         },
         "SE": {
           "file": "T3/SE.png",
-          "sha256": "0a6633c977b6bef1e5675c089175fd64833b99e02f192f36ebb98fe2b81fab12"
+          "sha256": "7e5f5180ec5061d6e6f3bd092b01c1996f2579592b432d2f9e817a3c231442e3"
         },
         "NE": {
           "file": "T3/NE.png",
-          "sha256": "72d8636fce2a16b8a216926b87b2fea308c14a67d3477ac5bbf7451566cf85a0"
+          "sha256": "dfecdfc8b68ef7cbeab0a708d4c6567eff6a545fefe6caddb56384fd745e1ab2"
         },
         "NW": {
           "file": "T3/NW.png",
-          "sha256": "57b483319ab9c91930a6824a2c9dde0b1475595d18ef7e1810ea553d0055a1ca"
+          "sha256": "48513a9d862ea312245f3ecbf4eab2d2aa4a579117460b228e763c6a16daef1b"
         }
       },
       "orientation_note": "DC cable equipment ends face the AC station; ordinary ventilated ends face outward.",
@@ -471,28 +465,39 @@
       "views": {
         "TOP": {
           "file": "T4/TOP.png",
-          "sha256": "5137f29a308263a06fa3a1324b96cccea34175e32b60de2371bdc9da915689ba"
+          "sha256": "952a275c03ebaff77c52c6315b49fe8d1098a32471cb650f9ac085b08bd85377"
         },
         "SW": {
           "file": "T4/SW.png",
-          "sha256": "35117306321497937cebf02ba2307f25b502d39eeff5f84a79f68ca5c1be82ce"
+          "sha256": "07bf677fdf59b94bfe0ce6b7ce34594de13f58bad6d10998012ff240fe573a30"
         },
         "SE": {
           "file": "T4/SE.png",
-          "sha256": "fc2d40b4f527f2da01b1ac7e80785ad2fff369a315e1cc0268bf5aaa39d3c441"
+          "sha256": "1cb3a11b114007de90a63bfa250ebce4e4abe72c3d95308f6391ab75e99c24ee"
         },
         "NE": {
           "file": "T4/NE.png",
-          "sha256": "b9727e681e629b8d3bc17bb061ce480996820360746991d9d440bc800436cbbf"
+          "sha256": "b19ede84028dad8e7cc74508682cb756595da9e0886fd24b36d4f8f9ce36bf49"
         },
         "NW": {
           "file": "T4/NW.png",
-          "sha256": "15fa13c4fa45a29f8b90925f114c45ea7434a3d4763ab96048048055c9c87e93"
+          "sha256": "f2df25f1293a87aa15248bd5134f6c73ca87e6f2cb52b317a99dccef8fd118ce"
         }
       },
       "orientation_note": "",
       "label": "40 ft AC Block + 4 DC Blocks"
     }
   ],
-  "framing_sha256": "5e1f3524056dc11c89ea05a5a7998869cfd58d03b468c459fd1c991eaf61154a"
+  "visual_limitations": "Representative synthetic illustrations. Generative edits may differ from reference geometry in small panel, vent, mesh and hardware details. Placement signatures describe selector reference geometry, not pixel-exact as-built validation. Not dimensional or fire-code compliance evidence.",
+  "image_size_px": [
+    1536,
+    1024
+  ],
+  "reference_geometry_sha256": {
+    "templates.json": "cbae10518cda0f1f358c724d343e05f65fd2510f3dfd0c1b1edf804dd149a690",
+    "dc_geometry.json": "9f99bdc155de86262f8b6b44269932b610912ca9348837876aebece7fc3f92b0",
+    "ac_geometry.json": "019e849ed5354aa03b5c4d7d51bbe9c423927afb717b07730c623c6d98aa52ae",
+    "render_blender.py": "aa4f542695c6bb8965445f52752a8015e37b3a3e23fce47ac6c56c7f22691248"
+  },
+  "approved_image_set_sha256": "2cb17778cd3814b8a4b7d4c988aea9921b955a0426e85398d3a5076a507dff7c"
 }

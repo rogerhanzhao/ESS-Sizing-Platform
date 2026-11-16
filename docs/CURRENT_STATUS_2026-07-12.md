@@ -1,5 +1,16 @@
 # Current Status 2026-07-12
 
+> 2026-11-15 R2 IMAGE APPROVAL: owner explicitly approved the current 20-image
+> photo-style set for publication after review of remaining cross-view detail
+> limitations. Formal library version is 2026-11-15.r2, native 1536 x 1024.
+> Image hashes and provenance updated; template eligibility, placements, sizing
+> formulas and whole-station layout remain unchanged. Images are representative
+> AI-assisted illustrations, not exact model renders or compliance evidence.
+> Confirmed 3D models, STEP/CAD, engineering references and parameters are protected
+> from cleanup. Only superseded photo candidates and their preview bundles removed.
+> Focused asset/report verification and GitHub/production status are recorded in
+> docs/PHOTO_ASSET_RELEASE_2026-11-15.md.
+
 > 2026-11-10 FORMAL RENDER ASSETS: owner approved the gravel/close-view revision
 > 2026-11-10.v2 for the shipped library: four templates, five 2400 x 1600 views
 > each. Manifest hashes match all 20 approved source images. Real exports for

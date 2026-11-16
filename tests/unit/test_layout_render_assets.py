@@ -113,8 +113,8 @@ def test_packaged_templates_match_resolved_geometry(key, n, pcs, power):
     arrangement = render_typical_ac_block(AcBlockShape(n, pcs, power))
     pair = assets.select_render_pair(ctx, arrangement, US_NFPA_OIL, choose=lambda _: "SW")
     assert pair is not None and pair.template_id == key
-    assert Image.open(io.BytesIO(pair.top_png)).size == (2400, 1600)
-    assert Image.open(io.BytesIO(pair.oblique_png)).size == (2400, 1600)
+    assert Image.open(io.BytesIO(pair.top_png)).size == (1536, 1024)
+    assert Image.open(io.BytesIO(pair.oblique_png)).size == (1536, 1024)
 
 
 def test_40ft_eight_dc_linear_layout_does_not_use_central_image(tmp_path):
