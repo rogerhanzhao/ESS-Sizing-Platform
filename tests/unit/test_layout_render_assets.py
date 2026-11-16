@@ -224,3 +224,30 @@ def test_hungary_head_two_dc_uses_packaged_t3_appendix(monkeypatch):
     assert "Tail AC Blocks are not shown" in text.split("Appendix A.")[1]
     assert "Rule-based typical arrangement" in text.split("Appendix A.")[0]
     assert ctx.ac_output == before
+
+
+@pytest.mark.parametrize("brand_key", ["calb", "guoxia"])
+def test_report_visual_wording_and_brand_boundary(brand_key):
+    import re
+    import zipfile
+    from calb_sizing_tool.reporting.brand_profiles import CALB_BRAND, GUOXIA_BRAND
+    brand = CALB_BRAND if brand_key == "calb" else GUOXIA_BRAND
+    ctx = build_report_context({}, {
+        "stage13_output": dict(project_name="Visual wording check", poi_power_req_mw=4,
+            poi_energy_req_mwh=10, project_life_years=20, cycles_per_year=365, poi_guarantee_year=0),
+        "stage2": {"container_count": 2},
+        "ac_output": dict(num_blocks=1, pcs_per_block=2, pcs_kw=2000, block_size_mw=4,
+            dc_blocks_per_ac=2, dc_blocks_total=2, pcs_count_total=2, total_ac_mw=4),
+    }, {})
+    data = report_v2.export_report_v2_1(ctx, brand=brand)
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        xml = "\n".join(z.read(n).decode("utf-8") for n in z.namelist() if n.endswith(".xml"))
+    assert not re.search(r"\bAI\b|AI-assisted|AI-generated|artificial intelligence", xml, re.I)
+    if brand_key == "calb":
+        assert "Representative installation visualizations;" in xml
+        assert "not site photographs or construction drawings" in xml
+        assert "Typical AC block render T3" in xml
+    else:
+        assert "CALB" not in xml
+        assert "Typical AC block render" not in xml
+        assert "Guoxia Technology" in xml

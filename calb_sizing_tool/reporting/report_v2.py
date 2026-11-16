@@ -2112,7 +2112,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         doc.add_page_break()
         doc.add_heading("Appendix A. Typical Installation Visual Reference (Concept Only)", level=2)
         doc.add_paragraph(
-            "AI-assisted representative illustrations; not site photographs or construction drawings. "
+            "Representative installation visualizations; not site photographs or construction drawings. "
             "The engineering arrangements and equipment schedules in the report remain authoritative."
         )
         if mixed_schedule:
