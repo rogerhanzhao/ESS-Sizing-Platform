@@ -249,5 +249,29 @@ def test_report_visual_wording_and_brand_boundary(brand_key):
         assert "Typical AC block render T3" in xml
     else:
         assert "CALB" not in xml
-        assert "Typical AC block render" not in xml
+        assert "Typical AC block render T3 2026-11-16.neutral.1" in xml
         assert "Guoxia Technology" in xml
+
+
+@pytest.mark.parametrize("key,n,pcs,power", [("T1",8,8,8),("T2",4,4,4),("T3",2,2,2),("T4",4,8,8)])
+def test_neutral_library_matches_all_views(key,n,pcs,power):
+    ctx = SimpleNamespace(scenario_id="container_only", ac_output={}, configuration_code=None)
+    a = render_typical_ac_block(AcBlockShape(n,pcs,power))
+    for view in assets.OBLIQUE_VIEWS:
+        pair = assets.select_render_pair(ctx,a,US_NFPA_OIL,neutral=True,choose=lambda _: view)
+        assert pair and pair.template_id == key
+        assert pair.oblique_png == (assets.NEUTRAL_ASSET_ROOT/key/(view+".png")).read_bytes()
+        assert pair.top_png == (assets.NEUTRAL_ASSET_ROOT/key/"TOP.png").read_bytes()
+
+
+def test_neutral_rejects_branded_manifest(tmp_path):
+    ctx,a = make_assets(tmp_path)
+    assert assets.select_render_pair(ctx,a,US_NFPA_OIL,root=tmp_path,neutral=True) is None
+
+
+def test_missing_neutral_library_never_uses_branded_assets(monkeypatch,tmp_path):
+    monkeypatch.setattr(assets,"NEUTRAL_ASSET_ROOT",tmp_path)
+    ctx = SimpleNamespace(scenario_id="container_only", ac_output={}, configuration_code=None)
+    a = render_typical_ac_block(AcBlockShape(2,2,2))
+    assert assets.select_render_pair(ctx,a,US_NFPA_OIL,neutral=True) is None
+    assert assets.select_render_pair(ctx,a,US_NFPA_OIL) is not None

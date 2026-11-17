@@ -1,5 +1,12 @@
 # Current Status 2026-07-12
 
+> 2026-11-16 GUOXIA NEUTRAL VISUALS: separate neutral_v1 library (20 views)
+> feeds Guoxia Appendix A; CALB v1 images remain byte-identical. No added logos.
+> Missing/corrupt/non-neutral libraries fail closed, never use branded fallback.
+> Original product bindings are checked before display aliases. Sizing and
+> whole-site diagrams unchanged. 78 affected checks passed; previous broader
+> unchanged-code evidence reused. Production checks recorded under ops-local.
+
 > 2026-11-16 REPORT APPENDIX: preserve Sections 8/9 engineering drawings and append
 > compatible representative TOP + one oblique view as Appendix A. Manual mixed
 > stations may show Head geometry only; Tail is explicitly excluded. Existing

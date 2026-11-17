@@ -1,0 +1,544 @@
+{
+  "version": "2026-11-16.neutral.1",
+  "renderer": "Source R2 views; visible logos removed with image editing; unbranded views reused unchanged.",
+  "dc_family": "Representative unbranded 20 ft exterior; no energy rating asserted by image",
+  "scope": "Representative unbound concept only; bound products require explicit compatibility codes",
+  "activation_note": "Owner authorized neutral variants for Guoxia exports on 2026-11-16.",
+  "templates": [
+    {
+      "id": "T1",
+      "released": true,
+      "dc_count": 8,
+      "ac_length_m": 12.192,
+      "variant": "central_40ft_bilateral_4plus4",
+      "profile": {
+        "key": "us_nfpa_oil",
+        "market_label": "International — IFC / NFPA 855 / NFPA 850 / UL 9540A",
+        "dc_pair_gap_m": 0.3,
+        "dc_to_mv_aisle_m": 3.0,
+        "pair_to_pair_gap_m": 0.9,
+        "dc_equipment_end_gap_m": 3.0,
+        "mvt_type": "oil",
+        "basis": [
+          [
+            "DC pair adjacency (back-to-back)",
+            "0.30 m",
+            "UL 9540A large-scale fire-test exemption (NFPA 855 default 3 ft)"
+          ],
+          [
+            "DC to PCS & MV station aisle",
+            "3.0 m (10 ft)",
+            "NFPA 850 — oil-insulated equipment (< 500 gal) to BESS"
+          ],
+          [
+            "Pair-to-pair gap (plain end)",
+            "0.9 m (3 ft)",
+            "NFPA 855 §9.5 unit separation — owner: 0.9 m preferred over 0.3 m"
+          ],
+          [
+            "DC Block equipment end (liquid-cooling + fan grilles)",
+            "3.0 m (10 ft)",
+            "Owner ruling 2026-08-03 — same clearance as the AC Block aisle"
+          ],
+          [
+            "Maintenance access",
+            "Door sides face outward aisles",
+            "Owner rule / mirrored pairing"
+          ]
+        ]
+      },
+      "source_placements": [
+        {
+          "kind": "dc",
+          "x_m": 0.0,
+          "y_m": 0.0,
+          "width_m": 2.438,
+          "height_m": 6.058,
+          "door_orientation": "west",
+          "equipment_end": "north"
+        },
+        {
+          "kind": "dc",
+          "x_m": 2.738,
+          "y_m": 0.0,
+          "width_m": 2.438,
+          "height_m": 6.058,
+          "door_orientation": "east",
+          "equipment_end": "north"
+        },
+        {
+          "kind": "dc",
+          "x_m": 0.0,
+          "y_m": 6.958,
+          "width_m": 2.438,
+          "height_m": 6.058,
+          "door_orientation": "west",
+          "equipment_end": "south"
+        },
+        {
+          "kind": "dc",
+          "x_m": 2.738,
+          "y_m": 6.958,
+          "width_m": 2.438,
+          "height_m": 6.058,
+          "door_orientation": "east",
+          "equipment_end": "south"
+        },
+        {
+          "kind": "dc",
+          "x_m": 13.614,
+          "y_m": 0.0,
+          "width_m": 2.438,
+          "height_m": 6.058,
+          "door_orientation": "west",
+          "equipment_end": "north"
+        },
+        {
+          "kind": "dc",
+          "x_m": 16.352,
+          "y_m": 0.0,
+          "width_m": 2.438,
+          "height_m": 6.058,
+          "door_orientation": "east",
+          "equipment_end": "north"
+        },
+        {
+          "kind": "dc",
+          "x_m": 13.614,
+          "y_m": 6.958,
+          "width_m": 2.438,
+          "height_m": 6.058,
+          "door_orientation": "west",
+          "equipment_end": "south"
+        },
+        {
+          "kind": "dc",
+          "x_m": 16.352,
+          "y_m": 6.958,
+          "width_m": 2.438,
+          "height_m": 6.058,
+          "door_orientation": "east",
+          "equipment_end": "south"
+        },
+        {
+          "kind": "ac",
+          "x_m": 8.176,
+          "y_m": 0.412,
+          "width_m": 2.438,
+          "height_m": 12.192,
+          "door_orientation": "east",
+          "equipment_end": null
+        }
+      ],
+      "bound_product_codes": [],
+      "allow_unbound_concept": true,
+      "views": {
+        "TOP": {
+          "file": "T1/TOP.png",
+          "sha256": "341907a326d37d002705f966edf28561443f909dd162782fa4e07483af13f81f",
+          "neutral_review": "no visible logo in source view; unchanged",
+          "source_sha256": "341907a326d37d002705f966edf28561443f909dd162782fa4e07483af13f81f"
+        },
+        "SW": {
+          "file": "T1/SW.png",
+          "sha256": "fde4d635ad46b124f5e3b2dd364f1e0db1797d0686e5d2c72f567a0ae627fda8",
+          "neutral_review": "logo removed and visually checked",
+          "source_sha256": "9b24c845732c183b7b8553b832ba14fa932f474f27095f9af72e8be8b653b1ca"
+        },
+        "SE": {
+          "file": "T1/SE.png",
+          "sha256": "4d2eff5bd2a27562f36514b1cbb9dce3e5be15f8a916c32072b9e9782751d865",
+          "neutral_review": "logo removed and visually checked",
+          "source_sha256": "5d4336f90f96dce357dd189f6f303e41b5e778b91ad36aa064901539ea5a8a72"
+        },
+        "NE": {
+          "file": "T1/NE.png",
+          "sha256": "28c30375c4e89fc0f90bb6ec582f9f25311880641e26514eb2e588b079f7ed7f",
+          "neutral_review": "logo removed and visually checked",
+          "source_sha256": "7a8068fc5e667d2b9a67518990e57d0a57beb654611e92fd20bba8d7aca9b392"
+        },
+        "NW": {
+          "file": "T1/NW.png",
+          "sha256": "3508da0f7da1be4eda19356fb68001e8dc6f4ed28e6b43e40e42f0e28086fabf",
+          "neutral_review": "logo removed and visually checked",
+          "source_sha256": "32e816f18b680b09792e749d0510f8b28cb05ef596ab18211490e99e8d3dbb1d"
+        }
+      },
+      "orientation_note": "",
+      "label": "40 ft AC Block + 8 DC Blocks"
+    },
+    {
+      "id": "T2",
+      "released": true,
+      "dc_count": 4,
+      "ac_length_m": 6.058,
+      "variant": "linear_mirrored_pairs",
+      "profile": {
+        "key": "us_nfpa_oil",
+        "market_label": "International — IFC / NFPA 855 / NFPA 850 / UL 9540A",
+        "dc_pair_gap_m": 0.3,
+        "dc_to_mv_aisle_m": 3.0,
+        "pair_to_pair_gap_m": 0.9,
+        "dc_equipment_end_gap_m": 3.0,
+        "mvt_type": "oil",
+        "basis": [
+          [
+            "DC pair adjacency (back-to-back)",
+            "0.30 m",
+            "UL 9540A large-scale fire-test exemption (NFPA 855 default 3 ft)"
+          ],
+          [
+            "DC to PCS & MV station aisle",
+            "3.0 m (10 ft)",
+            "NFPA 850 — oil-insulated equipment (< 500 gal) to BESS"
+          ],
+          [
+            "Pair-to-pair gap (plain end)",
+            "0.9 m (3 ft)",
+            "NFPA 855 §9.5 unit separation — owner: 0.9 m preferred over 0.3 m"
+          ],
+          [
+            "DC Block equipment end (liquid-cooling + fan grilles)",
+            "3.0 m (10 ft)",
+            "Owner ruling 2026-08-03 — same clearance as the AC Block aisle"
+          ],
+          [
+            "Maintenance access",
+            "Door sides face outward aisles",
+            "Owner rule / mirrored pairing"
+          ]
+        ]
+      },
+      "source_placements": [
+        {
+          "kind": "dc",
+          "x_m": 0.0,
+          "y_m": 0.0,
+          "width_m": 6.058,
+          "height_m": 2.438,
+          "door_orientation": "north",
+          "equipment_end": "west"
+        },
+        {
+          "kind": "dc",
+          "x_m": 0.0,
+          "y_m": 2.738,
+          "width_m": 6.058,
+          "height_m": 2.438,
+          "door_orientation": "south",
+          "equipment_end": "west"
+        },
+        {
+          "kind": "dc",
+          "x_m": 6.958,
+          "y_m": 0.0,
+          "width_m": 6.058,
+          "height_m": 2.438,
+          "door_orientation": "north",
+          "equipment_end": "east"
+        },
+        {
+          "kind": "dc",
+          "x_m": 6.958,
+          "y_m": 2.738,
+          "width_m": 6.058,
+          "height_m": 2.438,
+          "door_orientation": "south",
+          "equipment_end": "east"
+        },
+        {
+          "kind": "ac",
+          "x_m": 16.016,
+          "y_m": 1.369,
+          "width_m": 6.058,
+          "height_m": 2.438,
+          "door_orientation": null,
+          "equipment_end": null
+        }
+      ],
+      "bound_product_codes": [],
+      "allow_unbound_concept": true,
+      "views": {
+        "TOP": {
+          "file": "T2/TOP.png",
+          "sha256": "5d32250135584ac870b2cf87fb7aa7ddbdf6819af648abc588ddedb3b828d161",
+          "neutral_review": "no visible logo in source view; unchanged",
+          "source_sha256": "5d32250135584ac870b2cf87fb7aa7ddbdf6819af648abc588ddedb3b828d161"
+        },
+        "SW": {
+          "file": "T2/SW.png",
+          "sha256": "017738512038032616d80d6eb7d18ec968d6329ebb8fb0e53c63ccf7f2ff8cd6",
+          "neutral_review": "logo removed and visually checked",
+          "source_sha256": "d8192439182937a4cd67d1143d387a76c9a7ce73bce500a8d66544a4dbd2bcd4"
+        },
+        "SE": {
+          "file": "T2/SE.png",
+          "sha256": "0ec73a1c6839e9c359ca091ffc6c59d50f72d67eef669cdab4b8bdb5e072fd15",
+          "neutral_review": "no visible logo in source view; unchanged",
+          "source_sha256": "0ec73a1c6839e9c359ca091ffc6c59d50f72d67eef669cdab4b8bdb5e072fd15"
+        },
+        "NE": {
+          "file": "T2/NE.png",
+          "sha256": "c5161fe756dccbb4056e2030a3ffbc570b54859e806918463e35a0cadc42419c",
+          "neutral_review": "no visible logo in source view; unchanged",
+          "source_sha256": "c5161fe756dccbb4056e2030a3ffbc570b54859e806918463e35a0cadc42419c"
+        },
+        "NW": {
+          "file": "T2/NW.png",
+          "sha256": "787400493d2a5f0a8b1002e9ca340d92b52f28edf548d0c353e222221e3f7baf",
+          "neutral_review": "no visible logo in source view; unchanged",
+          "source_sha256": "787400493d2a5f0a8b1002e9ca340d92b52f28edf548d0c353e222221e3f7baf"
+        }
+      },
+      "orientation_note": "",
+      "label": "20 ft AC Block + 4 DC Blocks"
+    },
+    {
+      "id": "T3",
+      "released": true,
+      "dc_count": 2,
+      "ac_length_m": 6.058,
+      "variant": "linear_mirrored_pairs",
+      "profile": {
+        "key": "us_nfpa_oil",
+        "market_label": "International — IFC / NFPA 855 / NFPA 850 / UL 9540A",
+        "dc_pair_gap_m": 0.3,
+        "dc_to_mv_aisle_m": 3.0,
+        "pair_to_pair_gap_m": 0.9,
+        "dc_equipment_end_gap_m": 3.0,
+        "mvt_type": "oil",
+        "basis": [
+          [
+            "DC pair adjacency (back-to-back)",
+            "0.30 m",
+            "UL 9540A large-scale fire-test exemption (NFPA 855 default 3 ft)"
+          ],
+          [
+            "DC to PCS & MV station aisle",
+            "3.0 m (10 ft)",
+            "NFPA 850 — oil-insulated equipment (< 500 gal) to BESS"
+          ],
+          [
+            "Pair-to-pair gap (plain end)",
+            "0.9 m (3 ft)",
+            "NFPA 855 §9.5 unit separation — owner: 0.9 m preferred over 0.3 m"
+          ],
+          [
+            "DC Block equipment end (liquid-cooling + fan grilles)",
+            "3.0 m (10 ft)",
+            "Owner ruling 2026-08-03 — same clearance as the AC Block aisle"
+          ],
+          [
+            "Maintenance access",
+            "Door sides face outward aisles",
+            "Owner rule / mirrored pairing"
+          ]
+        ]
+      },
+      "source_placements": [
+        {
+          "kind": "dc",
+          "x_m": 0.0,
+          "y_m": 0.0,
+          "width_m": 6.058,
+          "height_m": 2.438,
+          "door_orientation": "north",
+          "equipment_end": "east"
+        },
+        {
+          "kind": "dc",
+          "x_m": 0.0,
+          "y_m": 2.738,
+          "width_m": 6.058,
+          "height_m": 2.438,
+          "door_orientation": "south",
+          "equipment_end": "east"
+        },
+        {
+          "kind": "ac",
+          "x_m": 9.058,
+          "y_m": 1.369,
+          "width_m": 6.058,
+          "height_m": 2.438,
+          "door_orientation": null,
+          "equipment_end": null
+        }
+      ],
+      "bound_product_codes": [],
+      "allow_unbound_concept": true,
+      "views": {
+        "TOP": {
+          "file": "T3/TOP.png",
+          "sha256": "f8abbc83c2eb1d62a5d5ae9a864db40cd835d0c198c8fda9d42dbbbc47918a28",
+          "neutral_review": "no visible logo in source view; unchanged",
+          "source_sha256": "f8abbc83c2eb1d62a5d5ae9a864db40cd835d0c198c8fda9d42dbbbc47918a28"
+        },
+        "SW": {
+          "file": "T3/SW.png",
+          "sha256": "1321cd5ac6e324e3c9efc25786122a6ab453f15905caeb97619da07a5595a830",
+          "neutral_review": "logo removed and visually checked",
+          "source_sha256": "b1e33b26d33c4942aff3af674f639f20494351047e222268d47b0ba0d5775743"
+        },
+        "SE": {
+          "file": "T3/SE.png",
+          "sha256": "3ba41d0bb7a97cfa73ebfa0c25eccb8b18175bd7f306c8410a07f0a8c020077f",
+          "neutral_review": "logo removed and visually checked",
+          "source_sha256": "7e5f5180ec5061d6e6f3bd092b01c1996f2579592b432d2f9e817a3c231442e3"
+        },
+        "NE": {
+          "file": "T3/NE.png",
+          "sha256": "dfecdfc8b68ef7cbeab0a708d4c6567eff6a545fefe6caddb56384fd745e1ab2",
+          "neutral_review": "no visible logo in source view; unchanged",
+          "source_sha256": "dfecdfc8b68ef7cbeab0a708d4c6567eff6a545fefe6caddb56384fd745e1ab2"
+        },
+        "NW": {
+          "file": "T3/NW.png",
+          "sha256": "7f681229846d814d7cd078c4650adb8275525a925e09674f01da5aa4c2292fbb",
+          "neutral_review": "logo removed and visually checked",
+          "source_sha256": "48513a9d862ea312245f3ecbf4eab2d2aa4a579117460b228e763c6a16daef1b"
+        }
+      },
+      "orientation_note": "DC cable equipment ends face the AC station; ordinary ventilated ends face outward.",
+      "label": "20 ft AC Block + 2 DC Blocks"
+    },
+    {
+      "id": "T4",
+      "released": true,
+      "dc_count": 4,
+      "ac_length_m": 12.192,
+      "variant": "linear_mirrored_pairs",
+      "profile": {
+        "key": "us_nfpa_oil",
+        "market_label": "International — IFC / NFPA 855 / NFPA 850 / UL 9540A",
+        "dc_pair_gap_m": 0.3,
+        "dc_to_mv_aisle_m": 3.0,
+        "pair_to_pair_gap_m": 0.9,
+        "dc_equipment_end_gap_m": 3.0,
+        "mvt_type": "oil",
+        "basis": [
+          [
+            "DC pair adjacency (back-to-back)",
+            "0.30 m",
+            "UL 9540A large-scale fire-test exemption (NFPA 855 default 3 ft)"
+          ],
+          [
+            "DC to PCS & MV station aisle",
+            "3.0 m (10 ft)",
+            "NFPA 850 — oil-insulated equipment (< 500 gal) to BESS"
+          ],
+          [
+            "Pair-to-pair gap (plain end)",
+            "0.9 m (3 ft)",
+            "NFPA 855 §9.5 unit separation — owner: 0.9 m preferred over 0.3 m"
+          ],
+          [
+            "DC Block equipment end (liquid-cooling + fan grilles)",
+            "3.0 m (10 ft)",
+            "Owner ruling 2026-08-03 — same clearance as the AC Block aisle"
+          ],
+          [
+            "Maintenance access",
+            "Door sides face outward aisles",
+            "Owner rule / mirrored pairing"
+          ]
+        ]
+      },
+      "source_placements": [
+        {
+          "kind": "dc",
+          "x_m": 0.0,
+          "y_m": 0.0,
+          "width_m": 6.058,
+          "height_m": 2.438,
+          "door_orientation": "north",
+          "equipment_end": "west"
+        },
+        {
+          "kind": "dc",
+          "x_m": 0.0,
+          "y_m": 2.738,
+          "width_m": 6.058,
+          "height_m": 2.438,
+          "door_orientation": "south",
+          "equipment_end": "west"
+        },
+        {
+          "kind": "dc",
+          "x_m": 6.958,
+          "y_m": 0.0,
+          "width_m": 6.058,
+          "height_m": 2.438,
+          "door_orientation": "north",
+          "equipment_end": "east"
+        },
+        {
+          "kind": "dc",
+          "x_m": 6.958,
+          "y_m": 2.738,
+          "width_m": 6.058,
+          "height_m": 2.438,
+          "door_orientation": "south",
+          "equipment_end": "east"
+        },
+        {
+          "kind": "ac",
+          "x_m": 16.016,
+          "y_m": 1.369,
+          "width_m": 12.192,
+          "height_m": 2.438,
+          "door_orientation": null,
+          "equipment_end": null
+        }
+      ],
+      "bound_product_codes": [],
+      "allow_unbound_concept": true,
+      "views": {
+        "TOP": {
+          "file": "T4/TOP.png",
+          "sha256": "952a275c03ebaff77c52c6315b49fe8d1098a32471cb650f9ac085b08bd85377",
+          "neutral_review": "no visible logo in source view; unchanged",
+          "source_sha256": "952a275c03ebaff77c52c6315b49fe8d1098a32471cb650f9ac085b08bd85377"
+        },
+        "SW": {
+          "file": "T4/SW.png",
+          "sha256": "e828ec7eef68ee2962804c751a091aadd0c7b929246ee19f9744d227bef54d74",
+          "neutral_review": "logo removed and visually checked",
+          "source_sha256": "07bf677fdf59b94bfe0ce6b7ce34594de13f58bad6d10998012ff240fe573a30"
+        },
+        "SE": {
+          "file": "T4/SE.png",
+          "sha256": "1cb3a11b114007de90a63bfa250ebce4e4abe72c3d95308f6391ab75e99c24ee",
+          "neutral_review": "no visible logo in source view; unchanged",
+          "source_sha256": "1cb3a11b114007de90a63bfa250ebce4e4abe72c3d95308f6391ab75e99c24ee"
+        },
+        "NE": {
+          "file": "T4/NE.png",
+          "sha256": "b19ede84028dad8e7cc74508682cb756595da9e0886fd24b36d4f8f9ce36bf49",
+          "neutral_review": "no visible logo in source view; unchanged",
+          "source_sha256": "b19ede84028dad8e7cc74508682cb756595da9e0886fd24b36d4f8f9ce36bf49"
+        },
+        "NW": {
+          "file": "T4/NW.png",
+          "sha256": "f2df25f1293a87aa15248bd5134f6c73ca87e6f2cb52b317a99dccef8fd118ce",
+          "neutral_review": "no visible logo in source view; unchanged",
+          "source_sha256": "f2df25f1293a87aa15248bd5134f6c73ca87e6f2cb52b317a99dccef8fd118ce"
+        }
+      },
+      "orientation_note": "",
+      "label": "40 ft AC Block + 4 DC Blocks"
+    }
+  ],
+  "visual_limitations": "Representative synthetic illustrations. Generative edits may differ from reference geometry in small panel, vent, mesh and hardware details. Placement signatures describe selector reference geometry, not pixel-exact as-built validation. Not dimensional or fire-code compliance evidence.",
+  "image_size_px": [
+    1536,
+    1024
+  ],
+  "reference_geometry_sha256": {
+    "templates.json": "cbae10518cda0f1f358c724d343e05f65fd2510f3dfd0c1b1edf804dd149a690",
+    "dc_geometry.json": "9f99bdc155de86262f8b6b44269932b610912ca9348837876aebece7fc3f92b0",
+    "ac_geometry.json": "019e849ed5354aa03b5c4d7d51bbe9c423927afb717b07730c623c6d98aa52ae",
+    "render_blender.py": "aa4f542695c6bb8965445f52752a8015e37b3a3e23fce47ac6c56c7f22691248"
+  },
+  "approved_image_set_sha256": "2cb17778cd3814b8a4b7d4c988aea9921b955a0426e85398d3a5076a507dff7c",
+  "branding": "neutral"
+}

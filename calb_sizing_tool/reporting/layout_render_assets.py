@@ -15,6 +15,7 @@ from pathlib import Path
 from calb_diagrams.typical_ac_block_arrangement import arrangement_equipment_placements
 
 ASSET_ROOT = Path(__file__).parent / "assets" / "layout_renders" / "v1"
+NEUTRAL_ASSET_ROOT = ASSET_ROOT.parent / "neutral_v1"
 OBLIQUE_VIEWS = ("SW", "SE", "NE", "NW")
 
 
@@ -36,7 +37,7 @@ def placement_signature(arrangement, profile):
             for p in arrangement_equipment_placements(arrangement, profile)]
 
 
-def select_render_pair(ctx, arrangement, profile, *, root=None, choose=None):
+def select_render_pair(ctx, arrangement, profile, *, root=None, choose=None, neutral=False):
     """Return TOP plus one randomly selected oblique, or None for legacy fallback.
 
 Unbound container studies use a representative CALB exterior by geometry.
@@ -60,8 +61,10 @@ continue to fall back to the engineering drawing.
         bound = output.get("governed_product_block_code") or output.get("ac_block_product_block_code")
         if getattr(ctx, "configuration_code", None) and not bound:
             return None
-        root = Path(root) if root else ASSET_ROOT
+        root = Path(root) if root else (NEUTRAL_ASSET_ROOT if neutral else ASSET_ROOT)
         manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+        if neutral and manifest.get("branding") != "neutral":
+            return None  # Never substitute branded images for a neutral export.
         signature = placement_signature(arrangement, profile)
         profile_signature = json.loads(json.dumps(asdict(profile)))
         for entry in manifest["templates"]:

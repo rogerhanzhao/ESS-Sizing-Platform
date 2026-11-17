@@ -1077,6 +1077,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
     if brand is None:
         brand = CALB_BRAND
     require_brand_assets(brand)
+    visual_source_ctx = ctx  # Match original product bindings before display aliases.
     ctx = _report_context_for_brand(ctx, brand)
     mixed_site = _validated_manual_mixed_site(ctx)
     mixed_schedule = _manual_mixed_schedule(ctx)
@@ -2106,8 +2107,10 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
                 for item, value, basis in SITE_PROFILE.basis
             )
             _add_table(doc, site_rows, ["Site parameter", "Value & code basis"])
-    render_pair = (select_render_pair(ctx, typical_layout, ARRANGEMENT_PROFILE)
-                   if not brand.neutralize_equipment_names else None)
+    render_pair = select_render_pair(
+        visual_source_ctx, typical_layout, ARRANGEMENT_PROFILE,
+        neutral=brand.neutralize_equipment_names,
+    )
     if render_pair is not None:
         doc.add_page_break()
         doc.add_heading("Appendix A. Typical Installation Visual Reference (Concept Only)", level=2)
@@ -2123,7 +2126,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             )
         appendix_figure_index = 1
         doc.add_paragraph(
-            f"Representative CALB installation concept: {dc_per_ac} DC containers and one "
+            f"Representative {'' if brand.neutralize_equipment_names else 'CALB '}installation concept: {dc_per_ac} DC containers and one "
             f"{typical_layout.station_length_m:.3f} m AC station. Equipment envelope "
             f"{typical_layout.envelope_w_m:.2f} × {typical_layout.envelope_d_m:.2f} m. "
             "Materials and equipment details are illustrative; clearances require project confirmation."
@@ -2134,7 +2137,7 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
             "schedule; internal equipment shown is illustrative."
         )
         if render_pair.orientation_note:
-            doc.add_paragraph(render_pair.orientation_note)
+            doc.add_paragraph(neutralize_brand_text(render_pair.orientation_note, brand))
         for view, image in (("TOP", render_pair.top_png),
                             (render_pair.oblique_view, render_pair.oblique_png)):
             _add_concept_figure(
