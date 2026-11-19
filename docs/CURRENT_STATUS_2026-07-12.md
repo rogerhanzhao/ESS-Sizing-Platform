@@ -1,5 +1,130 @@
 # Current Status 2026-07-12
 
+> 2026-11-19 GITHUB CODE SYNC: owner authorized one scoped commit/push of the
+> complete local curve-version/RTE/Admin upgrade, including required adapters,
+> persistence guards and migrations 0014/0015. 134 directly affected tests and
+> required compileall passed before commit; frozen sizing modules have no diff.
+> Earlier full-suite findings and their verified UI correction are retained as
+> evidence, not relabeled as a fresh all-green release run. GitHub CI runs on
+> push; final full release validation remains a production prerequisite. Local
+> data, original supplier files, generated media, output/tmp and unrelated visual
+> documents are excluded. No production deployment or curve activation is part
+> of this sync. Details: CURVE_UPGRADE_GITHUB_2026-11-19.md.
+
+> 2026-11-19 CURVE PREVIEW ISOLATION AND PROJECT LABELS: the annual RTE
+> family/rate/frequency view and supplier source filters use optional Streamlit
+> fragments, preserving the latest unsaved proposal and existing widget keys.
+> Only read-only previews rerun locally; save/publish/default concurrency stays
+> in the original parent flow. The project curve menu and DC result captions
+> reuse the Admin display-name helper; conditions use the same numeric ordering.
+> Stored names, IDs, hashes and curve values are unchanged. Ordinary reruns do
+> not explicitly clear auth; no native crash was found in the inspected log.
+> Actual WebSocket tests with normal login on a DB copy verify local fragment
+> updates and a stable authenticated session. Affected tests and data checks:
+> output/curve_upgrade_20261118/PREVIEW_ISOLATION_AND_NAMES_2026-11-19.md.
+> Local-only change; frozen sizing, auth policy, dependencies and production
+> are unchanged. No full-regression repeat or GitHub push.
+
+> 2026-11-19 ADMIN MAINTENANCE WORKFLOW: shared help explains mutable product
+> records versus immutable SOH/RTE versions. Preview filters are view-only;
+> RTE saves/publishes the complete version once, then default application is
+> separate. Apply/rollback/stop controls share a clear section; unsaved drafts
+> show disabled publication and the current default cannot be stopped in the UI.
+> Ordinary product pages explain their existing status semantics, including
+> the AC matching path's existing lack of Active/Published filtering. No changes
+> to that selection, data persistence or frozen sizing. 25 affected tests and
+> real-app checks on a DB copy passed (7 curve steps, 5 product pages). Eight
+> actual DB table fingerprints/default unchanged. No full-suite repetition,
+> GitHub update or production deploy. Design: ADMIN_DATA_MAINTENANCE_WORKFLOW_2026-11-19.md;
+> evidence: output/curve_upgrade_20261118/ADMIN_WORKFLOW_2026-11-19.md.
+
+> 2026-11-18 LOCAL CURVE VERSION REVIEW: source-verified production curve records
+> and the 160-curve supplier original are copied into the backed-up LOCAL DB only.
+> New immutable curve_release packages pair SOH families with frozen existing RTE;
+> curve_default_binding selects a package for new runs. Candidate originals stay
+> candidate-only. Local default is SOC20 mean; published-family choices live in the
+> original DC form and Admin Degradation page. Existing Stage1/2/3, guarantee loop,
+> AC sizing and site diagrams are unchanged. Input adapters reject unsupported
+> years and unverified reference workbooks; existing Admin cell guards remain.
+> Each new run saves the actual input package and selection; restore and report
+> use that basis, including fractional source frequencies. This is NOT a production
+> activation. Tests, local-page evidence and backup: output/curve_upgrade_20261118/.
+> Local RTE review extension: migration 20261118_0015 and RteReviewService store
+> editable admin working copies; publication creates a new immutable package,
+> never overwrites the original and never automatically switches the default.
+> The old workbook's 1.6 delta rule reproduces all stored 0.5C values; the newly
+> supplied supplier workbook has blank RTE value cells. The owner subsequently
+> clarified the screenshot as a lookup framework and authorized the local
+> activation described below. Source audit: RTE_REVIEW_AND_LOCAL_UPGRADE_2026-11-18.md.
+> Owner clarified the screenshot as a five-percent SOH lookup framework.
+> Local rte_matrix_service prepares that matrix and supports explicitly labeled
+> test inputs / engineering inputs, interpolation and old-model calibration.
+> Calculation provenance is visible in the Admin editor. On the owner's continue
+> instruction, SOC20-screenshot-RTE-review-20261118 was published and activated
+> as the LOCAL default. Prior published data remain available for rollback.
+> Publishing the next SOH source explicitly selects a published RTE basis rather
+> than reverting to legacy master data. Native number inputs and existing HTML
+> tables preserve the platform's no-Arrow UI boundary. Production not deployed.
+> Details: RTE_SCREENSHOT_MATRIX_REVIEW_2026-11-18.md.
+
+> 2026-11-18 SECOND LOCAL REVIEW: corrected UI-only review/restore boundaries:
+> retain the reviewed default revision and draft signature across submit reruns;
+> require explicit reload after concurrent changes; include test provenance when
+> checking unsaved edits; clear prior curve choices when restoring legacy runs;
+> block silent legacy fallback for an unavailable saved version. The existing
+> curve-support gate now reads the same prepared input package as sizing.
+> 100 affected checks passed; prior unchanged full-suite evidence reused.
+> Local default/data unchanged; local service restarted and healthy on 8511.
+> No frozen sizing-module changes, production deployment or GitHub push.
+> Evidence: output/curve_upgrade_20261118/REVIEW_2_RESULT.md.
+
+> 2026-11-18 THIRD LOCAL REVIEW: RTE working-draft review hashes now include
+> the editable version label, closing the name-only concurrent-edit gap without
+> changing numeric RTE versions or existing published packages. Older drafts
+> remain readable/publishable. Admin navigation restores its current default
+> choice after Streamlit widget cleanup, while open-form concurrency remains
+> blocked. The preview explains raw-SOH matching versus rounded display values.
+> 37 affected tests passed; 468 in-memory threshold comparisons matched the
+> original Stage3 output and fallback flags. No full-suite repeat, DB migration,
+> frozen sizing changes, production deployment or GitHub push. Local default
+> package is unchanged; service refreshed and healthy. Evidence: output/
+> curve_upgrade_20261118/REVIEW_3_RESULT.md.
+
+> 2026-11-18 LOCAL CURVE ADMIN UI: owner authorized wording and presentation
+> changes after reviewing the logged-in pages against database state. A read-only
+> Current sizing default is separate from proposed version/condition selectors;
+> numeric condition sorting and explicit widget indexes align initial display.
+> Candidate switches preserve the reviewed revision; explicit Apply remains the
+> only default write. Three historical technical names have display-only aliases,
+> with originals and old review notes retained in details. Source usage derives
+> from published references; RTE inputs, calculated reference values and read-only
+> previews are separated. Old catalogue/legacy-table captions now identify their
+> actual scope. UI-only changes; source/release/default/draft table fingerprints
+> are unchanged. Affected tests and real-app navigation on a local DB copy passed;
+> prior unchanged regression evidence reused. Local service refreshed on 8511;
+> final logged-in browser verification is recorded in output/curve_upgrade_20261118/.
+> No sizing engine, migration, production deployment or GitHub update.
+
+> 2026-11-19 FINAL LOCAL BROWSER CHECK: the owner logged in and the updated
+> curve Admin UI was verified in the existing Chrome tab. Saved/new RTE draft
+> selectors now match their displayed body and fields; the actual SOC20 Mean
+> default remains separate from proposals. Explicit display values also cover
+> related curve/source controls. The four curve-table fingerprints and default
+> revision are unchanged. Final screenshots and results are under output/
+> curve_upgrade_20261118/ADMIN_UI_UPDATE_2026-11-18.md. Local only; production
+> and GitHub remain unchanged.
+
+> 2026-11-19 ANNUAL RTE PREVIEW: the owner requested separate cycling-frequency
+> views and two-decimal SOH/RTE display. The Admin preview now selects one source
+> rate and cycles/day before showing a year-ordered table; it never concatenates
+> different duties. Missing intermediate years show N/A and no years beyond the
+> last supplied values are generated. Matrix, explanation and input percentages
+> display two decimals while source/input floats remain unchanged.22 affected
+> tests and the seven-step real-app check on a DB copy passed; no full-suite run.
+> All four curve-table fingerprints remain unchanged. Local service healthy on
+> 8511; no frozen sizing, migration, GitHub or production changes. Evidence:
+> output/curve_upgrade_20261118/RTE_ANNUAL_PREVIEW_2026-11-19.md.
+
 > 2026-11-16 GUOXIA NEUTRAL VISUALS: separate neutral_v1 library (20 views)
 > feeds Guoxia Appendix A; CALB v1 images remain byte-identical. No added logos.
 > Missing/corrupt/non-neutral libraries fail closed, never use branded fallback.
@@ -1322,6 +1447,25 @@ and extended cases, source-point detail and conditional duty timing checks.
 Long IDs stay in the database, not the presentation workbook. This responsibility belongs to admin data
 management / Platform, never Stage 1/2/3. Candidate-only DB constraint and no
 activation API keep the existing SOH/RTE and sizing selection untouched.
+
+2026-11-18 local extension of data management / Platform: the separate
+`services/curve_release_service.py` and `infra/db/models/curve_release.py`, migration
+`20261118_0014`, own immutable runtime SOH/RTE packages, release/retirement audit
+and a revision-checked default binding. `ui/curve_release_controls.py` is called
+from the original Admin and DC pages. Candidate service remains candidate-only.
+The resolver adapts the selected family into the existing master-data bundle;
+it does not own sizing arithmetic or change the frozen selection algorithm.
+`schemas/case.py` carries an optional version choice; existing run persistence,
+restore and presentation adapters preserve the package in snapshots and expose
+its exact source duty to reports. Reduced-string comparison reuses and verifies
+the same package. An explicitly fingerprinted legacy 314Ah reference workbook
+or the existing verified Admin product/cell route establishes product scope.
+`services/rte_review_service.py`, `ui/rte_review_controls.py` and
+`infra/db/models/curve_release_draft.py` add administrator RTE draft editing,
+legacy-rule generation, annual read-only matching previews and new-version
+publication (migration 0015). This is data preparation and review, not a new
+Stage3 efficiency formula. Source labels, raw overrides and inherited low-SOH
+fallback use remain visible; original supplier candidate data are never edited.
 
 2026-10-13 browser UX follow-up: `UI_REVIEW_2026-10-13.md` records native browser
 observations and scoped fixes in admin / Workbench / app sidebar. Saved source

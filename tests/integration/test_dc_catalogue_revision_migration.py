@@ -13,7 +13,8 @@ def contents(path):
                  if r[0] != 'alembic_version' and not r[0].startswith('sqlite_')
                  and not r[0].startswith('dc_catalogue_revision')
                  and not r[0].startswith('dc_configuration_variant')
-                 and not r[0].startswith('ac_equipment_capability')]
+                 and not r[0].startswith('ac_equipment_capability')
+                 and not r[0].startswith('curve_')]
         return {name: sorted(json.dumps(r, default=str) for r in db.execute('select * from "'+name+'"'))
                 for name in names}
 

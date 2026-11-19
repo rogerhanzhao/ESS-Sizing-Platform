@@ -32,3 +32,5 @@ class SizingCaseInput(CanonicalBaseModel):
     enable_cabinet_only: bool = False
     hybrid_disable_threshold_mwh: float = 20.0
     poi_is_dc_side: bool = False
+    # Versioned data choice only; the frozen numerical stages ignore this field.
+    curve_selection: dict[str, str] | None = None

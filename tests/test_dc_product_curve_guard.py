@@ -155,6 +155,28 @@ def test_excel_path_still_runs_with_unrelated_admin_products_present(signed_in_w
     assert _dc_run_id(app)
 
 
+def test_support_gate_uses_the_same_prepared_profiles_as_sizing(signed_in_workspace, monkeypatch):
+    """A new input package may reuse different profile IDs from the old master."""
+    from calb_sizing_tool.services.curve_release_service import CurveReleaseService
+
+    def prepare(self, bundle, selection, **kwargs):
+        profiles = bundle.df_soh_profile.copy()
+        points = bundle.df_soh_curve.copy()
+        profiles['Profile_Id'] += 1000
+        points['Profile_Id'] += 1000
+        return bundle.model_copy(update={
+            'df_soh_profile': profiles, 'df_soh_curve': points,
+        }), None
+
+    monkeypatch.setattr(CurveReleaseService, 'prepare', prepare)
+    app = _run_sizing(signed_in_workspace())
+    assert not app.exception
+    assert not app.error
+    assert _state(app, 'dc_result_summary')
+    assert _dc_run_id(app)
+    assert _state(app, 'stage13_output')['stage3_meta']['soh_profile_id'] >= 1000
+
+
 def test_legacy_314a_admin_run_remains_available_without_new_curve_registration(signed_in_workspace, monkeypatch):
     _use_catalogue(monkeypatch, new_cell_active=False)
     app = signed_in_workspace()

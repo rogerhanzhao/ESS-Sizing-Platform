@@ -104,8 +104,57 @@ def test_page_save_then_reopen_in_new_session_without_upload(library, monkeypatc
     assert fresh.selectbox(key='supplier_curve_review_source').value == version['import_id']
     assert fresh.selectbox(key='supplier_curve_soc').options == ['50.00%']
     assert not fresh.exception
-    assert any('Saved candidate' in x.value for x in fresh.success)
+    assert any('Source saved' in x.value for x in fresh.success)
     labels = [x.label for x in fresh.get('download_button')]
     assert 'Download original supplier workbook' in labels
     assert 'Download all curves — formatted Excel' in labels
     assert any('93.00%' in x.value and 'N/A' in x.value for x in fresh.markdown)
+
+
+def test_nonfirst_imported_source_is_the_visible_selector_default(library,monkeypatch):
+    from io import BytesIO
+    from openpyxl import load_workbook
+    import streamlit as st
+
+    service,user=library
+    older,_=service.save_candidate(workbook_bytes(),'older.xlsx','Older source',user.user_id)
+    book=load_workbook(BytesIO(workbook_bytes()))
+    book.properties.title='Second source workbook'
+    out=BytesIO();book.save(out);book.close()
+    service.save_candidate(out.getvalue(),'newer.xlsx','Newer source',user.user_id)
+    monkeypatch.setenv('CALB_DATABASE_URL',service.db_url)
+    monkeypatch.setattr(st,'file_uploader',lambda *a,**k:None)
+    app=AppTest.from_function(_app,default_timeout=30)
+    app.session_state['auth_context']=dict(user_id=user.user_id,username=user.username,display_name=None,roles=['admin'])
+    app.session_state['supplier_curve_review_source']=older['import_id']
+    app.run()
+    assert not app.exception
+    source=app.selectbox(key='supplier_curve_review_source')
+    assert source.value==older['import_id']
+    assert source.proto.default==1
+    assert source.options[1].startswith('Older source')
+    assert any('Source saved: Older source' in v.value for v in app.success)
+
+
+def test_uploaded_source_name_uses_existing_edit_as_visible_default(library,monkeypatch):
+    import streamlit as st
+    from calb_sizing_tool.services.supplier_degradation_service import parse_supplier_degradation
+
+    service,user=library
+    data=workbook_bytes()
+    name_key=f'supplier_curve_version_{parse_supplier_degradation(data).source_sha256}'
+    class Upload:
+        name='supplier.xlsx'
+        size=len(data)
+        def getvalue(self):return data
+    monkeypatch.setenv('CALB_DATABASE_URL',service.db_url)
+    monkeypatch.setattr(st,'file_uploader',lambda *a,**k:Upload())
+    app=AppTest.from_function(_app,default_timeout=30)
+    app.session_state['auth_context']=dict(user_id=user.user_id,username=user.username,display_name=None,roles=['admin'])
+    app.session_state[name_key]='Reviewed source name'
+    app.run()
+    assert not app.exception
+    name=app.text_input(key=name_key)
+    assert name.value=='Reviewed source name'
+    assert name.proto.default=='Reviewed source name'
+    assert service.list_versions(user.user_id)==[]

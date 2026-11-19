@@ -147,10 +147,11 @@ def build_stage13_output(
     poi_nominal_voltage_kv: float,
     poi_frequency_hz: float | None = None,
 ) -> dict[str, Any]:
+    from calb_sizing_tool.services.curve_release_service import curve_display_meta
     return pack_stage13_output(
         snapshot.stage1.to_legacy_dict(),
         snapshot.stage2.to_legacy_dict(),
-        snapshot.stage3.meta.to_legacy_dict(),
+        curve_display_meta(snapshot),
         dc_block_total_qty=dc_block_total_qty,
         selected_scenario=selected_scenario,
         poi_nominal_voltage_kv=poi_nominal_voltage_kv,

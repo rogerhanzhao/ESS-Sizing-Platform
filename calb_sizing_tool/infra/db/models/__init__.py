@@ -30,6 +30,8 @@ from calb_sizing_tool.infra.db.models.user_account import UserAccount
 from calb_sizing_tool.infra.db.models.user_role_binding import UserRoleBinding
 from calb_sizing_tool.infra.db.models.layout_review import LayoutReview
 from calb_sizing_tool.infra.db.models.supplier_degradation_import import SupplierDegradationImport
+from calb_sizing_tool.infra.db.models.curve_release import CurveRelease, CurveDefaultBinding
+from calb_sizing_tool.infra.db.models.curve_release_draft import CurveReleaseDraft
 from calb_sizing_tool.infra.db.models.dc_catalogue_revision import DcCatalogueRevision, DcCatalogueRevisionEvent
 from calb_sizing_tool.infra.db.models.dc_configuration_variant import DcConfigurationVariant, DcConfigurationVariantEvent
 from calb_sizing_tool.infra.db.models.ac_equipment_capability import (
@@ -44,6 +46,9 @@ __all__ = [
     "DcConfigurationVariant",
     "DcConfigurationVariantEvent",
     "SupplierDegradationImport",
+    "CurveRelease",
+    "CurveDefaultBinding",
+    "CurveReleaseDraft",
     "ArtifactRegistry",
     "AuditLog",
     "BatteryCellType",

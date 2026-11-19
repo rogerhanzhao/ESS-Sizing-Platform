@@ -56,6 +56,7 @@ from calb_sizing_tool.services.stage3_service import (
 )
 from calb_sizing_tool.ui.stage4_interface import pack_stage13_output
 from calb_sizing_tool.ui._ui import render_static_table
+from calb_sizing_tool.ui.curve_labels import curve_version_label
 # Model import for AC/SLD handoff
 from calb_sizing_tool.models import DCBlockResult
 from calb_sizing_tool.state.project_state import bump_run_id_dc, init_project_state
@@ -368,10 +369,11 @@ def snapshot_to_legacy_tuple(snapshot: DcPipelineRunSnapshot):
     two must be the same run. `show()` therefore keeps the snapshot and derives
     the tuple here rather than sizing a second time for the DB.
     """
+    from calb_sizing_tool.services.curve_release_service import curve_display_meta
     return (
         snapshot.stage2.to_legacy_dict(),
         snapshot.stage3.dataframe(),
-        snapshot.stage3.meta.to_legacy_dict(),
+        curve_display_meta(snapshot),
         snapshot.iteration_count,
         snapshot.poi_usable_energy_mwh_at_guarantee_year,
         snapshot.converged,
@@ -661,6 +663,14 @@ def build_report_bytes(stage1: dict, results_dict: dict, report_order: list):
             f"RTE profile ID = {s3_meta.get('rte_profile_id')} (C-rate <= {s3_meta.get('chosen_rte_c_rate')})."
         )
         doc.add_paragraph(f"Guarantee Year (from COD) = {guarantee_year} | POI Energy Target = {poi_target:.2f} MWh")
+        curve_basis = s3_meta.get('curve_basis_v1')
+        if curve_basis:
+            doc.add_paragraph(
+                f"Degradation basis: {curve_version_label(curve_basis)}; "
+                f"source SOC label {curve_basis['source_soc_pct']:g}%; "
+                f"{curve_basis['source_series'].replace('_', ' ')}; "
+                f"RTE basis {curve_basis['rte_version']}. Source SOC is not project DOD."
+            )
 
         if MATPLOTLIB_AVAILABLE:
             try:
@@ -1439,6 +1449,8 @@ def show():
                 dc_inputs["eff_hvt_others"] = eff_hvt
 
             st.markdown('<div class="calb-muted-line"></div>', unsafe_allow_html=True)
+            from calb_sizing_tool.ui.curve_release_controls import render_curve_choice
+            curve_selection = render_curve_choice(dc_inputs)
             run_btn = st.form_submit_button("Run Sizing", type="primary", use_container_width=True)
         
     # --- Logic Execution ---
@@ -1461,6 +1473,7 @@ def show():
 
         case_frequency_hz = 50.0 if poi_frequency_hz is None else float(poi_frequency_hz)
         case_input_base = {
+            "curve_selection": curve_selection,
             "project_name": project_name,
             "poi_power_req_mw": poi_power,
             "poi_energy_req_mwh": poi_energy,
@@ -1556,6 +1569,17 @@ def show():
                 raw_sheets={},
             )
             stage1_model = Stage1Result.model_validate(s1)
+            from calb_sizing_tool.services.curve_release_service import CurveReleaseService, attach_curve_basis
+            if curve_selection and curve_selection.get('unavailable'):
+                st.error('Choose a published degradation basis before running sizing.')
+                st.stop()
+            try:
+                master_bundle, curve_basis = CurveReleaseService().prepare(
+                    master_bundle, curve_selection, life_years=project_life, cycles_per_year=cycles_year,
+                    verify_reference=not _using_admin_products)
+            except ValueError as exc:
+                st.error(f'Degradation basis rejected: {exc}')
+                st.stop()
             snapshots = {}
             results = {}
             for mode in modes_to_run:
@@ -1563,6 +1587,7 @@ def show():
                     snapshots[mode] = service_size_with_guarantee(
                         stage1_model, mode, master_bundle, k_max=K_MAX_FIXED
                     )
+                    snapshots[mode] = attach_curve_basis(snapshots[mode], curve_basis)
                 except Exception as e:
                     results[mode] = ("ERROR", str(e))
                     continue
@@ -1593,7 +1618,7 @@ def show():
         for k in list(ok_results.keys()):
             s3_meta = ok_results[k][2] if len(ok_results[k]) > 2 else {}
             support_error = validate_soh_curve_support(
-                df_soh_curve,
+                master_bundle.df_soh_curve,
                 (s3_meta or {}).get("soh_profile_id"),
                 chosen_c_rate=(s3_meta or {}).get("chosen_soh_c_rate"),
                 effective_c_rate=(s3_meta or {}).get("effective_c_rate"),

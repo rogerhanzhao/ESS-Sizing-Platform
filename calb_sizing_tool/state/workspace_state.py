@@ -33,6 +33,7 @@ _DC_INPUT_FIELDS = (
     "enable_cabinet_only",
     "hybrid_disable_threshold_mwh",
     "poi_is_dc_side",
+    "curve_selection",
     "eff_dc_cables",
     "eff_pcs",
     "eff_mvt",
@@ -304,6 +305,9 @@ def _build_restored_dc_inputs(case_input: dict[str, Any]) -> dict[str, Any]:
         for field in _DC_INPUT_FIELDS
         if field in case_input and case_input[field] is not None
     }
+    # Legacy runs have no version selection. Clear any preceding run's choice
+    # rather than merging it into this restored case.
+    restored['curve_selection'] = case_input.get('curve_selection')
 
     if "poi_frequency_option" in case_input and case_input["poi_frequency_option"] is not None:
         restored["poi_frequency_option"] = case_input["poi_frequency_option"]
@@ -347,6 +351,7 @@ def restore_run_bundle_to_session(
     snapshot = bundle.snapshot
     case_input = _case_input_from_bundle(bundle)
     restored_dc_inputs = _build_restored_dc_inputs(case_input)
+    st.session_state.pop("dc_inputs.curve_selection_token", None)
     poi_nominal_voltage_kv = case_input.get("poi_nominal_voltage_kv") or 33.0
     poi_frequency_hz = case_input.get("poi_frequency_hz")
 

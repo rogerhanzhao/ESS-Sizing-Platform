@@ -1388,6 +1388,23 @@ def export_report_v2_1(ctx: ReportContext, brand: BrandProfile | None = None) ->
         chosen_soh_c_rate = s3_meta.get("chosen_soh_c_rate")
         chosen_cycles_per_year = s3_meta.get("chosen_soh_cycles_per_year")
 
+        curve_basis = s3_meta.get('curve_basis_v1')
+        if curve_basis:
+            doc.add_paragraph(
+                f"Degradation data basis: {curve_basis['version_label']} · "
+                f"source SOC label {curve_basis['source_soc_pct']:g}% · "
+                f"{curve_basis['source_series'].replace('_', ' ')}. "
+                f"Source duty: {curve_basis['source_cycles_per_day']:g} cycles/day "
+                f"({curve_basis['source_cycles_per_year']:g} cycles/year); "
+                f"requested duty: {curve_basis['requested_cycles_per_year']:g} cycles/year. "
+                f"RTE basis: {curve_basis['rte_version']}. "
+                "SOC is the source label and is not substituted for project DOD."
+            )
+            if (curve_basis.get('rte_rule') or {}).get('manual_override'):
+                doc.add_paragraph('RTE data include administrator-reviewed manual overrides saved with this run.')
+            if curve_basis.get('rte_low_soh_fallback_used'):
+                doc.add_paragraph('Below the labeled source SOH bands, the retained legacy RTE fallback is used; this does not establish additional supplier test data.')
+
         model_rows = [
             ("POI Power (MW)", _fmt_float(poi_power, 2)),
             ("DC-equivalent Power (MW)", _fmt_float(dc_power, 2)),

@@ -9,6 +9,7 @@ from calb_sizing_tool.services.supplier_degradation_library_service import Suppl
 from calb_sizing_tool.services.supplier_degradation_export_service import export_supplier_review_workbook
 from calb_sizing_tool.state.auth_state import get_auth_context
 from calb_sizing_tool.ui._ui import render_static_table
+from calb_sizing_tool.ui.curve_labels import curve_version_label, family_label
 from calb_sizing_tool.utils.files import upload_exceeds_limit
 
 
@@ -23,8 +24,55 @@ def _export(dataset, curves=None, metadata=None):
 
 
 def render_supplier_degradation_preview(db_url=None):
-    st.caption("Open a saved version, or choose New upload / preview to add a workbook. Reference curves are not active in sizing.")
     auth = get_auth_context()
+    context = None
+    if auth and auth.is_admin:
+        from calb_sizing_tool.ui.curve_release_controls import (
+            load_curve_admin_context, render_curve_current_default,
+        )
+        try:
+            context = load_curve_admin_context(db_url)
+        except (ValueError, SQLAlchemyError) as exc:
+            st.error(f"Published curve information is unavailable: {exc}")
+        else:
+            render_curve_current_default(db_url, context=context)
+        st.markdown("**Curve workflow: prepare and review → publish complete version → apply as sizing default if required.**")
+        st.caption("For an RTE revision, review and save the complete draft under Revise RTE, then publish it there. For a new SOH source, import the workbook, then publish it under "
+                   "Curve versions — apply, roll back and stop. That section also manages default changes and stopping new use.")
+    with st.expander("Source workbooks — preview and import", expanded=False):
+        st.caption("Source preview · View only. Filters and exports do not change the sizing default. "
+                   "Open an imported workbook, or choose New upload / preview to add a source.")
+        _render_source_preview(auth, db_url, context=context)
+    if auth and auth.is_admin:
+        from calb_sizing_tool.ui.rte_review_controls import render_rte_review
+        render_rte_review(auth.user_id, db_url)
+        if context is not None:
+            from calb_sizing_tool.ui.curve_release_controls import render_curve_admin
+            render_curve_admin(auth.user_id, db_url, context=context)
+
+
+def _source_runtime_use(metadata, context):
+    """Describe runtime references, independently of the archived source status."""
+    if context is None:
+        return "Published version references unavailable; this source's usage has not been determined."
+    published = [r for r in context['releases'] if r['status'] == 'published']
+    referenced = [r for r in published
+                  if r['payload'].get('source_sha256') == metadata['source_sha256']]
+    use_count = f"Used by {len(referenced)} published {'version' if len(referenced) == 1 else 'versions'}."
+    binding = context['binding']
+    if binding:
+        current = next((r for r in published if r['release_id'] == binding['release_id']), None)
+        if current is None:
+            return "Current default needs an integrity review; source usage cannot be fully determined."
+        if current in referenced:
+            return (f"Default uses this source: {curve_version_label(current)} · "
+                    f"{family_label(binding['family_key'])}. {use_count}")
+    if referenced:
+        return f"{use_count} Not the default source; available for project selection."
+    return "No published curve version currently uses this workbook."
+
+
+def _render_source_preview(auth, db_url=None, *, context=None):
     service = SupplierDegradationLibraryService(db_url)
     versions = []
     library_ready = False
@@ -35,14 +83,15 @@ def render_supplier_degradation_preview(db_url=None):
         except PermissionError as exc:
             st.error(str(exc))
         except SQLAlchemyError:
-            st.warning("Candidate storage is unavailable. Complete the database migration before saving; upload preview remains available.")
+            st.warning("Source storage is unavailable. Complete the database migration before saving; upload preview remains available.")
     if versions:
-        with st.expander(f"Saved version details ({len(versions)})", expanded=False):
-            render_static_table([{"Version": v["version_label"], "File": v["filename"], "Status": "Saved · Not active",
+        with st.expander(f"Imported workbooks ({len(versions)})", expanded=False):
+            render_static_table([{"Source name": v["version_label"], "File": v["filename"], "Source status": "Source saved",
+                "Published references": _source_runtime_use(v, context),
                 "Curves": v["curve_count"], "Source N/A points": v["missing_points"], "Imported at (UTC)": v["created_at"][:16].replace("T", " ")} for v in versions])
             st.caption("Source N/A points are blank in the supplier workbook; they are not failed imports.")
     else:
-        st.caption("No saved candidate versions.")
+        st.caption("No imported workbooks.")
     options = {v["import_id"]: v for v in versions}
     choices = [*options, "upload"]
     pending = st.session_state.pop("supplier_curve_pending_source", None)
@@ -50,7 +99,8 @@ def render_supplier_degradation_preview(db_url=None):
         st.session_state["supplier_curve_review_source"] = pending
     elif st.session_state.get("supplier_curve_review_source", choices[0]) not in choices:
         st.session_state["supplier_curve_review_source"] = choices[0]
-    source = st.selectbox("Review source", choices,
+    source = st.selectbox("Imported workbook / new upload", choices,
+        index=choices.index(st.session_state.get("supplier_curve_review_source", choices[0])),
         format_func=lambda key: "New upload / preview" if key == "upload" else f'{options[key]["version_label"]} · {options[key]["created_at"][:16].replace("T", " ")}',
         key="supplier_curve_review_source")
     metadata = None
@@ -60,7 +110,8 @@ def render_supplier_degradation_preview(db_url=None):
         except (ValueError, PermissionError) as exc:
             st.error(str(exc))
             return
-        st.success(f'Saved candidate: {metadata["version_label"]} · {metadata["curve_count"]} curves · Not active in sizing.')
+        st.success(f'Source saved: {metadata["version_label"]} · {metadata["curve_count"]} curves. Original workbook unchanged.')
+        st.info(_source_runtime_use(metadata, context))
         _render_dataset(dataset, metadata)
         with st.expander("Original source file — unchanged supplier format", expanded=False):
             st.caption("For source verification only. Use the formatted Excel exports below for reading and analysis.")
@@ -88,51 +139,68 @@ def render_supplier_degradation_preview(db_url=None):
         st.error(str(exc))
         return
     if library_ready:
-        label = st.text_input("Candidate version name", value=getattr(upload, "name", "Supplier workbook").removesuffix(".xlsx"), key=f"supplier_curve_version_{dataset.source_sha256}")
+        name_key = f"supplier_curve_version_{dataset.source_sha256}"
+        default_name = getattr(upload, "name", "Supplier workbook").removesuffix(".xlsx")
+        label = st.text_input("Source name", value=st.session_state.get(name_key, default_name), key=name_key)
         existing = next((v for v in versions if v["source_sha256"] == dataset.source_sha256), None)
         if existing:
-            st.success(f'Already saved as candidate: {existing["version_label"]}. No duplicate was created.')
+            st.success(f'Source already saved: {existing["version_label"]}. No duplicate was created.')
             metadata = existing
-            if st.button("Open saved version", key="supplier_curve_open_existing"):
+            st.info(_source_runtime_use(metadata, context))
+            if st.button("Open imported workbook", key="supplier_curve_open_existing"):
                 st.session_state["supplier_curve_pending_source"] = existing["import_id"]
                 st.rerun()
-        elif st.button("Save all source curves as candidate", key="supplier_curve_save", type="primary"):
+        elif st.button("Save source workbook and all curves", key="supplier_curve_save", type="primary"):
             try:
                 metadata, created = service.save_candidate(upload.getvalue(), getattr(upload, "name", "supplier.xlsx"), label, auth.user_id)
             except (ValueError, PermissionError) as exc:
                 st.error(str(exc))
             else:
-                st.success("Candidate saved to database; available after refresh. No sizing defaults changed." if created else "This exact workbook is already saved.")
+                st.success("Source saved. No published versions or sizing defaults changed." if created else "This exact workbook is already saved.")
                 st.session_state["supplier_curve_pending_source"] = metadata["import_id"]
                 st.rerun()
     _render_dataset(dataset, metadata)
 
 
+@getattr(st, 'fragment', lambda func: func)
 def _render_dataset(dataset, metadata=None):
     if metadata is None:
         st.info("Preview only. Save this workbook to reopen it after refreshing. Reference curves are not a system warranty.")
+    st.caption("View only: source-series, SOC, rate and frequency filters change this preview and its exports, not the sizing default.")
     series_col, soc_col, rate_col = st.columns([1.2, 1, 1])
-    basis = series_col.selectbox("Source series", ["lower_limit", "mean"], format_func=lambda v: {"lower_limit": "Lower limit", "mean": "Mean"}[v], key="supplier_curve_basis",
+    series = ["lower_limit", "mean"]
+    basis = series_col.selectbox("Source series", series,
+        index=series.index(st.session_state.get("supplier_curve_basis", series[0])),
+        format_func=lambda v: {"lower_limit": "Lower limit", "mean": "Mean"}[v], key="supplier_curve_basis",
         help="Mean is the supplier's average sheet; Lower limit is its lower-limit sheet. Statistical and warranty definitions are unconfirmed.")
     socs = sorted({c.soc_pct for c in dataset.curves if c.basis == basis})
     if st.session_state.get("supplier_curve_soc", socs[0]) not in socs:
         st.session_state["supplier_curve_soc"] = 50 if 50 in socs else socs[0]
-    soc = soc_col.selectbox("Source SOC label (%)", socs, index=socs.index(50) if 50 in socs else 0, key="supplier_curve_soc", format_func=lambda v: f"{v:.2f}%",
+    soc = soc_col.selectbox("Source SOC label (%)", socs,
+        index=socs.index(st.session_state.get("supplier_curve_soc", 50 if 50 in socs else socs[0])),
+        key="supplier_curve_soc", format_func=lambda v: f"{v:.2f}%",
         help="This is the original supplier SOC label, not DOD. Standby SOC versus cycling window remains unconfirmed.")
     rates = sorted({c.power_rate for c in dataset.curves if c.basis == basis and c.soc_pct == soc})
     if st.session_state.get("supplier_curve_rate", rates[0]) not in rates:
         st.session_state["supplier_curve_rate"] = 0.25 if 0.25 in rates else rates[0]
-    rate = rate_col.selectbox("Source Power Rate", rates, index=rates.index(0.25) if 0.25 in rates else 0, key="supplier_curve_rate", format_func=lambda v: f"{v:g}",
+    rate = rate_col.selectbox("Source Power Rate", rates,
+        index=rates.index(st.session_state.get("supplier_curve_rate", 0.25 if 0.25 in rates else rates[0])),
+        key="supplier_curve_rate", format_func=lambda v: f"{v:g}",
         help="Source rate label. Nominal charging/discharging basis requires supplier confirmation.")
     cases = [c for c in dataset.curves if c.basis == basis and c.soc_pct == soc and c.power_rate == rate]
-    extended = st.checkbox("Show extended daily frequencies above 2 cycles/day", key="supplier_curve_extended")
+    extended = st.checkbox("Show extended daily frequencies above 2 cycles/day",
+        value=bool(st.session_state.get("supplier_curve_extended", False)), key="supplier_curve_extended")
     frequencies = sorted({c.cycles_per_day for c in cases if extended or c.cycles_per_day <= 2})
     frequency_key = f"supplier_curve_frequency_{dataset.source_sha256}_{basis}_{soc}_{rate}"
     if frequency_key in st.session_state:
         valid_selected = [f for f in st.session_state[frequency_key] if f in frequencies]
         if valid_selected != st.session_state[frequency_key]:
-            st.session_state[frequency_key] = valid_selected
-    defaults = None if frequency_key in st.session_state else [n for n in [1, 2] if n in frequencies]
+            # Recreate this widget from its filtered default instead of both
+            # assigning session state and supplying a default in the same run.
+            del st.session_state[frequency_key]
+        defaults = valid_selected
+    else:
+        defaults = [n for n in [1, 2] if n in frequencies]
     selected = st.multiselect("Cycles/day", frequencies, default=defaults, key=frequency_key, format_func=lambda v: f"{v:g}")
     curves = [c for c in cases if c.cycles_per_day in selected]
     selected_col, all_col = st.columns(2)
@@ -173,7 +241,7 @@ def _render_dataset(dataset, metadata=None):
         if hours > 24:
             st.warning(f"{curve.cycles_per_day:g} cycles/day would need {hours:.2f} h/day at 100% depth, equal charge/discharge rates and two 30-minute rests per cycle. That assumed schedule does not fit 24 hours.")
     with st.expander("Source definitions and timing assumptions", expanded=False):
-        st.caption("SOC and Power Rate are original supplier labels. SOC standby/window meaning, rate definition and Mean/lower-limit statistical or warranty basis remain unconfirmed. Reference data are not applied to sizing or a system warranty.")
+        st.caption("SOC and Power Rate are original supplier labels. SOC standby/window meaning, rate definition and Mean/lower-limit statistical or warranty basis remain unconfirmed. Sizing use is defined by the published curve version and its applicability review; source data alone are not a system warranty.")
         st.caption("Timing assumes 100% cycle depth, equal compatible nominal charge/discharge rates and two 30-minute rests per cycle. This is a conditional screen, not verified dispatch feasibility.")
         if not dataset.rte_numeric_values or not dataset.calendar_numeric_values:
-            st.caption("No numeric RTE data or no separate calendar-aging table is supplied. Existing platform RTE data are unchanged; calendar and cycle losses are not recombined.")
+            st.caption("This workbook has no numeric RTE data or no separate calendar-aging table. Sizing RTE comes from the explicitly paired published curve version; this preview does not modify it or recombine calendar and cycle losses.")

@@ -207,10 +207,14 @@ def persist_dc_run(
     resolved_case_name = case_name or f"{project_name} {scenario_id}".strip()
 
     case_payload = case_model.model_dump(mode="python")
+    from calb_sizing_tool.services.curve_release_service import BASIS_KEY, validate_snapshot_basis
+    validate_snapshot_basis(snapshot, case_model.curve_selection)
     input_payload = {
         "case_input": case_payload,
         "defaults": defaults or {},
     }
+    if BASIS_KEY in snapshot.summary:
+        input_payload[BASIS_KEY] = snapshot.summary[BASIS_KEY]
     output_payload = {
         "stage1": snapshot.stage1.model_dump(mode="python"),
         "stage2": snapshot.stage2.model_dump(mode="python"),

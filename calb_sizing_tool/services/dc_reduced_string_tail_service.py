@@ -325,6 +325,13 @@ def evaluate_reduced_string_tail(parent_snapshot, bundle, product: dict, basis: 
     # DC-only; existing single-tail AC/SLD reviews cannot consume multiple tails.
     if tail_count > 1:
         result.update(schema_version=2, tail_container_count=tail_count)
+    from calb_sizing_tool.services.curve_release_service import BASIS_KEY, attach_curve_basis
+    if parent.summary.get(BASIS_KEY):
+        from calb_sizing_tool.schemas.run_snapshot import DcPipelineRunSnapshot
+        reviewed = attach_curve_basis(DcPipelineRunSnapshot.model_validate(result['snapshot']), parent.summary[BASIS_KEY])
+        result['snapshot'] = reviewed.model_dump(mode='json')
+        result['curve_basis'] = ('Versioned runtime SOH/RTE package: '
+                                 + parent.summary[BASIS_KEY]['version_label'] + '; not a supplier warranty.')
     # JSON object keys (including tail counts) have their saved form before hashing.
     result = _json(result)
     result['comparison_sha256'] = _hash_payload(result)

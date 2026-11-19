@@ -273,3 +273,33 @@ def test_switching_case_clears_previous_dc_inputs(monkeypatch):
     assert session_state["project_state"]["dc_inputs"] == {}
     assert "dc_inputs.poi_power_req_mw" not in session_state
     assert "poi_nominal_voltage_kv" not in session_state
+
+
+def test_legacy_run_restore_clears_previous_curve_choice_in_same_case(monkeypatch, sample_excel_path):
+    """A legacy run has no choice; it must not inherit the prior run's special family."""
+    session_state = _seed_session_state()
+    bundle = _build_run_bundle(sample_excel_path)
+    session_state.update({
+        "active_project_id": bundle.project_id,
+        "active_project_code": bundle.project_code,
+        "active_project_name": bundle.project_name,
+        "active_case_id": bundle.sizing_case_id,
+        "active_case_code": bundle.case_code,
+        "active_case_name": bundle.case_name,
+        "dc_inputs.curve_selection_token": "previous|soc50.lower_limit",
+    })
+    previous = {"release_id": "previous", "family_key": "soc50.lower_limit", "payload_sha256": "old"}
+    session_state["dc_inputs"]["curve_selection"] = previous
+    session_state["project_state"]["dc_inputs"]["curve_selection"] = previous
+    monkeypatch.setattr(workspace_state, "st", SimpleNamespace(session_state=session_state))
+    monkeypatch.setattr(workspace_state, "load_persisted_ac_snapshot", lambda run_id: None)
+
+    # Older snapshots omit the field entirely, rather than storing explicit None.
+    bundle.input_snapshot.payload["case_input"].pop("curve_selection", None)
+    workspace_state.restore_run_bundle_to_session(bundle, bundle.run_id)
+    workspace_state.apply_pending_dc_input_restore()
+
+    assert session_state["dc_inputs"].get("curve_selection") is None
+    assert session_state["project_state"]["dc_inputs"].get("curve_selection") is None
+    assert session_state.get("dc_inputs.curve_selection") is None
+    assert "dc_inputs.curve_selection_token" not in session_state

@@ -216,6 +216,7 @@ def show() -> None:
 
     _render_admin_css()
     page_header("Product & Database", "Admin-only product libraries, user access, performance data, and simulation plugins")
+    _render_maintenance_workflow()
     st.divider()
 
     nav_col, content_col = st.columns([1, 4], gap="large")
@@ -532,9 +533,27 @@ def _dc_connection_summary(block: dict) -> str:
     return f'{output_text} / {pcs_text}'
 
 
+def _render_maintenance_workflow() -> None:
+    with st.expander("Maintenance workflow — save, publish and apply", expanded=False):
+        st.markdown("**Check current use → edit and review → save → apply the supported use settings.**")
+        render_static_table([
+            {"Data": "Cells / DC Blocks / AC Blocks / Assets",
+             "Workflow": "Edit record → Save Changes",
+             "Effect": "Updates the existing record. Separate version publication and automatic rollback are not available."},
+            {"Data": "Sizing SOH + RTE versions (Degradation)",
+             "Workflow": "Save source workbook or revised RTE draft → publish complete version → apply default if required",
+             "Effect": "Publishing makes a version available for selection. Applying the default is a separate action; neither runs SIZING."},
+            {"Data": "Reference curve records / legacy Sizing Data",
+             "Workflow": "Maintain reference records using the actions on that page",
+             "Effect": "These actions do not change published curve versions or their default."},
+        ])
+        st.caption("Active / Published have different effects by data type; read the usage note on that page. "
+                   "For curve rollback or stopping new use, open Degradation → Curve versions — apply, roll back and stop.")
+
+
 def _section_overview(snapshot: dict[str, Any]) -> None:
     st.subheader("Overview")
-    st.caption("Product catalogue records. Supplier reference versions are listed under Degradation.")
+    st.caption("Product catalogue records. Imported source workbooks and published curve versions are listed under Degradation.")
     counts = snapshot["counts"]
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Cell Products", counts["product_cell"])
@@ -549,7 +568,8 @@ def _section_overview(snapshot: dict[str, Any]) -> None:
     st.markdown("---")
     st.info(
         "These totals describe product catalogue records, not the active sizing SOH/RTE data. "
-        "Saved supplier reference versions are available under Degradation; sizing data are managed under Sizing Data."
+        "Degradation shows the current standard default and manages source workbooks, RTE working drafts and published curve versions. "
+        "Sizing Data maintains separate legacy reference tables."
     )
 
 
@@ -776,6 +796,8 @@ def _render_asset_download(assets: list[dict[str, Any]]) -> None:
 def _section_cell_products(service: ProductAdminService, snapshot: dict[str, Any]) -> None:
     st.subheader("Cell Products")
     st.caption("LFP, NMC and other cell models with electrical, dimensional and density data.")
+    st.caption("Record maintenance: saving updates the catalogue directly; there is no separate version publication or automatic rollback. "
+               "Active / Published describe this cell record. Changing them does not automatically stop all linked DC products.")
 
     _render_catalogue_table(
         _rows(
@@ -921,6 +943,9 @@ def _section_dc_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
     st.subheader("DC Block Templates")
     st.caption("String/rack/container templates linked to maintained cell products. "
                "Parameter status is a maintenance check; it does not change existing sizing selection.")
+    st.caption("Record maintenance: saving updates the catalogue directly. Active controls eligibility for standard DC sizing; "
+               "Published marks a preferred option within the existing selection rule. Special variants remain outside standard sizing. "
+               "There is no separate version publication or automatic rollback.")
     blocks = service.dc_block_maintenance_rows(snapshot)
 
     _render_catalogue_table(
@@ -1180,6 +1205,8 @@ def _section_dc_block(service: ProductAdminService, snapshot: dict[str, Any]) ->
 def _section_ac_block(service: ProductAdminService, snapshot: dict[str, Any]) -> None:
     st.subheader("AC Block Templates")
     st.caption("PCS, transformer and AC-side efficiency template records.")
+    st.caption("Record maintenance: saving updates the catalogue directly; there is no separate version publication or automatic rollback. "
+               "Active / Published record catalogue status. The current AC matching process does not use these flags to exclude products.")
 
     with st.expander("Import preset vendor catalogue", expanded=False):
         from calb_sizing_tool.services.ac_block_product_seed_service import (
@@ -1307,6 +1334,8 @@ def _section_assets(service: ProductAdminService, snapshot: dict[str, Any]) -> N
     st.subheader("Product Assets")
     st.caption("Product datasheets and images available to technical proposals. "
                "Upload a file to enable its preview and download.")
+    st.caption("Record maintenance: save the attachment and its product association. Report inclusion depends on the export template; "
+               "saving or marking a record Published does not by itself add it to a report.")
 
     render_static_table(
         _rows(
@@ -1431,7 +1460,7 @@ def _section_degradation(service: ProductAdminService, snapshot: dict[str, Any])
     from calb_sizing_tool.ui.supplier_degradation_preview import render_supplier_degradation_preview
     render_supplier_degradation_preview(service.db_url)
     with st.expander("Catalogue curve headers — separate from sizing SOH data", expanded=False):
-        st.caption("These are catalogue header records. Their Enabled flag does not activate a supplier candidate in sizing.")
+        st.caption("These are reference catalogue records. Enabled, Published and historical status labels do not publish a curve version or change the standard sizing default.")
         _render_catalogue_degradation(service, snapshot)
 
 
@@ -1537,7 +1566,10 @@ def _render_catalogue_degradation(service: ProductAdminService, snapshot: dict[s
 
 def _section_rte(service: ProductAdminService, snapshot: dict[str, Any]) -> None:
     st.subheader("RTE Library")
-    st.caption("Round-trip efficiency by SoC, temperature and C-rate.")
+    st.caption("Reference RTE catalogue records by SoC, temperature and C-rate. "
+               "Their Active / Published flags do not change a published curve version or its default.")
+    st.info("For test inputs, calculated RTE values, working drafts and publication, open Degradation → Revise RTE. "
+            "The current standard default is also shown under Degradation.")
 
     if snapshot["rte_curves"]:
         render_static_table(
@@ -1557,7 +1589,7 @@ def _section_rte(service: ProductAdminService, snapshot: dict[str, Any]) -> None
             ),
         )
     else:
-        st.info("No RTE catalogue headers registered. Active sizing RTE data is maintained separately under Sizing Data.")
+        st.info("No reference RTE catalogue records registered. This does not mean the published curve version has no RTE data.")
 
     _render_edit_form(
         service=service,
@@ -1692,8 +1724,9 @@ def _section_plugins(service: ProductAdminService, snapshot: dict[str, Any]) -> 
 def _section_dc_sizing_data() -> None:
     st.subheader("DC Sizing Data")
     st.caption(
-        "SOH profiles, degradation curves and RTE bands used for DC sizing. "
-        "Saved database curves take priority over the Excel reference file."
+        "Legacy SOH / RTE reference tables. They support the legacy data route and explicit legacy-RTE pairing. "
+        "For the current published package and standard default, open Degradation. "
+        "Actions on this page do not change published curve versions, their default binding or saved results."
     )
 
     from calb_sizing_tool.services.master_data_service import MasterDataService
@@ -1713,22 +1746,25 @@ def _section_dc_sizing_data() -> None:
 
     _has_data = counts["soh_profile"] > 0 and counts["rte_profile"] > 0
     if _has_data:
-        st.success("DC sizing uses the saved database curves. Updates are refreshed within 60 seconds.")
+        st.success("Legacy reference tables are populated. The legacy route reads these tables before the Excel reference file; "
+                   "a selected published curve version retains its own SOH / RTE data.")
     else:
-        st.info("No curves are saved in the database. DC sizing uses the Excel reference file.")
+        st.info("Legacy reference tables are empty. The legacy route uses the Excel reference file; "
+                "published curve versions and the standard default are unchanged.")
 
     st.markdown("---")
-    st.markdown("**Migrate from Excel reference file**")
+    st.markdown("**Replace legacy reference tables from Excel**")
     st.caption(
         "Reads `soh_profile_314_data`, `soh_curve_314_template`, `rte_profile_314_data`, "
         "and `rte_curve_314_template` sheets from the active DC data workbook and stores them "
-        "in the database. Existing SoH/RTE records are fully replaced."
+        "in the legacy database tables. Existing legacy SoH/RTE records are fully replaced. "
+        "Published curve versions and the standard default are not changed."
     )
 
     version_tag = st.text_input("Version tag", value="excel-import", key="soh_rte_version_tag")
     source_ref = st.text_input("Source ref (optional notes)", value="", key="soh_rte_source_ref")
 
-    if st.button("Migrate SoH / RTE from Excel", type="primary", key="btn_migrate_soh_rte"):
+    if st.button("Replace legacy SoH / RTE tables from Excel", type="primary", key="btn_migrate_soh_rte"):
         try:
             from calb_sizing_tool.config import DC_DATA_PATH
             from calb_sizing_tool.adapters.excel_loader_adapter import load_dc_excel_bundle_from_path
@@ -1745,7 +1781,7 @@ def _section_dc_sizing_data() -> None:
                     source_ref=source_ref.strip() or str(data_path.name),
                 )
                 st.success(
-                    f"Migration complete — "
+                    f"Legacy reference tables replaced — "
                     f"{result['soh_profile']} SoH profiles, "
                     f"{result['soh_curve_point']} curve points, "
                     f"{result['rte_profile']} RTE profiles, "
@@ -1757,14 +1793,15 @@ def _section_dc_sizing_data() -> None:
 
     if _has_data:
         st.markdown("---")
-        st.markdown("**Clear DB data (revert to Excel)**")
-        st.caption("Removes all SOH/RTE records from the database. DC sizing will use the Excel reference file instead.")
-        if st.button("Clear DB SoH / RTE data", key="btn_clear_soh_rte"):
+        st.markdown("**Clear legacy reference tables**")
+        st.caption("Removes all legacy SOH/RTE profiles and points from these tables. Only the legacy route then falls back to Excel. "
+                   "Published packages, the standard default and saved results are unchanged.")
+        if st.button("Clear legacy SoH / RTE reference tables", key="btn_clear_soh_rte"):
             try:
                 result = svc.migrate_soh_rte_from_excel_bundle(
                     _empty_bundle(), version_tag="cleared", source_ref="admin-clear"
                 )
-                st.success("SoH/RTE DB data cleared.")
+                st.success("Legacy SoH/RTE reference tables cleared. Published packages and the standard default are unchanged.")
                 st.rerun()
             except Exception as exc:
                 st.error(f"Clear failed: {exc}")

@@ -108,3 +108,36 @@ def test_extended_frequency_toggle_preserves_common_selection_and_removes_hidden
     assert app.multiselect[0].value == [1]
     assert not any('27.00 h/day' in item.value for item in app.warning)
     assert not any('default value' in item.value for item in app.warning)
+
+
+def test_restored_nonfirst_source_filters_are_sent_as_visible_widget_defaults(monkeypatch):
+    import streamlit as st
+    from test_curve_release import source_bytes
+
+    data=source_bytes()
+    dataset=parse_supplier_degradation(data)
+    target=next(c for c in dataset.curves if c.basis=='mean' and c.soc_pct==50 and c.power_rate==.5)
+    frequency_key=f'supplier_curve_frequency_{dataset.source_sha256}_mean_{target.soc_pct}_{target.power_rate}'
+    class Upload:
+        size=len(data)
+        def getvalue(self):return data
+    monkeypatch.setattr(st,'file_uploader',lambda *a,**k:Upload())
+    app=AppTest.from_function(_preview_app,default_timeout=30)
+    app.session_state['supplier_curve_basis']='mean'
+    app.session_state['supplier_curve_soc']=target.soc_pct
+    app.session_state['supplier_curve_rate']=target.power_rate
+    app.session_state['supplier_curve_extended']=True
+    app.session_state[frequency_key]=[1.5]
+    app.run()
+    assert not app.exception
+    for key,expected,index in [('supplier_curve_basis','mean',1),
+                               ('supplier_curve_soc',50,1),
+                               ('supplier_curve_rate',.5,2)]:
+        field=app.selectbox(key=key)
+        assert field.value==expected
+        assert field.proto.default==index
+    assert app.checkbox(key='supplier_curve_extended').value is True
+    assert app.checkbox(key='supplier_curve_extended').proto.default is True
+    assert app.multiselect(key=frequency_key).value==[1.5]
+    assert list(app.multiselect(key=frequency_key).proto.default)==[1]
+    assert any('1.5 cycles/day' in v.value for v in app.caption)

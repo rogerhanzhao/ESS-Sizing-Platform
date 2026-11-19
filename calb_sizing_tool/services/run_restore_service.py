@@ -75,6 +75,11 @@ def load_dc_run_bundle(run_id: str, *, db_url: str | None = None) -> DcRunBundle
         output_payload = output_snapshot.snapshot_json
         try:
             snapshot = _build_snapshot_from_payload(output_payload)
+            from calb_sizing_tool.services.curve_release_service import BASIS_KEY, validate_snapshot_basis
+            saved_input = input_snapshot.snapshot_json if input_snapshot else {}
+            validate_snapshot_basis(snapshot, (saved_input.get('case_input') or {}).get('curve_selection'))
+            if snapshot.summary.get(BASIS_KEY) != saved_input.get(BASIS_KEY):
+                raise RunRestoreError('Saved input and output curve packages differ.')
         except (ValidationError, TypeError, AttributeError) as exc:
             raise RunRestoreError(
                 "This saved DC result is incomplete and cannot be restored. Select another run or contact support."

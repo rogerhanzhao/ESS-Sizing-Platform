@@ -191,15 +191,25 @@ def build_tail_dc_report(parent, *, case_name=None, logo_path=None) -> bytes:
     _table(doc, ['Curve selection', 'Standard configuration', 'Reduced-string comparison'], [
         ('Effective DC rate', f'{parent.stage3.meta.effective_c_rate:.4f}C', f'{tail.stage3.meta.effective_c_rate:.4f}C'),
         ('Selected SOH rate', f'{parent.stage3.meta.chosen_soh_c_rate:g}C', f'{tail.stage3.meta.chosen_soh_c_rate:g}C'),
-        ('SOH profile cycles per year', parent.stage3.meta.chosen_soh_cycles_per_year, tail.stage3.meta.chosen_soh_cycles_per_year),
+        ('SOH profile cycles per year',
+         (parent.summary.get('curve_basis_v1') or {}).get('source_cycles_per_year', parent.stage3.meta.chosen_soh_cycles_per_year),
+         (tail.summary.get('curve_basis_v1') or {}).get('source_cycles_per_year', tail.stage3.meta.chosen_soh_cycles_per_year)),
         ('Selected RTE rate', f'{parent.stage3.meta.chosen_rte_c_rate:g}C', f'{tail.stage3.meta.chosen_rte_c_rate:g}C'),
     ], [2.65, 1.95, 2.17])
     changed = (parent.stage3.meta.soh_profile_id != tail.stage3.meta.soh_profile_id
                or parent.stage3.meta.rte_profile_id != tail.stage3.meta.rte_profile_id)
+    runtime_basis = parent.summary.get('curve_basis_v1')
+    if runtime_basis:
+        doc.add_paragraph(
+            f"Degradation basis: {runtime_basis['version_label']}; source SOC label "
+            f"{runtime_basis['source_soc_pct']:g}%; {runtime_basis['source_series'].replace('_', ' ')}; "
+            f"RTE basis {runtime_basis['rte_version']}. Source SOC is not project DOD."
+        )
     doc.add_paragraph(
         ('Curve selection changed from the standard configuration. ' if changed else 'Curve selection is unchanged. ')
-        + 'Both configurations use the standard 314Ah SOH and RTE library and its existing rate and frequency selector. '
-        'Reuse for reduced-string containers is a sizing assumption, not a separate supplier warranty.')
+        + ('Both configurations use the saved versioned SOH/RTE package and its existing rate and frequency selector. '
+           if runtime_basis else 'Both configurations use the standard 314Ah SOH and RTE library and its existing rate and frequency selector. ')
+        + 'Reuse for reduced-string containers is a sizing assumption, not a separate supplier warranty.')
     doc.add_paragraph(
         f"Operating assumptions: {inputs.cycles_per_year} cycles/year; DOD {inputs.dod_frac:.2%}; "
         f"FAT-to-COD interval {inputs.sc_time_months} months; DC-to-POI one-way efficiency {inputs.eff_dc_to_poi_frac:.2%}; "
